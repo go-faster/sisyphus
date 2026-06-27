@@ -1,0 +1,145 @@
+openapi: 3.0.3
+info:
+  title: scpbot API
+  description: Hybrid-search internal support assistant.
+  version: 0.1.0
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness/readiness probe.
+      responses:
+        "200":
+          description: Service health.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        default:
+          $ref: "#/components/responses/Error"
+  /search:
+    post:
+      operationId: search
+      summary: Hybrid (FTS + vector) chunk search.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequest"
+      responses:
+        "200":
+          description: Ranked chunks.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /context:
+    post:
+      operationId: context
+      summary: Answer a support question from retrieved context (plan §14).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContextRequest"
+      responses:
+        "200":
+          description: Constructed answer with sources.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContextResponse"
+        default:
+          $ref: "#/components/responses/Error"
+components:
+  responses:
+    Error:
+      description: Error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+        version:
+          type: string
+    Error:
+      type: object
+      required: [error_message]
+      properties:
+        error_message:
+          type: string
+    SearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+        service:
+          type: string
+        limit:
+          type: integer
+          format: int32
+          default: 30
+    SearchResponse:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchResult"
+    SearchResult:
+      type: object
+      required: [chunk_id, document_id, text, score]
+      properties:
+        chunk_id:
+          type: string
+          format: uuid
+        document_id:
+          type: string
+          format: uuid
+        source:
+          type: string
+        source_url:
+          type: string
+        title:
+          type: string
+        chunk_type:
+          type: string
+        text:
+          type: string
+        score:
+          type: number
+          format: double
+        vector:
+          type: boolean
+    ContextRequest:
+      type: object
+      required: [question]
+      properties:
+        question:
+          type: string
+        service:
+          type: string
+    ContextResponse:
+      type: object
+      required: [answer, results]
+      properties:
+        answer:
+          type: string
+        confidence:
+          type: string
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchResult"
