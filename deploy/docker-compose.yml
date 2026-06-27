@@ -1,0 +1,73 @@
+name: scpbot
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-scpbot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-scpbot}
+      POSTGRES_DB: ${POSTGRES_DB:-scpbot}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-scpbot}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333" # REST
+      - "6334:6334" # gRPC
+    volumes:
+      - qdrant:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    # Pull the embedding model on first run:
+    #   docker compose exec ollama ollama pull bge-m3
+
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    environment:
+      SCPBOT_DATABASE_DSN: postgres://${POSTGRES_USER:-scpbot}:${POSTGRES_PASSWORD:-scpbot}@postgres:5432/${POSTGRES_DB:-scpbot}?sslmode=disable
+      SCPBOT_QDRANT_ADDR: qdrant:6334
+      SCPBOT_OLLAMA_URL: http://ollama:11434
+      SCPBOT_EMBED_MODEL: ${SCPBOT_EMBED_MODEL:-bge-m3}
+      SCPBOT_HTTP_ADDR: :8080
+      SCPBOT_TELEGRAM_APP_ID: ${SCPBOT_TELEGRAM_APP_ID}
+      SCPBOT_TELEGRAM_APP_HASH: ${SCPBOT_TELEGRAM_APP_HASH}
+      SCPBOT_TELEGRAM_BOT_TOKEN: ${SCPBOT_TELEGRAM_BOT_TOKEN}
+      SCPBOT_TELEGRAM_SESSION_DIR: /data/session
+    ports:
+      - "8080:8080"
+    volumes:
+      - session:/data/session
+      - ../service_catalog.yaml:/etc/scpbot/service_catalog.yaml:ro
+
+volumes:
+  pgdata:
+  qdrant:
+  ollama:
+  session:
