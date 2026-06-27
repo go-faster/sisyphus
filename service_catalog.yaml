@@ -1,0 +1,25 @@
+# Manual service catalog (plan §8). More important than embeddings for routing.
+# Used during indexing to enrich chunks with `service`, and at query time to
+# detect the target service.
+services:
+  billing-api:
+    aliases:
+      - billing
+      - invoices
+      - invoice confirmation
+      - payments
+    repos:
+      - group/billing-api
+    docs:
+      - platform/docs/billing.md
+    jira_projects:
+      - BILL
+    jira_components:
+      - Billing
+    owners:
+      - backend-payments
+    keywords:
+      - invoice
+      - callback
+      - payment pending
+      - confirmation
