@@ -1,7 +1,6 @@
 package stub
 
 import (
-	"context"
 	"testing"
 
 	"github.com/go-faster/scpbot/internal/index"
@@ -10,7 +9,7 @@ import (
 // TestSummarizerBasic tests basic summarization without truncation.
 func TestSummarizerBasic(t *testing.T) {
 	s := NewSummarizer()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	prompt := "This is a simple test. It should work."
 	result, err := s.Summarize(ctx, prompt)
@@ -27,7 +26,7 @@ func TestSummarizerBasic(t *testing.T) {
 // TestSummarizerEmptyPrompt tests empty string input.
 func TestSummarizerEmptyPrompt(t *testing.T) {
 	s := NewSummarizer()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	result, err := s.Summarize(ctx, "")
 	if err != nil {
@@ -41,7 +40,7 @@ func TestSummarizerEmptyPrompt(t *testing.T) {
 // TestSummarizerWhitespaceOnly tests whitespace-only input.
 func TestSummarizerWhitespaceOnly(t *testing.T) {
 	s := NewSummarizer()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	result, err := s.Summarize(ctx, "   \n  \t  ")
 	if err != nil {
@@ -55,7 +54,7 @@ func TestSummarizerWhitespaceOnly(t *testing.T) {
 // TestSummarizerSentenceTruncation tests truncation at 3 sentences.
 func TestSummarizerSentenceTruncation(t *testing.T) {
 	s := NewSummarizer()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Five sentences; should truncate to first three.
 	prompt := "First sentence. Second sentence. Third sentence. Fourth sentence. Fifth sentence."
@@ -74,7 +73,7 @@ func TestSummarizerSentenceTruncation(t *testing.T) {
 // TestSummarizerRuneTruncation tests truncation at ~500 runes.
 func TestSummarizerRuneTruncation(t *testing.T) {
 	s := NewSummarizer()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Create a prompt with a few sentences that exceed 500 runes.
 	// Each sentence is ~180 runes, so 3 sentences will be ~540 runes.
@@ -107,7 +106,7 @@ func TestSummarizerRuneTruncation(t *testing.T) {
 // TestSummarizerMultipleSentenceTypes tests different sentence delimiters.
 func TestSummarizerMultipleSentenceTypes(t *testing.T) {
 	s := NewSummarizer()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	prompt := "First sentence. Second question? Third exclamation! Fourth. Fifth."
 	result, err := s.Summarize(ctx, prompt)
@@ -127,7 +126,7 @@ func TestSummarizerMultipleSentenceTypes(t *testing.T) {
 // TestSummarizerWhitespaceCollapse tests whitespace normalization.
 func TestSummarizerWhitespaceCollapse(t *testing.T) {
 	s := NewSummarizer()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	prompt := "  This   has   extra    whitespace.  \n\n  Another sentence.  "
 	result, err := s.Summarize(ctx, prompt)
@@ -145,7 +144,7 @@ func TestSummarizerWhitespaceCollapse(t *testing.T) {
 // TestSummarizerDeterminism ensures same input produces same output.
 func TestSummarizerDeterminism(t *testing.T) {
 	s := NewSummarizer()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	prompt := "First sentence. Second sentence. Third sentence. Fourth. Fifth."
 	result1, err := s.Summarize(ctx, prompt)
@@ -166,7 +165,7 @@ func TestSummarizerDeterminism(t *testing.T) {
 // TestAnswererEmptyResults tests answering with no results.
 func TestAnswererEmptyResults(t *testing.T) {
 	a := NewAnswerer()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	question := "What is the meaning of life?"
 	result, err := a.Answer(ctx, question, []index.Result{})
@@ -188,7 +187,7 @@ func TestAnswererEmptyResults(t *testing.T) {
 // TestAnswererSingleResult tests answering with one result.
 func TestAnswererSingleResult(t *testing.T) {
 	a := NewAnswerer()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	chunk := index.Chunk{
 		Title: "Go Basics",
@@ -228,7 +227,7 @@ func TestAnswererSingleResult(t *testing.T) {
 // TestAnswererMultipleResults tests answering with multiple results.
 func TestAnswererMultipleResults(t *testing.T) {
 	a := NewAnswerer()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	chunk1 := index.Chunk{
 		Title: "First Source",
@@ -273,7 +272,7 @@ func TestAnswererMultipleResults(t *testing.T) {
 // TestAnswererSnippetTruncation tests that long chunk text is truncated to ~200 runes.
 func TestAnswererSnippetTruncation(t *testing.T) {
 	a := NewAnswerer()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Create a long text (well over 200 runes).
 	longText := "This is a very long piece of text that should be truncated to approximately 200 runes. " +
@@ -309,7 +308,7 @@ func TestAnswererSnippetTruncation(t *testing.T) {
 // TestAnswererNoMetadata tests result without metadata fields.
 func TestAnswererNoMetadata(t *testing.T) {
 	a := NewAnswerer()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	chunk := index.Chunk{
 		Title: "Title Only",
@@ -334,7 +333,7 @@ func TestAnswererNoMetadata(t *testing.T) {
 // TestAnswererNoTitle tests result without title.
 func TestAnswererNoTitle(t *testing.T) {
 	a := NewAnswerer()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	chunk := index.Chunk{
 		Title: "",
@@ -358,7 +357,7 @@ func TestAnswererNoTitle(t *testing.T) {
 // TestAnswererDeterminism ensures same inputs produce same output.
 func TestAnswererDeterminism(t *testing.T) {
 	a := NewAnswerer()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	chunk := index.Chunk{
 		Title: "Test",
@@ -388,7 +387,7 @@ func TestAnswererDeterminism(t *testing.T) {
 // TestAnswererStableOrdering ensures results maintain their input order.
 func TestAnswererStableOrdering(t *testing.T) {
 	a := NewAnswerer()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	chunk1 := index.Chunk{Title: "First"}
 	chunk2 := index.Chunk{Title: "Second"}

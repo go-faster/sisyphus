@@ -3,7 +3,8 @@
 package telegram
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -75,11 +76,14 @@ func Group(msgs []Message, opts GroupOptions) []Conversation {
 
 	sorted := make([]Message, len(msgs))
 	copy(sorted, msgs)
-	sort.SliceStable(sorted, func(i, j int) bool {
-		if !sorted[i].Date.Equal(sorted[j].Date) {
-			return sorted[i].Date.Before(sorted[j].Date)
+	slices.SortStableFunc(sorted, func(a, b Message) int {
+		if !a.Date.Equal(b.Date) {
+			if a.Date.Before(b.Date) {
+				return -1
+			}
+			return 1
 		}
-		return sorted[i].MessageID < sorted[j].MessageID
+		return cmp.Compare(a.MessageID, b.MessageID)
 	})
 
 	// Map message id -> conversation index, so replies attach to their root.

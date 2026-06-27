@@ -45,7 +45,7 @@ func TestRetrieveMergesAndBoosts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := svc.Retrieve(context.Background(), index.Query{Text: "q", Limit: 10})
+	got, err := svc.Retrieve(t.Context(), index.Query{Text: "q", Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestRetrieveServiceBoost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := svc.Retrieve(context.Background(), index.Query{Text: "q", Service: "billing-api"})
+	got, err := svc.Retrieve(t.Context(), index.Query{Text: "q", Service: "billing-api"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestRetrieveSurvivesBackendError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := svc.Retrieve(context.Background(), index.Query{Text: "q"})
+	got, err := svc.Retrieve(t.Context(), index.Query{Text: "q"})
 	if err != nil {
 		t.Fatal(err)
 	}

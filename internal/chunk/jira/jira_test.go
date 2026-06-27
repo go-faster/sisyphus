@@ -1,7 +1,6 @@
 package jira
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
@@ -290,7 +289,7 @@ func TestChunker_Chunk(t *testing.T) {
 			doc := DocumentFromIssue(tt.issue)
 			chunker := New()
 
-			chunks, err := chunker.Chunk(context.Background(), doc)
+			chunks, err := chunker.Chunk(t.Context(), doc)
 			if (err != nil) != tt.expectErr {
 				t.Errorf("unexpected error: %v", err)
 			}
@@ -314,7 +313,7 @@ func TestChunk_Metadata(t *testing.T) {
 	doc := DocumentFromIssue(issue)
 	chunker := New()
 
-	chunks, err := chunker.Chunk(context.Background(), doc)
+	chunks, err := chunker.Chunk(t.Context(), doc)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -351,7 +350,7 @@ func TestChunk_ID_and_Index(t *testing.T) {
 	doc := DocumentFromIssue(issue)
 	chunker := New()
 
-	chunks, err := chunker.Chunk(context.Background(), doc)
+	chunks, err := chunker.Chunk(t.Context(), doc)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -387,7 +386,7 @@ func TestChunk_TextHash(t *testing.T) {
 	doc := DocumentFromIssue(issue)
 	chunker := New()
 
-	chunks, err := chunker.Chunk(context.Background(), doc)
+	chunks, err := chunker.Chunk(t.Context(), doc)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -422,7 +421,7 @@ func TestFallback_NoStructuredIssue(t *testing.T) {
 	}
 
 	chunker := New()
-	chunks, err := chunker.Chunk(context.Background(), doc)
+	chunks, err := chunker.Chunk(t.Context(), doc)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -454,7 +453,7 @@ func TestFallback_EmptyBody(t *testing.T) {
 	}
 
 	chunker := New()
-	chunks, err := chunker.Chunk(context.Background(), doc)
+	chunks, err := chunker.Chunk(t.Context(), doc)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

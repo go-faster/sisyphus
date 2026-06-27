@@ -201,9 +201,11 @@ func (c *Chunker) splitLongSection(doc index.Document, title string, headingPath
 		return []index.Chunk{c.createChunk(doc, title, headingPath, bodyText, startIndex)}
 	}
 
-	var chunks []index.Chunk
-	var currentChunk []string
-	currentIndex := startIndex
+	var (
+		chunks       []index.Chunk
+		currentChunk []string
+		currentIndex = startIndex
+	)
 
 	for _, para := range paragraphs {
 		paraRunes := utf8.RuneCountInString(para)
@@ -242,9 +244,10 @@ func (c *Chunker) splitLongSection(doc index.Document, title string, headingPath
 // splitParagraphs splits text into paragraphs (separated by blank lines).
 func splitParagraphs(text string) []string {
 	lines := strings.Split(text, "\n")
-	var paragraphs []string
-	var currentLines []string
-
+	var (
+		paragraphs   []string
+		currentLines []string
+	)
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
@@ -256,10 +259,8 @@ func splitParagraphs(text string) []string {
 			currentLines = append(currentLines, line)
 		}
 	}
-
 	if len(currentLines) > 0 {
 		paragraphs = append(paragraphs, strings.Join(currentLines, "\n"))
 	}
-
 	return paragraphs
 }

@@ -55,7 +55,7 @@ func TestEmbed_HappyPath(t *testing.T) {
 	defer server.Close()
 
 	e := New(server.URL, "bge-m3")
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Test with multiple texts.
 	texts := []string{"hello", "world", "test"}
@@ -82,7 +82,7 @@ func TestEmbed_HappyPath(t *testing.T) {
 
 func TestEmbed_EmptyInput(t *testing.T) {
 	e := New("http://localhost:8000", "bge-m3")
-	ctx := context.Background()
+	ctx := t.Context()
 
 	embeddings, err := e.Embed(ctx, []string{})
 	if err != nil {
@@ -107,7 +107,7 @@ func TestEmbed_LengthMismatch(t *testing.T) {
 	defer server.Close()
 
 	e := New(server.URL, "bge-m3")
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Request 3 embeddings but server returns 1.
 	embeddings, err := e.Embed(ctx, []string{"a", "b", "c"})
@@ -131,7 +131,7 @@ func TestEmbed_NonOKStatus(t *testing.T) {
 	defer server.Close()
 
 	e := New(server.URL, "bge-m3")
-	ctx := context.Background()
+	ctx := t.Context()
 
 	embeddings, err := e.Embed(ctx, []string{"hello"})
 	if err == nil {
@@ -161,7 +161,7 @@ func TestEmbed_ContextHonored(t *testing.T) {
 	e := New(server.URL, "bge-m3")
 
 	// Test with a normal context.
-	ctx := context.Background()
+	ctx := t.Context()
 	_, err := e.Embed(ctx, []string{"hello"})
 	if err != nil {
 		t.Fatalf("Embed with normal context failed: %v", err)
@@ -178,7 +178,7 @@ func TestEmbed_ContextHonored(t *testing.T) {
 	}
 
 	// Test with a canceled context.
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
 	_, err = e.Embed(ctx, []string{"hello"})
@@ -222,7 +222,7 @@ func TestWithHTTPClient(t *testing.T) {
 	}
 
 	e := New(server.URL, "bge-m3", WithHTTPClient(customClient))
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := e.Embed(ctx, []string{"test"})
 	if err != nil {
@@ -243,7 +243,7 @@ func TestEmbed_MalformedResponse(t *testing.T) {
 	defer server.Close()
 
 	e := New(server.URL, "bge-m3")
-	ctx := context.Background()
+	ctx := t.Context()
 
 	embeddings, err := e.Embed(ctx, []string{"hello"})
 	if err == nil {
@@ -266,7 +266,7 @@ func TestEmbed_LargeBodySnippet(t *testing.T) {
 	defer server.Close()
 
 	e := New(server.URL, "bge-m3")
-	ctx := context.Background()
+	ctx := t.Context()
 
 	_, err := e.Embed(ctx, []string{"hello"})
 	if err == nil {

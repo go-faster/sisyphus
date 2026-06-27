@@ -1,7 +1,6 @@
 package telegram
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -21,7 +20,7 @@ func TestChunk(t *testing.T) {
 		},
 	}
 
-	chunks, err := New().Chunk(context.Background(), doc)
+	chunks, err := New().Chunk(t.Context(), doc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +61,7 @@ func TestChunkFallsBackToBody(t *testing.T) {
 		Body:     strings.Repeat("x", 10),
 		Metadata: map[string]any{},
 	}
-	chunks, err := New().Chunk(context.Background(), doc)
+	chunks, err := New().Chunk(t.Context(), doc)
 	if err != nil {
 		t.Fatal(err)
 	}

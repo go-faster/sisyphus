@@ -64,7 +64,7 @@ service_catalog.yaml    manual service catalog (see plan §8)
 ## Build / test
 
 - Format: `golangci-lint fmt ./...` (do not hand-format).
-- Lint: `golangci-lint run ./...`.
+- Lint: `golangci-lint run --fix ./...` (`--fix` can automatically fix some issues).
 - Test: `make test` (or `make test_fast` = `go test ./...`).
 - Tests must be hermetic, fast (no real sleeps), non-flaky, cross-platform. DB-backed tests use testcontainers or are skipped when no DB is available.
 

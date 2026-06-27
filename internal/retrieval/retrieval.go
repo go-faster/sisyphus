@@ -3,8 +3,9 @@
 package retrieval
 
 import (
+	"cmp"
 	"context"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/go-faster/errors"
@@ -92,11 +93,11 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) ([]index.Result, 
 		r.Score = boost(*r, q)
 		out = append(out, *r)
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Score != out[j].Score {
-			return out[i].Score > out[j].Score
+	slices.SortStableFunc(out, func(a, b index.Result) int {
+		if a.Score != b.Score {
+			return cmp.Compare(b.Score, a.Score) // descending
 		}
-		return out[i].Chunk.ID.String() < out[j].Chunk.ID.String()
+		return cmp.Compare(a.Chunk.ID.String(), b.Chunk.ID.String())
 	})
 	if len(out) > q.Limit {
 		out = out[:q.Limit]

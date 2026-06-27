@@ -1,7 +1,6 @@
 package postgres
 
 import (
-	"context"
 	"database/sql"
 	"os"
 	"testing"
@@ -138,7 +137,7 @@ func TestSearchSkipWithoutDB(t *testing.T) {
 	}
 
 	// Test that Search returns empty results on empty DB
-	results, err := s.Search(context.Background(), index.Query{
+	results, err := s.Search(t.Context(), index.Query{
 		Text:  "nonexistent",
 		Limit: 10,
 	})
@@ -165,7 +164,7 @@ func TestMigrateSkipWithoutDB(t *testing.T) {
 	defer db.Close()
 
 	s := New(db)
-	err = s.Migrate(context.Background())
+	err = s.Migrate(t.Context())
 	if err != nil {
 		t.Errorf("Migrate failed: %v", err)
 	}

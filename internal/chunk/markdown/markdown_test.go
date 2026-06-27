@@ -1,7 +1,6 @@
 package markdown
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
@@ -230,7 +229,7 @@ func TestChunker_Chunk(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			chunker := New(tt.opts...)
-			chunks, err := chunker.Chunk(context.Background(), tt.doc)
+			chunks, err := chunker.Chunk(t.Context(), tt.doc)
 			if err != nil {
 				t.Fatalf("Chunk() error = %v, wantErr false", err)
 			}
@@ -412,7 +411,7 @@ func TestChunker_TextHash(t *testing.T) {
 	}
 
 	chunker := New()
-	chunks, _ := chunker.Chunk(context.Background(), doc)
+	chunks, _ := chunker.Chunk(t.Context(), doc)
 
 	if len(chunks) > 0 {
 		chunk := chunks[0]
@@ -436,7 +435,7 @@ func TestChunker_EmptyDocument(t *testing.T) {
 	}
 
 	chunker := New()
-	chunks, err := chunker.Chunk(context.Background(), doc)
+	chunks, err := chunker.Chunk(t.Context(), doc)
 	if err != nil {
 		t.Fatalf("Chunk() error = %v, wantErr false", err)
 	}
@@ -453,7 +452,7 @@ func TestChunker_OnlyWhitespace(t *testing.T) {
 	}
 
 	chunker := New()
-	chunks, err := chunker.Chunk(context.Background(), doc)
+	chunks, err := chunker.Chunk(t.Context(), doc)
 	if err != nil {
 		t.Fatalf("Chunk() error = %v, wantErr false", err)
 	}
@@ -470,7 +469,7 @@ func TestChunker_MixedHeadingLevels(t *testing.T) {
 	}
 
 	chunker := New()
-	chunks, _ := chunker.Chunk(context.Background(), doc)
+	chunks, _ := chunker.Chunk(t.Context(), doc)
 
 	if len(chunks) != 3 {
 		t.Errorf("Mixed heading levels returned %d chunks, want 3", len(chunks))
@@ -520,7 +519,7 @@ func TestChunkerContext(t *testing.T) {
 	chunker := New()
 
 	// Context should be passed through (we don't use it, but it should be accepted)
-	ctx := context.Background()
+	ctx := t.Context()
 	chunks, err := chunker.Chunk(ctx, doc)
 	if err != nil {
 		t.Fatalf("Chunk() with context error = %v", err)
@@ -541,7 +540,7 @@ func TestChunkerTimestamps(t *testing.T) {
 	}
 
 	chunker := New()
-	chunks, _ := chunker.Chunk(context.Background(), doc)
+	chunks, _ := chunker.Chunk(t.Context(), doc)
 
 	// Check that all chunk IDs are unique
 	seen := make(map[uuid.UUID]bool)
