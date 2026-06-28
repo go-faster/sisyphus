@@ -114,6 +114,25 @@ func (s *Store) Upsert(ctx context.Context, chunks []index.Chunk, vectors [][]fl
 	return errors.Wrap(err, "upsert points")
 }
 
+// Delete removes a set of points (by chunk ID) from the Qdrant collection.
+func (s *Store) Delete(ctx context.Context, ids []uuid.UUID) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	points := make([]*qdrant.PointId, len(ids))
+	for i, id := range ids {
+		points[i] = qdrant.NewIDUUID(id.String())
+	}
+	wait := true
+	req := &qdrant.DeletePoints{
+		CollectionName: s.collection,
+		Wait:           &wait,
+		Points:         qdrant.NewPointsSelector(points...),
+	}
+	_, err := s.client.Delete(ctx, req)
+	return errors.Wrap(err, "delete points")
+}
+
 // Search performs a vector search query.
 // It embeds the query text, searches Qdrant, and returns results.
 func (s *Store) Search(ctx context.Context, q index.Query) ([]index.Result, error) {

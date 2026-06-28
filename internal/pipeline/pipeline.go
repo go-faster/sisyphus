@@ -7,6 +7,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/go-faster/errors"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/go-faster/scpbot/internal/ent"
@@ -18,6 +19,7 @@ import (
 // VectorStore is the subset of the Qdrant store the pipeline needs.
 type VectorStore interface {
 	Upsert(ctx context.Context, chunks []index.Chunk, vectors [][]float32) error
+	Delete(ctx context.Context, ids []uuid.UUID) error
 }
 
 // Pipeline indexes Documents into Postgres + Qdrant.
@@ -35,6 +37,11 @@ func New(db *ent.Client, chunker index.Chunker, embedder index.Embedder, vectors
 		log = zap.NewNop()
 	}
 	return &Pipeline{db: db, chunker: chunker, embedder: embedder, vectors: vectors, log: log}
+}
+
+type chunkKey struct {
+	index    int
+	textHash string
 }
 
 // Index processes a single Document idempotently: it skips work when the body
@@ -70,15 +77,71 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) error {
 		}
 	}
 
-	if err := p.persist(ctx, doc, chunks); err != nil {
+	// Load existing chunks for this document.
+	existingChunks, err := p.db.Chunk.Query().
+		Where(chunk.DocumentID(doc.ID)).
+		All(ctx)
+	if err != nil {
+		return errors.Wrap(err, "query existing chunks")
+	}
+
+	// Build lookup by (chunk_index, text_hash) — chunkers produce fresh random
+	// UUIDs each call, so the stable dedup key is the pair (index, text_hash).
+	existingByKey := make(map[chunkKey]*ent.Chunk)
+	for _, ec := range existingChunks {
+		key := chunkKey{index: ec.ChunkIndex, textHash: ec.TextHash}
+		existingByKey[key] = ec
+	}
+
+	var (
+		toEmbed   []index.Chunk
+		staleIDs  []uuid.UUID
+		qdrantIDs = make(map[uuid.UUID]uuid.UUID) // chunk.ID → qdrant_point_id to preserve
+	)
+
+	newChunkKeys := make(map[chunkKey]bool)
+	for i := range chunks {
+		c := &chunks[i]
+		key := chunkKey{index: c.Index, textHash: c.TextHash}
+		newChunkKeys[key] = true
+
+		ec, ok := existingByKey[key]
+		if ok && ec.QdrantPointID != nil {
+			// Already embedded — reuse existing IDs so qdrant_point_id
+			// stays valid.
+			c.ID = ec.ID
+			qdrantIDs[ec.ID] = *ec.QdrantPointID
+			continue
+		}
+		toEmbed = append(toEmbed, *c)
+	}
+
+	for _, ec := range existingChunks {
+		key := chunkKey{index: ec.ChunkIndex, textHash: ec.TextHash}
+		if !newChunkKeys[key] && ec.QdrantPointID != nil {
+			staleIDs = append(staleIDs, ec.ID)
+		}
+	}
+
+	if err := p.persist(ctx, doc, chunks, qdrantIDs); err != nil {
 		return errors.Wrap(err, "persist")
 	}
 
-	if p.vectors != nil && p.embedder != nil && len(chunks) > 0 {
-		if err := p.embed(ctx, chunks); err != nil {
+	if p.vectors != nil && p.embedder != nil && len(toEmbed) > 0 {
+		if err := p.embed(ctx, toEmbed); err != nil {
 			return errors.Wrap(err, "embed")
 		}
 	}
+
+	if p.vectors != nil && len(staleIDs) > 0 {
+		if err := p.vectors.Delete(ctx, staleIDs); err != nil {
+			p.log.Error("failed to delete stale vector points",
+				zap.Error(err),
+				zap.Int("count", len(staleIDs)),
+			)
+		}
+	}
+
 	p.log.Info("indexed document",
 		zap.String("source", string(doc.Source)),
 		zap.String("source_id", doc.SourceID),
@@ -86,7 +149,7 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) error {
 	return nil
 }
 
-func (p *Pipeline) persist(ctx context.Context, doc index.Document, chunks []index.Chunk) error {
+func (p *Pipeline) persist(ctx context.Context, doc index.Document, chunks []index.Chunk, qdrantIDs map[uuid.UUID]uuid.UUID) error {
 	return withTx(ctx, p.db, func(tx *ent.Tx) error {
 		err := tx.Document.Create().
 			SetID(doc.ID).
@@ -108,7 +171,7 @@ func (p *Pipeline) persist(ctx context.Context, doc index.Document, chunks []ind
 
 		for i := range chunks {
 			c := chunks[i]
-			err := tx.Chunk.Create().
+			create := tx.Chunk.Create().
 				SetID(c.ID).
 				SetDocumentID(doc.ID).
 				SetChunkIndex(c.Index).
@@ -117,7 +180,11 @@ func (p *Pipeline) persist(ctx context.Context, doc index.Document, chunks []ind
 				SetText(c.Text).
 				SetTextHash(c.TextHash).
 				SetMetadata(c.Metadata).
-				SetTokenCount(c.TokenCount).
+				SetTokenCount(c.TokenCount)
+			if qpID, ok := qdrantIDs[c.ID]; ok {
+				create = create.SetQdrantPointID(qpID)
+			}
+			err := create.
 				OnConflictColumns("document_id", "chunk_index", "text_hash").
 				UpdateNewValues().
 				Exec(ctx)
@@ -141,7 +208,6 @@ func (p *Pipeline) embed(ctx context.Context, chunks []index.Chunk) error {
 	if err := p.vectors.Upsert(ctx, chunks, vectors); err != nil {
 		return errors.Wrap(err, "upsert vectors")
 	}
-	// Record qdrant_point_id = chunk id so we can reconcile later.
 	for i := range chunks {
 		if err := p.db.Chunk.Update().
 			Where(chunk.ID(chunks[i].ID)).
