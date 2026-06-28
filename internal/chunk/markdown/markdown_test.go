@@ -14,7 +14,7 @@ func TestChunker_Chunk(t *testing.T) {
 	tests := []struct {
 		name          string
 		doc           index.Document
-		opts          []Option
+		opts          ChunkerOptions
 		wantChunks    int
 		wantTitles    []string
 		wantHasPaths  []bool
@@ -120,7 +120,7 @@ func TestChunker_Chunk(t *testing.T) {
 				ID:   uuid.New(),
 				Body: "# Long Section\n\n" + generateLongText(5000),
 			},
-			opts:         []Option{WithMaxRunes(1000), WithOverlapRunes(100)},
+			opts:         ChunkerOptions{MaxRunes: 1000, OverlapRunes: 100},
 			wantChunks:   7,
 			wantTitles:   []string{"Long Section", "Long Section", "Long Section", "Long Section", "Long Section", "Long Section", "Long Section"},
 			wantHasPaths: []bool{true, true, true, true, true, true, true},
@@ -228,7 +228,7 @@ func TestChunker_Chunk(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			chunker := New(tt.opts...)
+			chunker := New(tt.opts)
 			chunks, err := chunker.Chunk(t.Context(), tt.doc)
 			if err != nil {
 				t.Fatalf("Chunk() error = %v, wantErr false", err)
@@ -298,7 +298,7 @@ func TestChunker_Chunk(t *testing.T) {
 }
 
 func TestChunker_Options(t *testing.T) {
-	c := New(WithMaxRunes(8000), WithOverlapRunes(500))
+	c := New(ChunkerOptions{MaxRunes: 8000, OverlapRunes: 500})
 
 	if c.maxRunes != 8000 {
 		t.Errorf("maxRunes = %d, want 8000", c.maxRunes)
@@ -308,7 +308,7 @@ func TestChunker_Options(t *testing.T) {
 		t.Errorf("overlapRunes = %d, want 500", c.overlapRunes)
 	}
 
-	c2 := New()
+	c2 := New(ChunkerOptions{})
 	if c2.maxRunes != 4000 {
 		t.Errorf("default maxRunes = %d, want 4000", c2.maxRunes)
 	}
@@ -410,7 +410,7 @@ func TestChunker_TextHash(t *testing.T) {
 		Body: "# Section\n\nBody text\n",
 	}
 
-	chunker := New()
+	chunker := New(ChunkerOptions{})
 	chunks, _ := chunker.Chunk(t.Context(), doc)
 
 	if len(chunks) > 0 {
@@ -434,7 +434,7 @@ func TestChunker_EmptyDocument(t *testing.T) {
 		Body: "",
 	}
 
-	chunker := New()
+	chunker := New(ChunkerOptions{})
 	chunks, err := chunker.Chunk(t.Context(), doc)
 	if err != nil {
 		t.Fatalf("Chunk() error = %v, wantErr false", err)
@@ -451,7 +451,7 @@ func TestChunker_OnlyWhitespace(t *testing.T) {
 		Body: "   \n\n  \n  \n",
 	}
 
-	chunker := New()
+	chunker := New(ChunkerOptions{})
 	chunks, err := chunker.Chunk(t.Context(), doc)
 	if err != nil {
 		t.Fatalf("Chunk() error = %v, wantErr false", err)
@@ -468,7 +468,7 @@ func TestChunker_MixedHeadingLevels(t *testing.T) {
 		Body: "# H1\n\nH1 body\n### H3\n\nH3 body (skipped H2)\n## H2\n\nH2 body\n",
 	}
 
-	chunker := New()
+	chunker := New(ChunkerOptions{})
 	chunks, _ := chunker.Chunk(t.Context(), doc)
 
 	if len(chunks) != 3 {
@@ -516,7 +516,7 @@ func TestChunkerContext(t *testing.T) {
 		Body: "# Test\n\nBody",
 	}
 
-	chunker := New()
+	chunker := New(ChunkerOptions{})
 
 	// Context should be passed through (we don't use it, but it should be accepted)
 	ctx := t.Context()
@@ -539,7 +539,7 @@ func TestChunkerTimestamps(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 
-	chunker := New()
+	chunker := New(ChunkerOptions{})
 	chunks, _ := chunker.Chunk(t.Context(), doc)
 
 	// Check that all chunk IDs are unique

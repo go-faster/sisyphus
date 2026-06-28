@@ -32,35 +32,34 @@ type embedResponse struct {
 	Embeddings [][]float32 `json:"embeddings"`
 }
 
-// Option is a functional option for configuring Embedder.
-type Option func(*Embedder)
-
-// WithHTTPClient sets the HTTP client used for requests.
-func WithHTTPClient(client *http.Client) Option {
-	return func(e *Embedder) {
-		e.httpClient = client
-	}
+// EmbedderOptions configures an Embedder.
+type EmbedderOptions struct {
+	// HTTPClient sets the HTTP client used for requests.
+	// Defaults to http.DefaultClient.
+	HTTPClient *http.Client
+	// Dim sets the dimension of the embeddings.
+	// Defaults to 1024.
+	Dim int
 }
 
-// WithDim sets the dimension of the embeddings. Defaults to 1024.
-func WithDim(dim int) Option {
-	return func(e *Embedder) {
-		e.dim = dim
+func (opts *EmbedderOptions) setDefaults() {
+	if opts.HTTPClient == nil {
+		opts.HTTPClient = http.DefaultClient
+	}
+	if opts.Dim == 0 {
+		opts.Dim = 1024 // default for bge-m3
 	}
 }
 
 // New creates a new Ollama embedder.
-func New(baseURL, model string, opts ...Option) *Embedder {
-	e := &Embedder{
+func New(baseURL, model string, opts EmbedderOptions) *Embedder {
+	opts.setDefaults()
+	return &Embedder{
 		baseURL:    baseURL,
 		model:      model,
-		httpClient: http.DefaultClient,
-		dim:        1024, // default for bge-m3
+		httpClient: opts.HTTPClient,
+		dim:        opts.Dim,
 	}
-	for _, opt := range opts {
-		opt(e)
-	}
-	return e
 }
 
 // Embed produces embedding vectors for the given texts.

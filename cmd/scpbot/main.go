@@ -59,7 +59,7 @@ func run(ctx context.Context, lg *zap.Logger, cfg config.Config) error {
 	}
 
 	// Embedder + vector store.
-	embedder := ollama.New(cfg.OllamaURL, cfg.EmbedModel, ollama.WithDim(cfg.EmbedDim))
+	embedder := ollama.New(cfg.OllamaURL, cfg.EmbedModel, ollama.EmbedderOptions{Dim: cfg.EmbedDim})
 
 	var vector index.Searcher
 	host, port, err := splitHostPort(cfg.QdrantAddr)
@@ -89,8 +89,8 @@ func run(ctx context.Context, lg *zap.Logger, cfg config.Config) error {
 	var answerer index.Answerer
 	if cfg.OpenRouter.Enabled() {
 		lg.Info("openrouter LLM enabled", zap.String("model", cfg.OpenRouter.Model))
-		orClient := openrouter.New(cfg.OpenRouter.APIKey)
-		answerer = openrouter.NewAnswerer(orClient, cfg.OpenRouter.Model)
+		orClient := openrouter.New(cfg.OpenRouter.APIKey, openrouter.Options{})
+		answerer = openrouter.NewAnswerer(orClient, cfg.OpenRouter.Model, openrouter.AnswererOptions{})
 	} else {
 		lg.Warn("openrouter not configured, using stub answerer")
 		answerer = stub.NewAnswerer()

@@ -21,25 +21,26 @@ type Summarizer struct {
 	prompt string
 }
 
-// SummarizerOption configures a Summarizer.
-type SummarizerOption func(*Summarizer)
+// SummarizerOptions configures a Summarizer.
+type SummarizerOptions struct {
+	// Prompt overrides the default system prompt.
+	Prompt string
+}
 
-// WithSummarizerPrompt overrides the system prompt.
-func WithSummarizerPrompt(p string) SummarizerOption {
-	return func(s *Summarizer) { s.prompt = p }
+func (opts *SummarizerOptions) setDefaults() {
+	if opts.Prompt == "" {
+		opts.Prompt = strings.TrimSpace(defaultSummarizerPrompt)
+	}
 }
 
 // NewSummarizer returns a Summarizer that uses the given model.
-func NewSummarizer(client *Client, model string, opts ...SummarizerOption) *Summarizer {
-	s := &Summarizer{
+func NewSummarizer(client *Client, model string, opts SummarizerOptions) *Summarizer {
+	opts.setDefaults()
+	return &Summarizer{
 		client: client,
 		model:  model,
-		prompt: strings.TrimSpace(defaultSummarizerPrompt),
+		prompt: opts.Prompt,
 	}
-	for _, o := range opts {
-		o(s)
-	}
-	return s
 }
 
 // Summarize asks the model to produce a concise summary of prompt.

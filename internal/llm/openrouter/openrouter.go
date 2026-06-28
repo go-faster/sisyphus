@@ -18,24 +18,24 @@ type Client struct {
 	oc openai.Client
 }
 
-// Option is a functional option for Client.
-type Option func(opts *[]option.RequestOption)
+// Options configures a Client.
+type Options struct {
+	// BaseURL overrides the API base URL (useful for tests / self-hosted).
+	BaseURL string
+}
 
-// WithBaseURL overrides the API base URL (useful for tests / self-hosted).
-func WithBaseURL(u string) Option {
-	return func(opts *[]option.RequestOption) {
-		*opts = append(*opts, option.WithBaseURL(u))
+func (opts *Options) setDefaults() {
+	if opts.BaseURL == "" {
+		opts.BaseURL = defaultBaseURL
 	}
 }
 
 // New returns a Client configured for the given API key.
-func New(apiKey string, opts ...Option) *Client {
+func New(apiKey string, opts Options) *Client {
+	opts.setDefaults()
 	ropts := []option.RequestOption{
 		option.WithAPIKey(apiKey),
-		option.WithBaseURL(defaultBaseURL),
-	}
-	for _, o := range opts {
-		o(&ropts)
+		option.WithBaseURL(opts.BaseURL),
 	}
 	return &Client{oc: openai.NewClient(ropts...)}
 }

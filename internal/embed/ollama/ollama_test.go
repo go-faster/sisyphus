@@ -54,7 +54,7 @@ func TestEmbed_HappyPath(t *testing.T) {
 	}))
 	defer server.Close()
 
-	e := New(server.URL, "bge-m3")
+	e := New(server.URL, "bge-m3", EmbedderOptions{})
 	ctx := t.Context()
 
 	// Test with multiple texts.
@@ -81,7 +81,7 @@ func TestEmbed_HappyPath(t *testing.T) {
 }
 
 func TestEmbed_EmptyInput(t *testing.T) {
-	e := New("http://localhost:8000", "bge-m3")
+	e := New("http://localhost:8000", "bge-m3", EmbedderOptions{})
 	ctx := t.Context()
 
 	embeddings, err := e.Embed(ctx, []string{})
@@ -106,7 +106,7 @@ func TestEmbed_LengthMismatch(t *testing.T) {
 	}))
 	defer server.Close()
 
-	e := New(server.URL, "bge-m3")
+	e := New(server.URL, "bge-m3", EmbedderOptions{})
 	ctx := t.Context()
 
 	// Request 3 embeddings but server returns 1.
@@ -130,7 +130,7 @@ func TestEmbed_NonOKStatus(t *testing.T) {
 	}))
 	defer server.Close()
 
-	e := New(server.URL, "bge-m3")
+	e := New(server.URL, "bge-m3", EmbedderOptions{})
 	ctx := t.Context()
 
 	embeddings, err := e.Embed(ctx, []string{"hello"})
@@ -158,7 +158,7 @@ func TestEmbed_ContextHonored(t *testing.T) {
 	}))
 	defer server.Close()
 
-	e := New(server.URL, "bge-m3")
+	e := New(server.URL, "bge-m3", EmbedderOptions{})
 
 	// Test with a normal context.
 	ctx := t.Context()
@@ -188,14 +188,14 @@ func TestEmbed_ContextHonored(t *testing.T) {
 }
 
 func TestDim_Default(t *testing.T) {
-	e := New("http://localhost:8000", "bge-m3")
+	e := New("http://localhost:8000", "bge-m3", EmbedderOptions{})
 	if e.Dim() != 1024 {
 		t.Errorf("expected default dim 1024, got %d", e.Dim())
 	}
 }
 
 func TestDim_Custom(t *testing.T) {
-	e := New("http://localhost:8000", "bge-m3", WithDim(512))
+	e := New("http://localhost:8000", "bge-m3", EmbedderOptions{Dim: 512})
 	if e.Dim() != 512 {
 		t.Errorf("expected custom dim 512, got %d", e.Dim())
 	}
@@ -221,7 +221,7 @@ func TestWithHTTPClient(t *testing.T) {
 		},
 	}
 
-	e := New(server.URL, "bge-m3", WithHTTPClient(customClient))
+	e := New(server.URL, "bge-m3", EmbedderOptions{HTTPClient: customClient})
 	ctx := t.Context()
 
 	_, err := e.Embed(ctx, []string{"test"})
@@ -242,7 +242,7 @@ func TestEmbed_MalformedResponse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	e := New(server.URL, "bge-m3")
+	e := New(server.URL, "bge-m3", EmbedderOptions{})
 	ctx := t.Context()
 
 	embeddings, err := e.Embed(ctx, []string{"hello"})
@@ -265,7 +265,7 @@ func TestEmbed_LargeBodySnippet(t *testing.T) {
 	}))
 	defer server.Close()
 
-	e := New(server.URL, "bge-m3")
+	e := New(server.URL, "bge-m3", EmbedderOptions{})
 	ctx := t.Context()
 
 	_, err := e.Embed(ctx, []string{"hello"})

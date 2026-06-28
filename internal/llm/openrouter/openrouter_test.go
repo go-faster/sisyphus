@@ -40,12 +40,12 @@ func fakeCompletion(t *testing.T, content string) *httptest.Server {
 
 func newClient(t *testing.T, srv *httptest.Server) *Client {
 	t.Helper()
-	return New("test-key", WithBaseURL(srv.URL))
+	return New("test-key", Options{BaseURL: srv.URL})
 }
 
 func TestSummarizer_HappyPath(t *testing.T) {
 	srv := fakeCompletion(t, "A concise summary.")
-	s := NewSummarizer(newClient(t, srv), "test-model")
+	s := NewSummarizer(newClient(t, srv), "test-model", SummarizerOptions{})
 
 	got, err := s.Summarize(context.Background(), "some long text")
 	if err != nil {
@@ -58,7 +58,7 @@ func TestSummarizer_HappyPath(t *testing.T) {
 
 func TestAnswerer_HappyPath(t *testing.T) {
 	srv := fakeCompletion(t, "The answer is 42.")
-	a := NewAnswerer(newClient(t, srv), "test-model")
+	a := NewAnswerer(newClient(t, srv), "test-model", AnswererOptions{})
 
 	results := []index.Result{
 		{Chunk: index.Chunk{Title: "Doc", Text: "The answer is 42."}},
@@ -74,7 +74,7 @@ func TestAnswerer_HappyPath(t *testing.T) {
 
 func TestAnswerer_EmptyResults(t *testing.T) {
 	srv := fakeCompletion(t, "I don't have enough context.")
-	a := NewAnswerer(newClient(t, srv), "test-model")
+	a := NewAnswerer(newClient(t, srv), "test-model", AnswererOptions{})
 
 	_, err := a.Answer(context.Background(), "What is the answer?", nil)
 	if err != nil {
@@ -88,7 +88,7 @@ func TestClient_HTTPError(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	s := NewSummarizer(newClient(t, srv), "test-model")
+	s := NewSummarizer(newClient(t, srv), "test-model", SummarizerOptions{})
 	_, err := s.Summarize(context.Background(), "text")
 	if err == nil {
 		t.Fatal("expected error from HTTP 500")
@@ -103,7 +103,7 @@ func TestClient_NoChoices(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	s := NewSummarizer(newClient(t, srv), "test-model")
+	s := NewSummarizer(newClient(t, srv), "test-model", SummarizerOptions{})
 	_, err := s.Summarize(context.Background(), "text")
 	if err == nil {
 		t.Fatal("expected error when no choices returned")
@@ -116,7 +116,7 @@ func TestClient_CanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	s := NewSummarizer(newClient(t, srv), "test-model")
+	s := NewSummarizer(newClient(t, srv), "test-model", SummarizerOptions{})
 	_, err := s.Summarize(ctx, "text")
 	if err == nil {
 		t.Fatal("expected error from canceled context")

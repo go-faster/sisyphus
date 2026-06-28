@@ -22,25 +22,26 @@ type Answerer struct {
 	prompt string
 }
 
-// AnswererOption configures an Answerer.
-type AnswererOption func(*Answerer)
+// AnswererOptions configures an Answerer.
+type AnswererOptions struct {
+	// Prompt overrides the default system prompt.
+	Prompt string
+}
 
-// WithAnswererPrompt overrides the system prompt.
-func WithAnswererPrompt(p string) AnswererOption {
-	return func(a *Answerer) { a.prompt = p }
+func (opts *AnswererOptions) setDefaults() {
+	if opts.Prompt == "" {
+		opts.Prompt = strings.TrimSpace(defaultAnswererPrompt)
+	}
 }
 
 // NewAnswerer returns an Answerer that uses the given model.
-func NewAnswerer(client *Client, model string, opts ...AnswererOption) *Answerer {
-	a := &Answerer{
+func NewAnswerer(client *Client, model string, opts AnswererOptions) *Answerer {
+	opts.setDefaults()
+	return &Answerer{
 		client: client,
 		model:  model,
-		prompt: strings.TrimSpace(defaultAnswererPrompt),
+		prompt: opts.Prompt,
 	}
-	for _, o := range opts {
-		o(a)
-	}
-	return a
 }
 
 // Answer constructs a grounded answer from retrieved context chunks.

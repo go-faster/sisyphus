@@ -16,35 +16,32 @@ type Chunker struct {
 	overlapRunes int
 }
 
-// Option configures a Chunker.
-type Option func(*Chunker)
-
-// WithMaxRunes sets the maximum rune budget for a section before splitting.
-// Default is ~4000 runes.
-func WithMaxRunes(n int) Option {
-	return func(c *Chunker) {
-		c.maxRunes = n
-	}
+// ChunkerOptions configures a Chunker.
+type ChunkerOptions struct {
+	// MaxRunes is the maximum rune budget for a section before splitting.
+	// Default is ~4000 runes.
+	MaxRunes int
+	// OverlapRunes is the overlap runes when splitting long sections.
+	// Default is ~300 runes.
+	OverlapRunes int
 }
 
-// WithOverlapRunes sets the overlap runes when splitting long sections.
-// Default is ~300 runes.
-func WithOverlapRunes(n int) Option {
-	return func(c *Chunker) {
-		c.overlapRunes = n
+func (opts *ChunkerOptions) setDefaults() {
+	if opts.MaxRunes == 0 {
+		opts.MaxRunes = 4000
+	}
+	if opts.OverlapRunes == 0 {
+		opts.OverlapRunes = 300
 	}
 }
 
 // New creates a new Markdown chunker.
-func New(opts ...Option) *Chunker {
-	c := &Chunker{
-		maxRunes:     4000,
-		overlapRunes: 300,
+func New(opts ChunkerOptions) *Chunker {
+	opts.setDefaults()
+	return &Chunker{
+		maxRunes:     opts.MaxRunes,
+		overlapRunes: opts.OverlapRunes,
 	}
-	for _, opt := range opts {
-		opt(c)
-	}
-	return c
 }
 
 // Chunk implements index.Chunker.

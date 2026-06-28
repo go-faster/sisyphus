@@ -50,6 +50,23 @@ service_catalog.yaml    manual service catalog (see plan §8)
 
 - `internal/index` is the contract. It must stay dependency-light (stdlib + `github.com/google/uuid` only). All other packages depend on it, not on each other where avoidable.
 - Implement the interfaces in `internal/index` exactly; do not change their signatures without updating this file and every implementer.
+- Configuration: use struct-based options with `setDefaults()` instead of functional options (`Option func(*T)`). Pattern:
+  ```go
+  type FooOptions struct {
+      Logger *zap.Logger
+      Timeout time.Duration
+  }
+
+  func (opts *FooOptions) setDefaults() {
+      if opts.Logger == nil { opts.Logger = zap.L() }
+      if opts.Timeout == 0 { opts.Timeout = 30 * time.Second }
+  }
+
+  func NewFoo(required Param, opts FooOptions) *Foo {
+      opts.setDefaults()
+      // ...
+  }
+  ```
 - Errors: wrap with `github.com/go-faster/errors` (`errors.Wrap`). No `fmt.Errorf("...%w")`.
 - `errors.Wrap(f(), "msg")` as a return statement is wrong: if `f()` returns nil, `errors.Wrap` still returns a non-nil error. Always check first: `if err := f(); err != nil { return errors.Wrap(err, "msg") }`.
 - File structure: split logical sections into separate files instead of separating them with `//` comments using `--` dividers. Even if a file seems large, prefer multiple focused files over in-file section markers.
