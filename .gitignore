@@ -17,9 +17,8 @@
 secret.yml
 secret.yaml
 
-/ssh-mcp
-/grafana-dashboard-mcp
-/opencode-handoff-mcp
+/scpbot
+/_ref
 
 # goreleaser
 dist
