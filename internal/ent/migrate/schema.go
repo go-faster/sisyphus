@@ -17,7 +17,7 @@ var (
 		{Name: "title", Type: field.TypeString, Nullable: true},
 		{Name: "text", Type: field.TypeString, Size: 2147483647},
 		{Name: "text_hash", Type: field.TypeString},
-		{Name: "metadata", Type: field.TypeJSON, Default: "'{}'"},
+		{Name: "metadata", Type: field.TypeJSON, Default: "{}"},
 		{Name: "token_count", Type: field.TypeInt, Nullable: true},
 		{Name: "qdrant_point_id", Type: field.TypeUUID, Nullable: true},
 		{Name: "document_id", Type: field.TypeUUID},
@@ -60,7 +60,7 @@ var (
 		{Name: "title", Type: field.TypeString, Nullable: true},
 		{Name: "body", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "body_hash", Type: field.TypeString},
-		{Name: "metadata", Type: field.TypeJSON, Default: "'{}'"},
+		{Name: "metadata", Type: field.TypeJSON, Default: "{}"},
 		{Name: "created_at", Type: field.TypeTime, Nullable: true},
 		{Name: "updated_at", Type: field.TypeTime, Nullable: true},
 		{Name: "captured_at", Type: field.TypeTime},
@@ -99,7 +99,7 @@ var (
 		{Name: "severity_guess", Type: field.TypeString, Nullable: true},
 		{Name: "status", Type: field.TypeString, Default: "new"},
 		{Name: "confidence", Type: field.TypeFloat64, Nullable: true},
-		{Name: "metadata", Type: field.TypeJSON, Default: "'{}'"},
+		{Name: "metadata", Type: field.TypeJSON, Default: "{}"},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -161,7 +161,7 @@ var (
 		{Name: "text", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "message_date", Type: field.TypeTime},
 		{Name: "reply_to_id", Type: field.TypeInt64, Nullable: true},
-		{Name: "raw_json", Type: field.TypeJSON, Default: "'{}'"},
+		{Name: "raw_json", Type: field.TypeJSON, Default: "{}"},
 		{Name: "created_at", Type: field.TypeTime},
 	}
 	// TelegramMessagesTable holds the schema information for the "telegram_messages" table.
