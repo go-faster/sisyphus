@@ -19,7 +19,7 @@ import (
 	"github.com/go-faster/scpbot/internal/api"
 	"github.com/go-faster/scpbot/internal/bot"
 	"github.com/go-faster/scpbot/internal/config"
-	"github.com/go-faster/scpbot/internal/embed/ollama"
+	"github.com/go-faster/scpbot/internal/embed"
 	"github.com/go-faster/scpbot/internal/ent"
 	"github.com/go-faster/scpbot/internal/index"
 	"github.com/go-faster/scpbot/internal/llm/openrouter"
@@ -59,7 +59,10 @@ func run(ctx context.Context, lg *zap.Logger, cfg config.Config) error {
 	}
 
 	// Embedder + vector store.
-	embedder := ollama.New(cfg.OllamaURL, cfg.EmbedModel, ollama.EmbedderOptions{Dim: cfg.EmbedDim})
+	embedder, err := embed.New(cfg)
+	if err != nil {
+		return errors.Wrap(err, "embedder")
+	}
 
 	var vector index.Searcher
 	host, port, err := splitHostPort(cfg.QdrantAddr)

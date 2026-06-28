@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/go-faster/scpbot/internal/config"
-	"github.com/go-faster/scpbot/internal/embed/ollama"
+	"github.com/go-faster/scpbot/internal/embed"
 	"github.com/go-faster/scpbot/internal/ent"
 	"github.com/go-faster/scpbot/internal/index"
 	"github.com/go-faster/scpbot/internal/llm/openrouter"
@@ -68,7 +68,11 @@ func New(ctx context.Context, lg *zap.Logger, cfg config.Config) (Components, er
 	}
 
 	// Embedder + vector store.
-	embedder := ollama.New(cfg.OllamaURL, cfg.EmbedModel, ollama.EmbedderOptions{Dim: cfg.EmbedDim})
+	embedder, err := embed.New(cfg)
+	if err != nil {
+		_ = db.Close()
+		return Components{}, errors.Wrap(err, "embedder")
+	}
 
 	var vector index.Searcher
 	host, port, err := splitHostPort(cfg.QdrantAddr)

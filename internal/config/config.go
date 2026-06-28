@@ -16,9 +16,10 @@ type Config struct {
 	QdrantAddr       string // SCPBOT_QDRANT_ADDR (host:port, gRPC)
 	QdrantCollection string // SCPBOT_QDRANT_COLLECTION
 
-	OllamaURL  string // SCPBOT_OLLAMA_URL
-	EmbedModel string // SCPBOT_EMBED_MODEL
-	EmbedDim   int    // SCPBOT_EMBED_DIM
+	OllamaURL     string // SCPBOT_OLLAMA_URL
+	EmbedProvider string // SCPBOT_EMBED_PROVIDER (ollama|openrouter)
+	EmbedModel    string // SCPBOT_EMBED_MODEL
+	EmbedDim      int    // SCPBOT_EMBED_DIM
 
 	GitLabRoots string // SCPBOT_GITLAB_ROOTS
 
@@ -66,9 +67,10 @@ func Load() (Config, error) {
 		QdrantAddr:       env("SCPBOT_QDRANT_ADDR", "localhost:6334"),
 		QdrantCollection: env("SCPBOT_QDRANT_COLLECTION", "corp_chunks"),
 		OllamaURL:        env("SCPBOT_OLLAMA_URL", "http://localhost:11434"),
+		EmbedProvider:    env("SCPBOT_EMBED_PROVIDER", "ollama"),
 		EmbedModel:       env("SCPBOT_EMBED_MODEL", "bge-m3"),
-EmbedDim: envInt("SCPBOT_EMBED_DIM", 1024),
-		MCPAddr:  env("SCPBOT_MCP_ADDR", ":8081"),
+		EmbedDim:         envInt("SCPBOT_EMBED_DIM", 1024),
+		MCPAddr:          env("SCPBOT_MCP_ADDR", ":8081"),
 		OpenRouter: OpenRouter{
 			APIKey: os.Getenv("SCPBOT_OPENROUTER_API_KEY"),
 			Model:  env("SCPBOT_OPENROUTER_MODEL", "openai/gpt-4o-mini"),

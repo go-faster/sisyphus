@@ -28,7 +28,7 @@ import (
 	chunkmd "github.com/go-faster/scpbot/internal/chunk/markdown"
 	chunktg "github.com/go-faster/scpbot/internal/chunk/telegram"
 	"github.com/go-faster/scpbot/internal/config"
-	"github.com/go-faster/scpbot/internal/embed/ollama"
+	"github.com/go-faster/scpbot/internal/embed"
 	"github.com/go-faster/scpbot/internal/ent"
 	"github.com/go-faster/scpbot/internal/ent/chunk"
 	"github.com/go-faster/scpbot/internal/ent/document"
@@ -141,7 +141,10 @@ func run(ctx context.Context, lg *zap.Logger) error {
 	}
 
 	// Embedder + optional vector store (match cmd/scpbot pattern).
-	embedder := ollama.New(cfg.OllamaURL, cfg.EmbedModel, ollama.EmbedderOptions{Dim: cfg.EmbedDim})
+	embedder, err := embed.New(cfg)
+	if err != nil {
+		return errors.Wrap(err, "embedder")
+	}
 
 	var vectors pipeline.VectorStore
 	if host, port, err := splitHostPort(cfg.QdrantAddr); err == nil {
@@ -564,7 +567,7 @@ func parseMonitorChats(s string) []telegramingest.ChatSpec {
 	return out
 }
 
-func runAll(ctx context.Context, lg *zap.Logger, db *ent.Client, embedder *ollama.Embedder, vectors pipeline.VectorStore, cfg config.Config, since time.Time, resetMode string, _ bool, limit int, dry bool) error {
+func runAll(ctx context.Context, lg *zap.Logger, db *ent.Client, embedder index.Embedder, vectors pipeline.VectorStore, cfg config.Config, since time.Time, resetMode string, _ bool, limit int, dry bool) error {
 	// Centralized all reset check already done in caller, but if reset all we pre-wipe.
 	if resetMode == "all" {
 		for _, s := range []index.Source{index.SourceGitLabDocs, index.SourceJira, index.SourceTelegram} {
