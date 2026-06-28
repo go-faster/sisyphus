@@ -22,8 +22,18 @@ type Config struct {
 
 	CatalogPath string // SCPBOT_CATALOG_PATH
 
-	Telegram Telegram
+	OpenRouter OpenRouter
+	Telegram   Telegram
 }
+
+// OpenRouter holds configuration for the OpenRouter LLM API.
+type OpenRouter struct {
+	APIKey string // SCPBOT_OPENROUTER_API_KEY
+	Model  string // SCPBOT_OPENROUTER_MODEL
+}
+
+// Enabled reports whether OpenRouter is configured.
+func (o OpenRouter) Enabled() bool { return o.APIKey != "" }
 
 // Telegram holds gotd auth configuration (plan: user session + bot).
 type Telegram struct {
@@ -44,6 +54,10 @@ func Load() (Config, error) {
 		EmbedModel:       env("SCPBOT_EMBED_MODEL", "bge-m3"),
 		EmbedDim:         envInt("SCPBOT_EMBED_DIM", 1024),
 		CatalogPath:      env("SCPBOT_CATALOG_PATH", "service_catalog.yaml"),
+		OpenRouter: OpenRouter{
+			APIKey: os.Getenv("SCPBOT_OPENROUTER_API_KEY"),
+			Model:  env("SCPBOT_OPENROUTER_MODEL", "openai/gpt-4o-mini"),
+		},
 		Telegram: Telegram{
 			AppID:      envInt("SCPBOT_TELEGRAM_APP_ID", 0),
 			AppHash:    os.Getenv("SCPBOT_TELEGRAM_APP_HASH"),

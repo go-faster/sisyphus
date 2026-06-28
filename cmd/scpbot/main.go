@@ -22,6 +22,7 @@ import (
 	"github.com/go-faster/scpbot/internal/embed/ollama"
 	"github.com/go-faster/scpbot/internal/ent"
 	"github.com/go-faster/scpbot/internal/index"
+	"github.com/go-faster/scpbot/internal/llm/openrouter"
 	"github.com/go-faster/scpbot/internal/llm/stub"
 	"github.com/go-faster/scpbot/internal/oas"
 	"github.com/go-faster/scpbot/internal/retrieval"
@@ -84,7 +85,16 @@ func run(ctx context.Context, lg *zap.Logger, cfg config.Config) error {
 	if err != nil {
 		return errors.Wrap(err, "retrieval")
 	}
-	answerer := stub.NewAnswerer()
+
+	var answerer index.Answerer
+	if cfg.OpenRouter.Enabled() {
+		lg.Info("openrouter LLM enabled", zap.String("model", cfg.OpenRouter.Model))
+		orClient := openrouter.New(cfg.OpenRouter.APIKey)
+		answerer = openrouter.NewAnswerer(orClient, cfg.OpenRouter.Model)
+	} else {
+		lg.Warn("openrouter not configured, using stub answerer")
+		answerer = stub.NewAnswerer()
+	}
 
 	// HTTP API.
 	handler := api.New(retr, answerer, "0.1.0")
