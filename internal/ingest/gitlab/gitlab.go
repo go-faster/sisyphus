@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-faster/errors"
+	"go.uber.org/zap"
 
 	"github.com/go-faster/scpbot/internal/index"
 )
@@ -38,44 +39,68 @@ type Source struct {
 	Branch string
 }
 
-// Walk produces a Document per Markdown file under s.Root.
-func Walk(_ context.Context, s Source) ([]index.Document, error) {
-	if s.Root == "" {
-		return nil, errors.New("gitlab: empty root")
-	}
-	var docs []index.Document
-	err := filepath.WalkDir(s.Root, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if skipDirs[d.Name()] {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if !docExtensions[strings.ToLower(filepath.Ext(d.Name()))] {
-			return nil
-		}
-		rel, err := filepath.Rel(s.Root, p)
-		if err != nil {
-			return errors.Wrap(err, "rel path")
-		}
-		rel = filepath.ToSlash(rel)
+// WalkOptions configures WalkAll.
+type WalkOptions struct {
+	Logger *zap.Logger
+}
 
-		body, err := os.ReadFile(p) //nolint:gosec // walking an operator-provided docs root
-		if err != nil {
-			return errors.Wrap(err, "read file")
+func (opts *WalkOptions) setDefaults() {
+	if opts.Logger == nil {
+		opts.Logger = zap.NewNop()
+	}
+}
+
+// Walk is a convenience wrapper around WalkAll for a single source.
+func Walk(ctx context.Context, s Source) ([]index.Document, error) {
+	return WalkAll(ctx, []Source{s}, WalkOptions{})
+}
+
+// WalkAll walks every source and concatenates their documents.
+// Missing or empty roots are logged as a warning but do not fail the walk.
+// Documents are returned in source order.
+func WalkAll(_ context.Context, sources []Source, opts WalkOptions) ([]index.Document, error) {
+	opts.setDefaults()
+
+	var docs []index.Document
+	for _, s := range sources {
+		if s.Root == "" {
+			opts.Logger.Warn("gitlab: skipping empty root",
+				zap.String("repo", s.Repo))
+			continue
 		}
-		info, err := d.Info()
+		err := filepath.WalkDir(s.Root, func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				if skipDirs[d.Name()] {
+					return fs.SkipDir
+				}
+				return nil
+			}
+			if !docExtensions[strings.ToLower(filepath.Ext(d.Name()))] {
+				return nil
+			}
+			rel, err := filepath.Rel(s.Root, p)
+			if err != nil {
+				return errors.Wrap(err, "rel path")
+			}
+			rel = filepath.ToSlash(rel)
+
+			body, err := os.ReadFile(p) //nolint:gosec // walking an operator-provided docs root
+			if err != nil {
+				return errors.Wrap(err, "read file")
+			}
+			info, err := d.Info()
+			if err != nil {
+				return errors.Wrap(err, "stat")
+			}
+			docs = append(docs, newDocument(s, rel, string(body), info.ModTime()))
+			return nil
+		})
 		if err != nil {
-			return errors.Wrap(err, "stat")
+			return nil, errors.Wrap(err, "walk docs")
 		}
-		docs = append(docs, newDocument(s, rel, string(body), info.ModTime()))
-		return nil
-	})
-	if err != nil {
-		return nil, errors.Wrap(err, "walk docs")
 	}
 	return docs, nil
 }
