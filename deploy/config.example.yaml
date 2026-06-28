@@ -16,8 +16,11 @@ gitlab_roots: ""
 jira:
   base_url: ""
   email: ""
+  username: ""
   api_token:
     env: SCPBOT_JIRA_APITOKEN
+  password:
+    env: SCPBOT_JIRA_PASSWORD
   pat:
     env: SCPBOT_JIRA_PAT
   projects: ""

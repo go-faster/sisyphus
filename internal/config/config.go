@@ -37,7 +37,9 @@ type Config struct {
 type JiraConfig struct {
 	BaseURL  string
 	Email    string
+	Username string
 	APIToken string
+	Password string
 	PAT      string
 	Projects string
 }
@@ -86,7 +88,9 @@ type fileConfig struct {
 type fileJiraConfig struct {
 	BaseURL  string `yaml:"base_url"`
 	Email    string `yaml:"email"`
+	Username string `yaml:"username"`
 	APIToken Secret `yaml:"api_token"`
+	Password Secret `yaml:"password"`
 	PAT      Secret `yaml:"pat"`
 	Projects string `yaml:"projects"`
 }
@@ -202,6 +206,10 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 	if err != nil {
 		return Config{}, errors.Wrap(err, "jira api_token")
 	}
+	jiraPassword, err := c.Jira.Password.Resolve(baseDir)
+	if err != nil {
+		return Config{}, errors.Wrap(err, "jira password")
+	}
 	jiraPAT, err := c.Jira.PAT.Resolve(baseDir)
 	if err != nil {
 		return Config{}, errors.Wrap(err, "jira pat")
@@ -232,7 +240,9 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 		Jira: JiraConfig{
 			BaseURL:  c.Jira.BaseURL,
 			Email:    c.Jira.Email,
+			Username: c.Jira.Username,
 			APIToken: jiraToken,
+			Password: jiraPassword,
 			PAT:      jiraPAT,
 			Projects: c.Jira.Projects,
 		},

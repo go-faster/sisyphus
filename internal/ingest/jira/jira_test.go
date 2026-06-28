@@ -41,6 +41,17 @@ func TestNew(t *testing.T) {
 		}
 	})
 
+	t.Run("username password credentials ok", func(t *testing.T) {
+		_, err := New(Options{
+			BaseURL:  "http://example.com",
+			Username: "user",
+			Password: "password",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
 	t.Run("pat credentials ok", func(t *testing.T) {
 		_, err := New(Options{
 			BaseURL: "http://example.com",
@@ -137,6 +148,7 @@ func TestFetcher(t *testing.T) {
 		{name: "MultiPage", run: testMultiPage},
 		{name: "CursorResume", run: testCursorResume},
 		{name: "CloudAuth", run: testCloudAuth},
+		{name: "UsernamePasswordAuth", run: testUsernamePasswordAuth},
 		{name: "PAT", run: testPAT},
 		{name: "ErrorPath", run: testErrorPath},
 		{name: "EmptyProjects", run: testEmptyProjects},
@@ -405,6 +417,45 @@ func testPAT(t *testing.T) {
 	}
 
 	expectedAuth := "Bearer pat-secret-456"
+	if gotAuth != expectedAuth {
+		t.Errorf("Authorization: expected %q, got %q", expectedAuth, gotAuth)
+	}
+}
+
+func testUsernamePasswordAuth(t *testing.T) {
+	t.Parallel()
+
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+
+		resp := makeSearchResponse(0, 100, 0, []map[string]any{})
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	username := "jira-user"
+	password := "jira-password"
+	expectedAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password))
+
+	f, err := New(Options{
+		BaseURL:  srv.URL,
+		Username: username,
+		Password: password,
+		Logger:   zap.NewNop(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = f.Fetch(context.Background(), FetchOptions{
+		Projects: []string{"TEST"},
+	}, Cursor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	if gotAuth != expectedAuth {
 		t.Errorf("Authorization: expected %q, got %q", expectedAuth, gotAuth)
 	}

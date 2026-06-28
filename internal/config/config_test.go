@@ -44,15 +44,22 @@ func TestLoadSecretEnv(t *testing.T) {
 openrouter:
   api_key:
     env: TEST_SCPBOT_OPENROUTER_API_KEY
+jira:
+  username: jira-user
+  password:
+    env: TEST_SCPBOT_JIRA_PASSWORD
 `)
 	t.Setenv("SCPBOT_CONFIG", path)
 	t.Setenv("TEST_SCPBOT_DATABASE_DSN", "env-dsn")
 	t.Setenv("TEST_SCPBOT_OPENROUTER_API_KEY", "env-key")
+	t.Setenv("TEST_SCPBOT_JIRA_PASSWORD", "jira-password")
 
 	cfg, err := Load()
 	require.NoError(t, err)
 	require.Equal(t, "env-dsn", cfg.DatabaseDSN)
 	require.Equal(t, "env-key", cfg.OpenRouter.APIKey)
+	require.Equal(t, "jira-user", cfg.Jira.Username)
+	require.Equal(t, "jira-password", cfg.Jira.Password)
 }
 
 func TestLoadSecretFile(t *testing.T) {
@@ -94,6 +101,7 @@ func clearEnv(t *testing.T) {
 		"SCPBOT_CONFIG",
 		"TEST_SCPBOT_DATABASE_DSN",
 		"TEST_SCPBOT_OPENROUTER_API_KEY",
+		"TEST_SCPBOT_JIRA_PASSWORD",
 	} {
 		t.Setenv(key, "")
 	}

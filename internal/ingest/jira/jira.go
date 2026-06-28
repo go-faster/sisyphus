@@ -1,6 +1,6 @@
 // Package jira ingests Jira issues via the REST API into normalized Documents
-// (plan §5). It supports both Jira Cloud (Basic auth with email + API token)
-// and Jira Server/DC (PAT as Bearer token).
+// (plan §5). It supports Jira Cloud (Basic auth with email + API token) and
+// Jira Server/DC (Basic auth with username + password, or PAT as Bearer token).
 package jira
 
 import (
@@ -26,7 +26,9 @@ import (
 type Options struct {
 	BaseURL    string
 	Email      string // Cloud: user email for Basic auth
+	Username   string // Server/DC: username for Basic auth
 	APIToken   string // Cloud: API token for Basic auth
+	Password   string // Server/DC: password for Basic auth
 	PAT        string // Server/DC: personal access token
 	HTTPClient *http.Client
 	Logger     *zap.Logger
@@ -74,7 +76,9 @@ type FetchResult struct {
 type Fetcher struct {
 	baseURL    string
 	email      string
+	username   string
 	apiToken   string
+	password   string
 	pat        string
 	httpClient *http.Client
 	logger     *zap.Logger
@@ -83,14 +87,16 @@ type Fetcher struct {
 
 // New creates a new Fetcher. Returns an error if no credentials are configured.
 func New(opts Options) (*Fetcher, error) {
-	if opts.PAT == "" && (opts.Email == "" || opts.APIToken == "") {
+	if opts.PAT == "" && (opts.Username == "" || opts.Password == "") && (opts.Email == "" || opts.APIToken == "") {
 		return nil, errors.New("jira: no credentials configured")
 	}
 	opts.setDefaults()
 	return &Fetcher{
 		baseURL:    opts.BaseURL,
 		email:      opts.Email,
+		username:   opts.Username,
 		apiToken:   opts.APIToken,
+		password:   opts.Password,
 		pat:        opts.PAT,
 		httpClient: opts.HTTPClient,
 		logger:     opts.Logger,
@@ -308,6 +314,9 @@ func (f *Fetcher) buildRequest(ctx context.Context, jql string, startAt, pageSiz
 
 	if f.pat != "" {
 		req.Header.Set("Authorization", "Bearer "+f.pat)
+	} else if f.username != "" && f.password != "" {
+		auth := base64.StdEncoding.EncodeToString([]byte(f.username + ":" + f.password))
+		req.Header.Set("Authorization", "Basic "+auth)
 	} else if f.email != "" && f.apiToken != "" {
 		auth := base64.StdEncoding.EncodeToString([]byte(f.email + ":" + f.apiToken))
 		req.Header.Set("Authorization", "Basic "+auth)

@@ -329,7 +329,7 @@ func parseGitLabRoots(s string) []gitlabingest.Source {
 
 func runJira(ctx context.Context, lg *zap.Logger, db *ent.Client, p *pipeline.Pipeline, vectors pipeline.VectorStore, cfg config.Config, since time.Time, reset bool, limit int, dry bool) error {
 	jc := cfg.Jira
-	if jc.BaseURL == "" || (jc.Email == "" && jc.APIToken == "" && jc.PAT == "") {
+	if jc.BaseURL == "" || (jc.PAT == "" && (jc.Username == "" || jc.Password == "") && (jc.Email == "" || jc.APIToken == "")) {
 		lg.Info("jira not configured")
 		return errNotConfigured
 	}
@@ -344,7 +344,9 @@ func runJira(ctx context.Context, lg *zap.Logger, db *ent.Client, p *pipeline.Pi
 	fetcher, err := jiraingest.New(jiraingest.Options{
 		BaseURL:  jc.BaseURL,
 		Email:    jc.Email,
+		Username: jc.Username,
 		APIToken: jc.APIToken,
+		Password: jc.Password,
 		PAT:      jc.PAT,
 		Logger:   lg.Named("jira"),
 	})
