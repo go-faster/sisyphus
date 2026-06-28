@@ -25,7 +25,7 @@ func (Chunk) Fields() []ent.Field {
 		field.Text("text").NotEmpty(),
 		field.String("text_hash").NotEmpty(),
 		field.JSON("metadata", map[string]any{}).Default(map[string]any{}).
-			Annotations(entsql.Default("'{}'")),
+			Annotations(entsql.Default("{}")),
 		field.Int("token_count").Optional(),
 		field.UUID("qdrant_point_id", uuid.UUID{}).Optional().Nillable(),
 	}

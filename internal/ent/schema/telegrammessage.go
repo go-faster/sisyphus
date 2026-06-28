@@ -27,7 +27,7 @@ func (TelegramMessage) Fields() []ent.Field {
 		field.Time("message_date"),
 		field.Int64("reply_to_id").Optional().Nillable(),
 		field.JSON("raw_json", map[string]any{}).Default(map[string]any{}).
-			Annotations(entsql.Default("'{}'")),
+			Annotations(entsql.Default("{}")),
 		field.Time("created_at").Default(time.Now),
 	}
 }

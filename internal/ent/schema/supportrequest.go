@@ -29,7 +29,7 @@ func (SupportRequest) Fields() []ent.Field {
 		field.String("status").Default("new"),
 		field.Float("confidence").Optional().Nillable(),
 		field.JSON("metadata", map[string]any{}).Default(map[string]any{}).
-			Annotations(entsql.Default("'{}'")),
+			Annotations(entsql.Default("{}")),
 		field.Time("created_at").Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}

@@ -26,7 +26,7 @@ func (Document) Fields() []ent.Field {
 		field.Text("body").Optional(),
 		field.String("body_hash").NotEmpty(),
 		field.JSON("metadata", map[string]any{}).Default(map[string]any{}).
-			Annotations(entsql.Default("'{}'")),
+			Annotations(entsql.Default("{}")),
 		field.Time("created_at").Optional(),
 		field.Time("updated_at").Optional(),
 		field.Time("captured_at").Default(time.Now),
