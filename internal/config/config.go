@@ -22,10 +22,23 @@ type Config struct {
 
 	CatalogPath string // SCPBOT_CATALOG_PATH
 
+	GitLabRoots string // SCPBOT_GITLAB_ROOTS
+
+	Jira JiraConfig
+
 	OpenRouter OpenRouter
 	Telegram   Telegram
 
 	MCPAddr string // SCPBOT_MCP_ADDR
+}
+
+// JiraConfig holds Jira REST API configuration for ingestion.
+type JiraConfig struct {
+	BaseURL  string // SCPBOT_JIRA_BASE_URL
+	Email    string // SCPBOT_JIRA_EMAIL
+	APIToken string // SCPBOT_JIRA_APITOKEN
+	PAT      string // SCPBOT_JIRA_PAT
+	Projects string // SCPBOT_JIRA_PROJECTS (comma-separated)
 }
 
 // OpenRouter holds configuration for the OpenRouter LLM API.
@@ -39,10 +52,12 @@ func (o OpenRouter) Enabled() bool { return o.APIKey != "" }
 
 // Telegram holds gotd auth configuration (plan: user session + bot).
 type Telegram struct {
-	AppID      int    // SCPBOT_TELEGRAM_APP_ID
-	AppHash    string // SCPBOT_TELEGRAM_APP_HASH
-	BotToken   string // SCPBOT_TELEGRAM_BOT_TOKEN
-	SessionDir string // SCPBOT_TELEGRAM_SESSION_DIR
+	AppID         int    // SCPBOT_TELEGRAM_APP_ID
+	AppHash       string // SCPBOT_TELEGRAM_APP_HASH
+	BotToken      string // SCPBOT_TELEGRAM_BOT_TOKEN
+	SessionDir    string // SCPBOT_TELEGRAM_SESSION_DIR
+	MonitorChats  string // SCPBOT_TELEGRAM_MONITOR_CHATS (comma-separated int64 IDs)
+	IngestSession string // SCPBOT_TELEGRAM_INGEST_SESSION (path to user session file)
 }
 
 // Load reads configuration from the environment, applying defaults.
@@ -62,10 +77,19 @@ func Load() (Config, error) {
 			Model:  env("SCPBOT_OPENROUTER_MODEL", "openai/gpt-4o-mini"),
 		},
 		Telegram: Telegram{
-			AppID:      envInt("SCPBOT_TELEGRAM_APP_ID", 0),
-			AppHash:    os.Getenv("SCPBOT_TELEGRAM_APP_HASH"),
-			BotToken:   os.Getenv("SCPBOT_TELEGRAM_BOT_TOKEN"),
-			SessionDir: env("SCPBOT_TELEGRAM_SESSION_DIR", "./session"),
+			AppID:         envInt("SCPBOT_TELEGRAM_APP_ID", 0),
+			AppHash:       os.Getenv("SCPBOT_TELEGRAM_APP_HASH"),
+			BotToken:      os.Getenv("SCPBOT_TELEGRAM_BOT_TOKEN"),
+			SessionDir:    env("SCPBOT_TELEGRAM_SESSION_DIR", "./session"),
+			MonitorChats:  os.Getenv("SCPBOT_TELEGRAM_MONITOR_CHATS"),
+			IngestSession: os.Getenv("SCPBOT_TELEGRAM_INGEST_SESSION"),
+		},
+		Jira: JiraConfig{
+			BaseURL:  os.Getenv("SCPBOT_JIRA_BASE_URL"),
+			Email:    os.Getenv("SCPBOT_JIRA_EMAIL"),
+			APIToken: os.Getenv("SCPBOT_JIRA_APITOKEN"),
+			PAT:      os.Getenv("SCPBOT_JIRA_PAT"),
+			Projects: os.Getenv("SCPBOT_JIRA_PROJECTS"),
 		},
 	}
 	if c.DatabaseDSN == "" {
