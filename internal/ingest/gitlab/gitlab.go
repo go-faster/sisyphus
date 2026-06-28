@@ -31,6 +31,8 @@ var skipDirs = map[string]bool{
 type Source struct {
 	// Root is the directory to walk.
 	Root string
+	// URL is the HTTPS Git remote to clone/fetch before walking.
+	URL string
 	// Repo is the logical repo name recorded in metadata (e.g. "platform/docs").
 	Repo string
 	// BaseURL, if set, is prefixed to the relative path to build source_url.

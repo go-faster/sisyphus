@@ -11,11 +11,15 @@ embed_provider: ollama
 embed_model: bge-m3
 embed_dim: 1024
 
-gitlab_roots:
-  - root: /data/gitlab/docs
-    repo: docs
-    branch: main
-    base_url: ""
+gitlab:
+  work_dir: /data/gitlab
+  token:
+    env: SCPBOT_GITLAB_TOKEN
+  repos:
+    - url: https://gitlab.example.com/group/docs.git
+      repo: docs
+      branch: main
+      base_url: ""
 
 jira:
   base_url: ""

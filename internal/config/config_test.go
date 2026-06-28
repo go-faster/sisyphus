@@ -16,11 +16,16 @@ func TestLoadYAML(t *testing.T) {
 http_addr: :9090
 qdrant_addr: qdrant:6334
 embed_dim: 512
-gitlab_roots:
-  - root: /tmp/docs
-    repo: docs
-    branch: main
-    base_url: https://gitlab.example.com/group/docs/-/blob/main
+gitlab:
+  work_dir: /tmp/gitlab
+  token:
+    env: TEST_SCPBOT_GITLAB_TOKEN
+  repos:
+    - root: /tmp/docs
+      url: https://gitlab.example.com/group/docs.git
+      repo: docs
+      branch: main
+      base_url: https://gitlab.example.com/group/docs/-/blob/main
 telegram:
   app_id: 123
   session_dir: /tmp/scpbot-session
@@ -28,6 +33,7 @@ openrouter:
   model: test-model
 `)
 	t.Setenv("SCPBOT_CONFIG", path)
+	t.Setenv("TEST_SCPBOT_GITLAB_TOKEN", "gitlab-token")
 
 	cfg, err := Load()
 	require.NoError(t, err)
@@ -39,11 +45,14 @@ openrouter:
 	require.Equal(t, "/tmp/scpbot-session", cfg.Telegram.SessionDir)
 	require.Equal(t, "test-model", cfg.OpenRouter.Model)
 	require.Equal(t, "corp_chunks", cfg.QdrantCollection)
-	require.Len(t, cfg.GitLab, 1)
-	require.Equal(t, "/tmp/docs", cfg.GitLab[0].Root)
-	require.Equal(t, "docs", cfg.GitLab[0].Repo)
-	require.Equal(t, "main", cfg.GitLab[0].Branch)
-	require.Equal(t, "https://gitlab.example.com/group/docs/-/blob/main", cfg.GitLab[0].BaseURL)
+	require.Equal(t, "/tmp/gitlab", cfg.GitLab.WorkDir)
+	require.Equal(t, "gitlab-token", cfg.GitLab.Token)
+	require.Len(t, cfg.GitLab.Repos, 1)
+	require.Equal(t, "/tmp/docs", cfg.GitLab.Repos[0].Root)
+	require.Equal(t, "https://gitlab.example.com/group/docs.git", cfg.GitLab.Repos[0].URL)
+	require.Equal(t, "docs", cfg.GitLab.Repos[0].Repo)
+	require.Equal(t, "main", cfg.GitLab.Repos[0].Branch)
+	require.Equal(t, "https://gitlab.example.com/group/docs/-/blob/main", cfg.GitLab.Repos[0].BaseURL)
 }
 
 func TestLoadSecretEnv(t *testing.T) {
@@ -110,6 +119,7 @@ func clearEnv(t *testing.T) {
 	for _, key := range []string{
 		"SCPBOT_CONFIG",
 		"TEST_SCPBOT_DATABASE_DSN",
+		"TEST_SCPBOT_GITLAB_TOKEN",
 		"TEST_SCPBOT_OPENROUTER_API_KEY",
 		"TEST_SCPBOT_JIRA_PASSWORD",
 	} {

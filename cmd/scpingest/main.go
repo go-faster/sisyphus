@@ -249,10 +249,18 @@ func splitHostPort(addr string) (host string, port int, err error) {
 }
 
 func runGitLab(ctx context.Context, lg *zap.Logger, db *ent.Client, p *pipeline.Pipeline, vectors pipeline.VectorStore, cfg config.Config, _ time.Time, reset bool, limit int, dry bool) error {
-	roots := gitLabSources(cfg.GitLab)
+	roots := gitLabSources(cfg.GitLab.Repos)
 	if len(roots) == 0 {
 		lg.Info("gitlab not configured")
 		return errNotConfigured
+	}
+	roots, err := gitlabingest.Prepare(ctx, roots, gitlabingest.SyncOptions{
+		WorkDir: cfg.GitLab.WorkDir,
+		Token:   cfg.GitLab.Token,
+		Logger:  lg.Named("gitlab"),
+	})
+	if err != nil {
+		return errors.Wrap(err, "prepare gitlab repos")
 	}
 
 	src := index.SourceGitLabDocs
@@ -307,6 +315,7 @@ func gitLabSources(sources []config.GitLabSource) []gitlabingest.Source {
 	for _, src := range sources {
 		out = append(out, gitlabingest.Source{
 			Root:    src.Root,
+			URL:     src.URL,
 			Repo:    src.Repo,
 			Branch:  src.Branch,
 			BaseURL: src.BaseURL,

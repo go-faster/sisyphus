@@ -23,7 +23,7 @@ type Config struct {
 	EmbedModel    string
 	EmbedDim      int
 
-	GitLab []GitLabSource
+	GitLab GitLabConfig
 
 	Jira JiraConfig
 
@@ -75,7 +75,7 @@ type fileConfig struct {
 	EmbedModel    string `yaml:"embed_model"`
 	EmbedDim      int    `yaml:"embed_dim"`
 
-	GitLab []GitLabSource `yaml:"gitlab_roots"`
+	GitLab fileGitLabConfig `yaml:"gitlab"`
 
 	Jira fileJiraConfig `yaml:"jira"`
 
@@ -95,9 +95,23 @@ type fileJiraConfig struct {
 	Projects string `yaml:"projects"`
 }
 
-// GitLabSource describes a local GitLab checkout to ingest.
+// GitLabConfig configures GitLab repository ingestion.
+type GitLabConfig struct {
+	WorkDir string         `yaml:"work_dir"`
+	Token   string         `yaml:"-"`
+	Repos   []GitLabSource `yaml:"repos"`
+}
+
+type fileGitLabConfig struct {
+	WorkDir string         `yaml:"work_dir"`
+	Token   Secret         `yaml:"token"`
+	Repos   []GitLabSource `yaml:"repos"`
+}
+
+// GitLabSource describes a GitLab repository to ingest.
 type GitLabSource struct {
 	Root    string `yaml:"root"`
+	URL     string `yaml:"url"`
 	Repo    string `yaml:"repo"`
 	Branch  string `yaml:"branch"`
 	BaseURL string `yaml:"base_url"`
@@ -222,6 +236,10 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 	if err != nil {
 		return Config{}, errors.Wrap(err, "jira pat")
 	}
+	gitlabToken, err := c.GitLab.Token.Resolve(baseDir)
+	if err != nil {
+		return Config{}, errors.Wrap(err, "gitlab token")
+	}
 	openRouterKey, err := c.OpenRouter.APIKey.Resolve(baseDir)
 	if err != nil {
 		return Config{}, errors.Wrap(err, "openrouter api_key")
@@ -244,7 +262,11 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 		EmbedProvider:    c.EmbedProvider,
 		EmbedModel:       c.EmbedModel,
 		EmbedDim:         c.EmbedDim,
-		GitLab:           c.GitLab,
+		GitLab: GitLabConfig{
+			WorkDir: c.GitLab.WorkDir,
+			Token:   gitlabToken,
+			Repos:   c.GitLab.Repos,
+		},
 		Jira: JiraConfig{
 			BaseURL:  c.Jira.BaseURL,
 			Email:    c.Jira.Email,
