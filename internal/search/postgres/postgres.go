@@ -29,7 +29,10 @@ func New(db *sql.DB) *Searcher {
 // Migrate applies schema migrations to add FTS columns and indexes.
 func (s *Searcher) Migrate(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, migrationsSQL)
-	return errors.Wrap(err, "exec migrations")
+	if err != nil {
+		return errors.Wrap(err, "exec migrations")
+	}
+	return nil
 }
 
 // Search executes a full-text search query against the chunks table.
