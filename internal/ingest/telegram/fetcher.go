@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -37,12 +38,19 @@ type MessageFetcher interface {
 }
 
 type gotdFetcher struct {
-	client *gotdtelegram.Client
-	log    *zap.Logger
+	client     *gotdtelegram.Client
+	log        *zap.Logger
+	peers      map[int64]int64
+	peersReady bool
 }
 
 func newGotdFetcher(client *gotdtelegram.Client, log *zap.Logger) MessageFetcher {
 	return &gotdFetcher{client: client, log: log}
+}
+
+// peerBootstrapper is implemented by fetchers that can pre-resolve peer access hashes.
+type peerBootstrapper interface {
+	bootstrapPeers(ctx context.Context, chatIDs []int64) error
 }
 
 func (f *gotdFetcher) FetchHistory(ctx context.Context, chatID int64, beforeMsgID, limit int) ([]RawMessage, bool, error) {
@@ -76,7 +84,7 @@ func (f *gotdFetcher) FetchHistory(ctx context.Context, chatID int64, beforeMsgI
 				zap.String("type", m.TypeName()))
 			continue
 		}
-		raw = append(raw, convertTGMessage(chatID, msg))
+		raw = append(raw, convertTGMessage(chatID, msg, f.log))
 	}
 
 	hasMore := len(raw) >= limit
@@ -91,30 +99,108 @@ func (f *gotdFetcher) FetchHistory(ctx context.Context, chatID int64, beforeMsgI
 // implementation that works for peers whose access hash is known (e.g. from
 // a previous resolve step or from the session's internal peer storage).
 func (f *gotdFetcher) resolvePeer(chatID int64) tg.InputPeerClass {
-	// TODO: Use tg.ContactsResolveUsername if the peer is known by username,
-	// or fetch the peer via ChannelsGetChannels / UsersGetUsers.
-	// For now, construct the InputPeer based on chat ID convention.
+	if f.peers != nil {
+		if h, ok := f.peers[chatID]; ok {
+			if chatID < 0 {
+				channelID := -chatID
+				return &tg.InputPeerChannel{
+					ChannelID:  channelID,
+					AccessHash: h,
+				}
+			}
+			return &tg.InputPeerUser{
+				UserID:     chatID,
+				AccessHash: h,
+			}
+		}
+	}
+	// Fallback to zero access hash (will fail downstream for most peers).
 	if chatID < 0 {
-		// Supergroup/channel: convention is -100xxxxxx.
 		channelID := -chatID
 		return &tg.InputPeerChannel{
 			ChannelID:  channelID,
-			AccessHash: 0, // TODO: needs real access hash
+			AccessHash: 0,
 		}
 	}
 	return &tg.InputPeerUser{
 		UserID:     chatID,
-		AccessHash: 0, // TODO: needs real access hash
+		AccessHash: 0,
 	}
 }
 
-func convertTGMessage(chatID int64, msg *tg.Message) RawMessage {
+func (f *gotdFetcher) bootstrapPeers(ctx context.Context, chatIDs []int64) error {
+	api := tg.NewClient(f.client)
+
+	req := &tg.MessagesGetDialogsRequest{
+		OffsetDate: 0,
+		OffsetID:   0,
+		OffsetPeer: &tg.InputPeerEmpty{},
+		Limit:      200,
+		Hash:       0,
+	}
+
+	result, err := api.MessagesGetDialogs(ctx, req)
+	if err != nil {
+		return errors.Wrap(err, "get dialogs")
+	}
+
+	modified, ok := result.AsModified()
+	if !ok {
+		f.log.Warn("telegram: got unmodified dialogs result")
+		f.peersReady = true
+		return nil
+	}
+
+	peers := make(map[int64]int64)
+
+	for _, c := range modified.GetChats() {
+		switch v := c.(type) {
+		case *tg.Channel:
+			chatID := -(v.ID + 1000000000000)
+			peers[chatID] = v.AccessHash
+		case *tg.Chat:
+			// Basic group: no access hash. Use InputPeerChat later if needed.
+			// For now we store 0 to indicate "no hash".
+			peers[v.ID] = 0
+		case *tg.ChatForbidden, *tg.ChannelForbidden:
+			continue
+		}
+	}
+
+	for _, u := range modified.GetUsers() {
+		if v, ok := u.(*tg.User); ok {
+			peers[v.ID] = v.AccessHash
+		}
+	}
+
+	for _, id := range chatIDs {
+		if _, ok := peers[id]; !ok {
+			f.log.Warn("telegram: peer not in dialogs; fetch will fail with PEER_ID_INVALID",
+				zap.Int64("chat_id", id))
+		}
+	}
+
+	f.peers = peers
+	f.peersReady = true
+	return nil
+}
+
+func convertTGMessage(chatID int64, msg *tg.Message, log *zap.Logger) RawMessage {
 	raw := RawMessage{
 		ChatID:    chatID,
 		MessageID: msg.ID,
 		Text:      msg.GetMessage(),
 		Date:      time.Unix(int64(msg.Date), 0),
-		RawJSON:   nil, // TODO: serialize msg to JSON for storage
+		RawJSON:   nil,
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		if log != nil {
+			log.Warn("telegram: marshal message", zap.Int("msg_id", msg.ID), zap.Error(err))
+		}
+	} else {
+		raw.RawJSON = data
 	}
 
 	// Extract sender info.

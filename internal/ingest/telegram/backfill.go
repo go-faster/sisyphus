@@ -89,6 +89,16 @@ func (b *Backfiller) Backfill(ctx context.Context, req BackfillRequest) (Backfil
 		return cmp.Compare(a.ID, b.ID)
 	})
 
+	if pb, ok := b.fetcher.(peerBootstrapper); ok {
+		chatIDs := make([]int64, len(sorted))
+		for i, c := range sorted {
+			chatIDs[i] = c.ID
+		}
+		if err := pb.bootstrapPeers(ctx, chatIDs); err != nil {
+			b.log.Warn("telegram: peer bootstrap failed; fetches may fail with PEER_ID_INVALID", zap.Error(err))
+		}
+	}
+
 	result := BackfillResult{
 		NextCursor: Cursor{PerChat: make(map[int64]int)},
 	}
