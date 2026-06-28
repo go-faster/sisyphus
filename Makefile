@@ -25,15 +25,15 @@ run:
 	go run ./cmd/scpbot
 
 ingest:
-	go run ./cmd/ingest all
+	go run ./cmd/scpingest all
 
 ingest-jira:
-	go run ./cmd/ingest jira
+	go run ./cmd/scpingest jira
 
 ingest-gitlab:
-	go run ./cmd/ingest gitlab
+	go run ./cmd/scpingest gitlab
 
 ingest-telegram:
-	go run ./cmd/ingest telegram
+	go run ./cmd/scpingest telegram
 
 .PHONY: lint fmt codegen run ingest ingest-jira ingest-gitlab ingest-telegram

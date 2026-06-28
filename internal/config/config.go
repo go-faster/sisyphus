@@ -20,8 +20,6 @@ type Config struct {
 	EmbedModel string // SCPBOT_EMBED_MODEL
 	EmbedDim   int    // SCPBOT_EMBED_DIM
 
-	CatalogPath string // SCPBOT_CATALOG_PATH
-
 	GitLabRoots string // SCPBOT_GITLAB_ROOTS
 
 	Jira JiraConfig
@@ -69,9 +67,8 @@ func Load() (Config, error) {
 		QdrantCollection: env("SCPBOT_QDRANT_COLLECTION", "corp_chunks"),
 		OllamaURL:        env("SCPBOT_OLLAMA_URL", "http://localhost:11434"),
 		EmbedModel:       env("SCPBOT_EMBED_MODEL", "bge-m3"),
-		EmbedDim:         envInt("SCPBOT_EMBED_DIM", 1024),
-		CatalogPath:      env("SCPBOT_CATALOG_PATH", "service_catalog.yaml"),
-		MCPAddr:          env("SCPBOT_MCP_ADDR", ":8081"),
+EmbedDim: envInt("SCPBOT_EMBED_DIM", 1024),
+		MCPAddr:  env("SCPBOT_MCP_ADDR", ":8081"),
 		OpenRouter: OpenRouter{
 			APIKey: os.Getenv("SCPBOT_OPENROUTER_API_KEY"),
 			Model:  env("SCPBOT_OPENROUTER_MODEL", "openai/gpt-4o-mini"),

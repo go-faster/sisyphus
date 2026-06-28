@@ -27,24 +27,38 @@ Never store only embeddings — always keep Documents+Chunks in Postgres so we c
 
 ```
 cmd/scpbot              main; wires everything via go-faster/sdk app.Run
+cmd/scpmcp              MCP server entrypoint (Streamable HTTP or stdio)
+cmd/scpingest           one-shot ingestion CLI: gitlab|jira|telegram|all subcommands,
+                        --reset <src|all> (--yes-i-mean-all for all), --since, --limit, --dry-run.
+                        Wires its dependencies inline (does NOT reuse internal/wire).
 internal/index          SHARED CONTRACT: Document, Chunk, Chunker, Embedder, Searcher, constants. Do not add deps here.
-internal/catalog        service_catalog.yaml loader + service detection
 internal/chunk/markdown heading-aware Markdown chunker (implements index.Chunker)
 internal/chunk/jira     Jira issue -> chunks (implements index.Chunker)
 internal/embed/ollama   Ollama embedder (implements index.Embedder)
 internal/search/postgres FTS searcher over ent (implements index.Searcher)
 internal/search/qdrant  Qdrant client + searcher (implements index.Searcher)
+                        Also implements pipeline.VectorStore (Upsert + Delete by point ID).
 internal/retrieval      merges + reranks Postgres+Qdrant results, authority/boost rules
-internal/ingest/gitlab  GitLab docs fetch -> Document
-internal/ingest/jira    Jira issues fetch -> Document
-internal/ingest/telegram gotd user-session backfill -> telegram_messages -> support_requests
+internal/ingest/gitlab  local-filesystem multi-root walk -> Document
+internal/ingest/jira    incremental Jira REST client (stdlib net/http) with sliding-window cursor
+internal/ingest/telegram gotd user-session backfill -> telegram_messages -> support_requests;
+                        MessageFetcher interface for testability; bootstrapPeers resolves access hashes
+internal/pipeline       Pipeline.Index: idempotent doc+chunk upsert (ent) + embed (Ollama)
+                        + vector Upsert/Delete (Qdrant). Per-chunk embedding skip (preserves
+                        unchanged chunks' qdrant_point_id) and stale-point cleanup on changed docs.
+                        VectorStore interface: Upsert + Delete.
 internal/bot            gotd bot, /context handler
-internal/ent            ent schema + generated code
+internal/ent            ent schema + generated code (Document, Chunk, SupportRequest,
+                        TelegramMessage, SyncState)
+internal/wire           shared wiring for cmd/scpbot and cmd/scpmcp (NOT used by cmd/scpingest)
 internal/oas            ogen generated code
 api/openapi.yaml        OpenAPI spec (source for ogen)
-deploy/                 docker-compose + configs
-service_catalog.yaml    manual service catalog (see plan §8)
+deploy/                 docker-compose + configs + .env.example
 ```
+
+Service routing is currently inert: retrieval's `service` boost falls back to
+1.0 when `metadata.service` is absent. Add real service routing only when query
+quality demands it.
 
 ## Conventions
 
@@ -85,7 +99,27 @@ service_catalog.yaml    manual service catalog (see plan §8)
 - Format: `golangci-lint fmt ./...` (do not hand-format).
 - Lint: `golangci-lint run --fix ./...` (`--fix` can automatically fix some issues).
 - Test: `make test` (or `make test_fast` = `go test ./...`).
-- Tests must be hermetic, fast (no real sleeps), non-flaky, cross-platform. DB-backed tests use testcontainers or are skipped when no DB is available.
+- Tests must be hermetic, fast (no real sleeps), non-flaky, cross-platform. DB-backed tests use testcontainers or are skipped when no DB is available — convention: skip when `SCPBOT_TEST_DB` (postgres DSN) is unset.
+
+## Ingestion
+
+`make ingest` (= `go run ./cmd/scpingest all`) runs incremental backfills for every
+configured source. Per-source: `make ingest-gitlab`, `make ingest-jira`,
+`make ingest-telegram`.
+
+Each source has a `SyncState` row in ent: `source`, `last_synced_at`,
+`last_cursor` (opaque JSON), `status`, `error`, `document_count`. The CLI reads
+the cursor before the run and writes it back per batch (jira) or per chat
+(telegram) so a partial run resumes. GitLab has no cursor — it re-walks and
+relies on pipeline body-hash skip.
+
+`--reset <src|all>` wipes the source end-to-end: in one ent Tx it deletes
+`documents`, `chunks`, and `SyncState` for that source (chunk IDs are captured
+pre-delete), commits, then `qdrant.Delete` removes the freed point IDs. `--reset
+all` refuses without `--yes-i-mean-all`.
+
+`--since <RFC3339>` overrides the Jira cursor's `LastUpdated`. `--limit <int>`
+caps docs per source. `--dry-run` fetches and logs counts without indexing.
 
 ## Run
 
