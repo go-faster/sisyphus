@@ -23,7 +23,7 @@ type Config struct {
 	EmbedModel    string
 	EmbedDim      int
 
-	GitLabRoots string
+	GitLab []GitLabSource
 
 	Jira JiraConfig
 
@@ -75,7 +75,7 @@ type fileConfig struct {
 	EmbedModel    string `yaml:"embed_model"`
 	EmbedDim      int    `yaml:"embed_dim"`
 
-	GitLabRoots string `yaml:"gitlab_roots"`
+	GitLab []GitLabSource `yaml:"gitlab_roots"`
 
 	Jira fileJiraConfig `yaml:"jira"`
 
@@ -93,6 +93,14 @@ type fileJiraConfig struct {
 	Password Secret `yaml:"password"`
 	PAT      Secret `yaml:"pat"`
 	Projects string `yaml:"projects"`
+}
+
+// GitLabSource describes a local GitLab checkout to ingest.
+type GitLabSource struct {
+	Root    string `yaml:"root"`
+	Repo    string `yaml:"repo"`
+	Branch  string `yaml:"branch"`
+	BaseURL string `yaml:"base_url"`
 }
 
 type fileOpenRouter struct {
@@ -236,7 +244,7 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 		EmbedProvider:    c.EmbedProvider,
 		EmbedModel:       c.EmbedModel,
 		EmbedDim:         c.EmbedDim,
-		GitLabRoots:      c.GitLabRoots,
+		GitLab:           c.GitLab,
 		Jira: JiraConfig{
 			BaseURL:  c.Jira.BaseURL,
 			Email:    c.Jira.Email,

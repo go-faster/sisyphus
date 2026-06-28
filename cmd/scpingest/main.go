@@ -10,7 +10,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -250,7 +249,7 @@ func splitHostPort(addr string) (host string, port int, err error) {
 }
 
 func runGitLab(ctx context.Context, lg *zap.Logger, db *ent.Client, p *pipeline.Pipeline, vectors pipeline.VectorStore, cfg config.Config, _ time.Time, reset bool, limit int, dry bool) error {
-	roots := parseGitLabRoots(cfg.GitLabRoots)
+	roots := gitLabSources(cfg.GitLab)
 	if len(roots) == 0 {
 		lg.Info("gitlab not configured")
 		return errNotConfigured
@@ -303,26 +302,15 @@ func runGitLab(ctx context.Context, lg *zap.Logger, db *ent.Client, p *pipeline.
 	return nil
 }
 
-func parseGitLabRoots(s string) []gitlabingest.Source {
-	if s == "" {
-		return nil
-	}
-	var out []gitlabingest.Source
-	for part := range strings.SplitSeq(s, ",") {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		fields := strings.SplitN(part, ":", 3)
-		switch len(fields) {
-		case 1:
-			p := fields[0]
-			out = append(out, gitlabingest.Source{Root: p, Repo: filepath.Base(p)})
-		case 2:
-			out = append(out, gitlabingest.Source{Root: fields[0], Repo: fields[1]})
-		default:
-			out = append(out, gitlabingest.Source{Root: fields[0], Repo: fields[1], Branch: fields[2]})
-		}
+func gitLabSources(sources []config.GitLabSource) []gitlabingest.Source {
+	out := make([]gitlabingest.Source, 0, len(sources))
+	for _, src := range sources {
+		out = append(out, gitlabingest.Source{
+			Root:    src.Root,
+			Repo:    src.Repo,
+			Branch:  src.Branch,
+			BaseURL: src.BaseURL,
+		})
 	}
 	return out
 }

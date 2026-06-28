@@ -16,6 +16,11 @@ func TestLoadYAML(t *testing.T) {
 http_addr: :9090
 qdrant_addr: qdrant:6334
 embed_dim: 512
+gitlab_roots:
+  - root: /tmp/docs
+    repo: docs
+    branch: main
+    base_url: https://gitlab.example.com/group/docs/-/blob/main
 telegram:
   app_id: 123
   session_dir: /tmp/scpbot-session
@@ -34,6 +39,11 @@ openrouter:
 	require.Equal(t, "/tmp/scpbot-session", cfg.Telegram.SessionDir)
 	require.Equal(t, "test-model", cfg.OpenRouter.Model)
 	require.Equal(t, "corp_chunks", cfg.QdrantCollection)
+	require.Len(t, cfg.GitLab, 1)
+	require.Equal(t, "/tmp/docs", cfg.GitLab[0].Root)
+	require.Equal(t, "docs", cfg.GitLab[0].Repo)
+	require.Equal(t, "main", cfg.GitLab[0].Branch)
+	require.Equal(t, "https://gitlab.example.com/group/docs/-/blob/main", cfg.GitLab[0].BaseURL)
 }
 
 func TestLoadSecretEnv(t *testing.T) {
