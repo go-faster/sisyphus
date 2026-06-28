@@ -18,6 +18,8 @@ type Tx struct {
 	Document *DocumentClient
 	// SupportRequest is the client for interacting with the SupportRequest builders.
 	SupportRequest *SupportRequestClient
+	// SyncState is the client for interacting with the SyncState builders.
+	SyncState *SyncStateClient
 	// TelegramMessage is the client for interacting with the TelegramMessage builders.
 	TelegramMessage *TelegramMessageClient
 
@@ -154,6 +156,7 @@ func (tx *Tx) init() {
 	tx.Chunk = NewChunkClient(tx.config)
 	tx.Document = NewDocumentClient(tx.config)
 	tx.SupportRequest = NewSupportRequestClient(tx.config)
+	tx.SyncState = NewSyncStateClient(tx.config)
 	tx.TelegramMessage = NewTelegramMessageClient(tx.config)
 }
 

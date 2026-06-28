@@ -15,6 +15,7 @@ import (
 	"github.com/go-faster/scpbot/internal/ent/document"
 	"github.com/go-faster/scpbot/internal/ent/predicate"
 	"github.com/go-faster/scpbot/internal/ent/supportrequest"
+	"github.com/go-faster/scpbot/internal/ent/syncstate"
 	"github.com/go-faster/scpbot/internal/ent/telegrammessage"
 	"github.com/google/uuid"
 )
@@ -31,6 +32,7 @@ const (
 	TypeChunk           = "Chunk"
 	TypeDocument        = "Document"
 	TypeSupportRequest  = "SupportRequest"
+	TypeSyncState       = "SyncState"
 	TypeTelegramMessage = "TelegramMessage"
 )
 
@@ -3223,6 +3225,739 @@ func (m *SupportRequestMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *SupportRequestMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown SupportRequest edge %s", name)
+}
+
+// SyncStateMutation represents an operation that mutates the SyncState nodes in the graph.
+type SyncStateMutation struct {
+	config
+	op                Op
+	typ               string
+	id                *uuid.UUID
+	source            *string
+	last_synced_at    *time.Time
+	last_cursor       *string
+	status            *string
+	error             *string
+	document_count    *int
+	adddocument_count *int
+	updated_at        *time.Time
+	clearedFields     map[string]struct{}
+	done              bool
+	oldValue          func(context.Context) (*SyncState, error)
+	predicates        []predicate.SyncState
+}
+
+var _ ent.Mutation = (*SyncStateMutation)(nil)
+
+// syncstateOption allows management of the mutation configuration using functional options.
+type syncstateOption func(*SyncStateMutation)
+
+// newSyncStateMutation creates new mutation for the SyncState entity.
+func newSyncStateMutation(c config, op Op, opts ...syncstateOption) *SyncStateMutation {
+	m := &SyncStateMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeSyncState,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withSyncStateID sets the ID field of the mutation.
+func withSyncStateID(id uuid.UUID) syncstateOption {
+	return func(m *SyncStateMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *SyncState
+		)
+		m.oldValue = func(ctx context.Context) (*SyncState, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().SyncState.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withSyncState sets the old SyncState of the mutation.
+func withSyncState(node *SyncState) syncstateOption {
+	return func(m *SyncStateMutation) {
+		m.oldValue = func(context.Context) (*SyncState, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m SyncStateMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m SyncStateMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of SyncState entities.
+func (m *SyncStateMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *SyncStateMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *SyncStateMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().SyncState.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetSource sets the "source" field.
+func (m *SyncStateMutation) SetSource(s string) {
+	m.source = &s
+}
+
+// Source returns the value of the "source" field in the mutation.
+func (m *SyncStateMutation) Source() (r string, exists bool) {
+	v := m.source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSource returns the old "source" field's value of the SyncState entity.
+// If the SyncState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SyncStateMutation) OldSource(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSource: %w", err)
+	}
+	return oldValue.Source, nil
+}
+
+// ResetSource resets all changes to the "source" field.
+func (m *SyncStateMutation) ResetSource() {
+	m.source = nil
+}
+
+// SetLastSyncedAt sets the "last_synced_at" field.
+func (m *SyncStateMutation) SetLastSyncedAt(t time.Time) {
+	m.last_synced_at = &t
+}
+
+// LastSyncedAt returns the value of the "last_synced_at" field in the mutation.
+func (m *SyncStateMutation) LastSyncedAt() (r time.Time, exists bool) {
+	v := m.last_synced_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastSyncedAt returns the old "last_synced_at" field's value of the SyncState entity.
+// If the SyncState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SyncStateMutation) OldLastSyncedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastSyncedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastSyncedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastSyncedAt: %w", err)
+	}
+	return oldValue.LastSyncedAt, nil
+}
+
+// ClearLastSyncedAt clears the value of the "last_synced_at" field.
+func (m *SyncStateMutation) ClearLastSyncedAt() {
+	m.last_synced_at = nil
+	m.clearedFields[syncstate.FieldLastSyncedAt] = struct{}{}
+}
+
+// LastSyncedAtCleared returns if the "last_synced_at" field was cleared in this mutation.
+func (m *SyncStateMutation) LastSyncedAtCleared() bool {
+	_, ok := m.clearedFields[syncstate.FieldLastSyncedAt]
+	return ok
+}
+
+// ResetLastSyncedAt resets all changes to the "last_synced_at" field.
+func (m *SyncStateMutation) ResetLastSyncedAt() {
+	m.last_synced_at = nil
+	delete(m.clearedFields, syncstate.FieldLastSyncedAt)
+}
+
+// SetLastCursor sets the "last_cursor" field.
+func (m *SyncStateMutation) SetLastCursor(s string) {
+	m.last_cursor = &s
+}
+
+// LastCursor returns the value of the "last_cursor" field in the mutation.
+func (m *SyncStateMutation) LastCursor() (r string, exists bool) {
+	v := m.last_cursor
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastCursor returns the old "last_cursor" field's value of the SyncState entity.
+// If the SyncState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SyncStateMutation) OldLastCursor(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastCursor is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastCursor requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastCursor: %w", err)
+	}
+	return oldValue.LastCursor, nil
+}
+
+// ResetLastCursor resets all changes to the "last_cursor" field.
+func (m *SyncStateMutation) ResetLastCursor() {
+	m.last_cursor = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *SyncStateMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *SyncStateMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the SyncState entity.
+// If the SyncState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SyncStateMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *SyncStateMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetError sets the "error" field.
+func (m *SyncStateMutation) SetError(s string) {
+	m.error = &s
+}
+
+// Error returns the value of the "error" field in the mutation.
+func (m *SyncStateMutation) Error() (r string, exists bool) {
+	v := m.error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldError returns the old "error" field's value of the SyncState entity.
+// If the SyncState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SyncStateMutation) OldError(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldError: %w", err)
+	}
+	return oldValue.Error, nil
+}
+
+// ClearError clears the value of the "error" field.
+func (m *SyncStateMutation) ClearError() {
+	m.error = nil
+	m.clearedFields[syncstate.FieldError] = struct{}{}
+}
+
+// ErrorCleared returns if the "error" field was cleared in this mutation.
+func (m *SyncStateMutation) ErrorCleared() bool {
+	_, ok := m.clearedFields[syncstate.FieldError]
+	return ok
+}
+
+// ResetError resets all changes to the "error" field.
+func (m *SyncStateMutation) ResetError() {
+	m.error = nil
+	delete(m.clearedFields, syncstate.FieldError)
+}
+
+// SetDocumentCount sets the "document_count" field.
+func (m *SyncStateMutation) SetDocumentCount(i int) {
+	m.document_count = &i
+	m.adddocument_count = nil
+}
+
+// DocumentCount returns the value of the "document_count" field in the mutation.
+func (m *SyncStateMutation) DocumentCount() (r int, exists bool) {
+	v := m.document_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDocumentCount returns the old "document_count" field's value of the SyncState entity.
+// If the SyncState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SyncStateMutation) OldDocumentCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDocumentCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDocumentCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDocumentCount: %w", err)
+	}
+	return oldValue.DocumentCount, nil
+}
+
+// AddDocumentCount adds i to the "document_count" field.
+func (m *SyncStateMutation) AddDocumentCount(i int) {
+	if m.adddocument_count != nil {
+		*m.adddocument_count += i
+	} else {
+		m.adddocument_count = &i
+	}
+}
+
+// AddedDocumentCount returns the value that was added to the "document_count" field in this mutation.
+func (m *SyncStateMutation) AddedDocumentCount() (r int, exists bool) {
+	v := m.adddocument_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetDocumentCount resets all changes to the "document_count" field.
+func (m *SyncStateMutation) ResetDocumentCount() {
+	m.document_count = nil
+	m.adddocument_count = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *SyncStateMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *SyncStateMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the SyncState entity.
+// If the SyncState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SyncStateMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *SyncStateMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the SyncStateMutation builder.
+func (m *SyncStateMutation) Where(ps ...predicate.SyncState) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the SyncStateMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *SyncStateMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.SyncState, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *SyncStateMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *SyncStateMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (SyncState).
+func (m *SyncStateMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *SyncStateMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.source != nil {
+		fields = append(fields, syncstate.FieldSource)
+	}
+	if m.last_synced_at != nil {
+		fields = append(fields, syncstate.FieldLastSyncedAt)
+	}
+	if m.last_cursor != nil {
+		fields = append(fields, syncstate.FieldLastCursor)
+	}
+	if m.status != nil {
+		fields = append(fields, syncstate.FieldStatus)
+	}
+	if m.error != nil {
+		fields = append(fields, syncstate.FieldError)
+	}
+	if m.document_count != nil {
+		fields = append(fields, syncstate.FieldDocumentCount)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, syncstate.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *SyncStateMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case syncstate.FieldSource:
+		return m.Source()
+	case syncstate.FieldLastSyncedAt:
+		return m.LastSyncedAt()
+	case syncstate.FieldLastCursor:
+		return m.LastCursor()
+	case syncstate.FieldStatus:
+		return m.Status()
+	case syncstate.FieldError:
+		return m.Error()
+	case syncstate.FieldDocumentCount:
+		return m.DocumentCount()
+	case syncstate.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *SyncStateMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case syncstate.FieldSource:
+		return m.OldSource(ctx)
+	case syncstate.FieldLastSyncedAt:
+		return m.OldLastSyncedAt(ctx)
+	case syncstate.FieldLastCursor:
+		return m.OldLastCursor(ctx)
+	case syncstate.FieldStatus:
+		return m.OldStatus(ctx)
+	case syncstate.FieldError:
+		return m.OldError(ctx)
+	case syncstate.FieldDocumentCount:
+		return m.OldDocumentCount(ctx)
+	case syncstate.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown SyncState field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SyncStateMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case syncstate.FieldSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSource(v)
+		return nil
+	case syncstate.FieldLastSyncedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastSyncedAt(v)
+		return nil
+	case syncstate.FieldLastCursor:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastCursor(v)
+		return nil
+	case syncstate.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case syncstate.FieldError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetError(v)
+		return nil
+	case syncstate.FieldDocumentCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDocumentCount(v)
+		return nil
+	case syncstate.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SyncState field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *SyncStateMutation) AddedFields() []string {
+	var fields []string
+	if m.adddocument_count != nil {
+		fields = append(fields, syncstate.FieldDocumentCount)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *SyncStateMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case syncstate.FieldDocumentCount:
+		return m.AddedDocumentCount()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *SyncStateMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case syncstate.FieldDocumentCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDocumentCount(v)
+		return nil
+	}
+	return fmt.Errorf("unknown SyncState numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *SyncStateMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(syncstate.FieldLastSyncedAt) {
+		fields = append(fields, syncstate.FieldLastSyncedAt)
+	}
+	if m.FieldCleared(syncstate.FieldError) {
+		fields = append(fields, syncstate.FieldError)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *SyncStateMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *SyncStateMutation) ClearField(name string) error {
+	switch name {
+	case syncstate.FieldLastSyncedAt:
+		m.ClearLastSyncedAt()
+		return nil
+	case syncstate.FieldError:
+		m.ClearError()
+		return nil
+	}
+	return fmt.Errorf("unknown SyncState nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *SyncStateMutation) ResetField(name string) error {
+	switch name {
+	case syncstate.FieldSource:
+		m.ResetSource()
+		return nil
+	case syncstate.FieldLastSyncedAt:
+		m.ResetLastSyncedAt()
+		return nil
+	case syncstate.FieldLastCursor:
+		m.ResetLastCursor()
+		return nil
+	case syncstate.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case syncstate.FieldError:
+		m.ResetError()
+		return nil
+	case syncstate.FieldDocumentCount:
+		m.ResetDocumentCount()
+		return nil
+	case syncstate.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown SyncState field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *SyncStateMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *SyncStateMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *SyncStateMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *SyncStateMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *SyncStateMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *SyncStateMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *SyncStateMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown SyncState unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *SyncStateMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown SyncState edge %s", name)
 }
 
 // TelegramMessageMutation represents an operation that mutates the TelegramMessage nodes in the graph.

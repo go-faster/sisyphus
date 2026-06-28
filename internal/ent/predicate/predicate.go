@@ -15,5 +15,8 @@ type Document func(*sql.Selector)
 // SupportRequest is the predicate function for supportrequest builders.
 type SupportRequest func(*sql.Selector)
 
+// SyncState is the predicate function for syncstate builders.
+type SyncState func(*sql.Selector)
+
 // TelegramMessage is the predicate function for telegrammessage builders.
 type TelegramMessage func(*sql.Selector)

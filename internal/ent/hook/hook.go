@@ -45,6 +45,18 @@ func (f SupportRequestFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Val
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SupportRequestMutation", m)
 }
 
+// The SyncStateFunc type is an adapter to allow the use of ordinary
+// function as SyncState mutator.
+type SyncStateFunc func(context.Context, *ent.SyncStateMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SyncStateFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SyncStateMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SyncStateMutation", m)
+}
+
 // The TelegramMessageFunc type is an adapter to allow the use of ordinary
 // function as TelegramMessage mutator.
 type TelegramMessageFunc func(context.Context, *ent.TelegramMessageMutation) (ent.Value, error)

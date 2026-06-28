@@ -9,6 +9,7 @@ import (
 	"github.com/go-faster/scpbot/internal/ent/document"
 	"github.com/go-faster/scpbot/internal/ent/schema"
 	"github.com/go-faster/scpbot/internal/ent/supportrequest"
+	"github.com/go-faster/scpbot/internal/ent/syncstate"
 	"github.com/go-faster/scpbot/internal/ent/telegrammessage"
 	"github.com/google/uuid"
 )
@@ -93,6 +94,36 @@ func init() {
 	supportrequestDescID := supportrequestFields[0].Descriptor()
 	// supportrequest.DefaultID holds the default value on creation for the id field.
 	supportrequest.DefaultID = supportrequestDescID.Default.(func() uuid.UUID)
+	syncstateFields := schema.SyncState{}.Fields()
+	_ = syncstateFields
+	// syncstateDescSource is the schema descriptor for source field.
+	syncstateDescSource := syncstateFields[1].Descriptor()
+	// syncstate.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	syncstate.SourceValidator = syncstateDescSource.Validators[0].(func(string) error)
+	// syncstateDescLastCursor is the schema descriptor for last_cursor field.
+	syncstateDescLastCursor := syncstateFields[3].Descriptor()
+	// syncstate.DefaultLastCursor holds the default value on creation for the last_cursor field.
+	syncstate.DefaultLastCursor = syncstateDescLastCursor.Default.(string)
+	// syncstate.LastCursorValidator is a validator for the "last_cursor" field. It is called by the builders before save.
+	syncstate.LastCursorValidator = syncstateDescLastCursor.Validators[0].(func(string) error)
+	// syncstateDescStatus is the schema descriptor for status field.
+	syncstateDescStatus := syncstateFields[4].Descriptor()
+	// syncstate.DefaultStatus holds the default value on creation for the status field.
+	syncstate.DefaultStatus = syncstateDescStatus.Default.(string)
+	// syncstateDescDocumentCount is the schema descriptor for document_count field.
+	syncstateDescDocumentCount := syncstateFields[6].Descriptor()
+	// syncstate.DefaultDocumentCount holds the default value on creation for the document_count field.
+	syncstate.DefaultDocumentCount = syncstateDescDocumentCount.Default.(int)
+	// syncstateDescUpdatedAt is the schema descriptor for updated_at field.
+	syncstateDescUpdatedAt := syncstateFields[7].Descriptor()
+	// syncstate.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	syncstate.DefaultUpdatedAt = syncstateDescUpdatedAt.Default.(func() time.Time)
+	// syncstate.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	syncstate.UpdateDefaultUpdatedAt = syncstateDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// syncstateDescID is the schema descriptor for id field.
+	syncstateDescID := syncstateFields[0].Descriptor()
+	// syncstate.DefaultID holds the default value on creation for the id field.
+	syncstate.DefaultID = syncstateDescID.Default.(func() uuid.UUID)
 	telegrammessageFields := schema.TelegramMessage{}.Fields()
 	_ = telegrammessageFields
 	// telegrammessageDescRawJSON is the schema descriptor for raw_json field.

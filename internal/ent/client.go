@@ -19,6 +19,7 @@ import (
 	"github.com/go-faster/scpbot/internal/ent/chunk"
 	"github.com/go-faster/scpbot/internal/ent/document"
 	"github.com/go-faster/scpbot/internal/ent/supportrequest"
+	"github.com/go-faster/scpbot/internal/ent/syncstate"
 	"github.com/go-faster/scpbot/internal/ent/telegrammessage"
 )
 
@@ -33,6 +34,8 @@ type Client struct {
 	Document *DocumentClient
 	// SupportRequest is the client for interacting with the SupportRequest builders.
 	SupportRequest *SupportRequestClient
+	// SyncState is the client for interacting with the SyncState builders.
+	SyncState *SyncStateClient
 	// TelegramMessage is the client for interacting with the TelegramMessage builders.
 	TelegramMessage *TelegramMessageClient
 }
@@ -49,6 +52,7 @@ func (c *Client) init() {
 	c.Chunk = NewChunkClient(c.config)
 	c.Document = NewDocumentClient(c.config)
 	c.SupportRequest = NewSupportRequestClient(c.config)
+	c.SyncState = NewSyncStateClient(c.config)
 	c.TelegramMessage = NewTelegramMessageClient(c.config)
 }
 
@@ -145,6 +149,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Chunk:           NewChunkClient(cfg),
 		Document:        NewDocumentClient(cfg),
 		SupportRequest:  NewSupportRequestClient(cfg),
+		SyncState:       NewSyncStateClient(cfg),
 		TelegramMessage: NewTelegramMessageClient(cfg),
 	}, nil
 }
@@ -168,6 +173,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Chunk:           NewChunkClient(cfg),
 		Document:        NewDocumentClient(cfg),
 		SupportRequest:  NewSupportRequestClient(cfg),
+		SyncState:       NewSyncStateClient(cfg),
 		TelegramMessage: NewTelegramMessageClient(cfg),
 	}, nil
 }
@@ -200,6 +206,7 @@ func (c *Client) Use(hooks ...Hook) {
 	c.Chunk.Use(hooks...)
 	c.Document.Use(hooks...)
 	c.SupportRequest.Use(hooks...)
+	c.SyncState.Use(hooks...)
 	c.TelegramMessage.Use(hooks...)
 }
 
@@ -209,6 +216,7 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	c.Chunk.Intercept(interceptors...)
 	c.Document.Intercept(interceptors...)
 	c.SupportRequest.Intercept(interceptors...)
+	c.SyncState.Intercept(interceptors...)
 	c.TelegramMessage.Intercept(interceptors...)
 }
 
@@ -221,6 +229,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Document.mutate(ctx, m)
 	case *SupportRequestMutation:
 		return c.SupportRequest.mutate(ctx, m)
+	case *SyncStateMutation:
+		return c.SyncState.mutate(ctx, m)
 	case *TelegramMessageMutation:
 		return c.TelegramMessage.mutate(ctx, m)
 	default:
@@ -659,6 +669,139 @@ func (c *SupportRequestClient) mutate(ctx context.Context, m *SupportRequestMuta
 	}
 }
 
+// SyncStateClient is a client for the SyncState schema.
+type SyncStateClient struct {
+	config
+}
+
+// NewSyncStateClient returns a client for the SyncState from the given config.
+func NewSyncStateClient(c config) *SyncStateClient {
+	return &SyncStateClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `syncstate.Hooks(f(g(h())))`.
+func (c *SyncStateClient) Use(hooks ...Hook) {
+	c.hooks.SyncState = append(c.hooks.SyncState, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `syncstate.Intercept(f(g(h())))`.
+func (c *SyncStateClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SyncState = append(c.inters.SyncState, interceptors...)
+}
+
+// Create returns a builder for creating a SyncState entity.
+func (c *SyncStateClient) Create() *SyncStateCreate {
+	mutation := newSyncStateMutation(c.config, OpCreate)
+	return &SyncStateCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SyncState entities.
+func (c *SyncStateClient) CreateBulk(builders ...*SyncStateCreate) *SyncStateCreateBulk {
+	return &SyncStateCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SyncStateClient) MapCreateBulk(slice any, setFunc func(*SyncStateCreate, int)) *SyncStateCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SyncStateCreateBulk{err: fmt.Errorf("calling to SyncStateClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SyncStateCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SyncStateCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SyncState.
+func (c *SyncStateClient) Update() *SyncStateUpdate {
+	mutation := newSyncStateMutation(c.config, OpUpdate)
+	return &SyncStateUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SyncStateClient) UpdateOne(_m *SyncState) *SyncStateUpdateOne {
+	mutation := newSyncStateMutation(c.config, OpUpdateOne, withSyncState(_m))
+	return &SyncStateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SyncStateClient) UpdateOneID(id uuid.UUID) *SyncStateUpdateOne {
+	mutation := newSyncStateMutation(c.config, OpUpdateOne, withSyncStateID(id))
+	return &SyncStateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SyncState.
+func (c *SyncStateClient) Delete() *SyncStateDelete {
+	mutation := newSyncStateMutation(c.config, OpDelete)
+	return &SyncStateDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SyncStateClient) DeleteOne(_m *SyncState) *SyncStateDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SyncStateClient) DeleteOneID(id uuid.UUID) *SyncStateDeleteOne {
+	builder := c.Delete().Where(syncstate.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SyncStateDeleteOne{builder}
+}
+
+// Query returns a query builder for SyncState.
+func (c *SyncStateClient) Query() *SyncStateQuery {
+	return &SyncStateQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSyncState},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SyncState entity by its id.
+func (c *SyncStateClient) Get(ctx context.Context, id uuid.UUID) (*SyncState, error) {
+	return c.Query().Where(syncstate.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SyncStateClient) GetX(ctx context.Context, id uuid.UUID) *SyncState {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SyncStateClient) Hooks() []Hook {
+	return c.hooks.SyncState
+}
+
+// Interceptors returns the client interceptors.
+func (c *SyncStateClient) Interceptors() []Interceptor {
+	return c.inters.SyncState
+}
+
+func (c *SyncStateClient) mutate(ctx context.Context, m *SyncStateMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SyncStateCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SyncStateUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SyncStateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SyncStateDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SyncState mutation op: %q", m.Op())
+	}
+}
+
 // TelegramMessageClient is a client for the TelegramMessage schema.
 type TelegramMessageClient struct {
 	config
@@ -795,9 +938,9 @@ func (c *TelegramMessageClient) mutate(ctx context.Context, m *TelegramMessageMu
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Chunk, Document, SupportRequest, TelegramMessage []ent.Hook
+		Chunk, Document, SupportRequest, SyncState, TelegramMessage []ent.Hook
 	}
 	inters struct {
-		Chunk, Document, SupportRequest, TelegramMessage []ent.Interceptor
+		Chunk, Document, SupportRequest, SyncState, TelegramMessage []ent.Interceptor
 	}
 )

@@ -15,6 +15,7 @@ import (
 	"github.com/go-faster/scpbot/internal/ent/chunk"
 	"github.com/go-faster/scpbot/internal/ent/document"
 	"github.com/go-faster/scpbot/internal/ent/supportrequest"
+	"github.com/go-faster/scpbot/internal/ent/syncstate"
 	"github.com/go-faster/scpbot/internal/ent/telegrammessage"
 )
 
@@ -79,6 +80,7 @@ func checkColumn(t, c string) error {
 			chunk.Table:           chunk.ValidColumn,
 			document.Table:        document.ValidColumn,
 			supportrequest.Table:  supportrequest.ValidColumn,
+			syncstate.Table:       syncstate.ValidColumn,
 			telegrammessage.Table: telegrammessage.ValidColumn,
 		})
 	})

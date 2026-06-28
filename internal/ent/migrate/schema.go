@@ -121,6 +121,35 @@ var (
 			},
 		},
 	}
+	// SyncStatesColumns holds the columns for the "sync_states" table.
+	SyncStatesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "source", Type: field.TypeString},
+		{Name: "last_synced_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_cursor", Type: field.TypeString, Default: ""},
+		{Name: "status", Type: field.TypeString, Default: "new"},
+		{Name: "error", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "document_count", Type: field.TypeInt, Default: 0},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SyncStatesTable holds the schema information for the "sync_states" table.
+	SyncStatesTable = &schema.Table{
+		Name:       "sync_states",
+		Columns:    SyncStatesColumns,
+		PrimaryKey: []*schema.Column{SyncStatesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "syncstate_source",
+				Unique:  true,
+				Columns: []*schema.Column{SyncStatesColumns[1]},
+			},
+			{
+				Name:    "syncstate_status",
+				Unique:  false,
+				Columns: []*schema.Column{SyncStatesColumns[4]},
+			},
+		},
+	}
 	// TelegramMessagesColumns holds the columns for the "telegram_messages" table.
 	TelegramMessagesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -158,6 +187,7 @@ var (
 		ChunksTable,
 		DocumentsTable,
 		SupportRequestsTable,
+		SyncStatesTable,
 		TelegramMessagesTable,
 	}
 )
