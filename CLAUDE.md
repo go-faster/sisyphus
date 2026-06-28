@@ -51,6 +51,8 @@ service_catalog.yaml    manual service catalog (see plan §8)
 - `internal/index` is the contract. It must stay dependency-light (stdlib + `github.com/google/uuid` only). All other packages depend on it, not on each other where avoidable.
 - Implement the interfaces in `internal/index` exactly; do not change their signatures without updating this file and every implementer.
 - Errors: wrap with `github.com/go-faster/errors` (`errors.Wrap`). No `fmt.Errorf("...%w")`.
+- `errors.Wrap(f(), "msg")` as a return statement is wrong: if `f()` returns nil, `errors.Wrap` still returns a non-nil error. Always check first: `if err := f(); err != nil { return errors.Wrap(err, "msg") }`.
+- File structure: split logical sections into separate files instead of separating them with `//` comments using `--` dividers. Even if a file seems large, prefer multiple focused files over in-file section markers.
 - Logging: `*zap.Logger` passed in; no global loggers, no `log` package.
 - Content hashing: `internal/index.Hash` (sha256 of normalized text). Skip re-embedding when hash is unchanged.
 - IDs: `github.com/google/uuid`.

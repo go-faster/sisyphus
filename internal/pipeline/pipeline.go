@@ -170,7 +170,10 @@ func withTx(ctx context.Context, db *ent.Client, fn func(tx *ent.Tx) error) erro
 		}
 		return err
 	}
-	return errors.Wrap(tx.Commit(), "commit")
+	if err := tx.Commit(); err != nil {
+		return errors.Wrap(err, "commit")
+	}
+	return nil
 }
 
 var _ = sql.OrderDesc // keep entsql import available for future filters
