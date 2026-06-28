@@ -10,7 +10,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - ./data/pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-scpbot}" ]
       interval: 5s
@@ -23,7 +23,7 @@ services:
       - "6333:6333" # REST
       - "6334:6334" # gRPC
     volumes:
-      - ./data/qdrant:/qdrant/storage
+      - qdrant:/qdrant/storage
     healthcheck:
       test: [ "CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1" ]
       interval: 5s
@@ -35,7 +35,7 @@ services:
     ports:
       - "11434:11434"
     volumes:
-      - ./data/ollama:/root/.ollama
+      - ollama:/root/.ollama
     # Pull the embedding model on first run:
     #   docker compose exec ollama ollama pull bge-m3
 
@@ -63,4 +63,10 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./data/scp:/data/scp
+      - scpdata:/data/scp
+
+volumes:
+  pgdata:
+  qdrant:
+  ollama:
+  scpdata:
