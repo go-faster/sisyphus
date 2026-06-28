@@ -51,18 +51,14 @@ services:
       ollama:
         condition: service_started
     environment:
+      SCPBOT_CONFIG: /data/scp/config.yaml
       SCPBOT_DATABASE_DSN: postgres://${POSTGRES_USER:-scpbot}:${POSTGRES_PASSWORD:-scpbot}@postgres:5432/${POSTGRES_DB:-scpbot}?sslmode=disable
-      SCPBOT_QDRANT_ADDR: qdrant:6334
-      SCPBOT_OLLAMA_URL: http://ollama:11434
-      SCPBOT_EMBED_MODEL: ${SCPBOT_EMBED_MODEL:-bge-m3}
-      SCPBOT_HTTP_ADDR: :8080
-      SCPBOT_TELEGRAM_APP_ID: ${SCPBOT_TELEGRAM_APP_ID}
       SCPBOT_TELEGRAM_APP_HASH: ${SCPBOT_TELEGRAM_APP_HASH}
       SCPBOT_TELEGRAM_BOT_TOKEN: ${SCPBOT_TELEGRAM_BOT_TOKEN}
-      SCPBOT_TELEGRAM_SESSION_DIR: /data/scp/session
     ports:
       - "8080:8080"
     volumes:
+      - ./config.example.yaml:/data/scp/config.yaml:ro
       - scpdata:/data/scp
 
 volumes:

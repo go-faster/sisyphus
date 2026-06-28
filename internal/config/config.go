@@ -1,49 +1,51 @@
-// Package config loads scpbot configuration from the environment.
+// Package config loads scpbot configuration from YAML.
 package config
 
 import (
 	"os"
-	"strconv"
+	"path/filepath"
+	"strings"
 
 	"github.com/go-faster/errors"
+	"github.com/go-faster/yaml"
 )
 
-// Config holds all runtime configuration, sourced from SCPBOT_* env vars.
+// Config holds all runtime configuration.
 type Config struct {
-	HTTPAddr    string // SCPBOT_HTTP_ADDR
-	DatabaseDSN string // SCPBOT_DATABASE_DSN
+	HTTPAddr    string
+	DatabaseDSN string
 
-	QdrantAddr       string // SCPBOT_QDRANT_ADDR (host:port, gRPC)
-	QdrantCollection string // SCPBOT_QDRANT_COLLECTION
+	QdrantAddr       string
+	QdrantCollection string
 
-	OllamaURL     string // SCPBOT_OLLAMA_URL
-	EmbedProvider string // SCPBOT_EMBED_PROVIDER (ollama|openrouter)
-	EmbedModel    string // SCPBOT_EMBED_MODEL
-	EmbedDim      int    // SCPBOT_EMBED_DIM
+	OllamaURL     string
+	EmbedProvider string
+	EmbedModel    string
+	EmbedDim      int
 
-	GitLabRoots string // SCPBOT_GITLAB_ROOTS
+	GitLabRoots string
 
 	Jira JiraConfig
 
 	OpenRouter OpenRouter
 	Telegram   Telegram
 
-	MCPAddr string // SCPBOT_MCP_ADDR
+	MCPAddr string
 }
 
 // JiraConfig holds Jira REST API configuration for ingestion.
 type JiraConfig struct {
-	BaseURL  string // SCPBOT_JIRA_BASE_URL
-	Email    string // SCPBOT_JIRA_EMAIL
-	APIToken string // SCPBOT_JIRA_APITOKEN
-	PAT      string // SCPBOT_JIRA_PAT
-	Projects string // SCPBOT_JIRA_PROJECTS (comma-separated)
+	BaseURL  string
+	Email    string
+	APIToken string
+	PAT      string
+	Projects string
 }
 
 // OpenRouter holds configuration for the OpenRouter LLM API.
 type OpenRouter struct {
-	APIKey string // SCPBOT_OPENROUTER_API_KEY
-	Model  string // SCPBOT_OPENROUTER_MODEL
+	APIKey string
+	Model  string
 }
 
 // Enabled reports whether OpenRouter is configured.
@@ -51,67 +53,237 @@ func (o OpenRouter) Enabled() bool { return o.APIKey != "" }
 
 // Telegram holds gotd auth configuration (plan: user session + bot).
 type Telegram struct {
-	AppID         int    // SCPBOT_TELEGRAM_APP_ID
-	AppHash       string // SCPBOT_TELEGRAM_APP_HASH
-	BotToken      string // SCPBOT_TELEGRAM_BOT_TOKEN
-	SessionDir    string // SCPBOT_TELEGRAM_SESSION_DIR
-	MonitorChats  string // SCPBOT_TELEGRAM_MONITOR_CHATS (comma-separated int64 IDs)
-	IngestSession string // SCPBOT_TELEGRAM_INGEST_SESSION (path to user session file)
+	AppID         int
+	AppHash       string
+	BotToken      string
+	SessionDir    string
+	MonitorChats  string
+	IngestSession string
 }
 
-// Load reads configuration from the environment, applying defaults.
+type fileConfig struct {
+	HTTPAddr    string `yaml:"http_addr"`
+	DatabaseDSN Secret `yaml:"database_dsn"`
+
+	QdrantAddr       string `yaml:"qdrant_addr"`
+	QdrantCollection string `yaml:"qdrant_collection"`
+
+	OllamaURL     string `yaml:"ollama_url"`
+	EmbedProvider string `yaml:"embed_provider"`
+	EmbedModel    string `yaml:"embed_model"`
+	EmbedDim      int    `yaml:"embed_dim"`
+
+	GitLabRoots string `yaml:"gitlab_roots"`
+
+	Jira fileJiraConfig `yaml:"jira"`
+
+	OpenRouter fileOpenRouter `yaml:"openrouter"`
+	Telegram   fileTelegram   `yaml:"telegram"`
+
+	MCPAddr string `yaml:"mcp_addr"`
+}
+
+type fileJiraConfig struct {
+	BaseURL  string `yaml:"base_url"`
+	Email    string `yaml:"email"`
+	APIToken Secret `yaml:"api_token"`
+	PAT      Secret `yaml:"pat"`
+	Projects string `yaml:"projects"`
+}
+
+type fileOpenRouter struct {
+	APIKey Secret `yaml:"api_key"`
+	Model  string `yaml:"model"`
+}
+
+type fileTelegram struct {
+	AppID         int    `yaml:"app_id"`
+	AppHash       Secret `yaml:"app_hash"`
+	BotToken      Secret `yaml:"bot_token"`
+	SessionDir    string `yaml:"session_dir"`
+	MonitorChats  string `yaml:"monitor_chats"`
+	IngestSession string `yaml:"ingest_session"`
+}
+
+// Secret describes a secret loaded from a literal value, environment variable,
+// or file. Scalar YAML values are treated as literal values.
+type Secret struct {
+	Value string `yaml:"value"`
+	Env   string `yaml:"env"`
+	File  string `yaml:"file"`
+}
+
+// UnmarshalYAML accepts either a scalar secret value or a secret reference.
+func (s *Secret) UnmarshalYAML(value *yaml.Node) error {
+	var plain string
+	if err := value.Decode(&plain); err == nil {
+		s.Value = plain
+		return nil
+	}
+
+	type secret Secret
+	var ref secret
+	if err := value.Decode(&ref); err != nil {
+		return err
+	}
+	*s = Secret(ref)
+	return nil
+}
+
+// Load reads configuration from YAML. Set SCPBOT_CONFIG to choose the config
+// file path; otherwise ./config.yaml is used when it exists.
 func Load() (Config, error) {
-	c := Config{
-		HTTPAddr:         env("SCPBOT_HTTP_ADDR", ":8080"),
-		DatabaseDSN:      os.Getenv("SCPBOT_DATABASE_DSN"),
-		QdrantAddr:       env("SCPBOT_QDRANT_ADDR", "localhost:6334"),
-		QdrantCollection: env("SCPBOT_QDRANT_COLLECTION", "corp_chunks"),
-		OllamaURL:        env("SCPBOT_OLLAMA_URL", "http://localhost:11434"),
-		EmbedProvider:    env("SCPBOT_EMBED_PROVIDER", "ollama"),
-		EmbedModel:       env("SCPBOT_EMBED_MODEL", "bge-m3"),
-		EmbedDim:         envInt("SCPBOT_EMBED_DIM", 1024),
-		MCPAddr:          env("SCPBOT_MCP_ADDR", ":8081"),
-		OpenRouter: OpenRouter{
-			APIKey: os.Getenv("SCPBOT_OPENROUTER_API_KEY"),
-			Model:  env("SCPBOT_OPENROUTER_MODEL", "openai/gpt-4o-mini"),
-		},
-		Telegram: Telegram{
-			AppID:         envInt("SCPBOT_TELEGRAM_APP_ID", 0),
-			AppHash:       os.Getenv("SCPBOT_TELEGRAM_APP_HASH"),
-			BotToken:      os.Getenv("SCPBOT_TELEGRAM_BOT_TOKEN"),
-			SessionDir:    env("SCPBOT_TELEGRAM_SESSION_DIR", "./session"),
-			MonitorChats:  os.Getenv("SCPBOT_TELEGRAM_MONITOR_CHATS"),
-			IngestSession: os.Getenv("SCPBOT_TELEGRAM_INGEST_SESSION"),
-		},
-		Jira: JiraConfig{
-			BaseURL:  os.Getenv("SCPBOT_JIRA_BASE_URL"),
-			Email:    os.Getenv("SCPBOT_JIRA_EMAIL"),
-			APIToken: os.Getenv("SCPBOT_JIRA_APITOKEN"),
-			PAT:      os.Getenv("SCPBOT_JIRA_PAT"),
-			Projects: os.Getenv("SCPBOT_JIRA_PROJECTS"),
-		},
+	fc := defaultConfig()
+	baseDir := "."
+
+	if path := configPath(); path != "" {
+		if err := loadFile(path, &fc); err != nil {
+			return Config{}, err
+		}
+		baseDir = filepath.Dir(path)
+	}
+
+	c, err := fc.resolve(baseDir)
+	if err != nil {
+		return Config{}, err
 	}
 	if c.DatabaseDSN == "" {
-		return Config{}, errors.New("SCPBOT_DATABASE_DSN is required")
+		return Config{}, errors.New("database_dsn is required")
 	}
 	return c, nil
 }
 
-func env(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+func defaultConfig() fileConfig {
+	return fileConfig{
+		HTTPAddr:         ":8080",
+		QdrantAddr:       "localhost:6334",
+		QdrantCollection: "corp_chunks",
+		OllamaURL:        "http://localhost:11434",
+		EmbedProvider:    "ollama",
+		EmbedModel:       "bge-m3",
+		EmbedDim:         1024,
+		MCPAddr:          ":8081",
+		OpenRouter: fileOpenRouter{
+			Model: "openai/gpt-4o-mini",
+		},
+		Telegram: fileTelegram{
+			SessionDir: "./session",
+		},
 	}
-	return def
 }
 
-func envInt(key string, def int) int {
-	v := os.Getenv(key)
-	if v == "" {
-		return def
+func configPath() string {
+	if path := os.Getenv("SCPBOT_CONFIG"); path != "" {
+		return path
 	}
-	n, err := strconv.Atoi(v)
+	if _, err := os.Stat("config.yaml"); err == nil {
+		return "config.yaml"
+	}
+	return ""
+}
+
+func loadFile(path string, c *fileConfig) error {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return def
+		return errors.Wrap(err, "read config file")
 	}
-	return n
+	if err := yaml.Unmarshal(data, c); err != nil {
+		return errors.Wrap(err, "parse config file")
+	}
+	return nil
+}
+
+func (c fileConfig) resolve(baseDir string) (Config, error) {
+	dsn, err := c.DatabaseDSN.Resolve(baseDir)
+	if err != nil {
+		return Config{}, errors.Wrap(err, "database_dsn")
+	}
+	jiraToken, err := c.Jira.APIToken.Resolve(baseDir)
+	if err != nil {
+		return Config{}, errors.Wrap(err, "jira api_token")
+	}
+	jiraPAT, err := c.Jira.PAT.Resolve(baseDir)
+	if err != nil {
+		return Config{}, errors.Wrap(err, "jira pat")
+	}
+	openRouterKey, err := c.OpenRouter.APIKey.Resolve(baseDir)
+	if err != nil {
+		return Config{}, errors.Wrap(err, "openrouter api_key")
+	}
+	telegramAppHash, err := c.Telegram.AppHash.Resolve(baseDir)
+	if err != nil {
+		return Config{}, errors.Wrap(err, "telegram app_hash")
+	}
+	telegramBotToken, err := c.Telegram.BotToken.Resolve(baseDir)
+	if err != nil {
+		return Config{}, errors.Wrap(err, "telegram bot_token")
+	}
+
+	return Config{
+		HTTPAddr:         c.HTTPAddr,
+		DatabaseDSN:      dsn,
+		QdrantAddr:       c.QdrantAddr,
+		QdrantCollection: c.QdrantCollection,
+		OllamaURL:        c.OllamaURL,
+		EmbedProvider:    c.EmbedProvider,
+		EmbedModel:       c.EmbedModel,
+		EmbedDim:         c.EmbedDim,
+		GitLabRoots:      c.GitLabRoots,
+		Jira: JiraConfig{
+			BaseURL:  c.Jira.BaseURL,
+			Email:    c.Jira.Email,
+			APIToken: jiraToken,
+			PAT:      jiraPAT,
+			Projects: c.Jira.Projects,
+		},
+		OpenRouter: OpenRouter{
+			APIKey: openRouterKey,
+			Model:  c.OpenRouter.Model,
+		},
+		Telegram: Telegram{
+			AppID:         c.Telegram.AppID,
+			AppHash:       telegramAppHash,
+			BotToken:      telegramBotToken,
+			SessionDir:    c.Telegram.SessionDir,
+			MonitorChats:  c.Telegram.MonitorChats,
+			IngestSession: c.Telegram.IngestSession,
+		},
+		MCPAddr: c.MCPAddr,
+	}, nil
+}
+
+// Resolve returns the configured secret value.
+func (s Secret) Resolve(baseDir string) (string, error) {
+	set := 0
+	if s.Value != "" {
+		set++
+	}
+	if s.Env != "" {
+		set++
+	}
+	if s.File != "" {
+		set++
+	}
+	if set == 0 {
+		return "", nil
+	}
+	if set > 1 {
+		return "", errors.New("set only one of value, env, or file")
+	}
+	if s.Value != "" {
+		return s.Value, nil
+	}
+	if s.Env != "" {
+		return os.Getenv(s.Env), nil
+	}
+
+	path := s.File
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(baseDir, path)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", errors.Wrap(err, "read secret file")
+	}
+	return strings.TrimRight(string(data), "\r\n"), nil
 }

@@ -1,0 +1,38 @@
+http_addr: :8080
+mcp_addr: :8081
+database_dsn:
+  env: SCPBOT_DATABASE_DSN
+
+qdrant_addr: qdrant:6334
+qdrant_collection: corp_chunks
+
+ollama_url: http://ollama:11434
+embed_provider: ollama
+embed_model: bge-m3
+embed_dim: 1024
+
+gitlab_roots: ""
+
+jira:
+  base_url: ""
+  email: ""
+  api_token:
+    env: SCPBOT_JIRA_APITOKEN
+  pat:
+    env: SCPBOT_JIRA_PAT
+  projects: ""
+
+openrouter:
+  api_key:
+    env: SCPBOT_OPENROUTER_API_KEY
+  model: openai/gpt-4o-mini
+
+telegram:
+  app_id: 0
+  app_hash:
+    env: SCPBOT_TELEGRAM_APP_HASH
+  bot_token:
+    env: SCPBOT_TELEGRAM_BOT_TOKEN
+  session_dir: /data/scp/session
+  monitor_chats: ""
+  ingest_session: ""

@@ -19,7 +19,7 @@ func New(cfg config.Config) (index.Embedder, error) {
 		return ollama.New(cfg.OllamaURL, cfg.EmbedModel, ollama.EmbedderOptions{Dim: cfg.EmbedDim}), nil
 	case "openrouter":
 		if cfg.OpenRouter.APIKey == "" {
-			return nil, errors.New("SCPBOT_OPENROUTER_API_KEY is required for openrouter embeddings")
+			return nil, errors.New("openrouter api_key is required for openrouter embeddings")
 		}
 		return openrouterembed.New(cfg.OpenRouter.APIKey, cfg.EmbedModel, openrouterembed.EmbedderOptions{Dim: cfg.EmbedDim}), nil
 	default:
