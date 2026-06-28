@@ -24,6 +24,8 @@ type Config struct {
 
 	OpenRouter OpenRouter
 	Telegram   Telegram
+
+	MCPAddr string // SCPBOT_MCP_ADDR
 }
 
 // OpenRouter holds configuration for the OpenRouter LLM API.
@@ -54,6 +56,7 @@ func Load() (Config, error) {
 		EmbedModel:       env("SCPBOT_EMBED_MODEL", "bge-m3"),
 		EmbedDim:         envInt("SCPBOT_EMBED_DIM", 1024),
 		CatalogPath:      env("SCPBOT_CATALOG_PATH", "service_catalog.yaml"),
+		MCPAddr:          env("SCPBOT_MCP_ADDR", ":8081"),
 		OpenRouter: OpenRouter{
 			APIKey: os.Getenv("SCPBOT_OPENROUTER_API_KEY"),
 			Model:  env("SCPBOT_OPENROUTER_MODEL", "openai/gpt-4o-mini"),

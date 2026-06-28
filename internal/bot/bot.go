@@ -15,12 +15,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/go-faster/scpbot/internal/index"
+	"github.com/go-faster/scpbot/internal/wire"
 )
 
-// Retriever is the retrieval subset the bot needs.
-type Retriever interface {
-	Retrieve(ctx context.Context, q index.Query) ([]index.Result, error)
-}
+// Retriever is the retrieval interface (alias to wire.Retriever).
+type Retriever = wire.Retriever
 
 // Config configures the bot.
 type Config struct {

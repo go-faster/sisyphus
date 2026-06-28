@@ -18,6 +18,7 @@ secret.yml
 secret.yaml
 
 /scpbot
+/scpmcp
 /_ref
 
 # goreleaser

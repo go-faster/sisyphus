@@ -9,12 +9,11 @@ import (
 
 	"github.com/go-faster/scpbot/internal/index"
 	"github.com/go-faster/scpbot/internal/oas"
+	"github.com/go-faster/scpbot/internal/wire"
 )
 
-// Retriever is the subset of retrieval.Service the handler needs.
-type Retriever interface {
-	Retrieve(ctx context.Context, q index.Query) ([]index.Result, error)
-}
+// Retriever is the retrieval interface (alias to wire.Retriever).
+type Retriever = wire.Retriever
 
 // Handler implements oas.Handler.
 type Handler struct {
