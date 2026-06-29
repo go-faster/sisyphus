@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/go-faster/errors"
+	"github.com/go-faster/sdk/zctx"
 	"go.uber.org/zap"
 
 	chunkjira "github.com/go-faster/scpbot/internal/chunk/jira"
@@ -31,14 +32,10 @@ type Options struct {
 	Password   string // Server/DC: password for Basic auth
 	PAT        string // Server/DC: personal access token
 	HTTPClient *http.Client
-	Logger     *zap.Logger
 	PageSize   int // default 100 via setDefaults
 }
 
 func (opts *Options) setDefaults() {
-	if opts.Logger == nil {
-		opts.Logger = zap.L()
-	}
 	if opts.HTTPClient == nil {
 		opts.HTTPClient = http.DefaultClient
 	}
@@ -81,7 +78,6 @@ type Fetcher struct {
 	password   string
 	pat        string
 	httpClient *http.Client
-	logger     *zap.Logger
 	pageSize   int
 }
 
@@ -99,7 +95,6 @@ func New(opts Options) (*Fetcher, error) {
 		password:   opts.Password,
 		pat:        opts.PAT,
 		httpClient: opts.HTTPClient,
-		logger:     opts.Logger,
 		pageSize:   opts.PageSize,
 	}, nil
 }
@@ -355,7 +350,7 @@ func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions, cursor Cursor) (
 	for _, iss := range searchResp.Issues {
 		chunkIssue, err := convertIssue(iss)
 		if err != nil {
-			f.logger.Warn("skipping issue with unparseable time",
+			zctx.From(ctx).Warn("skipping issue with unparseable time",
 				zap.String("key", iss.Key),
 				zap.Error(err),
 			)

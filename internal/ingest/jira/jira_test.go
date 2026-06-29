@@ -13,8 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"go.uber.org/zap"
-
 	chunkjira "github.com/go-faster/scpbot/internal/chunk/jira"
 	"github.com/go-faster/scpbot/internal/index"
 )
@@ -161,7 +159,6 @@ func testSinglePagePartial(t *testing.T) {
 	f, err := New(Options{
 		BaseURL: srv.URL,
 		PAT:     "test",
-		Logger:  zap.NewNop(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -217,7 +214,6 @@ func testMultiPage(t *testing.T) {
 	f, err := New(Options{
 		BaseURL:  srv.URL,
 		PAT:      "test",
-		Logger:   zap.NewNop(),
 		PageSize: 100,
 	})
 	if err != nil {
@@ -295,7 +291,6 @@ func testCursorResume(t *testing.T) {
 	f, err := New(Options{
 		BaseURL: srv.URL,
 		PAT:     "test",
-		Logger:  zap.NewNop(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -361,7 +356,6 @@ func testCloudAuth(t *testing.T) {
 		BaseURL:  srv.URL,
 		Email:    email,
 		APIToken: token,
-		Logger:   zap.NewNop(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -395,7 +389,6 @@ func testPAT(t *testing.T) {
 	f, err := New(Options{
 		BaseURL: srv.URL,
 		PAT:     "pat-secret-456",
-		Logger:  zap.NewNop(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -435,7 +428,6 @@ func testUsernamePasswordAuth(t *testing.T) {
 		BaseURL:  srv.URL,
 		Username: username,
 		Password: password,
-		Logger:   zap.NewNop(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -467,7 +459,6 @@ func testErrorPath(t *testing.T) {
 	f, err := New(Options{
 		BaseURL: srv.URL,
 		PAT:     "test",
-		Logger:  zap.NewNop(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -490,7 +481,6 @@ func testEmptyProjects(t *testing.T) {
 	f, err := New(Options{
 		BaseURL: "http://example.com",
 		PAT:     "test",
-		Logger:  zap.NewNop(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -550,7 +540,6 @@ func TestIssueMapping(t *testing.T) {
 	f, err := New(Options{
 		BaseURL: srv.URL,
 		PAT:     "test",
-		Logger:  zap.NewNop(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -646,7 +635,6 @@ func TestBaseURLTrim(t *testing.T) {
 	f, err := New(Options{
 		BaseURL: srv.URL + "/", // trailing slash should be trimmed
 		PAT:     "test",
-		Logger:  zap.NewNop(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -674,7 +662,6 @@ func TestFetchAllFinalCursor(t *testing.T) {
 	f, err := New(Options{
 		BaseURL: srv.URL,
 		PAT:     "test",
-		Logger:  zap.NewNop(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -720,7 +707,6 @@ func TestUpdatedAfterZero(t *testing.T) {
 	f, err := New(Options{
 		BaseURL: srv.URL,
 		PAT:     "test",
-		Logger:  zap.NewNop(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -754,7 +740,6 @@ func TestUserAgent(t *testing.T) {
 	f, err := New(Options{
 		BaseURL: srv.URL,
 		PAT:     "test",
-		Logger:  zap.NewNop(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -787,7 +772,6 @@ func TestJQLURLEncoding(t *testing.T) {
 	f, err := New(Options{
 		BaseURL: srv.URL,
 		PAT:     "test",
-		Logger:  zap.NewNop(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -856,7 +840,6 @@ func TestBadTimeSkipsIssue(t *testing.T) {
 	f, err := New(Options{
 		BaseURL: srv.URL,
 		PAT:     "test",
-		Logger:  zap.NewNop(),
 	})
 	if err != nil {
 		t.Fatal(err)

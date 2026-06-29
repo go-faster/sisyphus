@@ -13,6 +13,7 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/app"
+	"github.com/go-faster/sdk/zctx"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
@@ -35,15 +36,17 @@ import (
 
 func main() {
 	app.Run(func(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
+		ctx = zctx.Base(ctx, lg)
 		cfg, err := config.Load()
 		if err != nil {
 			return errors.Wrap(err, "config")
 		}
-		return run(ctx, lg, cfg, t.TracerProvider(), t.MeterProvider())
+		return run(ctx, cfg, t.TracerProvider(), t.MeterProvider())
 	})
 }
 
-func run(ctx context.Context, lg *zap.Logger, cfg config.Config, tp trace.TracerProvider, mp metric.MeterProvider) error {
+func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp metric.MeterProvider) error {
+	lg := zctx.From(ctx)
 	// Postgres via pgx stdlib -> ent.
 	db, err := sql.Open("pgx", cfg.DatabaseDSN)
 	if err != nil {
@@ -62,7 +65,7 @@ func run(ctx context.Context, lg *zap.Logger, cfg config.Config, tp trace.Tracer
 	}
 
 	// Embedder + vector store.
-	embedder, err := embed.New(cfg, embed.NewOptions{
+	embedder, err := embed.New(ctx, cfg, embed.NewOptions{
 		TracerProvider: tp,
 		MeterProvider:  mp,
 	})
@@ -90,7 +93,7 @@ func run(ctx context.Context, lg *zap.Logger, cfg config.Config, tp trace.Tracer
 		vector = store
 	}
 
-	retr, err := retrieval.New(pg, vector, lg)
+	retr, err := retrieval.New(pg, vector)
 	if err != nil {
 		return errors.Wrap(err, "retrieval")
 	}
@@ -98,10 +101,9 @@ func run(ctx context.Context, lg *zap.Logger, cfg config.Config, tp trace.Tracer
 	var answerer index.Answerer
 	if cfg.OpenRouter.Enabled() {
 		lg.Info("openrouter LLM enabled", zap.String("model", cfg.OpenRouter.Model))
-		httpClient, err := netclient.HTTPClient("openrouter", cfg.Proxies.OpenRouter, netclient.HTTPClientOptions{
+		httpClient, err := netclient.HTTPClient(ctx, "openrouter", cfg.Proxies.OpenRouter, netclient.HTTPClientOptions{
 			TracerProvider: tp,
 			MeterProvider:  mp,
-			Logger:         lg.Named("netclient"),
 		})
 		if err != nil {
 			return errors.Wrap(err, "openrouter http client")
@@ -138,12 +140,12 @@ func run(ctx context.Context, lg *zap.Logger, cfg config.Config, tp trace.Tracer
 
 	// Telegram bot (optional: only when credentials are present).
 	if cfg.Telegram.AppID != 0 && cfg.Telegram.BotToken != "" {
-		b := bot.New(bot.Config{
+		b := bot.New(ctx, bot.Config{
 			AppID:      cfg.Telegram.AppID,
 			AppHash:    cfg.Telegram.AppHash,
 			BotToken:   cfg.Telegram.BotToken,
 			SessionDir: cfg.Telegram.SessionDir,
-		}, retr, answerer, lg.Named("bot"))
+		}, retr, answerer)
 		go func() {
 			if err := b.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 				errc <- errors.Wrap(err, "bot")

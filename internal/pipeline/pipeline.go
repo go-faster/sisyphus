@@ -7,6 +7,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/go-faster/errors"
+	"github.com/go-faster/sdk/zctx"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
@@ -28,15 +29,11 @@ type Pipeline struct {
 	chunker  index.Chunker
 	embedder index.Embedder
 	vectors  VectorStore
-	log      *zap.Logger
 }
 
 // New builds a Pipeline. vectors may be nil to skip vector indexing.
-func New(db *ent.Client, chunker index.Chunker, embedder index.Embedder, vectors VectorStore, log *zap.Logger) *Pipeline {
-	if log == nil {
-		log = zap.NewNop()
-	}
-	return &Pipeline{db: db, chunker: chunker, embedder: embedder, vectors: vectors, log: log}
+func New(db *ent.Client, chunker index.Chunker, embedder index.Embedder, vectors VectorStore) *Pipeline {
+	return &Pipeline{db: db, chunker: chunker, embedder: embedder, vectors: vectors}
 }
 
 type chunkKey struct {
@@ -62,7 +59,7 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) error {
 		return errors.Wrap(err, "query document")
 	}
 	if exists {
-		p.log.Debug("document unchanged, skipping",
+		zctx.From(ctx).Debug("document unchanged, skipping",
 			zap.String("source", string(doc.Source)), zap.String("source_id", doc.SourceID))
 		return nil
 	}
@@ -135,14 +132,14 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) error {
 
 	if p.vectors != nil && len(staleIDs) > 0 {
 		if err := p.vectors.Delete(ctx, staleIDs); err != nil {
-			p.log.Error("failed to delete stale vector points",
+			zctx.From(ctx).Error("failed to delete stale vector points",
 				zap.Error(err),
 				zap.Int("count", len(staleIDs)),
 			)
 		}
 	}
 
-	p.log.Info("indexed document",
+	zctx.From(ctx).Info("indexed document",
 		zap.String("source", string(doc.Source)),
 		zap.String("source_id", doc.SourceID),
 		zap.Int("chunks", len(chunks)))

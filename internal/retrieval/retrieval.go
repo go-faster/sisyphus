@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/go-faster/errors"
+	"github.com/go-faster/sdk/zctx"
 	"go.uber.org/zap"
 
 	"github.com/go-faster/scpbot/internal/index"
@@ -27,19 +28,15 @@ var authorityWeight = map[index.Authority]float64{
 type Service struct {
 	lexical index.Searcher
 	vector  index.Searcher
-	log     *zap.Logger
 }
 
 // New builds a retrieval Service. Either searcher may be nil (e.g. vector
 // search unavailable); at least one must be set.
-func New(lexical, vector index.Searcher, log *zap.Logger) (*Service, error) {
+func New(lexical, vector index.Searcher) (*Service, error) {
 	if lexical == nil && vector == nil {
 		return nil, errors.New("retrieval: at least one searcher required")
 	}
-	if log == nil {
-		log = zap.NewNop()
-	}
-	return &Service{lexical: lexical, vector: vector, log: log}, nil
+	return &Service{lexical: lexical, vector: vector}, nil
 }
 
 // Retrieve runs both backends, merges by chunk ID, applies boosts, and returns
@@ -71,7 +68,7 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) ([]index.Result, 
 	if s.lexical != nil {
 		rs, err := s.lexical.Search(ctx, q)
 		if err != nil {
-			s.log.Warn("lexical search failed", zap.Error(err))
+			zctx.From(ctx).Warn("lexical search failed", zap.Error(err))
 		} else {
 			add(rs)
 		}
@@ -79,7 +76,7 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) ([]index.Result, 
 	if s.vector != nil {
 		rs, err := s.vector.Search(ctx, q)
 		if err != nil {
-			s.log.Warn("vector search failed", zap.Error(err))
+			zctx.From(ctx).Warn("vector search failed", zap.Error(err))
 		} else {
 			add(rs)
 		}

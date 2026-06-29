@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/go-faster/errors"
+	"github.com/go-faster/sdk/zctx"
 	"go.uber.org/zap"
 
 	gotdtelegram "github.com/gotd/td/telegram"
@@ -42,33 +43,23 @@ type BackfillResult struct {
 type BackfillOptions struct {
 	Session *gotdtelegram.Client // gotd user-session client
 	Fetcher MessageFetcher       // test injection; if set, Session is ignored
-	Logger  *zap.Logger
-}
-
-func (opts *BackfillOptions) setDefaults() {
-	if opts.Logger == nil {
-		opts.Logger = zap.NewNop()
-	}
 }
 
 // Backfiller ingests Telegram chat history via gotd and persists it to ent.
 type Backfiller struct {
 	db      *ent.Client
 	fetcher MessageFetcher
-	log     *zap.Logger
 }
 
 // NewBackfiller creates a new Backfiller. Returns an error if neither Session
 // nor Fetcher is configured.
 func NewBackfiller(db *ent.Client, opts BackfillOptions) (*Backfiller, error) {
-	opts.setDefaults()
-
 	var fetcher MessageFetcher
 	switch {
 	case opts.Fetcher != nil:
 		fetcher = opts.Fetcher
 	case opts.Session != nil:
-		fetcher = newGotdFetcher(opts.Session, opts.Logger)
+		fetcher = newGotdFetcher(opts.Session)
 	default:
 		return nil, errors.New("telegram: session not configured")
 	}
@@ -76,13 +67,13 @@ func NewBackfiller(db *ent.Client, opts BackfillOptions) (*Backfiller, error) {
 	return &Backfiller{
 		db:      db,
 		fetcher: fetcher,
-		log:     opts.Logger,
 	}, nil
 }
 
 // Backfill fetches history for each chat in req, persists messages, groups
 // them into conversations, persists support_requests, and returns Documents.
 func (b *Backfiller) Backfill(ctx context.Context, req BackfillRequest) (BackfillResult, error) {
+	lg := zctx.From(ctx)
 	sorted := make([]ChatSpec, len(req.Chats))
 	copy(sorted, req.Chats)
 	slices.SortStableFunc(sorted, func(a, b ChatSpec) int {
@@ -95,7 +86,7 @@ func (b *Backfiller) Backfill(ctx context.Context, req BackfillRequest) (Backfil
 			chatIDs[i] = c.ID
 		}
 		if err := pb.bootstrapPeers(ctx, chatIDs); err != nil {
-			b.log.Warn("telegram: peer bootstrap failed; fetches may fail with PEER_ID_INVALID", zap.Error(err))
+			lg.Warn("telegram: peer bootstrap failed; fetches may fail with PEER_ID_INVALID", zap.Error(err))
 		}
 	}
 
@@ -105,7 +96,7 @@ func (b *Backfiller) Backfill(ctx context.Context, req BackfillRequest) (Backfil
 	totalFetched := 0
 
 	for _, chat := range sorted {
-		b.log.Info("backfilling chat",
+		lg.Info("backfilling chat",
 			zap.Int64("chat_id", chat.ID),
 			zap.String("username", chat.Username))
 
@@ -156,7 +147,7 @@ func (b *Backfiller) Backfill(ctx context.Context, req BackfillRequest) (Backfil
 		}
 
 		if len(chatMsgs) == 0 {
-			b.log.Debug("no new messages for chat", zap.Int64("chat_id", chat.ID))
+			lg.Debug("no new messages for chat", zap.Int64("chat_id", chat.ID))
 			continue
 		}
 
@@ -182,7 +173,7 @@ func (b *Backfiller) Backfill(ctx context.Context, req BackfillRequest) (Backfil
 		result.TotalConvos += len(convs)
 		totalFetched += len(chatMsgs)
 
-		b.log.Info("chat backfill complete",
+		lg.Info("chat backfill complete",
 			zap.Int64("chat_id", chat.ID),
 			zap.Int("messages", len(chatMsgs)),
 			zap.Int("conversations", len(convs)))

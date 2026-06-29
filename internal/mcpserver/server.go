@@ -4,7 +4,6 @@ package mcpserver
 
 import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"go.uber.org/zap"
 
 	"github.com/go-faster/scpbot/internal/index"
 	"github.com/go-faster/scpbot/internal/wire"
@@ -13,21 +12,9 @@ import (
 // Retriever is the retrieval interface (alias to wire.Retriever).
 type Retriever = wire.Retriever
 
-// Options holds optional dependencies.
-type Options struct {
-	Logger *zap.Logger
-}
-
-func (o *Options) setDefaults() {
-	if o.Logger == nil {
-		o.Logger = zap.NewNop()
-	}
-}
-
 // New constructs an MCP Server with knowledge tools wired to the provided
 // Retriever and Answerer. Uses official SDK patterns.
-func New(retr Retriever, answerer index.Answerer, opts Options) *mcp.Server {
-	opts.setDefaults()
+func New(retr Retriever, answerer index.Answerer) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{Name: "scpmcp", Version: "0.1.0"}, nil)
 
 	mcp.AddTool(s, &mcp.Tool{

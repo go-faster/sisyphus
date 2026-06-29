@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-faster/errors"
+	"github.com/go-faster/sdk/zctx"
 	"github.com/gotd/log/logzap"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/message"
@@ -34,22 +35,18 @@ type Bot struct {
 	cfg       Config
 	retriever Retriever
 	answerer  index.Answerer
-	log       *zap.Logger
 }
 
 // New builds a Bot.
-func New(cfg Config, r Retriever, a index.Answerer, log *zap.Logger) *Bot {
-	if log == nil {
-		log = zap.NewNop()
-	}
-	return &Bot{cfg: cfg, retriever: r, answerer: a, log: log}
+func New(_ context.Context, cfg Config, r Retriever, a index.Answerer) *Bot {
+	return &Bot{cfg: cfg, retriever: r, answerer: a}
 }
 
 // Run connects, authenticates as a bot, and serves updates until ctx is done.
 func (b *Bot) Run(ctx context.Context) error {
 	dispatcher := tg.NewUpdateDispatcher()
 	client := telegram.NewClient(b.cfg.AppID, b.cfg.AppHash, telegram.Options{
-		Logger:         logzap.New(b.log.Named("td")),
+		Logger:         logzap.New(zctx.From(ctx).Named("td")),
 		UpdateHandler:  dispatcher,
 		SessionStorage: &telegram.FileSessionStorage{Path: filepath.Join(b.cfg.SessionDir, "bot.json")},
 	})
@@ -64,11 +61,11 @@ func (b *Bot) Run(ctx context.Context) error {
 		if !ok {
 			return nil
 		}
-		b.log.Info("context command", zap.String("query", query))
+		zctx.From(ctx).Info("context command", zap.String("query", query))
 
 		answer, err := b.handle(ctx, query)
 		if err != nil {
-			b.log.Error("handle context", zap.Error(err))
+			zctx.From(ctx).Error("handle context", zap.Error(err))
 			answer = "Sorry, something went wrong handling that request."
 		}
 		if _, err := sender.Reply(e, u).Text(ctx, answer); err != nil {
@@ -81,7 +78,7 @@ func (b *Bot) Run(ctx context.Context) error {
 		if _, err := client.Auth().Bot(ctx, b.cfg.BotToken); err != nil {
 			return errors.Wrap(err, "bot auth")
 		}
-		b.log.Info("bot authenticated, serving /context")
+		zctx.From(ctx).Info("bot authenticated, serving /context")
 		<-ctx.Done()
 		return ctx.Err()
 	})

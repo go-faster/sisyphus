@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-faster/errors"
+	"github.com/go-faster/sdk/zctx"
 	"go.uber.org/zap"
 
 	gotdtelegram "github.com/gotd/td/telegram"
@@ -39,13 +40,12 @@ type MessageFetcher interface {
 
 type gotdFetcher struct {
 	client     *gotdtelegram.Client
-	log        *zap.Logger
 	peers      map[int64]int64
 	peersReady bool
 }
 
-func newGotdFetcher(client *gotdtelegram.Client, log *zap.Logger) MessageFetcher {
-	return &gotdFetcher{client: client, log: log}
+func newGotdFetcher(client *gotdtelegram.Client) MessageFetcher {
+	return &gotdFetcher{client: client}
 }
 
 // peerBootstrapper is implemented by fetchers that can pre-resolve peer access hashes.
@@ -54,6 +54,7 @@ type peerBootstrapper interface {
 }
 
 func (f *gotdFetcher) FetchHistory(ctx context.Context, chatID int64, beforeMsgID, limit int) ([]RawMessage, bool, error) {
+	lg := zctx.From(ctx)
 	api := tg.NewClient(f.client)
 
 	peer := f.resolvePeer(chatID)
@@ -71,7 +72,7 @@ func (f *gotdFetcher) FetchHistory(ctx context.Context, chatID int64, beforeMsgI
 
 	modified, ok := result.AsModified()
 	if !ok {
-		f.log.Warn("telegram: got unmodified messages result, treating as empty")
+		lg.Warn("telegram: got unmodified messages result, treating as empty")
 		return nil, false, nil
 	}
 
@@ -80,11 +81,11 @@ func (f *gotdFetcher) FetchHistory(ctx context.Context, chatID int64, beforeMsgI
 	for _, m := range msgs {
 		msg, ok := m.(*tg.Message)
 		if !ok {
-			f.log.Warn("telegram: skipping non-message type in history",
+			lg.Warn("telegram: skipping non-message type in history",
 				zap.String("type", m.TypeName()))
 			continue
 		}
-		raw = append(raw, convertTGMessage(chatID, msg, f.log))
+		raw = append(raw, convertTGMessage(ctx, chatID, msg))
 	}
 
 	hasMore := len(raw) >= limit
@@ -129,6 +130,7 @@ func (f *gotdFetcher) resolvePeer(chatID int64) tg.InputPeerClass {
 }
 
 func (f *gotdFetcher) bootstrapPeers(ctx context.Context, chatIDs []int64) error {
+	lg := zctx.From(ctx)
 	api := tg.NewClient(f.client)
 
 	req := &tg.MessagesGetDialogsRequest{
@@ -146,7 +148,7 @@ func (f *gotdFetcher) bootstrapPeers(ctx context.Context, chatIDs []int64) error
 
 	modified, ok := result.AsModified()
 	if !ok {
-		f.log.Warn("telegram: got unmodified dialogs result")
+		lg.Warn("telegram: got unmodified dialogs result")
 		f.peersReady = true
 		return nil
 	}
@@ -175,7 +177,7 @@ func (f *gotdFetcher) bootstrapPeers(ctx context.Context, chatIDs []int64) error
 
 	for _, id := range chatIDs {
 		if _, ok := peers[id]; !ok {
-			f.log.Warn("telegram: peer not in dialogs; fetch will fail with PEER_ID_INVALID",
+			lg.Warn("telegram: peer not in dialogs; fetch will fail with PEER_ID_INVALID",
 				zap.Int64("chat_id", id))
 		}
 	}
@@ -185,7 +187,8 @@ func (f *gotdFetcher) bootstrapPeers(ctx context.Context, chatIDs []int64) error
 	return nil
 }
 
-func convertTGMessage(chatID int64, msg *tg.Message, log *zap.Logger) RawMessage {
+func convertTGMessage(ctx context.Context, chatID int64, msg *tg.Message) RawMessage {
+	lg := zctx.From(ctx)
 	raw := RawMessage{
 		ChatID:    chatID,
 		MessageID: msg.ID,
@@ -196,9 +199,7 @@ func convertTGMessage(chatID int64, msg *tg.Message, log *zap.Logger) RawMessage
 
 	data, err := json.Marshal(msg)
 	if err != nil {
-		if log != nil {
-			log.Warn("telegram: marshal message", zap.Int("msg_id", msg.ID), zap.Error(err))
-		}
+		lg.Warn("telegram: marshal message", zap.Int("msg_id", msg.ID), zap.Error(err))
 	} else {
 		raw.RawJSON = data
 	}

@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/go-faster/errors"
+	"github.com/go-faster/sdk/zctx"
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -23,19 +24,10 @@ type SyncOptions struct {
 	WorkDir string
 	Token   string
 	Proxy   string
-	Logger  *zap.Logger
-}
-
-func (opts *SyncOptions) setDefaults() {
-	if opts.Logger == nil {
-		opts.Logger = zap.NewNop()
-	}
 }
 
 // Prepare clones or updates configured repositories and returns walkable sources.
 func Prepare(ctx context.Context, sources []Source, opts SyncOptions) ([]Source, error) {
-	opts.setDefaults()
-
 	out := make([]Source, 0, len(sources))
 	for _, src := range sources {
 		if src.Repo == "" {
@@ -58,6 +50,7 @@ func Prepare(ctx context.Context, sources []Source, opts SyncOptions) ([]Source,
 }
 
 func syncRepo(ctx context.Context, src Source, opts SyncOptions) error {
+	lg := zctx.From(ctx)
 	repoMu.Lock()
 	defer repoMu.Unlock()
 
@@ -70,7 +63,7 @@ func syncRepo(ctx context.Context, src Source, opts SyncOptions) error {
 		if !os.IsNotExist(err) {
 			return errors.Wrap(err, "stat git dir")
 		}
-		opts.Logger.Info("cloning gitlab repository",
+		lg.Info("cloning gitlab repository",
 			zap.String("repo", src.Repo),
 			zap.String("root", src.Root),
 			zap.String("url", redactURL(src.URL)))
@@ -98,7 +91,7 @@ func syncRepo(ctx context.Context, src Source, opts SyncOptions) error {
 		return errors.Wrap(err, "worktree")
 	}
 
-	opts.Logger.Info("updating gitlab repository",
+	lg.Info("updating gitlab repository",
 		zap.String("repo", src.Repo),
 		zap.String("root", src.Root),
 		zap.String("url", redactURL(src.URL)))

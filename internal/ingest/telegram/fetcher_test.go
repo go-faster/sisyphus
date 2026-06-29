@@ -1,11 +1,10 @@
 package telegram
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
-
-	"go.uber.org/zap"
 
 	"github.com/gotd/td/tg"
 )
@@ -16,7 +15,7 @@ func TestConvertTGMessage_PlainText(t *testing.T) {
 		Message: "hello world",
 		Date:    1700000000,
 	}
-	raw := convertTGMessage(-100123, msg, zap.NewNop())
+	raw := convertTGMessage(context.Background(), -100123, msg)
 
 	if raw.ChatID != -100123 {
 		t.Fatalf("want ChatID=-100123, got %d", raw.ChatID)
@@ -46,7 +45,7 @@ func TestConvertTGMessage_SenderPeerUser(t *testing.T) {
 		Date:    0,
 		FromID:  &tg.PeerUser{UserID: 42},
 	}
-	raw := convertTGMessage(100, msg, nil)
+	raw := convertTGMessage(context.Background(), 100, msg)
 	if raw.SenderID != 42 {
 		t.Fatalf("want SenderID=42, got %d", raw.SenderID)
 	}
@@ -61,7 +60,7 @@ func TestConvertTGMessage_ReplyTo(t *testing.T) {
 		Date:    0,
 		ReplyTo: h,
 	}
-	raw := convertTGMessage(1, msg, nil)
+	raw := convertTGMessage(context.Background(), 1, msg)
 	if raw.ReplyToID != 99 {
 		t.Fatalf("want ReplyToID=99, got %d", raw.ReplyToID)
 	}
@@ -73,7 +72,7 @@ func TestConvertTGMessage_Date(t *testing.T) {
 		Message: "d",
 		Date:    1700000000,
 	}
-	raw := convertTGMessage(1, msg, nil)
+	raw := convertTGMessage(context.Background(), 1, msg)
 	want := time.Unix(1700000000, 0)
 	if !raw.Date.Equal(want) {
 		t.Fatalf("want Date=%v, got %v", want, raw.Date)
@@ -87,7 +86,7 @@ func TestConvertTGMessage_NilLoggerNoPanic(t *testing.T) {
 		Date:    0,
 	}
 	// Should not panic even with nil logger.
-	raw := convertTGMessage(1, msg, nil)
+	raw := convertTGMessage(context.Background(), 1, msg)
 	if raw.Text != "safe" {
 		t.Fatalf("want Text=safe, got %q", raw.Text)
 	}

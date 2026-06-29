@@ -2,6 +2,7 @@
 package netclient
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"time"
@@ -12,13 +13,14 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+
+	"github.com/go-faster/sdk/zctx"
 )
 
 // HTTPClientOptions contains options for HTTP client creation.
 type HTTPClientOptions struct {
 	MeterProvider  metric.MeterProvider
 	TracerProvider trace.TracerProvider
-	Logger         *zap.Logger
 }
 
 func (opts *HTTPClientOptions) setDefaults() {
@@ -28,13 +30,10 @@ func (opts *HTTPClientOptions) setDefaults() {
 	if opts.TracerProvider == nil {
 		opts.TracerProvider = otel.GetTracerProvider()
 	}
-	if opts.Logger == nil {
-		opts.Logger = zap.L()
-	}
 }
 
 // HTTPClient returns an HTTP client using proxyURL when configured.
-func HTTPClient(name, proxyURL string, opts HTTPClientOptions) (*http.Client, error) {
+func HTTPClient(ctx context.Context, name, proxyURL string, opts HTTPClientOptions) (*http.Client, error) {
 	opts.setDefaults()
 
 	var (
@@ -63,8 +62,8 @@ func HTTPClient(name, proxyURL string, opts HTTPClientOptions) (*http.Client, er
 		name:      name,
 		via:       via,
 		transport: transport,
-		logger:    opts.Logger,
 	}
+	_ = ctx
 	return &http.Client{
 		Transport: transport,
 		Timeout:   15 * time.Second,
@@ -75,15 +74,15 @@ type loggingRoundTripper struct {
 	name      string
 	via       string
 	transport http.RoundTripper
-	logger    *zap.Logger
 }
 
 func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	logger := zctx.From(req.Context())
 	viaField := zap.Skip()
 	if l.via != "" {
 		viaField = zap.String("via", l.via)
 	}
-	l.logger.Debug("HTTP request",
+	logger.Debug("HTTP request",
 		zap.String("client_name", l.name),
 		zap.String("method", req.Method),
 		zap.String("url", redactURL(req.URL)),
@@ -91,7 +90,7 @@ func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	)
 	resp, err := l.transport.RoundTrip(req)
 	if err != nil {
-		l.logger.Error("HTTP request failed", zap.Error(err))
+		logger.Error("HTTP request failed", zap.Error(err))
 		return nil, err
 	}
 
@@ -99,7 +98,7 @@ func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	if ct := resp.Header.Get("Content-Type"); ct != "" {
 		ctField = zap.String("content_type", ct)
 	}
-	l.logger.Debug("HTTP response",
+	logger.Debug("HTTP response",
 		zap.Int("status", resp.StatusCode),
 		zap.Int("content_length", int(resp.ContentLength)),
 		ctField,

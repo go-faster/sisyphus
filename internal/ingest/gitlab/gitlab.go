@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-faster/errors"
+	"github.com/go-faster/sdk/zctx"
 	"go.uber.org/zap"
 
 	"github.com/go-faster/scpbot/internal/index"
@@ -42,15 +43,7 @@ type Source struct {
 }
 
 // WalkOptions configures WalkAll.
-type WalkOptions struct {
-	Logger *zap.Logger
-}
-
-func (opts *WalkOptions) setDefaults() {
-	if opts.Logger == nil {
-		opts.Logger = zap.NewNop()
-	}
-}
+type WalkOptions struct{}
 
 // Walk is a convenience wrapper around WalkAll for a single source.
 func Walk(ctx context.Context, s Source) ([]index.Document, error) {
@@ -60,13 +53,13 @@ func Walk(ctx context.Context, s Source) ([]index.Document, error) {
 // WalkAll walks every source and concatenates their documents.
 // Missing or empty roots are logged as a warning but do not fail the walk.
 // Documents are returned in source order.
-func WalkAll(_ context.Context, sources []Source, opts WalkOptions) ([]index.Document, error) {
-	opts.setDefaults()
+func WalkAll(ctx context.Context, sources []Source, _ WalkOptions) ([]index.Document, error) {
+	lg := zctx.From(ctx)
 
 	var docs []index.Document
 	for _, s := range sources {
 		if s.Root == "" {
-			opts.Logger.Warn("gitlab: skipping empty root",
+			lg.Warn("gitlab: skipping empty root",
 				zap.String("repo", s.Repo))
 			continue
 		}

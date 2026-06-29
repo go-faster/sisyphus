@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/go-faster/errors"
+	"github.com/go-faster/sdk/zctx"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
@@ -53,7 +54,6 @@ func (c Components) Close() {
 type NewOptions struct {
 	TracerProvider trace.TracerProvider
 	MeterProvider  metric.MeterProvider
-	Logger         *zap.Logger
 }
 
 func (opts *NewOptions) setDefaults() {
@@ -63,15 +63,12 @@ func (opts *NewOptions) setDefaults() {
 	if opts.MeterProvider == nil {
 		opts.MeterProvider = otel.GetMeterProvider()
 	}
-	if opts.Logger == nil {
-		opts.Logger = zap.L()
-	}
 }
 
 // New builds Postgres, FTS, embedder, optional Qdrant vector store, retrieval
 // service and answerer (OpenRouter or stub) exactly as the original main did.
 // It performs schema and FTS migrations. On error, resources are cleaned up.
-func New(ctx context.Context, lg *zap.Logger, cfg config.Config, opts NewOptions) (Components, error) {
+func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, error) {
 	opts.setDefaults()
 
 	db, err := sql.Open("pgx", cfg.DatabaseDSN)
@@ -93,7 +90,7 @@ func New(ctx context.Context, lg *zap.Logger, cfg config.Config, opts NewOptions
 	}
 
 	// Embedder + vector store.
-	embedder, err := embed.New(cfg, embed.NewOptions{
+	embedder, err := embed.New(ctx, cfg, embed.NewOptions{
 		TracerProvider: opts.TracerProvider,
 		MeterProvider:  opts.MeterProvider,
 	})
@@ -116,14 +113,14 @@ func New(ctx context.Context, lg *zap.Logger, cfg config.Config, opts NewOptions
 		Embedder:   embedder,
 	})
 	if err != nil {
-		lg.Warn("qdrant unavailable, vector search disabled", zap.Error(err))
+		zctx.From(ctx).Warn("qdrant unavailable, vector search disabled", zap.Error(err))
 	} else if err := store.EnsureCollection(ctx); err != nil {
-		lg.Warn("qdrant collection setup failed, vector search disabled", zap.Error(err))
+		zctx.From(ctx).Warn("qdrant collection setup failed, vector search disabled", zap.Error(err))
 	} else {
 		vector = store
 	}
 
-	retr, err := retrieval.New(pg, vector, lg)
+	retr, err := retrieval.New(pg, vector)
 	if err != nil {
 		_ = db.Close()
 		return Components{}, errors.Wrap(err, "retrieval")
@@ -131,11 +128,10 @@ func New(ctx context.Context, lg *zap.Logger, cfg config.Config, opts NewOptions
 
 	var answerer index.Answerer
 	if cfg.OpenRouter.Enabled() {
-		lg.Info("openrouter LLM enabled", zap.String("model", cfg.OpenRouter.Model))
-		httpClient, err := netclient.HTTPClient("openrouter", cfg.Proxies.OpenRouter, netclient.HTTPClientOptions{
+		zctx.From(ctx).Info("openrouter LLM enabled", zap.String("model", cfg.OpenRouter.Model))
+		httpClient, err := netclient.HTTPClient(ctx, "openrouter", cfg.Proxies.OpenRouter, netclient.HTTPClientOptions{
 			TracerProvider: opts.TracerProvider,
 			MeterProvider:  opts.MeterProvider,
-			Logger:         opts.Logger.Named("netclient"),
 		})
 		if err != nil {
 			_ = db.Close()
@@ -144,7 +140,7 @@ func New(ctx context.Context, lg *zap.Logger, cfg config.Config, opts NewOptions
 		orClient := openrouter.New(cfg.OpenRouter.APIKey, openrouter.Options{HTTPClient: httpClient})
 		answerer = openrouter.NewAnswerer(orClient, cfg.OpenRouter.Model, openrouter.AnswererOptions{})
 	} else {
-		lg.Warn("openrouter not configured, using stub answerer")
+		zctx.From(ctx).Warn("openrouter not configured, using stub answerer")
 		answerer = stub.NewAnswerer()
 	}
 

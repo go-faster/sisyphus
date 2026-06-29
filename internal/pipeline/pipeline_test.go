@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
@@ -109,7 +108,7 @@ func TestPipeline_UnchangedDoc(t *testing.T) {
 
 	store := &fakeVectorStore{}
 	emb := &fakeEmbedder{}
-	p := New(client, testChunker{}, emb, store, zap.NewNop())
+	p := New(client, testChunker{}, emb, store)
 
 	ctx := context.Background()
 	doc := index.Document{
@@ -152,7 +151,7 @@ func TestPipeline_ChangedDoc(t *testing.T) {
 
 	store := &fakeVectorStore{}
 	emb := &fakeEmbedder{}
-	p := New(client, testChunker{}, emb, store, zap.NewNop())
+	p := New(client, testChunker{}, emb, store)
 
 	ctx := context.Background()
 	doc := index.Document{
@@ -202,7 +201,7 @@ func TestPipeline_NewDoc(t *testing.T) {
 
 	store := &fakeVectorStore{}
 	emb := &fakeEmbedder{}
-	p := New(client, testChunker{}, emb, store, zap.NewNop())
+	p := New(client, testChunker{}, emb, store)
 
 	ctx := context.Background()
 	doc := index.Document{
@@ -230,7 +229,7 @@ func TestPipeline_Idempotent(t *testing.T) {
 
 	store := &fakeVectorStore{}
 	emb := &fakeEmbedder{}
-	p := New(client, testChunker{}, emb, store, zap.NewNop())
+	p := New(client, testChunker{}, emb, store)
 
 	ctx := context.Background()
 	doc := index.Document{
@@ -278,7 +277,7 @@ func TestPipeline_VectorStoreNil(t *testing.T) {
 	defer cleanDB(t, client)
 
 	// vectors=nil should not panic.
-	p := New(client, testChunker{}, &fakeEmbedder{}, nil, zap.NewNop())
+	p := New(client, testChunker{}, &fakeEmbedder{}, nil)
 
 	ctx := context.Background()
 	doc := index.Document{

@@ -18,6 +18,7 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/app"
+	"github.com/go-faster/sdk/zctx"
 	"github.com/gotd/log/logzap"
 	gotdtelegram "github.com/gotd/td/telegram"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -50,11 +51,13 @@ var (
 
 func main() {
 	app.Run(func(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
-		return run(ctx, lg, t.TracerProvider(), t.MeterProvider())
+		ctx = zctx.Base(ctx, lg)
+		return run(ctx, t.TracerProvider(), t.MeterProvider())
 	})
 }
 
-func run(ctx context.Context, lg *zap.Logger, tp trace.TracerProvider, mp metric.MeterProvider) error {
+func run(ctx context.Context, tp trace.TracerProvider, mp metric.MeterProvider) error {
+	lg := zctx.From(ctx)
 	// Parse subcommand + flags (subcommand wins over -source).
 	cmd := ""
 	flagArgs := os.Args[1:]
@@ -143,7 +146,7 @@ func run(ctx context.Context, lg *zap.Logger, tp trace.TracerProvider, mp metric
 	}
 
 	// Embedder + optional vector store (match cmd/scpbot pattern).
-	embedder, err := embed.New(cfg, embed.NewOptions{
+	embedder, err := embed.New(ctx, cfg, embed.NewOptions{
 		TracerProvider: tp,
 		MeterProvider:  mp,
 	})
@@ -175,12 +178,11 @@ func run(ctx context.Context, lg *zap.Logger, tp trace.TracerProvider, mp metric
 		cfg:     cfg,
 		tp:      tp,
 		mp:      mp,
-		lg:      lg,
 	}
 	switch eff {
 	case "gitlab":
 		ch := chunkmd.New(chunkmd.ChunkerOptions{})
-		pipe := pipeline.New(entdb, ch, embedder, vectors, lg.Named("pipeline"))
+		pipe := pipeline.New(entdb, ch, embedder, vectors)
 		doReset := *resetFlag == "gitlab" || *resetFlag == "all"
 		if err := r.runGitLab(ctx, pipe, since, doReset, *limit, *dryRun); err != nil {
 			if errors.Is(err, errNotConfigured) {
@@ -194,7 +196,7 @@ func run(ctx context.Context, lg *zap.Logger, tp trace.TracerProvider, mp metric
 
 	case "jira":
 		ch := chunkjira.New()
-		pipe := pipeline.New(entdb, ch, embedder, vectors, lg.Named("pipeline"))
+		pipe := pipeline.New(entdb, ch, embedder, vectors)
 		doReset := *resetFlag == "jira" || *resetFlag == "all"
 		if err := r.runJira(ctx, pipe, since, doReset, *limit, *dryRun); err != nil {
 			if errors.Is(err, errNotConfigured) {
@@ -208,7 +210,7 @@ func run(ctx context.Context, lg *zap.Logger, tp trace.TracerProvider, mp metric
 
 	case "telegram":
 		ch := chunktg.New()
-		pipe := pipeline.New(entdb, ch, embedder, vectors, lg.Named("pipeline"))
+		pipe := pipeline.New(entdb, ch, embedder, vectors)
 		doReset := *resetFlag == "telegram" || *resetFlag == "all"
 		if err := r.runTelegram(ctx, pipe, since, doReset, *limit, *dryRun); err != nil {
 			if errors.Is(err, errNotConfigured) {
@@ -221,7 +223,7 @@ func run(ctx context.Context, lg *zap.Logger, tp trace.TracerProvider, mp metric
 		return nil
 
 	case "all":
-		return runAll(ctx, lg, entdb, embedder, vectors, cfg, since, *resetFlag, *yesAll, *limit, *dryRun, tp, mp)
+		return runAll(ctx, entdb, embedder, vectors, cfg, since, *resetFlag, *yesAll, *limit, *dryRun, tp, mp)
 	default:
 		printUsage(os.Stderr)
 		os.Exit(2)
@@ -270,16 +272,13 @@ type runner struct {
 
 	tp trace.TracerProvider
 	mp metric.MeterProvider
-	lg *zap.Logger
 }
 
 func (r *runner) runGitLab(ctx context.Context, p *pipeline.Pipeline, _ time.Time, reset bool, limit int, dry bool) error {
-	var (
-		lg      = r.lg.Named("gitlab")
-		cfg     = r.cfg
-		db      = r.db
-		vectors = r.vectors
-	)
+	lg := zctx.From(ctx).Named("gitlab")
+	cfg := r.cfg
+	db := r.db
+	vectors := r.vectors
 
 	roots := gitLabSources(cfg.GitLab.Repos)
 	if len(roots) == 0 {
@@ -290,7 +289,6 @@ func (r *runner) runGitLab(ctx context.Context, p *pipeline.Pipeline, _ time.Tim
 		WorkDir: cfg.GitLab.WorkDir,
 		Token:   cfg.GitLab.Token,
 		Proxy:   cfg.Proxies.GitLab,
-		Logger:  lg.Named("gitlab"),
 	})
 	if err != nil {
 		return errors.Wrap(err, "prepare gitlab repos")
@@ -298,12 +296,12 @@ func (r *runner) runGitLab(ctx context.Context, p *pipeline.Pipeline, _ time.Tim
 
 	src := index.SourceGitLabDocs
 	if reset {
-		if err := resetSource(ctx, lg, db, vectors, src); err != nil {
+		if err := resetSource(ctx, db, vectors, src); err != nil {
 			return err
 		}
 	}
 
-	docs, err := gitlabingest.WalkAll(ctx, roots, gitlabingest.WalkOptions{Logger: lg.Named("gitlab")})
+	docs, err := gitlabingest.WalkAll(ctx, roots, gitlabingest.WalkOptions{})
 	if err != nil {
 		return errors.Wrap(err, "gitlab walk")
 	}
@@ -358,14 +356,12 @@ func gitLabSources(sources []config.GitLabSource) []gitlabingest.Source {
 }
 
 func (r *runner) runJira(ctx context.Context, p *pipeline.Pipeline, since time.Time, reset bool, limit int, dry bool) error {
-	var (
-		lg      = r.lg.Named("jira")
-		cfg     = r.cfg
-		db      = r.db
-		vectors = r.vectors
-		tp      = r.tp
-		mp      = r.mp
-	)
+	lg := zctx.From(ctx).Named("jira")
+	cfg := r.cfg
+	db := r.db
+	vectors := r.vectors
+	tp := r.tp
+	mp := r.mp
 
 	jc := cfg.Jira
 	if jc.BaseURL == "" || (jc.PAT == "" && (jc.Username == "" || jc.Password == "") && (jc.Email == "" || jc.APIToken == "")) {
@@ -375,15 +371,14 @@ func (r *runner) runJira(ctx context.Context, p *pipeline.Pipeline, since time.T
 
 	src := index.SourceJira
 	if reset {
-		if err := resetSource(ctx, lg, db, vectors, src); err != nil {
+		if err := resetSource(ctx, db, vectors, src); err != nil {
 			return err
 		}
 	}
 
-	httpClient, err := netclient.HTTPClient("jira", cfg.Proxies.Jira, netclient.HTTPClientOptions{
+	httpClient, err := netclient.HTTPClient(ctx, "jira", cfg.Proxies.Jira, netclient.HTTPClientOptions{
 		TracerProvider: tp,
 		MeterProvider:  mp,
-		Logger:         lg.Named("netclient"),
 	})
 	if err != nil {
 		return errors.Wrap(err, "jira http client")
@@ -396,7 +391,6 @@ func (r *runner) runJira(ctx context.Context, p *pipeline.Pipeline, since time.T
 		Password:   jc.Password,
 		PAT:        jc.PAT,
 		HTTPClient: httpClient,
-		Logger:     lg.Named("jira"),
 	})
 	if err != nil {
 		return errors.Wrap(err, "jira new fetcher")
@@ -485,12 +479,10 @@ func loadJiraCursor(ctx context.Context, db *ent.Client, src string) (jiraingest
 }
 
 func (r *runner) runTelegram(ctx context.Context, p *pipeline.Pipeline, since time.Time, reset bool, limit int, dry bool) error {
-	var (
-		tc      = r.cfg.Telegram
-		lg      = r.lg.Named("telegram")
-		db      = r.db
-		vectors = r.vectors
-	)
+	tc := r.cfg.Telegram
+	lg := zctx.From(ctx).Named("telegram")
+	db := r.db
+	vectors := r.vectors
 
 	if tc.AppID == 0 || tc.AppHash == "" || tc.IngestSession == "" {
 		lg.Info("telegram not configured")
@@ -502,7 +494,7 @@ func (r *runner) runTelegram(ctx context.Context, p *pipeline.Pipeline, since ti
 
 	src := index.SourceTelegram
 	if reset {
-		if err := resetSource(ctx, lg, db, vectors, src); err != nil {
+		if err := resetSource(ctx, db, vectors, src); err != nil {
 			return err
 		}
 	}
@@ -518,7 +510,6 @@ func (r *runner) runTelegram(ctx context.Context, p *pipeline.Pipeline, since ti
 	runErr := tgClient.Run(ctx, func(ctx context.Context) error {
 		bf, err := telegramingest.NewBackfiller(db, telegramingest.BackfillOptions{
 			Session: tgClient,
-			Logger:  lg.Named("telegram"),
 		})
 		if err != nil {
 			return errors.Wrap(err, "new backfiller")
@@ -623,11 +614,12 @@ func parseMonitorChats(s string) []telegramingest.ChatSpec {
 	return out
 }
 
-func runAll(ctx context.Context, lg *zap.Logger, db *ent.Client, embedder index.Embedder, vectors pipeline.VectorStore, cfg config.Config, since time.Time, resetMode string, _ bool, limit int, dry bool, tp trace.TracerProvider, mp metric.MeterProvider) error {
+func runAll(ctx context.Context, db *ent.Client, embedder index.Embedder, vectors pipeline.VectorStore, cfg config.Config, since time.Time, resetMode string, _ bool, limit int, dry bool, tp trace.TracerProvider, mp metric.MeterProvider) error {
+	lg := zctx.From(ctx)
 	// Centralized all reset check already done in caller, but if reset all we pre-wipe.
 	if resetMode == "all" {
 		for _, s := range []index.Source{index.SourceGitLabDocs, index.SourceJira, index.SourceTelegram} {
-			if err := resetSource(ctx, lg, db, vectors, s); err != nil {
+			if err := resetSource(ctx, db, vectors, s); err != nil {
 				return err
 			}
 		}
@@ -640,14 +632,13 @@ func runAll(ctx context.Context, lg *zap.Logger, db *ent.Client, embedder index.
 			cfg:     cfg,
 			tp:      tp,
 			mp:      mp,
-			lg:      lg,
 		}
 		failed []string
 	)
 	// gitlab
 	{
 		ch := chunkmd.New(chunkmd.ChunkerOptions{})
-		pipe := pipeline.New(db, ch, embedder, vectors, lg.Named("pipeline"))
+		pipe := pipeline.New(db, ch, embedder, vectors)
 		doReset := resetMode == "all" || resetMode == "gitlab"
 		if err := runner.runGitLab(ctx, pipe, since, doReset, limit, dry); err != nil {
 			if errors.Is(err, errNotConfigured) {
@@ -662,7 +653,7 @@ func runAll(ctx context.Context, lg *zap.Logger, db *ent.Client, embedder index.
 	// jira
 	{
 		ch := chunkjira.New()
-		pipe := pipeline.New(db, ch, embedder, vectors, lg.Named("pipeline"))
+		pipe := pipeline.New(db, ch, embedder, vectors)
 		doReset := resetMode == "all" || resetMode == "jira"
 		if err := runner.runJira(ctx, pipe, since, doReset, limit, dry); err != nil {
 			if errors.Is(err, errNotConfigured) {
@@ -677,7 +668,7 @@ func runAll(ctx context.Context, lg *zap.Logger, db *ent.Client, embedder index.
 	// telegram
 	{
 		ch := chunktg.New()
-		pipe := pipeline.New(db, ch, embedder, vectors, lg.Named("pipeline"))
+		pipe := pipeline.New(db, ch, embedder, vectors)
 		doReset := resetMode == "all" || resetMode == "telegram"
 		if err := runner.runTelegram(ctx, pipe, since, doReset, limit, dry); err != nil {
 			if errors.Is(err, errNotConfigured) {
@@ -695,7 +686,8 @@ func runAll(ctx context.Context, lg *zap.Logger, db *ent.Client, embedder index.
 	return nil
 }
 
-func resetSource(ctx context.Context, lg *zap.Logger, db *ent.Client, vectors pipeline.VectorStore, src index.Source) error {
+func resetSource(ctx context.Context, db *ent.Client, vectors pipeline.VectorStore, src index.Source) error {
+	lg := zctx.From(ctx)
 	// Collect chunk IDs (these are also the qdrant point IDs).
 	chunkIDs, err := db.Chunk.Query().
 		Where(chunk.HasDocumentWith(document.Source(string(src)))).

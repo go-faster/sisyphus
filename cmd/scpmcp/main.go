@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/app"
+	"github.com/go-faster/sdk/zctx"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.uber.org/zap"
 
@@ -22,16 +23,18 @@ func main() {
 	flag.Parse()
 
 	app.Run(func(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
+		ctx = zctx.Base(ctx, lg)
 		cfg, err := config.Load()
 		if err != nil {
 			return errors.Wrap(err, "config")
 		}
-		return run(ctx, lg, cfg, *stdio, t)
+		return run(ctx, cfg, *stdio, t)
 	})
 }
 
-func run(ctx context.Context, lg *zap.Logger, cfg config.Config, useStdio bool, t *app.Telemetry) error {
-	comp, err := wire.New(ctx, lg, cfg, wire.NewOptions{
+func run(ctx context.Context, cfg config.Config, useStdio bool, t *app.Telemetry) error {
+	lg := zctx.From(ctx)
+	comp, err := wire.New(ctx, cfg, wire.NewOptions{
 		TracerProvider: t.TracerProvider(),
 		MeterProvider:  t.MeterProvider(),
 	})
@@ -40,7 +43,7 @@ func run(ctx context.Context, lg *zap.Logger, cfg config.Config, useStdio bool, 
 	}
 	defer comp.Close()
 
-	srv := mcpserver.New(comp.Retriever, comp.Answerer, mcpserver.Options{Logger: lg.Named("mcpserver")})
+	srv := mcpserver.New(comp.Retriever, comp.Answerer)
 	if useStdio {
 		lg.Info("mcp stdio starting")
 		return srv.Run(ctx, &mcp.StdioTransport{})
