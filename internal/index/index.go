@@ -17,12 +17,30 @@ import (
 type Source string
 
 const (
-	SourceGitLabDocs Source = "gitlab_docs"
+	SourceGitLabDocs Source = "gitlab_docs" // deprecated: replaced by per-repo git sources
 	SourceGitLabCode Source = "gitlab_code"
-	SourceGitLabMR   Source = "gitlab_mr"
-	SourceJira       Source = "jira"
-	SourceTelegram   Source = "telegram"
+
+	// GitLab REST API sources (one GitLab instance; project in metadata/SourceID).
+	SourceGitLabIssue   Source = "gitlab_issue"
+	SourceGitLabMR      Source = "gitlab_mr"
+	SourceGitLabRelease Source = "gitlab_release"
+
+	SourceJira     Source = "jira"
+	SourceTelegram Source = "telegram"
 )
+
+// Per-repo git source prefixes. The repo name is appended to build the concrete
+// Source (so each repo gets its own SyncState row and can be reset independently).
+const (
+	SourceGitDocsPrefix    = "git_docs:"
+	SourceGitCommitsPrefix = "git_commits:"
+)
+
+// SourceGitDocs returns the Source for git-walked content of the given repo.
+func SourceGitDocs(repo string) Source { return Source(SourceGitDocsPrefix + repo) }
+
+// SourceGitCommit returns the Source for commit messages of the given repo.
+func SourceGitCommit(repo string) Source { return Source(SourceGitCommitsPrefix + repo) }
 
 // ChunkType classifies a Chunk so retrieval/ranking can treat them differently.
 type ChunkType string
@@ -37,6 +55,14 @@ const (
 
 	ChunkTelegramRequestSummary ChunkType = "telegram_request_summary"
 	ChunkTelegramRawExcerpt     ChunkType = "telegram_raw_excerpt"
+
+	ChunkGitCommit ChunkType = "git_commit"
+
+	ChunkGitLabIssueSummary  ChunkType = "gitlab_issue_summary"
+	ChunkGitLabIssueComments ChunkType = "gitlab_issue_comment_group"
+	ChunkGitLabMRSummary     ChunkType = "gitlab_mr_summary"
+	ChunkGitLabMRComments    ChunkType = "gitlab_mr_comment_group"
+	ChunkGitLabReleaseNotes  ChunkType = "gitlab_release_notes"
 
 	ChunkCodeFile   ChunkType = "code_file"
 	ChunkCodeSymbol ChunkType = "code_symbol"
