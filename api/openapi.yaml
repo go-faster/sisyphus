@@ -86,6 +86,14 @@ components:
           type: string
         service:
           type: string
+        filters:
+          type: object
+          description: |
+            Metadata filters applied as exact-match against chunk metadata.
+            Well-known keys: status, source, jira_project, jira_component,
+            jira_key, authority, repo. Values are always strings.
+          additionalProperties:
+            type: string
         limit:
           type: integer
           format: int32
@@ -131,6 +139,14 @@ components:
           type: string
         service:
           type: string
+        filters:
+          type: object
+          description: |
+            Metadata filters applied as exact-match against chunk metadata.
+            Well-known keys: status, source, jira_project, jira_component,
+            jira_key, authority, repo. Values are always strings.
+          additionalProperties:
+            type: string
     ContextResponse:
       type: object
       required: [answer, results]
