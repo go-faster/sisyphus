@@ -23,7 +23,8 @@ type Config struct {
 	EmbedModel    string
 	EmbedDim      int
 
-	GitLab GitLabConfig
+	Git    GitConfig    // git repository content + commits
+	GitLab GitLabConfig // GitLab REST API: issues, MRs, releases
 
 	Jira JiraConfig
 
@@ -76,6 +77,7 @@ type fileConfig struct {
 	EmbedModel    string `yaml:"embed_model"`
 	EmbedDim      int    `yaml:"embed_dim"`
 
+	Git    fileGitConfig    `yaml:"git"`
 	GitLab fileGitLabConfig `yaml:"gitlab"`
 
 	Jira fileJiraConfig `yaml:"jira"`
@@ -89,6 +91,7 @@ type fileConfig struct {
 
 // ProxyConfig configures per-client HTTP proxies.
 type ProxyConfig struct {
+	Git        string
 	GitLab     string
 	Jira       string
 	Ollama     string
@@ -96,6 +99,7 @@ type ProxyConfig struct {
 }
 
 type fileProxyConfig struct {
+	Git        Secret `yaml:"git"`
 	GitLab     Secret `yaml:"gitlab"`
 	Jira       Secret `yaml:"jira"`
 	Ollama     Secret `yaml:"ollama"`
@@ -112,26 +116,51 @@ type fileJiraConfig struct {
 	Projects string `yaml:"projects"`
 }
 
-// GitLabConfig configures GitLab repository ingestion.
-type GitLabConfig struct {
-	WorkDir string         `yaml:"work_dir"`
-	Token   string         `yaml:"-"`
-	Repos   []GitLabSource `yaml:"repos"`
+// GitConfig configures git repository content + commit ingestion.
+type GitConfig struct {
+	WorkDir string      `yaml:"work_dir"`
+	Token   string      `yaml:"-"`
+	Repos   []GitSource `yaml:"repos"`
 }
 
-type fileGitLabConfig struct {
-	WorkDir string         `yaml:"work_dir"`
-	Token   Secret         `yaml:"token"`
-	Repos   []GitLabSource `yaml:"repos"`
+type fileGitConfig struct {
+	WorkDir string      `yaml:"work_dir"`
+	Token   Secret      `yaml:"token"`
+	Repos   []GitSource `yaml:"repos"`
 }
 
-// GitLabSource describes a GitLab repository to ingest.
-type GitLabSource struct {
+// GitSource describes a git repository to ingest (content + optional commits).
+type GitSource struct {
 	Root    string `yaml:"root"`
 	URL     string `yaml:"url"`
 	Repo    string `yaml:"repo"`
 	Branch  string `yaml:"branch"`
 	BaseURL string `yaml:"base_url"`
+	// Include/Exclude are doublestar globs applied at the walk stage, on top of
+	// the built-in default skiplist. Empty Include means "all matched files".
+	Include []string `yaml:"include"`
+	Exclude []string `yaml:"exclude"`
+	// Commits enables ingestion of commit messages on the default branch.
+	Commits bool `yaml:"commits"`
+}
+
+// GitLabConfig configures GitLab REST API ingestion (issues, MRs, releases).
+type GitLabConfig struct {
+	BaseURL       string `yaml:"-"`
+	Token         string `yaml:"-"`
+	Projects      string `yaml:"-"` // CSV of project IDs or paths
+	Issues        bool   `yaml:"-"`
+	MergeRequests bool   `yaml:"-"`
+	Releases      bool   `yaml:"-"`
+}
+
+type fileGitLabConfig struct {
+	BaseURL       string `yaml:"base_url"`
+	Token         Secret `yaml:"token"`
+	Projects      string `yaml:"projects"`
+	Issues        bool   `yaml:"issues"`
+	MergeRequests bool   `yaml:"merge_requests"`
+	Releases      bool   `yaml:"releases"`
 }
 
 type fileOpenRouter struct {
@@ -253,6 +282,10 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 	if err != nil {
 		return Config{}, errors.Wrap(err, "jira pat")
 	}
+	gitToken, err := c.Git.Token.Resolve(baseDir)
+	if err != nil {
+		return Config{}, errors.Wrap(err, "git token")
+	}
 	gitlabToken, err := c.GitLab.Token.Resolve(baseDir)
 	if err != nil {
 		return Config{}, errors.Wrap(err, "gitlab token")
@@ -283,10 +316,18 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 		EmbedProvider:    c.EmbedProvider,
 		EmbedModel:       c.EmbedModel,
 		EmbedDim:         c.EmbedDim,
+		Git: GitConfig{
+			WorkDir: c.Git.WorkDir,
+			Token:   gitToken,
+			Repos:   c.Git.Repos,
+		},
 		GitLab: GitLabConfig{
-			WorkDir: c.GitLab.WorkDir,
-			Token:   gitlabToken,
-			Repos:   c.GitLab.Repos,
+			BaseURL:       c.GitLab.BaseURL,
+			Token:         gitlabToken,
+			Projects:      c.GitLab.Projects,
+			Issues:        c.GitLab.Issues,
+			MergeRequests: c.GitLab.MergeRequests,
+			Releases:      c.GitLab.Releases,
 		},
 		Jira: JiraConfig{
 			BaseURL:  c.Jira.BaseURL,
@@ -315,6 +356,10 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 }
 
 func (c fileProxyConfig) resolve(baseDir string) (ProxyConfig, error) {
+	git, err := c.Git.Resolve(baseDir)
+	if err != nil {
+		return ProxyConfig{}, errors.Wrap(err, "proxy git")
+	}
 	gitlab, err := c.GitLab.Resolve(baseDir)
 	if err != nil {
 		return ProxyConfig{}, errors.Wrap(err, "proxy gitlab")
@@ -332,6 +377,7 @@ func (c fileProxyConfig) resolve(baseDir string) (ProxyConfig, error) {
 		return ProxyConfig{}, errors.Wrap(err, "proxy openrouter")
 	}
 	return ProxyConfig{
+		Git:        git,
 		GitLab:     gitlab,
 		Jira:       jira,
 		Ollama:     ollama,

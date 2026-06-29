@@ -16,19 +16,30 @@ func TestLoadYAML(t *testing.T) {
 http_addr: :9090
 qdrant_addr: qdrant:6334
 embed_dim: 512
-gitlab:
-  work_dir: /tmp/gitlab
+git:
+  work_dir: /tmp/git
   token:
-    env: TEST_SCPBOT_GITLAB_TOKEN
+    env: TEST_SCPBOT_GIT_TOKEN
   repos:
     - root: /tmp/docs
       url: https://gitlab.example.com/group/docs.git
       repo: docs
       branch: main
       base_url: https://gitlab.example.com/group/docs/-/blob/main
+      commits: true
+      exclude:
+        - CLAUDE.md
+gitlab:
+  base_url: https://gitlab.example.com
+  token:
+    env: TEST_SCPBOT_GITLAB_TOKEN
+  projects: group/docs,42
+  issues: true
+  merge_requests: true
+  releases: true
 proxies:
-  gitlab:
-    env: TEST_SCPBOT_GITLAB_PROXY
+  git:
+    env: TEST_SCPBOT_GIT_PROXY
   jira:
     value: http://127.0.0.1:8080
   ollama:
@@ -42,8 +53,9 @@ openrouter:
   model: test-model
 `)
 	t.Setenv("SCPBOT_CONFIG", path)
+	t.Setenv("TEST_SCPBOT_GIT_TOKEN", "git-token")
 	t.Setenv("TEST_SCPBOT_GITLAB_TOKEN", "gitlab-token")
-	t.Setenv("TEST_SCPBOT_GITLAB_PROXY", "http://127.0.0.1:8083")
+	t.Setenv("TEST_SCPBOT_GIT_PROXY", "http://127.0.0.1:8083")
 
 	cfg, err := Load()
 	require.NoError(t, err)
@@ -55,15 +67,28 @@ openrouter:
 	require.Equal(t, "/tmp/scpbot-session", cfg.Telegram.SessionDir)
 	require.Equal(t, "test-model", cfg.OpenRouter.Model)
 	require.Equal(t, "corp_chunks", cfg.QdrantCollection)
-	require.Equal(t, "/tmp/gitlab", cfg.GitLab.WorkDir)
+
+	// git: repository content + commits
+	require.Equal(t, "/tmp/git", cfg.Git.WorkDir)
+	require.Equal(t, "git-token", cfg.Git.Token)
+	require.Len(t, cfg.Git.Repos, 1)
+	require.Equal(t, "/tmp/docs", cfg.Git.Repos[0].Root)
+	require.Equal(t, "https://gitlab.example.com/group/docs.git", cfg.Git.Repos[0].URL)
+	require.Equal(t, "docs", cfg.Git.Repos[0].Repo)
+	require.Equal(t, "main", cfg.Git.Repos[0].Branch)
+	require.Equal(t, "https://gitlab.example.com/group/docs/-/blob/main", cfg.Git.Repos[0].BaseURL)
+	require.True(t, cfg.Git.Repos[0].Commits)
+	require.Equal(t, []string{"CLAUDE.md"}, cfg.Git.Repos[0].Exclude)
+
+	// gitlab: REST API
+	require.Equal(t, "https://gitlab.example.com", cfg.GitLab.BaseURL)
 	require.Equal(t, "gitlab-token", cfg.GitLab.Token)
-	require.Len(t, cfg.GitLab.Repos, 1)
-	require.Equal(t, "/tmp/docs", cfg.GitLab.Repos[0].Root)
-	require.Equal(t, "https://gitlab.example.com/group/docs.git", cfg.GitLab.Repos[0].URL)
-	require.Equal(t, "docs", cfg.GitLab.Repos[0].Repo)
-	require.Equal(t, "main", cfg.GitLab.Repos[0].Branch)
-	require.Equal(t, "https://gitlab.example.com/group/docs/-/blob/main", cfg.GitLab.Repos[0].BaseURL)
-	require.Equal(t, "http://127.0.0.1:8083", cfg.Proxies.GitLab)
+	require.Equal(t, "group/docs,42", cfg.GitLab.Projects)
+	require.True(t, cfg.GitLab.Issues)
+	require.True(t, cfg.GitLab.MergeRequests)
+	require.True(t, cfg.GitLab.Releases)
+
+	require.Equal(t, "http://127.0.0.1:8083", cfg.Proxies.Git)
 	require.Equal(t, "http://127.0.0.1:8080", cfg.Proxies.Jira)
 	require.Equal(t, "http://127.0.0.1:8081", cfg.Proxies.Ollama)
 	require.Equal(t, "http://127.0.0.1:8082", cfg.Proxies.OpenRouter)
@@ -133,8 +158,9 @@ func clearEnv(t *testing.T) {
 	for _, key := range []string{
 		"SCPBOT_CONFIG",
 		"TEST_SCPBOT_DATABASE_DSN",
+		"TEST_SCPBOT_GIT_TOKEN",
+		"TEST_SCPBOT_GIT_PROXY",
 		"TEST_SCPBOT_GITLAB_TOKEN",
-		"TEST_SCPBOT_GITLAB_PROXY",
 		"TEST_SCPBOT_OPENROUTER_API_KEY",
 		"TEST_SCPBOT_JIRA_PASSWORD",
 	} {
