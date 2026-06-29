@@ -4,11 +4,17 @@ package pipeline
 
 import (
 	"context"
+	"time"
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/go-faster/scpbot/internal/ent"
@@ -23,17 +29,46 @@ type VectorStore interface {
 	Delete(ctx context.Context, ids []uuid.UUID) error
 }
 
+// PipelineOptions configures the Pipeline.
+type PipelineOptions struct {
+	TracerProvider trace.TracerProvider
+	MeterProvider  metric.MeterProvider
+}
+
+func (opts *PipelineOptions) setDefaults() {
+	if opts.TracerProvider == nil {
+		opts.TracerProvider = otel.GetTracerProvider()
+	}
+	if opts.MeterProvider == nil {
+		opts.MeterProvider = otel.GetMeterProvider()
+	}
+}
+
 // Pipeline indexes Documents into Postgres + Qdrant.
 type Pipeline struct {
 	db       *ent.Client
 	chunker  index.Chunker
 	embedder index.Embedder
 	vectors  VectorStore
+	tracer   trace.Tracer
+	metrics  *pipelineMetrics
 }
 
 // New builds a Pipeline. vectors may be nil to skip vector indexing.
-func New(db *ent.Client, chunker index.Chunker, embedder index.Embedder, vectors VectorStore) *Pipeline {
-	return &Pipeline{db: db, chunker: chunker, embedder: embedder, vectors: vectors}
+func New(db *ent.Client, chunker index.Chunker, embedder index.Embedder, vectors VectorStore, opts PipelineOptions) *Pipeline {
+	opts.setDefaults()
+	m, err := newPipelineMetrics(opts.MeterProvider)
+	if err != nil {
+		panic(err)
+	}
+	return &Pipeline{
+		db:       db,
+		chunker:  chunker,
+		embedder: embedder,
+		vectors:  vectors,
+		tracer:   opts.TracerProvider.Tracer("github.com/go-faster/scpbot/pipeline"),
+		metrics:  m,
+	}
 }
 
 type chunkKey struct {
@@ -43,10 +78,24 @@ type chunkKey struct {
 
 // Index processes a single Document idempotently: it skips work when the body
 // hash is unchanged, otherwise (re)chunks, embeds, and upserts (plan §9).
-func (p *Pipeline) Index(ctx context.Context, doc index.Document) error {
+func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 	if doc.BodyHash == "" {
 		doc.BodyHash = index.Hash(doc.Body)
 	}
+
+	ctx, span := p.tracer.Start(ctx, "pipeline.Index",
+		trace.WithAttributes(
+			attribute.String("source", string(doc.Source)),
+			attribute.String("source_id", doc.SourceID),
+		),
+	)
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+			span.SetStatus(codes.Error, rerr.Error())
+		}
+		span.End()
+	}()
 
 	// Skip if an identical document (same source/source_id/body_hash) exists.
 	exists, err := p.db.Document.Query().
@@ -61,6 +110,12 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) error {
 	if exists {
 		zctx.From(ctx).Debug("document unchanged, skipping",
 			zap.String("source", string(doc.Source)), zap.String("source_id", doc.SourceID))
+		p.metrics.documents.Add(ctx, 1,
+			metric.WithAttributes(
+				attribute.String("source", string(doc.Source)),
+				attribute.String("status", "skipped"),
+			),
+		)
 		return nil
 	}
 
@@ -121,13 +176,27 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) error {
 	}
 
 	if err := p.persist(ctx, doc, chunks, qdrantIDs); err != nil {
+		p.metrics.documents.Add(ctx, 1,
+			metric.WithAttributes(
+				attribute.String("source", string(doc.Source)),
+				attribute.String("status", "error"),
+			),
+		)
 		return errors.Wrap(err, "persist")
 	}
 
 	if p.vectors != nil && p.embedder != nil && len(toEmbed) > 0 {
+		start := time.Now()
 		if err := p.embed(ctx, toEmbed); err != nil {
+			p.metrics.documents.Add(ctx, 1,
+				metric.WithAttributes(
+					attribute.String("source", string(doc.Source)),
+					attribute.String("status", "error"),
+				),
+			)
 			return errors.Wrap(err, "embed")
 		}
+		p.metrics.embedDur.Record(ctx, time.Since(start).Seconds())
 	}
 
 	if p.vectors != nil && len(staleIDs) > 0 {
@@ -138,6 +207,23 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) error {
 			)
 		}
 	}
+
+	p.metrics.documents.Add(ctx, 1,
+		metric.WithAttributes(
+			attribute.String("source", string(doc.Source)),
+			attribute.String("status", "indexed"),
+		),
+	)
+	p.metrics.chunks.Add(ctx, int64(len(toEmbed)),
+		metric.WithAttributes(
+			attribute.String("status", "embedded"),
+		),
+	)
+	p.metrics.chunks.Add(ctx, int64(len(chunks)-len(toEmbed)),
+		metric.WithAttributes(
+			attribute.String("status", "reused"),
+		),
+	)
 
 	zctx.From(ctx).Info("indexed document",
 		zap.String("source", string(doc.Source)),

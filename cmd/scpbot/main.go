@@ -77,7 +77,7 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 			AppHash:    cfg.Telegram.AppHash,
 			BotToken:   cfg.Telegram.BotToken,
 			SessionDir: cfg.Telegram.SessionDir,
-		}, comp.Retriever, comp.Answerer)
+		}, comp.Retriever, comp.Answerer, tp)
 		go func() {
 			if err := b.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 				errc <- errors.Wrap(err, "bot")

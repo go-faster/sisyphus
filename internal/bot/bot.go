@@ -13,9 +13,11 @@ import (
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/message"
 	"github.com/gotd/td/tg"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/go-faster/scpbot/internal/index"
+	"github.com/go-faster/scpbot/internal/telemetry"
 	"github.com/go-faster/scpbot/internal/wire"
 )
 
@@ -35,11 +37,12 @@ type Bot struct {
 	cfg       Config
 	retriever Retriever
 	answerer  index.Answerer
+	tp        trace.TracerProvider
 }
 
 // New builds a Bot.
-func New(_ context.Context, cfg Config, r Retriever, a index.Answerer) *Bot {
-	return &Bot{cfg: cfg, retriever: r, answerer: a}
+func New(_ context.Context, cfg Config, r Retriever, a index.Answerer, tp trace.TracerProvider) *Bot {
+	return &Bot{cfg: cfg, retriever: r, answerer: a, tp: tp}
 }
 
 // Run connects, authenticates as a bot, and serves updates until ctx is done.
@@ -48,7 +51,11 @@ func (b *Bot) Run(ctx context.Context) error {
 	client := telegram.NewClient(b.cfg.AppID, b.cfg.AppHash, telegram.Options{
 		Logger:         logzap.New(zctx.From(ctx).Named("td")),
 		UpdateHandler:  dispatcher,
+		TracerProvider: b.tp,
 		SessionStorage: &telegram.FileSessionStorage{Path: filepath.Join(b.cfg.SessionDir, "bot.json")},
+		Middlewares: []telegram.Middleware{
+			telemetry.TDTracingMiddleware(b.tp),
+		},
 	})
 	sender := message.NewSender(tg.NewClient(client))
 

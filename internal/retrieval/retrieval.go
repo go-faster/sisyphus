@@ -7,10 +7,17 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/go-faster/scpbot/internal/index"
@@ -25,11 +32,28 @@ var authorityWeight = map[index.Authority]float64{
 	index.AuthorityLow:        0.85,
 }
 
+// ServiceOptions configures observability for the retrieval Service.
+type ServiceOptions struct {
+	TracerProvider trace.TracerProvider
+	MeterProvider  metric.MeterProvider
+}
+
+func (opts *ServiceOptions) setDefaults() {
+	if opts.TracerProvider == nil {
+		opts.TracerProvider = otel.GetTracerProvider()
+	}
+	if opts.MeterProvider == nil {
+		opts.MeterProvider = otel.GetMeterProvider()
+	}
+}
+
 // Service merges lexical and vector search and ranks the combined set.
 type Service struct {
 	lexical index.Searcher
 	vector  index.Searcher
 	fetcher ChunkFetcher
+	tracer  trace.Tracer
+	m       *retrievalMetrics
 }
 
 // ChunkFetcher hydrates chunk fields that are intentionally not stored in
@@ -40,16 +64,52 @@ type ChunkFetcher interface {
 
 // New builds a retrieval Service. Either searcher may be nil (e.g. vector
 // search unavailable); at least one must be set.
-func New(lexical, vector index.Searcher, fetcher ChunkFetcher) (*Service, error) {
+func New(lexical, vector index.Searcher, fetcher ChunkFetcher, opts ServiceOptions) (*Service, error) {
 	if lexical == nil && vector == nil {
 		return nil, errors.New("retrieval: at least one searcher required")
 	}
-	return &Service{lexical: lexical, vector: vector, fetcher: fetcher}, nil
+	opts.setDefaults()
+
+	m, err := newRetrievalMetrics(opts.MeterProvider)
+	if err != nil {
+		return nil, errors.Wrap(err, "retrieval metrics")
+	}
+
+	return &Service{
+		lexical: lexical,
+		vector:  vector,
+		fetcher: fetcher,
+		tracer:  opts.TracerProvider.Tracer("github.com/go-faster/scpbot/retrieval"),
+		m:       m,
+	}, nil
 }
 
 // Retrieve runs both backends, merges by chunk ID, applies boosts, and returns
 // the top results sorted by final score (plan §10 steps 3-7).
-func (s *Service) Retrieve(ctx context.Context, q index.Query) ([]index.Result, error) {
+func (s *Service) Retrieve(ctx context.Context, q index.Query) (_ []index.Result, rerr error) {
+	start := time.Now()
+	defer func() {
+		s.m.searchDur.Record(ctx, time.Since(start).Seconds())
+	}()
+
+	qText := q.Text
+	if utf8.RuneCountInString(qText) > 1024 {
+		qText = string([]rune(qText)[:1024]) + "..."
+	}
+	ctx, span := s.tracer.Start(ctx, "retrieval.Retrieve",
+		trace.WithAttributes(
+			attribute.String("query.text", qText),
+			attribute.Int("query.limit", q.Limit),
+		),
+	)
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+			span.SetStatus(codes.Error, rerr.Error())
+		}
+		span.End()
+	}()
+
 	if q.Limit <= 0 {
 		q.Limit = 30
 	}
@@ -75,6 +135,7 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) ([]index.Result, 
 
 	if s.lexical != nil {
 		rs, err := s.lexical.Search(ctx, q)
+		s.m.recordSearch(ctx, "lexical", err)
 		if err != nil {
 			zctx.From(ctx).Warn("lexical search failed", zap.Error(err))
 		} else {
@@ -83,6 +144,7 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) ([]index.Result, 
 	}
 	if s.vector != nil {
 		rs, err := s.vector.Search(ctx, q)
+		s.m.recordSearch(ctx, "vector", err)
 		if err != nil {
 			zctx.From(ctx).Warn("vector search failed", zap.Error(err))
 		} else {
@@ -108,6 +170,7 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) ([]index.Result, 
 	if len(out) > q.Limit {
 		out = out[:q.Limit]
 	}
+	span.SetAttributes(attribute.Int("results.count", len(out)))
 	return out, nil
 }
 

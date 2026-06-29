@@ -35,6 +35,7 @@ import (
 	telegramingest "github.com/go-faster/scpbot/internal/ingest/telegram"
 	"github.com/go-faster/scpbot/internal/netclient"
 	"github.com/go-faster/scpbot/internal/pipeline"
+	"github.com/go-faster/scpbot/internal/telemetry"
 	"github.com/go-faster/scpbot/internal/wire"
 )
 
@@ -149,7 +150,10 @@ func run(ctx context.Context, tp trace.TracerProvider, mp metric.MeterProvider) 
 	switch eff {
 	case "gitlab":
 		ch := chunkmd.New(chunkmd.ChunkerOptions{})
-		pipe := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors)
+		pipe := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors, pipeline.PipelineOptions{
+			TracerProvider: tp,
+			MeterProvider:  mp,
+		})
 		doReset := *resetFlag == "gitlab" || *resetFlag == "all"
 		if err := r.runGitLab(ctx, pipe, since, doReset, *limit, *dryRun, !*noPrune); err != nil {
 			if errors.Is(err, errNotConfigured) {
@@ -163,7 +167,10 @@ func run(ctx context.Context, tp trace.TracerProvider, mp metric.MeterProvider) 
 
 	case "jira":
 		ch := chunkjira.New()
-		pipe := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors)
+		pipe := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors, pipeline.PipelineOptions{
+			TracerProvider: tp,
+			MeterProvider:  mp,
+		})
 		doReset := *resetFlag == "jira" || *resetFlag == "all"
 		if err := r.runJira(ctx, pipe, since, doReset, *limit, *dryRun); err != nil {
 			if errors.Is(err, errNotConfigured) {
@@ -177,7 +184,10 @@ func run(ctx context.Context, tp trace.TracerProvider, mp metric.MeterProvider) 
 
 	case "telegram":
 		ch := chunktg.New()
-		pipe := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors)
+		pipe := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors, pipeline.PipelineOptions{
+			TracerProvider: tp,
+			MeterProvider:  mp,
+		})
 		doReset := *resetFlag == "telegram" || *resetFlag == "all"
 		if err := r.runTelegram(ctx, pipe, since, doReset, *limit, *dryRun); err != nil {
 			if errors.Is(err, errNotConfigured) {
@@ -540,8 +550,10 @@ func (r *runner) runTelegram(ctx context.Context, p *pipeline.Pipeline, since ti
 	}
 
 	tgClient := gotdtelegram.NewClient(tc.AppID, tc.AppHash, gotdtelegram.Options{
-		Logger:         logzap.New(lg.Named("td").Named("ingest")),
-		SessionStorage: &gotdtelegram.FileSessionStorage{Path: tc.IngestSession},
+		Logger:          logzap.New(lg.Named("td").Named("ingest")),
+		SessionStorage:  &gotdtelegram.FileSessionStorage{Path: tc.IngestSession},
+		TracerProvider:  r.tp,
+		Middlewares:     []gotdtelegram.Middleware{telemetry.TDTracingMiddleware(r.tp)},
 	})
 
 	var result telegramingest.BackfillResult
@@ -675,7 +687,10 @@ func runAll(ctx context.Context, db *ent.Client, embedder index.Embedder, vector
 	// gitlab
 	{
 		ch := chunkmd.New(chunkmd.ChunkerOptions{})
-		pipe := pipeline.New(db, ch, embedder, vectors)
+		pipe := pipeline.New(db, ch, embedder, vectors, pipeline.PipelineOptions{
+			TracerProvider: tp,
+			MeterProvider:  mp,
+		})
 		doReset := resetMode == "all" || resetMode == "gitlab"
 		if err := runner.runGitLab(ctx, pipe, since, doReset, limit, dry, prune); err != nil {
 			if errors.Is(err, errNotConfigured) {
@@ -690,7 +705,10 @@ func runAll(ctx context.Context, db *ent.Client, embedder index.Embedder, vector
 	// jira
 	{
 		ch := chunkjira.New()
-		pipe := pipeline.New(db, ch, embedder, vectors)
+		pipe := pipeline.New(db, ch, embedder, vectors, pipeline.PipelineOptions{
+			TracerProvider: tp,
+			MeterProvider:  mp,
+		})
 		doReset := resetMode == "all" || resetMode == "jira"
 		if err := runner.runJira(ctx, pipe, since, doReset, limit, dry); err != nil {
 			if errors.Is(err, errNotConfigured) {
@@ -705,7 +723,10 @@ func runAll(ctx context.Context, db *ent.Client, embedder index.Embedder, vector
 	// telegram
 	{
 		ch := chunktg.New()
-		pipe := pipeline.New(db, ch, embedder, vectors)
+		pipe := pipeline.New(db, ch, embedder, vectors, pipeline.PipelineOptions{
+			TracerProvider: tp,
+			MeterProvider:  mp,
+		})
 		doReset := resetMode == "all" || resetMode == "telegram"
 		if err := runner.runTelegram(ctx, pipe, since, doReset, limit, dry); err != nil {
 			if errors.Is(err, errNotConfigured) {

@@ -62,6 +62,10 @@ func HTTPClient(ctx context.Context, name, proxyURL string, opts HTTPClientOptio
 		}
 		transport = proxyTransport
 	}
+	m, err := newClientMetrics(opts.MeterProvider)
+	if err != nil {
+		return nil, errors.Wrap(err, "create client metrics")
+	}
 	transport = otelhttp.NewTransport(transport,
 		otelhttp.WithMeterProvider(opts.MeterProvider),
 		otelhttp.WithTracerProvider(opts.TracerProvider),
@@ -71,6 +75,7 @@ func HTTPClient(ctx context.Context, name, proxyURL string, opts HTTPClientOptio
 		name:      name,
 		via:       via,
 		transport: transport,
+		metrics:   m,
 	}
 	_ = ctx
 	return &http.Client{
@@ -108,6 +113,7 @@ type loggingRoundTripper struct {
 	name      string
 	via       string
 	transport http.RoundTripper
+	metrics   *clientMetrics
 }
 
 func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -137,6 +143,7 @@ func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 		zap.Int("content_length", int(resp.ContentLength)),
 		ctField,
 	)
+	l.metrics.record(req.Context(), l.name, resp.StatusCode)
 	return resp, nil
 }
 

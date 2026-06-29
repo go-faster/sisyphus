@@ -3,17 +3,18 @@ package wire
 
 import (
 	"context"
-	"database/sql"
 	"net"
 	"strconv"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
+	"github.com/XSAM/otelsql"
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -86,7 +87,10 @@ func (opts *NewOptions) setDefaults() {
 
 // NewServices opens the database, runs migrations, and wires the embedder and optional vector store.
 func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trace.TracerProvider, mp metric.MeterProvider) (*Services, error) {
-	db, err := sql.Open("pgx", cfg.DatabaseDSN)
+	db, err := otelsql.Open("pgx", cfg.DatabaseDSN,
+		otelsql.WithAttributes(semconv.DBSystemPostgreSQL),
+		otelsql.WithSpanOptions(otelsql.SpanOptions{DisableErrSkip: true}),
+	)
 	if err != nil {
 		return nil, errors.Wrap(err, "open db")
 	}
@@ -160,7 +164,10 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		return Components{}, err
 	}
 
-	retr, err := retrieval.New(svcs.PG, svcs.Searcher, svcs.PG)
+	retr, err := retrieval.New(svcs.PG, svcs.Searcher, svcs.PG, retrieval.ServiceOptions{
+		TracerProvider: opts.TracerProvider,
+		MeterProvider:  opts.MeterProvider,
+	})
 	if err != nil {
 		svcs.Close()
 		return Components{}, errors.Wrap(err, "retrieval")

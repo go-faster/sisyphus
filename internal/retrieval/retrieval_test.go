@@ -50,7 +50,7 @@ func TestRetrieveMergesAndBoosts(t *testing.T) {
 		result(vecOnly, 0.9, true, map[string]any{"authority": string(index.AuthorityHigh)}),
 	}}
 
-	svc, err := New(lexical, vector, nil)
+	svc, err := New(lexical, vector, nil, ServiceOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestRetrieveServiceBoost(t *testing.T) {
 		result(a, 1.0, false, map[string]any{"service": "other"}),
 		result(b, 1.0, false, map[string]any{"service": "billing-api"}),
 	}}
-	svc, err := New(lexical, nil, nil)
+	svc, err := New(lexical, nil, nil, ServiceOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestRetrieveSurvivesBackendError(t *testing.T) {
 	ok := uuid.New()
 	lexical := fakeSearcher{err: context.DeadlineExceeded}
 	vector := fakeSearcher{results: []index.Result{result(ok, 0.7, true, nil)}}
-	svc, err := New(lexical, vector, nil)
+	svc, err := New(lexical, vector, nil, ServiceOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestRetrieveSurvivesBackendError(t *testing.T) {
 }
 
 func TestNewRequiresSearcher(t *testing.T) {
-	if _, err := New(nil, nil, nil); err == nil {
+	if _, err := New(nil, nil, nil, ServiceOptions{}); err == nil {
 		t.Fatal("expected error when no searcher provided")
 	}
 }
@@ -126,7 +126,7 @@ func TestRetrieveHydratesVectorOnlyText(t *testing.T) {
 			TokenCount: 42,
 		},
 	}}
-	svc, err := New(nil, vector, fetcher)
+	svc, err := New(nil, vector, fetcher, ServiceOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

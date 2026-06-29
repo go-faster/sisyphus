@@ -108,7 +108,7 @@ func TestPipeline_UnchangedDoc(t *testing.T) {
 
 	store := &fakeVectorStore{}
 	emb := &fakeEmbedder{}
-	p := New(client, testChunker{}, emb, store)
+	p := New(client, testChunker{}, emb, store, PipelineOptions{})
 
 	ctx := context.Background()
 	doc := index.Document{
@@ -151,7 +151,7 @@ func TestPipeline_ChangedDoc(t *testing.T) {
 
 	store := &fakeVectorStore{}
 	emb := &fakeEmbedder{}
-	p := New(client, testChunker{}, emb, store)
+	p := New(client, testChunker{}, emb, store, PipelineOptions{})
 
 	ctx := context.Background()
 	doc := index.Document{
@@ -201,7 +201,7 @@ func TestPipeline_NewDoc(t *testing.T) {
 
 	store := &fakeVectorStore{}
 	emb := &fakeEmbedder{}
-	p := New(client, testChunker{}, emb, store)
+	p := New(client, testChunker{}, emb, store, PipelineOptions{})
 
 	ctx := context.Background()
 	doc := index.Document{
@@ -229,7 +229,7 @@ func TestPipeline_Idempotent(t *testing.T) {
 
 	store := &fakeVectorStore{}
 	emb := &fakeEmbedder{}
-	p := New(client, testChunker{}, emb, store)
+	p := New(client, testChunker{}, emb, store, PipelineOptions{})
 
 	ctx := context.Background()
 	doc := index.Document{
@@ -277,7 +277,7 @@ func TestPipeline_VectorStoreNil(t *testing.T) {
 	defer cleanDB(t, client)
 
 	// vectors=nil should not panic.
-	p := New(client, testChunker{}, &fakeEmbedder{}, nil)
+	p := New(client, testChunker{}, &fakeEmbedder{}, nil, PipelineOptions{})
 
 	ctx := context.Background()
 	doc := index.Document{
