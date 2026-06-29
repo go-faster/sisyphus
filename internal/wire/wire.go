@@ -11,7 +11,6 @@ import (
 	"github.com/XSAM/otelsql"
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
@@ -29,6 +28,8 @@ import (
 	"github.com/go-faster/scpbot/internal/retrieval"
 	pgsearch "github.com/go-faster/scpbot/internal/search/postgres"
 	"github.com/go-faster/scpbot/internal/search/qdrant"
+
+	_ "github.com/jackc/pgx/v5/stdlib" // register pgx driver
 )
 
 // Retriever is the minimal retrieval interface used by API handlers, bot,
