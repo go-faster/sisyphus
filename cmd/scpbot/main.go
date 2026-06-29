@@ -35,14 +35,18 @@ import (
 )
 
 func main() {
-	app.Run(func(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
-		ctx = zctx.Base(ctx, lg)
-		cfg, err := config.Load()
-		if err != nil {
-			return errors.Wrap(err, "config")
-		}
-		return run(ctx, cfg, t.TracerProvider(), t.MeterProvider())
-	})
+	app.Run(
+		func(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
+			ctx = zctx.Base(ctx, lg)
+			cfg, err := config.Load()
+			if err != nil {
+				return errors.Wrap(err, "config")
+			}
+			return run(ctx, cfg, t.TracerProvider(), t.MeterProvider())
+		},
+		app.WithServiceName("scpmcp"),
+		app.WithServiceNamespace("scpbot"),
+	)
 }
 
 func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp metric.MeterProvider) error {

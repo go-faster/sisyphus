@@ -50,10 +50,14 @@ var (
 )
 
 func main() {
-	app.Run(func(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
-		ctx = zctx.Base(ctx, lg)
-		return run(ctx, t.TracerProvider(), t.MeterProvider())
-	})
+	app.Run(
+		func(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
+			ctx = zctx.Base(ctx, lg)
+			return run(ctx, t.TracerProvider(), t.MeterProvider())
+		},
+		app.WithServiceName("scpingest"),
+		app.WithServiceNamespace("scpbot"),
+	)
 }
 
 func run(ctx context.Context, tp trace.TracerProvider, mp metric.MeterProvider) error {

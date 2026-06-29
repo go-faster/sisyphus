@@ -22,14 +22,18 @@ func main() {
 	stdio := flag.Bool("stdio", false, "use stdio transport instead of Streamable HTTP")
 	flag.Parse()
 
-	app.Run(func(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
-		ctx = zctx.Base(ctx, lg)
-		cfg, err := config.Load()
-		if err != nil {
-			return errors.Wrap(err, "config")
-		}
-		return run(ctx, cfg, *stdio, t)
-	})
+	app.Run(
+		func(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
+			ctx = zctx.Base(ctx, lg)
+			cfg, err := config.Load()
+			if err != nil {
+				return errors.Wrap(err, "config")
+			}
+			return run(ctx, cfg, *stdio, t)
+		},
+		app.WithServiceName("scpmcp"),
+		app.WithServiceNamespace("scpbot"),
+	)
 }
 
 func run(ctx context.Context, cfg config.Config, useStdio bool, t *app.Telemetry) error {
