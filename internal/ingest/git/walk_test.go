@@ -1,9 +1,10 @@
-package gitlab
+package git
 
 import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/go-faster/scpbot/internal/index"
@@ -27,7 +28,7 @@ func TestWalkAll(t *testing.T) {
 		if len(docs) != 2 {
 			t.Fatalf("want 2 docs, got %d", len(docs))
 		}
-		if docs[0].Source != index.SourceGitLabDocs {
+		if docs[0].Source != index.SourceGitDocs("test/repo") {
 			t.Fatalf("unexpected source %q", docs[0].Source)
 		}
 		if docs[0].SourceID != "test/repo:README.md" {
@@ -113,6 +114,61 @@ func TestWalkAll(t *testing.T) {
 		}
 		if len(docs) != 1 {
 			t.Fatalf("want 1 doc (skipped vendor/node_modules), got %d", len(docs))
+		}
+	})
+
+	t.Run("filters by default exclude and include patterns", func(t *testing.T) {
+		dir := t.TempDir()
+		requireWrite(t, dir, "README.md", "# README")
+		requireWrite(t, dir, "CLAUDE.md", "# CLAUDE")
+		requireWrite(t, dir, ".github", "workflows", "ci.md", "# CI")
+		requireWrite(t, dir, "LICENSE", "MIT License")
+		requireWrite(t, dir, "docs", "guide.md", "# Guide")
+
+		docs, err := WalkAll(context.Background(), []Source{{
+			Root: dir, Repo: "test", Branch: "main",
+		}}, WalkOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Only README.md and docs/guide.md should be kept (CLAUDE.md, .github/*, LICENSE filtered out by DefaultExclude)
+		if len(docs) != 2 {
+			t.Fatalf("want 2 docs (CLAUDE.md, .github/*, LICENSE filtered by DefaultExclude), got %d", len(docs))
+		}
+		paths := map[string]bool{}
+		for _, doc := range docs {
+			// Extract path from SourceID (format is "repo:path")
+			parts := strings.SplitN(doc.SourceID, ":", 2)
+			if len(parts) == 2 {
+				paths[parts[1]] = true
+			}
+		}
+		if !paths["README.md"] || !paths["docs/guide.md"] {
+			t.Fatalf("unexpected docs kept: %v", paths)
+		}
+	})
+
+	t.Run("respects Include pattern", func(t *testing.T) {
+		dir := t.TempDir()
+		requireWrite(t, dir, "README.md", "# README")
+		requireWrite(t, dir, "docs", "guide.md", "# Guide")
+		requireWrite(t, dir, "blog", "post.md", "# Post")
+
+		docs, err := WalkAll(context.Background(), []Source{{
+			Root:    dir,
+			Repo:    "test",
+			Branch:  "main",
+			Include: []string{"docs/**"},
+		}}, WalkOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Only docs/guide.md should be kept (Include restricts to docs/**)
+		if len(docs) != 1 {
+			t.Fatalf("want 1 doc (only docs/guide.md with Include pattern), got %d", len(docs))
+		}
+		if !strings.Contains(docs[0].SourceID, "docs/guide.md") {
+			t.Fatalf("unexpected doc: %v", docs[0].SourceID)
 		}
 	})
 }

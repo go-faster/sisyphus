@@ -1,7 +1,8 @@
-// Package gitlab ingests GitLab Markdown docs into normalized Documents
-// (plan §3). For the MVP it walks a local checkout/working tree; the same
-// Document output feeds the chunk/markdown chunker and the pipeline.
-package gitlab
+// Package git ingests git repository content (Markdown docs) and commit
+// messages into normalized Documents. It walks a local checkout/working tree
+// (cloned/pulled via go-git); the Document output feeds the markdown and git
+// commit chunkers and the pipeline.
+package git
 
 import (
 	"context"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bmatcuk/doublestar"
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
 	"go.uber.org/zap"
@@ -28,6 +30,18 @@ var skipDirs = map[string]bool{
 	"coverage": true, ".git": true,
 }
 
+// DefaultExclude are glob patterns (repo-relative slash paths) to skip by default.
+var DefaultExclude = []string{
+	"CLAUDE.md",
+	"**/CLAUDE.md",
+	".github/**",
+	".gitlab/**",
+	"LICENSE",
+	"LICENSE.*",
+	"**/LICENSE",
+	"**/LICENSE.*",
+}
+
 // Source describes a docs tree to ingest.
 type Source struct {
 	// Root is the directory to walk.
@@ -40,10 +54,43 @@ type Source struct {
 	BaseURL string
 	// Branch recorded in metadata.
 	Branch string
+	// Include is a list of glob patterns (repo-relative) to include. If non-empty,
+	// only files matching at least one pattern are kept.
+	Include []string
+	// Exclude is a list of glob patterns (repo-relative) to skip.
+	Exclude []string
+	// Commits, if true, also ingest commit messages as Documents.
+	Commits bool
 }
 
 // WalkOptions configures WalkAll.
 type WalkOptions struct{}
+
+// keepFile determines whether a file at the given repo-relative slash path should be kept.
+func keepFile(s Source, rel string) bool {
+	// Check against DefaultExclude patterns
+	for _, pattern := range DefaultExclude {
+		if match, _ := doublestar.Match(pattern, rel); match {
+			return false
+		}
+	}
+	// Check against Source-specific Exclude patterns
+	for _, pattern := range s.Exclude {
+		if match, _ := doublestar.Match(pattern, rel); match {
+			return false
+		}
+	}
+	// If Include is non-empty, the file must match at least one pattern
+	if len(s.Include) > 0 {
+		for _, pattern := range s.Include {
+			if match, _ := doublestar.Match(pattern, rel); match {
+				return true
+			}
+		}
+		return false
+	}
+	return true
+}
 
 // Walk is a convenience wrapper around WalkAll for a single source.
 func Walk(ctx context.Context, s Source) ([]index.Document, error) {
@@ -59,7 +106,7 @@ func WalkAll(ctx context.Context, sources []Source, _ WalkOptions) ([]index.Docu
 	var docs []index.Document
 	for _, s := range sources {
 		if s.Root == "" {
-			lg.Warn("gitlab: skipping empty root",
+			lg.Warn("git: skipping empty root",
 				zap.String("repo", s.Repo))
 			continue
 		}
@@ -81,6 +128,10 @@ func WalkAll(ctx context.Context, sources []Source, _ WalkOptions) ([]index.Docu
 				return errors.Wrap(err, "rel path")
 			}
 			rel = filepath.ToSlash(rel)
+
+			if !keepFile(s, rel) {
+				return nil
+			}
 
 			body, err := os.ReadFile(p) //nolint:gosec // walking an operator-provided docs root
 			if err != nil {
@@ -109,8 +160,9 @@ func newDocument(s Source, rel, body string, mod time.Time) index.Document {
 	if s.BaseURL != "" {
 		url = strings.TrimRight(s.BaseURL, "/") + "/" + rel
 	}
+	source := index.SourceGitDocs(s.Repo)
 	meta := map[string]any{
-		"source":    string(index.SourceGitLabDocs),
+		"source":    string(source),
 		"repo":      s.Repo,
 		"path":      rel,
 		"branch":    s.Branch,
@@ -118,7 +170,7 @@ func newDocument(s Source, rel, body string, mod time.Time) index.Document {
 	}
 	return index.Document{
 		ID:        index.NewID(),
-		Source:    index.SourceGitLabDocs,
+		Source:    source,
 		SourceID:  s.Repo + ":" + rel,
 		URL:       url,
 		Title:     title,

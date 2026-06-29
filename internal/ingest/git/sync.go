@@ -1,4 +1,4 @@
-package gitlab
+package git
 
 import (
 	"context"
@@ -35,7 +35,7 @@ func Prepare(ctx context.Context, sources []Source, opts SyncOptions) ([]Source,
 		}
 		if src.Root == "" && src.URL != "" {
 			if opts.WorkDir == "" {
-				return nil, errors.New("gitlab: work_dir is required for cloned repos")
+				return nil, errors.New("git: work_dir is required for cloned repos")
 			}
 			src.Root = filepath.Join(opts.WorkDir, safeDirName(src.Repo))
 		}
@@ -63,7 +63,7 @@ func syncRepo(ctx context.Context, src Source, opts SyncOptions) error {
 		if !os.IsNotExist(err) {
 			return errors.Wrap(err, "stat git dir")
 		}
-		lg.Info("cloning gitlab repository",
+		lg.Info("cloning git repository",
 			zap.String("repo", src.Repo),
 			zap.String("root", src.Root),
 			zap.String("url", redactURL(src.URL)))
@@ -91,7 +91,7 @@ func syncRepo(ctx context.Context, src Source, opts SyncOptions) error {
 		return errors.Wrap(err, "worktree")
 	}
 
-	lg.Info("updating gitlab repository",
+	lg.Info("updating git repository",
 		zap.String("repo", src.Repo),
 		zap.String("root", src.Root),
 		zap.String("url", redactURL(src.URL)))
