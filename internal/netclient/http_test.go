@@ -17,6 +17,13 @@ func TestHTTPClientDefault(t *testing.T) {
 	client, err := HTTPClient(context.Background(), "", "", HTTPClientOptions{})
 	require.NoError(t, err)
 	require.IsType(t, &loggingRoundTripper{}, client.Transport)
+	require.Equal(t, 5*time.Minute, client.Timeout)
+}
+
+func TestHTTPClientTimeoutOverride(t *testing.T) {
+	client, err := HTTPClient(context.Background(), "", "", HTTPClientOptions{Timeout: time.Minute})
+	require.NoError(t, err)
+	require.Equal(t, time.Minute, client.Timeout)
 }
 
 func TestHTTPClientProxy(t *testing.T) {

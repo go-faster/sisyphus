@@ -23,6 +23,7 @@ import (
 type HTTPClientOptions struct {
 	MeterProvider  metric.MeterProvider
 	TracerProvider trace.TracerProvider
+	Timeout        time.Duration
 }
 
 func (opts *HTTPClientOptions) setDefaults() {
@@ -31,6 +32,9 @@ func (opts *HTTPClientOptions) setDefaults() {
 	}
 	if opts.TracerProvider == nil {
 		opts.TracerProvider = otel.GetTracerProvider()
+	}
+	if opts.Timeout == 0 {
+		opts.Timeout = 5 * time.Minute
 	}
 }
 
@@ -71,7 +75,7 @@ func HTTPClient(ctx context.Context, name, proxyURL string, opts HTTPClientOptio
 	_ = ctx
 	return &http.Client{
 		Transport: transport,
-		Timeout:   15 * time.Second,
+		Timeout:   opts.Timeout,
 	}, nil
 }
 
