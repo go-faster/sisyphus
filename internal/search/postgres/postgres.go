@@ -6,6 +6,9 @@ import (
 	"database/sql"
 	_ "embed"
 	"encoding/json"
+	"fmt"
+	"maps"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -142,20 +145,41 @@ func buildQuery(q index.Query) (query string, args []any) {
 	}
 
 	args = []any{q.Text, limit}
-	queryStr := `
+	var queryStr strings.Builder
+	queryStr.WriteString(`
 		SELECT id, document_id, chunk_type, coalesce(title,''), text, metadata,
 		       ts_rank(search_vector, plainto_tsquery('simple', $1)) AS rank
 		FROM chunks
 		WHERE search_vector @@ plainto_tsquery('simple', $1)
-	`
+	`)
 
+	// Combine q.Service (back-compat) and q.Filters into one set of metadata filters.
+	filters := make(map[string]string, len(q.Filters)+1)
+	maps.Copy(filters, q.Filters)
 	if q.Service != "" {
-		queryStr += ` AND metadata->>'service' = $3`
-		args = append(args, q.Service)
+		filters["service"] = q.Service
 	}
 
-	queryStr += ` ORDER BY rank DESC LIMIT $2`
+	if len(filters) > 0 {
+		keys := make([]string, 0, len(filters))
+		for k := range filters {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
 
-	query = queryStr
-	return
+		nextArgIdx := 3 // $1 and $2 are text and limit
+		for _, k := range keys {
+			queryStr.WriteString(fmt.Sprintf(
+				" AND metadata @> jsonb_build_object($%d::text, $%d::text)",
+				nextArgIdx, nextArgIdx+1,
+			))
+			args = append(args, k, filters[k])
+			nextArgIdx += 2
+		}
+	}
+
+	queryStr.WriteString(` ORDER BY rank DESC LIMIT $2`)
+
+	query = queryStr.String()
+	return query, args
 }

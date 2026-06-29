@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"database/sql"
+	"maps"
 	"os"
 	"testing"
 
@@ -40,8 +41,8 @@ func TestBuildQuery(t *testing.T) {
 		       ts_rank(search_vector, plainto_tsquery('simple', $1)) AS rank
 		FROM chunks
 		WHERE search_vector @@ plainto_tsquery('simple', $1)
-	 AND metadata->>'service' = $3 ORDER BY rank DESC LIMIT $2`,
-			wantLen: 3, // text, limit, service
+	 AND metadata @> jsonb_build_object($3::text, $4::text) ORDER BY rank DESC LIMIT $2`,
+			wantLen: 4, // text, limit, "service" key, "myservice" value
 		},
 		{
 			name: "query with custom limit",
@@ -66,6 +67,52 @@ func TestBuildQuery(t *testing.T) {
 				Limit: -1,
 			},
 			wantLen: 2,
+		},
+		{
+			name: "query with filters",
+			q: index.Query{
+				Text:    "search",
+				Filters: map[string]string{"status": "In Review"},
+			},
+			wantSQL: `
+		SELECT id, document_id, chunk_type, coalesce(title,''), text, metadata,
+		       ts_rank(search_vector, plainto_tsquery('simple', $1)) AS rank
+		FROM chunks
+		WHERE search_vector @@ plainto_tsquery('simple', $1)
+	 AND metadata @> jsonb_build_object($3::text, $4::text) ORDER BY rank DESC LIMIT $2`,
+			wantLen: 4, // text, limit, "status", "In Review"
+		},
+		{
+			name: "query with service and filters",
+			q: index.Query{
+				Text:    "search",
+				Service: "myservice",
+				Filters: map[string]string{"status": "In Review"},
+			},
+			wantSQL: `
+		SELECT id, document_id, chunk_type, coalesce(title,''), text, metadata,
+		       ts_rank(search_vector, plainto_tsquery('simple', $1)) AS rank
+		FROM chunks
+		WHERE search_vector @@ plainto_tsquery('simple', $1)
+	 AND metadata @> jsonb_build_object($3::text, $4::text) AND metadata @> jsonb_build_object($5::text, $6::text) ORDER BY rank DESC LIMIT $2`,
+			wantLen: 6, // text, limit, "service", "myservice", "status", "In Review"
+		},
+		{
+			name: "query with multiple filters",
+			q: index.Query{
+				Text: "search",
+				Filters: map[string]string{
+					"status":   "In Review",
+					"jira_key": "BILL-42",
+				},
+			},
+			wantSQL: `
+		SELECT id, document_id, chunk_type, coalesce(title,''), text, metadata,
+		       ts_rank(search_vector, plainto_tsquery('simple', $1)) AS rank
+		FROM chunks
+		WHERE search_vector @@ plainto_tsquery('simple', $1)
+	 AND metadata @> jsonb_build_object($3::text, $4::text) AND metadata @> jsonb_build_object($5::text, $6::text) ORDER BY rank DESC LIMIT $2`,
+			wantLen: 6, // text, limit, "jira_key", "BILL-42", "status", "In Review"
 		},
 	}
 
@@ -95,19 +142,37 @@ func TestBuildQuery(t *testing.T) {
 				}
 			}
 
-			// Check service filter presence in SQL
+			// Build expected filter set from Service (back-compat) and Filters.
+			expectedFilters := make(map[string]string, len(tt.q.Filters)+1)
+			maps.Copy(expectedFilters, tt.q.Filters)
 			if tt.q.Service != "" {
-				if tt.q.Service != "myservice" {
-					t.Fatalf("test setup error: q.Service should be 'myservice' or use different service in test")
+				expectedFilters["service"] = tt.q.Service
+			}
+
+			if len(expectedFilters) == 0 {
+				if contains(queryStr, "jsonb_build_object") {
+					t.Errorf("jsonb_build_object should not be in SQL when no filters")
 				}
-				if !contains(queryStr, "metadata->>'service'") {
-					t.Errorf("service filter not in SQL")
+			} else {
+				if !contains(queryStr, "jsonb_build_object") {
+					t.Errorf("expected jsonb_build_object in SQL for filters")
 				}
-				if len(args) < 3 || args[2] != tt.q.Service {
-					t.Errorf("service arg not found or wrong")
+				// Verify each expected filter key and value appear as consecutive args
+				// starting from index 2 (after text at 0, limit at 1).
+				for k, v := range expectedFilters {
+					found := false
+					for i := 2; i < len(args)-1; i++ {
+						if s, ok := args[i].(string); ok && s == k {
+							if s2, ok := args[i+1].(string); ok && s2 == v {
+								found = true
+								break
+							}
+						}
+					}
+					if !found {
+						t.Errorf("filter key %q with value %q not found in args", k, v)
+					}
 				}
-			} else if contains(queryStr, "metadata->>'service'") {
-				t.Errorf("service filter should not be in SQL when Service is empty")
 			}
 		})
 	}
