@@ -113,7 +113,7 @@ func TestPipeline_UnchangedDoc(t *testing.T) {
 	ctx := context.Background()
 	doc := index.Document{
 		ID:       uuid.New(),
-		Source:   index.SourceGitLabDocs,
+		Source:   index.SourceGitDocs("test/unchanged"),
 		SourceID: "test/unchanged",
 		Title:    "Test",
 		Body:     "section one\n===\nsection two",
@@ -156,7 +156,7 @@ func TestPipeline_ChangedDoc(t *testing.T) {
 	ctx := context.Background()
 	doc := index.Document{
 		ID:       uuid.New(),
-		Source:   index.SourceGitLabDocs,
+		Source:   index.SourceGitDocs("test/changed"),
 		SourceID: "test/changed",
 		Title:    "Test",
 		Body:     "stable section\n===\nwill change",
@@ -206,7 +206,7 @@ func TestPipeline_NewDoc(t *testing.T) {
 	ctx := context.Background()
 	doc := index.Document{
 		ID:       uuid.New(),
-		Source:   index.SourceGitLabDocs,
+		Source:   index.SourceGitDocs("test/new"),
 		SourceID: "test/new",
 		Title:    "New Doc",
 		Body:     "part a\n===\npart b\n===\npart c",
@@ -234,7 +234,7 @@ func TestPipeline_Idempotent(t *testing.T) {
 	ctx := context.Background()
 	doc := index.Document{
 		ID:       uuid.New(),
-		Source:   index.SourceGitLabDocs,
+		Source:   index.SourceGitDocs("test/idempotent"),
 		SourceID: "test/idempotent",
 		Title:    "Test",
 		Body:     "only section",
@@ -282,7 +282,7 @@ func TestPipeline_VectorStoreNil(t *testing.T) {
 	ctx := context.Background()
 	doc := index.Document{
 		ID:       uuid.New(),
-		Source:   index.SourceGitLabDocs,
+		Source:   index.SourceGitDocs("test/no-vector"),
 		SourceID: "test/no-vector",
 		Title:    "Test",
 		Body:     "some content",

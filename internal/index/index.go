@@ -17,9 +17,6 @@ import (
 type Source string
 
 const (
-	SourceGitLabDocs Source = "gitlab_docs" // deprecated: replaced by per-repo git sources
-	SourceGitLabCode Source = "gitlab_code"
-
 	// GitLab REST API sources (one GitLab instance; project in metadata/SourceID).
 	SourceGitLabIssue   Source = "gitlab_issue"
 	SourceGitLabMR      Source = "gitlab_mr"
