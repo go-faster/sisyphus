@@ -96,8 +96,8 @@ type Embedder interface {
 // Query is a retrieval request (plan §10).
 type Query struct {
 	Text    string
-	Service string         // optional service filter/boost
-	Filters map[string]any // optional payload filters (source, repo, jira_key, ...)
+	Service string            // optional service filter/boost
+	Filters map[string]string // optional payload filters (source, repo, jira_key, ...)
 	Limit   int
 }
 

@@ -304,10 +304,7 @@ func buildFilter(q index.Query) *qdrant.Filter {
 
 	// Add filters from Query.Filters
 	for k, v := range q.Filters {
-		// Convert v to a string or appropriate filter type
-		if sv, ok := v.(string); ok {
-			conditions = append(conditions, qdrant.NewMatchKeyword(k, sv))
-		}
+		conditions = append(conditions, qdrant.NewMatchKeyword(k, v))
 	}
 
 	if len(conditions) == 0 {

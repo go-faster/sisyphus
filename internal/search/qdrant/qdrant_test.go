@@ -175,7 +175,7 @@ func TestBuildFilterWithService(t *testing.T) {
 func TestBuildFilterWithFilters(t *testing.T) {
 	q := index.Query{
 		Text: "search term",
-		Filters: map[string]any{
+		Filters: map[string]string{
 			"source": "gitlab_docs",
 			"repo":   "my-repo",
 		},
@@ -208,7 +208,7 @@ func TestBuildFilterBothServiceAndFilters(t *testing.T) {
 	q := index.Query{
 		Text:    "search term",
 		Service: "my-service",
-		Filters: map[string]any{
+		Filters: map[string]string{
 			"source": "jira",
 		},
 	}
