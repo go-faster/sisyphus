@@ -98,9 +98,10 @@ func run(ctx context.Context, lg *zap.Logger, cfg config.Config, tp trace.Tracer
 	var answerer index.Answerer
 	if cfg.OpenRouter.Enabled() {
 		lg.Info("openrouter LLM enabled", zap.String("model", cfg.OpenRouter.Model))
-		httpClient, err := netclient.HTTPClient(cfg.Proxies.OpenRouter, netclient.HTTPClientOptions{
+		httpClient, err := netclient.HTTPClient("openrouter", cfg.Proxies.OpenRouter, netclient.HTTPClientOptions{
 			TracerProvider: tp,
 			MeterProvider:  mp,
+			Logger:         lg.Named("netclient"),
 		})
 		if err != nil {
 			return errors.Wrap(err, "openrouter http client")

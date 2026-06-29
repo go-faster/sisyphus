@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 
 	"github.com/go-faster/scpbot/internal/config"
 	"github.com/go-faster/scpbot/internal/embed/ollama"
@@ -20,6 +21,7 @@ import (
 type NewOptions struct {
 	TracerProvider trace.TracerProvider
 	MeterProvider  metric.MeterProvider
+	Logger         *zap.Logger
 }
 
 func (opts *NewOptions) setDefaults() {
@@ -28,6 +30,9 @@ func (opts *NewOptions) setDefaults() {
 	}
 	if opts.MeterProvider == nil {
 		opts.MeterProvider = otel.GetMeterProvider()
+	}
+	if opts.Logger == nil {
+		opts.Logger = zap.L()
 	}
 }
 
@@ -38,11 +43,12 @@ func New(cfg config.Config, opts NewOptions) (index.Embedder, error) {
 	httpOpts := netclient.HTTPClientOptions{
 		TracerProvider: opts.TracerProvider,
 		MeterProvider:  opts.MeterProvider,
+		Logger:         opts.Logger.Named("netclient"),
 	}
 
 	switch strings.ToLower(cfg.EmbedProvider) {
 	case "", "ollama":
-		httpClient, err := netclient.HTTPClient(cfg.Proxies.Ollama, httpOpts)
+		httpClient, err := netclient.HTTPClient("ollama-embed", cfg.Proxies.Ollama, httpOpts)
 		if err != nil {
 			return nil, errors.Wrap(err, "ollama http client")
 		}
@@ -54,7 +60,7 @@ func New(cfg config.Config, opts NewOptions) (index.Embedder, error) {
 		if cfg.OpenRouter.APIKey == "" {
 			return nil, errors.New("openrouter api_key is required for openrouter embeddings")
 		}
-		httpClient, err := netclient.HTTPClient(cfg.Proxies.OpenRouter, httpOpts)
+		httpClient, err := netclient.HTTPClient("openrouter-embed", cfg.Proxies.OpenRouter, httpOpts)
 		if err != nil {
 			return nil, errors.Wrap(err, "openrouter http client")
 		}

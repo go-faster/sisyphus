@@ -53,6 +53,7 @@ func (c Components) Close() {
 type NewOptions struct {
 	TracerProvider trace.TracerProvider
 	MeterProvider  metric.MeterProvider
+	Logger         *zap.Logger
 }
 
 func (opts *NewOptions) setDefaults() {
@@ -61,6 +62,9 @@ func (opts *NewOptions) setDefaults() {
 	}
 	if opts.MeterProvider == nil {
 		opts.MeterProvider = otel.GetMeterProvider()
+	}
+	if opts.Logger == nil {
+		opts.Logger = zap.L()
 	}
 }
 
@@ -128,9 +132,10 @@ func New(ctx context.Context, lg *zap.Logger, cfg config.Config, opts NewOptions
 	var answerer index.Answerer
 	if cfg.OpenRouter.Enabled() {
 		lg.Info("openrouter LLM enabled", zap.String("model", cfg.OpenRouter.Model))
-		httpClient, err := netclient.HTTPClient(cfg.Proxies.OpenRouter, netclient.HTTPClientOptions{
+		httpClient, err := netclient.HTTPClient("openrouter", cfg.Proxies.OpenRouter, netclient.HTTPClientOptions{
 			TracerProvider: opts.TracerProvider,
 			MeterProvider:  opts.MeterProvider,
+			Logger:         opts.Logger.Named("netclient"),
 		})
 		if err != nil {
 			_ = db.Close()

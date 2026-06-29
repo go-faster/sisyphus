@@ -380,9 +380,10 @@ func (r *runner) runJira(ctx context.Context, p *pipeline.Pipeline, since time.T
 		}
 	}
 
-	httpClient, err := netclient.HTTPClient(cfg.Proxies.Jira, netclient.HTTPClientOptions{
+	httpClient, err := netclient.HTTPClient("jira", cfg.Proxies.Jira, netclient.HTTPClientOptions{
 		TracerProvider: tp,
 		MeterProvider:  mp,
+		Logger:         lg.Named("netclient"),
 	})
 	if err != nil {
 		return errors.Wrap(err, "jira http client")
