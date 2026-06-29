@@ -2,6 +2,7 @@ package netclient
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -111,7 +112,7 @@ func serveOneSocks5(ln net.Listener, result chan<- socksResult) {
 		result <- socksResult{err: err}
 		return
 	}
-	if string(header) != string([]byte{0x05, 0x01, 0x00, 0x03}) {
+	if !bytes.Equal(header, []byte{0x05, 0x01, 0x00, 0x03}) {
 		result <- socksResult{err: fmt.Errorf("unexpected socks request header %v", header)}
 		return
 	}

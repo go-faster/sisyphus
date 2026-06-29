@@ -169,10 +169,8 @@ func buildQuery(q index.Query) (query string, args []any) {
 
 		nextArgIdx := 3 // $1 and $2 are text and limit
 		for _, k := range keys {
-			queryStr.WriteString(fmt.Sprintf(
-				" AND metadata @> jsonb_build_object($%d::text, $%d::text)",
-				nextArgIdx, nextArgIdx+1,
-			))
+			fmt.Fprintf(&queryStr, " AND metadata @> jsonb_build_object($%d::text, $%d::text)",
+				nextArgIdx, nextArgIdx+1)
 			args = append(args, k, filters[k])
 			nextArgIdx += 2
 		}

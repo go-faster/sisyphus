@@ -11,17 +11,37 @@ embed_provider: ollama
 embed_model: bge-m3
 embed_dim: 1024
 
-gitlab:
-  work_dir: /data/gitlab
+# git: repository content (Markdown docs) + commit messages. Supports N repos;
+# each is keyed independently (git_docs:<repo> / git_commits:<repo>).
+git:
+  work_dir: /data/git
   token:
-    env: SCPBOT_GITLAB_TOKEN
+    env: SCPBOT_GIT_TOKEN
   repos:
     - url: https://gitlab.example.com/group/docs.git
       repo: docs
       branch: main
       base_url: ""
+      # commits: index commit messages on the default branch (default false).
+      commits: false
+      # include/exclude: doublestar globs over repo-relative paths, applied on
+      # top of the built-in default skiplist (CLAUDE.md, .github/**, LICENSE*, ...).
+      include: []
+      exclude: []
+
+# gitlab: GitLab REST API — issues, merge requests, releases (no code diffs).
+gitlab:
+  base_url: https://gitlab.example.com
+  token:
+    env: SCPBOT_GITLAB_TOKEN
+  projects: "" # CSV of project IDs or paths, e.g. "group/docs,42"
+  issues: true
+  merge_requests: true
+  releases: true
 
 proxies:
+  git:
+    env: SCPBOT_GIT_PROXY
   gitlab:
     env: SCPBOT_GITLAB_PROXY
   jira:

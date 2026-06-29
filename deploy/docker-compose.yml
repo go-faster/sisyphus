@@ -3,6 +3,12 @@ name: scpbot
 services:
   postgres:
     image: postgres:17-alpine
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-scpbot}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-scpbot}
@@ -19,6 +25,15 @@ services:
 
   qdrant:
     image: qdrant/qdrant:v1.18.2-unprivileged
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otelcol:4317
+      QDRANT__SERVICE__METRICS_PREFIX: qdrant
     ports:
       - "6333:6333" # REST
       - "6334:6334" # gRPC
@@ -32,6 +47,14 @@ services:
 
   ollama:
     image: ollama/ollama:0.30.11
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otelcol:4317
     ports:
       - "11434:11434"
     volumes:
@@ -39,10 +62,17 @@ services:
     # Pull the embedding model on first run:
     #   docker compose exec ollama ollama pull bge-m3
 
-  app:
+  scpmcp:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+    entrypoint: [ "/usr/local/bin/scpmcp" ]
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,17 +82,84 @@ services:
         condition: service_started
     environment:
       SCPBOT_CONFIG: /data/scp/config.yaml
-      SCPBOT_DATABASE_DSN: postgres://${POSTGRES_USER:-scpbot}:${POSTGRES_PASSWORD:-scpbot}@postgres:5432/${POSTGRES_DB:-scpbot}?sslmode=disable
-      SCPBOT_TELEGRAM_APP_HASH: ${SCPBOT_TELEGRAM_APP_HASH}
-      SCPBOT_TELEGRAM_BOT_TOKEN: ${SCPBOT_TELEGRAM_BOT_TOKEN}
+      SCPBOT_GITLAB_TOKEN: ${SCPBOT_GITLAB_TOKEN:-}
+      SCPBOT_JIRA_PASSWORD: ${SCPBOT_JIRA_PASSWORD:-}
+      SCPBOT_OPENROUTER_API_KEY: ${SCPBOT_OPENROUTER_API_KEY:-}
+      OTEL_LOG_LEVEL: debug
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otelcol:4317
+      OTEL_EXPORTER_OTLP_INSECURE: true
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
     ports:
-      - "8080:8080"
+      - "18081:8081"
     volumes:
-      - ./config.example.yaml:/data/scp/config.yaml:ro
-      - scpdata:/data/scp
+      - ./config.yaml:/data/scp/config.yaml:ro
+      - scpmcp:/data/scp
+
+  scpbot:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+    entrypoint: [ "/usr/local/bin/scpbot" ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    environment:
+      SCPBOT_CONFIG: /data/scp/config.yaml
+      SCPBOT_GITLAB_TOKEN: ${SCPBOT_GITLAB_TOKEN:-}
+      SCPBOT_JIRA_PASSWORD: ${SCPBOT_JIRA_PASSWORD:-}
+      SCPBOT_OPENROUTER_API_KEY: ${SCPBOT_OPENROUTER_API_KEY:-}
+      OTEL_LOG_LEVEL: debug
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otelcol:4317
+      OTEL_EXPORTER_OTLP_INSECURE: true
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+    ports:
+      - "18080:8080"
+    volumes:
+      - ./config.yaml:/data/scp/config.yaml:ro
+      - scpbot:/data/scp
+
+  otelcol:
+    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.150.1
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+    user: 0:0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    volumes:
+      - ./otelcol/otelcol.yml:/etc/otelcol-contrib/config.yaml:ro
+      - otelcol:/var/lib/otelcol
+    environment:
+      - OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=none
+      - POSTGRESQL_ENDPOINT=${POSTGRESQL_ENDPOINT:-postgres:5432}
+      - POSTGRESQL_USERNAME=${POSTGRESQL_USERNAME:-scpbot}
+      - POSTGRESQL_PASSWORD=${POSTGRESQL_PASSWORD:-scpbot}
+      - POSTGRESQL_DATABASE=${POSTGRESQL_DATABASE:-scpbot}
+      - QDRANT_METRICS_ENDPOINT=${QDRANT_METRICS_ENDPOINT:-qdrant:6333}
+    command:
+      - "--config"
+      - "/etc/otelcol-contrib/config.yaml"
 
 volumes:
   pgdata:
   qdrant:
   ollama:
-  scpdata:
+  scpmcp:
+  scpbot:
+  otelcol:
