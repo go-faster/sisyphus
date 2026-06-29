@@ -198,11 +198,6 @@ func (_c *SyncStateCreate) check() error {
 	if _, ok := _c.mutation.LastCursor(); !ok {
 		return &ValidationError{Name: "last_cursor", err: errors.New(`ent: missing required field "SyncState.last_cursor"`)}
 	}
-	if v, ok := _c.mutation.LastCursor(); ok {
-		if err := syncstate.LastCursorValidator(v); err != nil {
-			return &ValidationError{Name: "last_cursor", err: fmt.Errorf(`ent: validator failed for field "SyncState.last_cursor": %w`, err)}
-		}
-	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "SyncState.status"`)}
 	}

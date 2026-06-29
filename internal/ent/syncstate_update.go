@@ -185,11 +185,6 @@ func (_u *SyncStateUpdate) check() error {
 			return &ValidationError{Name: "source", err: fmt.Errorf(`ent: validator failed for field "SyncState.source": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.LastCursor(); ok {
-		if err := syncstate.LastCursorValidator(v); err != nil {
-			return &ValidationError{Name: "last_cursor", err: fmt.Errorf(`ent: validator failed for field "SyncState.last_cursor": %w`, err)}
-		}
-	}
 	return nil
 }
 
@@ -423,11 +418,6 @@ func (_u *SyncStateUpdateOne) check() error {
 	if v, ok := _u.mutation.Source(); ok {
 		if err := syncstate.SourceValidator(v); err != nil {
 			return &ValidationError{Name: "source", err: fmt.Errorf(`ent: validator failed for field "SyncState.source": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.LastCursor(); ok {
-		if err := syncstate.LastCursorValidator(v); err != nil {
-			return &ValidationError{Name: "last_cursor", err: fmt.Errorf(`ent: validator failed for field "SyncState.last_cursor": %w`, err)}
 		}
 	}
 	return nil

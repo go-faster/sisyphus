@@ -59,8 +59,6 @@ var (
 	SourceValidator func(string) error
 	// DefaultLastCursor holds the default value on creation for the "last_cursor" field.
 	DefaultLastCursor string
-	// LastCursorValidator is a validator for the "last_cursor" field. It is called by the builders before save.
-	LastCursorValidator func(string) error
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// DefaultDocumentCount holds the default value on creation for the "document_count" field.

@@ -104,8 +104,6 @@ func init() {
 	syncstateDescLastCursor := syncstateFields[3].Descriptor()
 	// syncstate.DefaultLastCursor holds the default value on creation for the last_cursor field.
 	syncstate.DefaultLastCursor = syncstateDescLastCursor.Default.(string)
-	// syncstate.LastCursorValidator is a validator for the "last_cursor" field. It is called by the builders before save.
-	syncstate.LastCursorValidator = syncstateDescLastCursor.Validators[0].(func(string) error)
 	// syncstateDescStatus is the schema descriptor for status field.
 	syncstateDescStatus := syncstateFields[4].Descriptor()
 	// syncstate.DefaultStatus holds the default value on creation for the status field.
