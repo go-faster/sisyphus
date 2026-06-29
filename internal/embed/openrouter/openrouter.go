@@ -3,6 +3,7 @@ package openrouter
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/go-faster/errors"
 	"github.com/openai/openai-go/v3"
@@ -24,6 +25,8 @@ type Embedder struct {
 type EmbedderOptions struct {
 	// BaseURL overrides the OpenRouter API base URL (useful for tests / self-hosted).
 	BaseURL string
+	// HTTPClient sets the HTTP client used for requests.
+	HTTPClient *http.Client
 	// Dim sets the dimension of the embeddings.
 	// Defaults to 1024.
 	Dim int
@@ -41,10 +44,15 @@ func (opts *EmbedderOptions) setDefaults() {
 // New creates a new OpenRouter embedder.
 func New(apiKey, model string, opts EmbedderOptions) *Embedder {
 	opts.setDefaults()
-	client := openai.NewClient(
+	ropts := []option.RequestOption{
 		option.WithAPIKey(apiKey),
 		option.WithBaseURL(opts.BaseURL),
-	)
+	}
+	if opts.HTTPClient != nil {
+		opts := option.WithHTTPClient(opts.HTTPClient)
+		ropts = append(ropts, opts)
+	}
+	client := openai.NewClient(ropts...)
 	return &Embedder{
 		client: client,
 		model:  model,

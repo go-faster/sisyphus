@@ -21,6 +21,16 @@ gitlab:
       branch: main
       base_url: ""
 
+proxies:
+  gitlab:
+    env: SCPBOT_GITLAB_PROXY
+  jira:
+    env: SCPBOT_JIRA_PROXY
+  ollama:
+    env: SCPBOT_OLLAMA_PROXY
+  openrouter:
+    env: SCPBOT_OPENROUTER_PROXY
+
 jira:
   base_url: ""
   email: ""

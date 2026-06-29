@@ -36,6 +36,7 @@ import (
 	gitlabingest "github.com/go-faster/scpbot/internal/ingest/gitlab"
 	jiraingest "github.com/go-faster/scpbot/internal/ingest/jira"
 	telegramingest "github.com/go-faster/scpbot/internal/ingest/telegram"
+	"github.com/go-faster/scpbot/internal/netclient"
 	"github.com/go-faster/scpbot/internal/pipeline"
 	qdrant "github.com/go-faster/scpbot/internal/search/qdrant"
 )
@@ -257,6 +258,7 @@ func runGitLab(ctx context.Context, lg *zap.Logger, db *ent.Client, p *pipeline.
 	roots, err := gitlabingest.Prepare(ctx, roots, gitlabingest.SyncOptions{
 		WorkDir: cfg.GitLab.WorkDir,
 		Token:   cfg.GitLab.Token,
+		Proxy:   cfg.Proxies.GitLab,
 		Logger:  lg.Named("gitlab"),
 	})
 	if err != nil {
@@ -338,14 +340,19 @@ func runJira(ctx context.Context, lg *zap.Logger, db *ent.Client, p *pipeline.Pi
 		}
 	}
 
+	httpClient, err := netclient.HTTPClient(cfg.Proxies.Jira)
+	if err != nil {
+		return errors.Wrap(err, "jira http client")
+	}
 	fetcher, err := jiraingest.New(jiraingest.Options{
-		BaseURL:  jc.BaseURL,
-		Email:    jc.Email,
-		Username: jc.Username,
-		APIToken: jc.APIToken,
-		Password: jc.Password,
-		PAT:      jc.PAT,
-		Logger:   lg.Named("jira"),
+		BaseURL:    jc.BaseURL,
+		Email:      jc.Email,
+		Username:   jc.Username,
+		APIToken:   jc.APIToken,
+		Password:   jc.Password,
+		PAT:        jc.PAT,
+		HTTPClient: httpClient,
+		Logger:     lg.Named("jira"),
 	})
 	if err != nil {
 		return errors.Wrap(err, "jira new fetcher")

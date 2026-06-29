@@ -22,6 +22,7 @@ var repoMu sync.Mutex
 type SyncOptions struct {
 	WorkDir string
 	Token   string
+	Proxy   string
 	Logger  *zap.Logger
 }
 
@@ -74,8 +75,9 @@ func syncRepo(ctx context.Context, src Source, opts SyncOptions) error {
 			zap.String("root", src.Root),
 			zap.String("url", redactURL(src.URL)))
 		cloneOpts := &git.CloneOptions{
-			URL:  src.URL,
-			Auth: auth,
+			URL:          src.URL,
+			Auth:         auth,
+			ProxyOptions: transport.ProxyOptions{URL: opts.Proxy},
 		}
 		if src.Branch != "" {
 			cloneOpts.ReferenceName = plumbing.NewBranchReferenceName(src.Branch)
@@ -101,8 +103,9 @@ func syncRepo(ctx context.Context, src Source, opts SyncOptions) error {
 		zap.String("root", src.Root),
 		zap.String("url", redactURL(src.URL)))
 	pullOpts := &git.PullOptions{
-		RemoteName: "origin",
-		Auth:       auth,
+		RemoteName:   "origin",
+		Auth:         auth,
+		ProxyOptions: transport.ProxyOptions{URL: opts.Proxy},
 	}
 	if src.Branch != "" {
 		pullOpts.ReferenceName = plumbing.NewBranchReferenceName(src.Branch)

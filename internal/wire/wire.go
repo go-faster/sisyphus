@@ -19,6 +19,7 @@ import (
 	"github.com/go-faster/scpbot/internal/index"
 	"github.com/go-faster/scpbot/internal/llm/openrouter"
 	"github.com/go-faster/scpbot/internal/llm/stub"
+	"github.com/go-faster/scpbot/internal/netclient"
 	"github.com/go-faster/scpbot/internal/retrieval"
 	pgsearch "github.com/go-faster/scpbot/internal/search/postgres"
 	"github.com/go-faster/scpbot/internal/search/qdrant"
@@ -104,7 +105,12 @@ func New(ctx context.Context, lg *zap.Logger, cfg config.Config) (Components, er
 	var answerer index.Answerer
 	if cfg.OpenRouter.Enabled() {
 		lg.Info("openrouter LLM enabled", zap.String("model", cfg.OpenRouter.Model))
-		orClient := openrouter.New(cfg.OpenRouter.APIKey, openrouter.Options{})
+		httpClient, err := netclient.HTTPClient(cfg.Proxies.OpenRouter)
+		if err != nil {
+			_ = db.Close()
+			return Components{}, errors.Wrap(err, "openrouter http client")
+		}
+		orClient := openrouter.New(cfg.OpenRouter.APIKey, openrouter.Options{HTTPClient: httpClient})
 		answerer = openrouter.NewAnswerer(orClient, cfg.OpenRouter.Model, openrouter.AnswererOptions{})
 	} else {
 		lg.Warn("openrouter not configured, using stub answerer")

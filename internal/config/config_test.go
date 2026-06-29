@@ -26,6 +26,15 @@ gitlab:
       repo: docs
       branch: main
       base_url: https://gitlab.example.com/group/docs/-/blob/main
+proxies:
+  gitlab:
+    env: TEST_SCPBOT_GITLAB_PROXY
+  jira:
+    value: http://127.0.0.1:8080
+  ollama:
+    value: http://127.0.0.1:8081
+  openrouter:
+    value: http://127.0.0.1:8082
 telegram:
   app_id: 123
   session_dir: /tmp/scpbot-session
@@ -34,6 +43,7 @@ openrouter:
 `)
 	t.Setenv("SCPBOT_CONFIG", path)
 	t.Setenv("TEST_SCPBOT_GITLAB_TOKEN", "gitlab-token")
+	t.Setenv("TEST_SCPBOT_GITLAB_PROXY", "http://127.0.0.1:8083")
 
 	cfg, err := Load()
 	require.NoError(t, err)
@@ -53,6 +63,10 @@ openrouter:
 	require.Equal(t, "docs", cfg.GitLab.Repos[0].Repo)
 	require.Equal(t, "main", cfg.GitLab.Repos[0].Branch)
 	require.Equal(t, "https://gitlab.example.com/group/docs/-/blob/main", cfg.GitLab.Repos[0].BaseURL)
+	require.Equal(t, "http://127.0.0.1:8083", cfg.Proxies.GitLab)
+	require.Equal(t, "http://127.0.0.1:8080", cfg.Proxies.Jira)
+	require.Equal(t, "http://127.0.0.1:8081", cfg.Proxies.Ollama)
+	require.Equal(t, "http://127.0.0.1:8082", cfg.Proxies.OpenRouter)
 }
 
 func TestLoadSecretEnv(t *testing.T) {
@@ -120,6 +134,7 @@ func clearEnv(t *testing.T) {
 		"SCPBOT_CONFIG",
 		"TEST_SCPBOT_DATABASE_DSN",
 		"TEST_SCPBOT_GITLAB_TOKEN",
+		"TEST_SCPBOT_GITLAB_PROXY",
 		"TEST_SCPBOT_OPENROUTER_API_KEY",
 		"TEST_SCPBOT_JIRA_PASSWORD",
 	} {

@@ -29,6 +29,7 @@ type Config struct {
 
 	OpenRouter OpenRouter
 	Telegram   Telegram
+	Proxies    ProxyConfig
 
 	MCPAddr string
 }
@@ -79,10 +80,26 @@ type fileConfig struct {
 
 	Jira fileJiraConfig `yaml:"jira"`
 
-	OpenRouter fileOpenRouter `yaml:"openrouter"`
-	Telegram   fileTelegram   `yaml:"telegram"`
+	OpenRouter fileOpenRouter  `yaml:"openrouter"`
+	Telegram   fileTelegram    `yaml:"telegram"`
+	Proxies    fileProxyConfig `yaml:"proxies"`
 
 	MCPAddr string `yaml:"mcp_addr"`
+}
+
+// ProxyConfig configures per-client HTTP proxies.
+type ProxyConfig struct {
+	GitLab     string
+	Jira       string
+	Ollama     string
+	OpenRouter string
+}
+
+type fileProxyConfig struct {
+	GitLab     Secret `yaml:"gitlab"`
+	Jira       Secret `yaml:"jira"`
+	Ollama     Secret `yaml:"ollama"`
+	OpenRouter Secret `yaml:"openrouter"`
 }
 
 type fileJiraConfig struct {
@@ -252,6 +269,10 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 	if err != nil {
 		return Config{}, errors.Wrap(err, "telegram bot_token")
 	}
+	proxies, err := c.Proxies.resolve(baseDir)
+	if err != nil {
+		return Config{}, err
+	}
 
 	return Config{
 		HTTPAddr:         c.HTTPAddr,
@@ -288,7 +309,33 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			MonitorChats:  c.Telegram.MonitorChats,
 			IngestSession: c.Telegram.IngestSession,
 		},
+		Proxies: proxies,
 		MCPAddr: c.MCPAddr,
+	}, nil
+}
+
+func (c fileProxyConfig) resolve(baseDir string) (ProxyConfig, error) {
+	gitlab, err := c.GitLab.Resolve(baseDir)
+	if err != nil {
+		return ProxyConfig{}, errors.Wrap(err, "proxy gitlab")
+	}
+	jira, err := c.Jira.Resolve(baseDir)
+	if err != nil {
+		return ProxyConfig{}, errors.Wrap(err, "proxy jira")
+	}
+	ollama, err := c.Ollama.Resolve(baseDir)
+	if err != nil {
+		return ProxyConfig{}, errors.Wrap(err, "proxy ollama")
+	}
+	openrouter, err := c.OpenRouter.Resolve(baseDir)
+	if err != nil {
+		return ProxyConfig{}, errors.Wrap(err, "proxy openrouter")
+	}
+	return ProxyConfig{
+		GitLab:     gitlab,
+		Jira:       jira,
+		Ollama:     ollama,
+		OpenRouter: openrouter,
 	}, nil
 }
 

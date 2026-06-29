@@ -4,6 +4,7 @@ package openrouter
 
 import (
 	"context"
+	"net/http"
 	"strings"
 
 	"github.com/go-faster/errors"
@@ -22,6 +23,8 @@ type Client struct {
 type Options struct {
 	// BaseURL overrides the API base URL (useful for tests / self-hosted).
 	BaseURL string
+	// HTTPClient sets the HTTP client used for requests.
+	HTTPClient *http.Client
 }
 
 func (opts *Options) setDefaults() {
@@ -36,6 +39,10 @@ func New(apiKey string, opts Options) *Client {
 	ropts := []option.RequestOption{
 		option.WithAPIKey(apiKey),
 		option.WithBaseURL(opts.BaseURL),
+	}
+	if opts.HTTPClient != nil {
+		opts := option.WithHTTPClient(opts.HTTPClient)
+		ropts = append(ropts, opts)
 	}
 	return &Client{oc: openai.NewClient(ropts...)}
 }
