@@ -16,6 +16,9 @@ func (s *ErrorStatusCode) Error() string {
 type ContextRequest struct {
 	Question string    `json:"question"`
 	Service  OptString `json:"service"`
+	// Metadata filters applied as exact-match against chunk metadata. Well-known keys: status, source,
+	// jira_project, jira_component, jira_key, authority, repo. Values are always strings.
+	Filters OptContextRequestFilters `json:"filters"`
 }
 
 // GetQuestion returns the value of Question.
@@ -28,6 +31,11 @@ func (s *ContextRequest) GetService() OptString {
 	return s.Service
 }
 
+// GetFilters returns the value of Filters.
+func (s *ContextRequest) GetFilters() OptContextRequestFilters {
+	return s.Filters
+}
+
 // SetQuestion sets the value of Question.
 func (s *ContextRequest) SetQuestion(val string) {
 	s.Question = val
@@ -36,6 +44,24 @@ func (s *ContextRequest) SetQuestion(val string) {
 // SetService sets the value of Service.
 func (s *ContextRequest) SetService(val OptString) {
 	s.Service = val
+}
+
+// SetFilters sets the value of Filters.
+func (s *ContextRequest) SetFilters(val OptContextRequestFilters) {
+	s.Filters = val
+}
+
+// Metadata filters applied as exact-match against chunk metadata. Well-known keys: status, source,
+// jira_project, jira_component, jira_key, authority, repo. Values are always strings.
+type ContextRequestFilters map[string]string
+
+func (s *ContextRequestFilters) init() ContextRequestFilters {
+	m := *s
+	if m == nil {
+		m = map[string]string{}
+		*s = m
+	}
+	return m
 }
 
 // Ref: #/components/schemas/ContextResponse
@@ -188,6 +214,52 @@ func (o OptBool) Or(d bool) bool {
 	return d
 }
 
+// NewOptContextRequestFilters returns new OptContextRequestFilters with value set to v.
+func NewOptContextRequestFilters(v ContextRequestFilters) OptContextRequestFilters {
+	return OptContextRequestFilters{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptContextRequestFilters is optional ContextRequestFilters.
+type OptContextRequestFilters struct {
+	Value ContextRequestFilters
+	Set   bool
+}
+
+// IsSet returns true if OptContextRequestFilters was set.
+func (o OptContextRequestFilters) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptContextRequestFilters) Reset() {
+	var v ContextRequestFilters
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptContextRequestFilters) SetTo(v ContextRequestFilters) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptContextRequestFilters) Get() (v ContextRequestFilters, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptContextRequestFilters) Or(d ContextRequestFilters) ContextRequestFilters {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptInt32 returns new OptInt32 with value set to v.
 func NewOptInt32(v int32) OptInt32 {
 	return OptInt32{
@@ -228,6 +300,52 @@ func (o OptInt32) Get() (v int32, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptInt32) Or(d int32) int32 {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptSearchRequestFilters returns new OptSearchRequestFilters with value set to v.
+func NewOptSearchRequestFilters(v SearchRequestFilters) OptSearchRequestFilters {
+	return OptSearchRequestFilters{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptSearchRequestFilters is optional SearchRequestFilters.
+type OptSearchRequestFilters struct {
+	Value SearchRequestFilters
+	Set   bool
+}
+
+// IsSet returns true if OptSearchRequestFilters was set.
+func (o OptSearchRequestFilters) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptSearchRequestFilters) Reset() {
+	var v SearchRequestFilters
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptSearchRequestFilters) SetTo(v SearchRequestFilters) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptSearchRequestFilters) Get() (v SearchRequestFilters, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptSearchRequestFilters) Or(d SearchRequestFilters) SearchRequestFilters {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -284,7 +402,10 @@ func (o OptString) Or(d string) string {
 type SearchRequest struct {
 	Query   string    `json:"query"`
 	Service OptString `json:"service"`
-	Limit   OptInt32  `json:"limit"`
+	// Metadata filters applied as exact-match against chunk metadata. Well-known keys: status, source,
+	// jira_project, jira_component, jira_key, authority, repo. Values are always strings.
+	Filters OptSearchRequestFilters `json:"filters"`
+	Limit   OptInt32                `json:"limit"`
 }
 
 // GetQuery returns the value of Query.
@@ -295,6 +416,11 @@ func (s *SearchRequest) GetQuery() string {
 // GetService returns the value of Service.
 func (s *SearchRequest) GetService() OptString {
 	return s.Service
+}
+
+// GetFilters returns the value of Filters.
+func (s *SearchRequest) GetFilters() OptSearchRequestFilters {
+	return s.Filters
 }
 
 // GetLimit returns the value of Limit.
@@ -312,9 +438,27 @@ func (s *SearchRequest) SetService(val OptString) {
 	s.Service = val
 }
 
+// SetFilters sets the value of Filters.
+func (s *SearchRequest) SetFilters(val OptSearchRequestFilters) {
+	s.Filters = val
+}
+
 // SetLimit sets the value of Limit.
 func (s *SearchRequest) SetLimit(val OptInt32) {
 	s.Limit = val
+}
+
+// Metadata filters applied as exact-match against chunk metadata. Well-known keys: status, source,
+// jira_project, jira_component, jira_key, authority, repo. Values are always strings.
+type SearchRequestFilters map[string]string
+
+func (s *SearchRequestFilters) init() SearchRequestFilters {
+	m := *s
+	if m == nil {
+		m = map[string]string{}
+		*s = m
+	}
+	return m
 }
 
 // Ref: #/components/schemas/SearchResponse
