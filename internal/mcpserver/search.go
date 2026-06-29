@@ -10,9 +10,10 @@ import (
 
 // SearchArgs are the input parameters for search_knowledge.
 type SearchArgs struct {
-	Query   string `json:"query" jsonschema:"The search query text."`
-	Service string `json:"service,omitempty" jsonschema:"Optional service filter for authority boost."`
-	Limit   int    `json:"limit,omitempty" jsonschema:"Maximum number of results (default 30)."`
+	Query   string            `json:"query" jsonschema:"The search query text."`
+	Service string            `json:"service,omitempty" jsonschema:"Optional service filter for authority boost; also applied as a metadata filter."`
+	Filters map[string]string `json:"filters,omitempty" jsonschema:"Optional metadata filters. Well-known keys: status, source, jira_project, jira_component, jira_key, authority, repo. Values are always strings."`
+	Limit   int               `json:"limit,omitempty" jsonschema:"Maximum number of results (default 30)."`
 }
 
 // SearchResult mirrors the oas.SearchResult mapping for MCP output.
@@ -42,6 +43,7 @@ func searchHandler(retr Retriever) func(context.Context, *mcp.CallToolRequest, S
 		q := index.Query{
 			Text:    args.Query,
 			Service: args.Service,
+			Filters: args.Filters,
 			Limit:   limit,
 		}
 		results, err := retr.Retrieve(ctx, q)

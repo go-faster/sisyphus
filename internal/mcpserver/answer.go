@@ -10,8 +10,9 @@ import (
 
 // AnswerArgs are the input parameters for answer_question.
 type AnswerArgs struct {
-	Question string `json:"question" jsonschema:"The question to answer from the knowledge base."`
-	Service  string `json:"service,omitempty" jsonschema:"Optional service filter for authority boost."`
+	Question string            `json:"question" jsonschema:"The question to answer from the knowledge base."`
+	Service  string            `json:"service,omitempty" jsonschema:"Optional service filter for authority boost."`
+	Filters  map[string]string `json:"filters,omitempty" jsonschema:"Optional metadata filters. Well-known keys: status, source, jira_project, jira_component, jira_key, authority, repo. Values are always strings."`
 }
 
 // AnswerOut is the structured output for answer_question.
@@ -25,6 +26,7 @@ func answerHandler(retr Retriever, answerer index.Answerer) func(context.Context
 		q := index.Query{
 			Text:    args.Question,
 			Service: args.Service,
+			Filters: args.Filters,
 			Limit:   12,
 		}
 		results, err := retr.Retrieve(ctx, q)

@@ -42,6 +42,7 @@ func (h *Handler) Search(ctx context.Context, req *oas.SearchRequest) (*oas.Sear
 	q := index.Query{
 		Text:    req.Query,
 		Service: req.Service.Or(""),
+		Filters: req.Filters.Or(nil),
 		Limit:   int(req.Limit.Or(30)),
 	}
 	results, err := h.retriever.Retrieve(ctx, q)
@@ -56,6 +57,7 @@ func (h *Handler) Context(ctx context.Context, req *oas.ContextRequest) (*oas.Co
 	q := index.Query{
 		Text:    req.Question,
 		Service: req.Service.Or(""),
+		Filters: req.Filters.Or(nil),
 		Limit:   12,
 	}
 	results, err := h.retriever.Retrieve(ctx, q)
