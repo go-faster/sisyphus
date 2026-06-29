@@ -60,7 +60,7 @@ func TestMigrationsE2E(t *testing.T) {
 		t.Fatalf("ent schema migration: %v", err)
 	}
 
-	searcher := New(db)
+	searcher := New(db, client)
 	if err := searcher.Migrate(ctx); err != nil {
 		t.Fatalf("fts migration: %v", err)
 	}

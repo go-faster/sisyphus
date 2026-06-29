@@ -196,7 +196,7 @@ func TestSearchSkipWithoutDB(t *testing.T) {
 		t.Fatalf("failed to ping database: %v", err)
 	}
 
-	s := New(db)
+	s := New(db, nil)
 	if s == nil {
 		t.Fatal("New() returned nil")
 	}
@@ -228,7 +228,7 @@ func TestMigrateSkipWithoutDB(t *testing.T) {
 	}
 	defer db.Close()
 
-	s := New(db)
+	s := New(db, nil)
 	err = s.Migrate(t.Context())
 	if err != nil {
 		t.Errorf("Migrate failed: %v", err)

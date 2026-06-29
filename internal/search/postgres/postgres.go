@@ -9,12 +9,13 @@ import (
 	"fmt"
 	"maps"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/go-faster/errors"
 	"github.com/google/uuid"
 
+	"github.com/go-faster/scpbot/internal/ent"
+	"github.com/go-faster/scpbot/internal/ent/chunk"
 	"github.com/go-faster/scpbot/internal/index"
 )
 
@@ -23,12 +24,13 @@ var migrationsSQL string
 
 // Searcher implements index.Searcher using Postgres full-text search.
 type Searcher struct {
-	db *sql.DB
+	db     *sql.DB
+	client *ent.Client
 }
 
 // New creates a new Postgres searcher.
-func New(db *sql.DB) *Searcher {
-	return &Searcher{db: db}
+func New(db *sql.DB, client *ent.Client) *Searcher {
+	return &Searcher{db: db, client: client}
 }
 
 // Migrate applies schema migrations to add FTS columns and indexes.
@@ -103,35 +105,20 @@ func (s *Searcher) FetchChunks(ctx context.Context, ids []uuid.UUID) (map[uuid.U
 		return nil, nil
 	}
 
-	placeholders := make([]string, len(ids))
-	args := make([]any, len(ids))
-	for i, id := range ids {
-		placeholders[i] = "$" + strconv.Itoa(i+1)
-		args[i] = id
-	}
-	query := `
-		SELECT id, text, token_count
-		FROM chunks
-		WHERE id IN (` + strings.Join(placeholders, ",") + `)
-	`
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	chunks, err := s.client.Chunk.Query().
+		Where(chunk.IDIn(ids...)).
+		All(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "query chunks by id")
 	}
-	defer func() {
-		_ = rows.Close()
-	}()
 
-	out := make(map[uuid.UUID]index.Chunk, len(ids))
-	for rows.Next() {
-		var chunk index.Chunk
-		if err := rows.Scan(&chunk.ID, &chunk.Text, &chunk.TokenCount); err != nil {
-			return nil, errors.Wrap(err, "scan chunk")
+	out := make(map[uuid.UUID]index.Chunk, len(chunks))
+	for _, c := range chunks {
+		out[c.ID] = index.Chunk{
+			ID:         c.ID,
+			Text:       c.Text,
+			TokenCount: c.TokenCount,
 		}
-		out[chunk.ID] = chunk
-	}
-	if err := rows.Err(); err != nil {
-		return nil, errors.Wrap(err, "rows error")
 	}
 	return out, nil
 }

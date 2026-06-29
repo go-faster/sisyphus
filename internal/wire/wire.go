@@ -103,7 +103,7 @@ func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trac
 		return nil, errors.Wrap(err, "migrate schema")
 	}
 
-	pg := pgsearch.New(db)
+	pg := pgsearch.New(db, client)
 	if err := pg.Migrate(ctx); err != nil {
 		cleanup()
 		return nil, errors.Wrap(err, "migrate fts")
