@@ -81,8 +81,10 @@ func (s *Store) EnsureCollection(ctx context.Context) error {
 		VectorsConfig:  qdrant.NewVectorsConfig(vectorParams),
 	}
 
-	err = s.client.CreateCollection(ctx, createReq)
-	return errors.Wrap(err, "create collection")
+	if err := s.client.CreateCollection(ctx, createReq); err != nil {
+		return errors.Wrap(err, "create collection")
+	}
+	return nil
 }
 
 // Upsert uploads chunks and their embeddings to Qdrant.
@@ -109,9 +111,10 @@ func (s *Store) Upsert(ctx context.Context, chunks []index.Chunk, vectors [][]fl
 		Points:         points,
 		Wait:           &wait,
 	}
-
-	_, err := s.client.Upsert(ctx, req)
-	return errors.Wrap(err, "upsert points")
+	if _, err := s.client.Upsert(ctx, req); err != nil {
+		return errors.Wrap(err, "upsert points")
+	}
+	return nil
 }
 
 // Delete removes a set of points (by chunk ID) from the Qdrant collection.
@@ -129,8 +132,10 @@ func (s *Store) Delete(ctx context.Context, ids []uuid.UUID) error {
 		Wait:           &wait,
 		Points:         qdrant.NewPointsSelector(points...),
 	}
-	_, err := s.client.Delete(ctx, req)
-	return errors.Wrap(err, "delete points")
+	if _, err := s.client.Delete(ctx, req); err != nil {
+		return errors.Wrap(err, "delete points")
+	}
+	return nil
 }
 
 // Search performs a vector search query.

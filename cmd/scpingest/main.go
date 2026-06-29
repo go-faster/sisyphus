@@ -583,9 +583,6 @@ func (r *runner) runTelegram(ctx context.Context, p *pipeline.Pipeline, since ti
 	}
 	_ = upsertSyncState(ctx, db, string(src), now, nextCurStr, st, count)
 
-	if backfillErr != nil {
-		return errors.Wrap(backfillErr, "telegram")
-	}
 	return nil
 }
 

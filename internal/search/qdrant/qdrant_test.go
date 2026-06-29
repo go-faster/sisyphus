@@ -1,10 +1,13 @@
 package qdrant
 
 import (
+	"context"
+	"net"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
+	"google.golang.org/grpc"
 
 	"github.com/go-faster/scpbot/internal/index"
 )
@@ -277,6 +280,86 @@ func TestValueToAny(t *testing.T) {
 // TestSearcherInterface verifies Store implements index.Searcher.
 func TestSearcherInterface(t *testing.T) {
 	var _ index.Searcher = (*Store)(nil)
+}
+
+func TestStoreUpsertAndDeleteSuccess(t *testing.T) {
+	ctx := context.Background()
+	client, stop := newTestQdrantClient(t)
+	defer stop()
+
+	store := &Store{
+		client:     client,
+		collection: "test",
+		dim:        2,
+	}
+	chunkID := uuid.New()
+	docID := uuid.New()
+	err := store.Upsert(ctx, []index.Chunk{{
+		ID:         chunkID,
+		DocumentID: docID,
+		Type:       index.ChunkSection,
+		Title:      "test",
+	}}, [][]float32{{0.1, 0.2}})
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	if err := store.Delete(ctx, []uuid.UUID{chunkID}); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+}
+
+func newTestQdrantClient(t *testing.T) (clinet *qdrant.Client, stop func()) {
+	t.Helper()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	server := grpc.NewServer()
+	qdrant.RegisterPointsServer(server, testPointsServer{})
+
+	serveErr := make(chan error, 1)
+	go func() {
+		serveErr <- server.Serve(ln)
+	}()
+
+	client, err := qdrant.NewClient(&qdrant.Config{
+		Host:                   ln.Addr().(*net.TCPAddr).IP.String(),
+		Port:                   ln.Addr().(*net.TCPAddr).Port,
+		SkipCompatibilityCheck: true,
+		PoolSize:               1,
+	})
+	if err != nil {
+		server.Stop()
+		_ = ln.Close()
+		t.Fatalf("new qdrant client: %v", err)
+	}
+
+	stop = func() {
+		_ = client.Close()
+		server.Stop()
+		if err := <-serveErr; err != nil && err != grpc.ErrServerStopped {
+			t.Fatalf("serve: %v", err)
+		}
+	}
+	return client, stop
+}
+
+type testPointsServer struct {
+	qdrant.UnimplementedPointsServer
+}
+
+func (testPointsServer) Upsert(context.Context, *qdrant.UpsertPoints) (*qdrant.PointsOperationResponse, error) {
+	return &qdrant.PointsOperationResponse{
+		Result: &qdrant.UpdateResult{Status: qdrant.UpdateStatus_Completed},
+	}, nil
+}
+
+func (testPointsServer) Delete(context.Context, *qdrant.DeletePoints) (*qdrant.PointsOperationResponse, error) {
+	return &qdrant.PointsOperationResponse{
+		Result: &qdrant.UpdateResult{Status: qdrant.UpdateStatus_Completed},
+	}, nil
 }
 
 // TestConfigDefaults verifies that Config applies sensible defaults.
