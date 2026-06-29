@@ -19,7 +19,7 @@ func (SyncState) Fields() []ent.Field {
 		field.UUID("id", uuid.UUID{}).Default(uuid.New),
 		field.String("source").NotEmpty(),
 		field.Time("last_synced_at").Optional().Nillable(),
-		field.String("last_cursor").Default("").NotEmpty(),
+		field.String("last_cursor").Default(""),
 		field.String("status").Default("new"),
 		field.Text("error").Optional().Nillable(),
 		field.Int("document_count").Default(0),
