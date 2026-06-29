@@ -137,8 +137,8 @@ func run(ctx context.Context, lg *zap.Logger, tp trace.TracerProvider, mp metric
 	}
 	defer func() { _ = db.Close() }()
 
-	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))
-	if err := client.Schema.Create(ctx); err != nil {
+	entdb := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))
+	if err := entdb.Schema.Create(ctx); err != nil {
 		return errors.Wrap(err, "migrate schema")
 	}
 
@@ -169,12 +169,20 @@ func run(ctx context.Context, lg *zap.Logger, tp trace.TracerProvider, mp metric
 		}
 	}
 
+	r := runner{
+		db:      entdb,
+		vectors: vectors,
+		cfg:     cfg,
+		tp:      tp,
+		mp:      mp,
+		lg:      lg,
+	}
 	switch eff {
 	case "gitlab":
 		ch := chunkmd.New(chunkmd.ChunkerOptions{})
-		pipe := pipeline.New(client, ch, embedder, vectors, lg.Named("pipeline"))
+		pipe := pipeline.New(entdb, ch, embedder, vectors, lg.Named("pipeline"))
 		doReset := *resetFlag == "gitlab" || *resetFlag == "all"
-		if err := runGitLab(ctx, lg, client, pipe, vectors, cfg, since, doReset, *limit, *dryRun); err != nil {
+		if err := r.runGitLab(ctx, pipe, since, doReset, *limit, *dryRun); err != nil {
 			if errors.Is(err, errNotConfigured) {
 				fmt.Fprintf(os.Stderr, "gitlab not configured\n")
 				os.Exit(1)
@@ -186,9 +194,9 @@ func run(ctx context.Context, lg *zap.Logger, tp trace.TracerProvider, mp metric
 
 	case "jira":
 		ch := chunkjira.New()
-		pipe := pipeline.New(client, ch, embedder, vectors, lg.Named("pipeline"))
+		pipe := pipeline.New(entdb, ch, embedder, vectors, lg.Named("pipeline"))
 		doReset := *resetFlag == "jira" || *resetFlag == "all"
-		if err := runJira(ctx, lg, client, pipe, vectors, cfg, since, doReset, *limit, *dryRun, tp, mp); err != nil {
+		if err := r.runJira(ctx, pipe, since, doReset, *limit, *dryRun); err != nil {
 			if errors.Is(err, errNotConfigured) {
 				fmt.Fprintf(os.Stderr, "jira not configured\n")
 				os.Exit(1)
@@ -200,9 +208,9 @@ func run(ctx context.Context, lg *zap.Logger, tp trace.TracerProvider, mp metric
 
 	case "telegram":
 		ch := chunktg.New()
-		pipe := pipeline.New(client, ch, embedder, vectors, lg.Named("pipeline"))
+		pipe := pipeline.New(entdb, ch, embedder, vectors, lg.Named("pipeline"))
 		doReset := *resetFlag == "telegram" || *resetFlag == "all"
-		if err := runTelegram(ctx, lg, client, pipe, vectors, cfg, since, doReset, *limit, *dryRun); err != nil {
+		if err := r.runTelegram(ctx, pipe, since, doReset, *limit, *dryRun); err != nil {
 			if errors.Is(err, errNotConfigured) {
 				fmt.Fprintf(os.Stderr, "telegram not configured or ingest session missing\n")
 				os.Exit(1)
@@ -213,7 +221,7 @@ func run(ctx context.Context, lg *zap.Logger, tp trace.TracerProvider, mp metric
 		return nil
 
 	case "all":
-		return runAll(ctx, lg, client, embedder, vectors, cfg, since, *resetFlag, *yesAll, *limit, *dryRun, tp, mp)
+		return runAll(ctx, lg, entdb, embedder, vectors, cfg, since, *resetFlag, *yesAll, *limit, *dryRun, tp, mp)
 	default:
 		printUsage(os.Stderr)
 		os.Exit(2)
@@ -254,7 +262,25 @@ func splitHostPort(addr string) (host string, port int, err error) {
 	return host, p, nil
 }
 
-func runGitLab(ctx context.Context, lg *zap.Logger, db *ent.Client, p *pipeline.Pipeline, vectors pipeline.VectorStore, cfg config.Config, _ time.Time, reset bool, limit int, dry bool) error {
+type runner struct {
+	db      *ent.Client
+	vectors pipeline.VectorStore
+
+	cfg config.Config
+
+	tp trace.TracerProvider
+	mp metric.MeterProvider
+	lg *zap.Logger
+}
+
+func (r *runner) runGitLab(ctx context.Context, p *pipeline.Pipeline, _ time.Time, reset bool, limit int, dry bool) error {
+	var (
+		lg      = r.lg.Named("gitlab")
+		cfg     = r.cfg
+		db      = r.db
+		vectors = r.vectors
+	)
+
 	roots := gitLabSources(cfg.GitLab.Repos)
 	if len(roots) == 0 {
 		lg.Info("gitlab not configured")
@@ -331,7 +357,16 @@ func gitLabSources(sources []config.GitLabSource) []gitlabingest.Source {
 	return out
 }
 
-func runJira(ctx context.Context, lg *zap.Logger, db *ent.Client, p *pipeline.Pipeline, vectors pipeline.VectorStore, cfg config.Config, since time.Time, reset bool, limit int, dry bool, tp trace.TracerProvider, mp metric.MeterProvider) error {
+func (r *runner) runJira(ctx context.Context, p *pipeline.Pipeline, since time.Time, reset bool, limit int, dry bool) error {
+	var (
+		lg      = r.lg.Named("jira")
+		cfg     = r.cfg
+		db      = r.db
+		vectors = r.vectors
+		tp      = r.tp
+		mp      = r.mp
+	)
+
 	jc := cfg.Jira
 	if jc.BaseURL == "" || (jc.PAT == "" && (jc.Username == "" || jc.Password == "") && (jc.Email == "" || jc.APIToken == "")) {
 		lg.Info("jira not configured")
@@ -448,8 +483,14 @@ func loadJiraCursor(ctx context.Context, db *ent.Client, src string) (jiraingest
 	return c, nil
 }
 
-func runTelegram(ctx context.Context, lg *zap.Logger, db *ent.Client, p *pipeline.Pipeline, vectors pipeline.VectorStore, cfg config.Config, since time.Time, reset bool, limit int, dry bool) error {
-	tc := cfg.Telegram
+func (r *runner) runTelegram(ctx context.Context, p *pipeline.Pipeline, since time.Time, reset bool, limit int, dry bool) error {
+	var (
+		tc      = r.cfg.Telegram
+		lg      = r.lg.Named("telegram")
+		db      = r.db
+		vectors = r.vectors
+	)
+
 	if tc.AppID == 0 || tc.AppHash == "" || tc.IngestSession == "" {
 		lg.Info("telegram not configured")
 		return errNotConfigured
@@ -591,14 +632,23 @@ func runAll(ctx context.Context, lg *zap.Logger, db *ent.Client, embedder index.
 		}
 	}
 
-	var failed []string
-
+	var (
+		runner = runner{
+			db:      db,
+			vectors: vectors,
+			cfg:     cfg,
+			tp:      tp,
+			mp:      mp,
+			lg:      lg,
+		}
+		failed []string
+	)
 	// gitlab
 	{
 		ch := chunkmd.New(chunkmd.ChunkerOptions{})
 		pipe := pipeline.New(db, ch, embedder, vectors, lg.Named("pipeline"))
 		doReset := resetMode == "all" || resetMode == "gitlab"
-		if err := runGitLab(ctx, lg, db, pipe, vectors, cfg, since, doReset, limit, dry); err != nil {
+		if err := runner.runGitLab(ctx, pipe, since, doReset, limit, dry); err != nil {
 			if errors.Is(err, errNotConfigured) {
 				lg.Info("skipping gitlab (not configured)")
 			} else {
@@ -613,7 +663,7 @@ func runAll(ctx context.Context, lg *zap.Logger, db *ent.Client, embedder index.
 		ch := chunkjira.New()
 		pipe := pipeline.New(db, ch, embedder, vectors, lg.Named("pipeline"))
 		doReset := resetMode == "all" || resetMode == "jira"
-		if err := runJira(ctx, lg, db, pipe, vectors, cfg, since, doReset, limit, dry, tp, mp); err != nil {
+		if err := runner.runJira(ctx, pipe, since, doReset, limit, dry); err != nil {
 			if errors.Is(err, errNotConfigured) {
 				lg.Info("skipping jira (not configured)")
 			} else {
@@ -628,7 +678,7 @@ func runAll(ctx context.Context, lg *zap.Logger, db *ent.Client, embedder index.
 		ch := chunktg.New()
 		pipe := pipeline.New(db, ch, embedder, vectors, lg.Named("pipeline"))
 		doReset := resetMode == "all" || resetMode == "telegram"
-		if err := runTelegram(ctx, lg, db, pipe, vectors, cfg, since, doReset, limit, dry); err != nil {
+		if err := runner.runTelegram(ctx, pipe, since, doReset, limit, dry); err != nil {
 			if errors.Is(err, errNotConfigured) {
 				lg.Info("skipping telegram (not configured)")
 			} else {

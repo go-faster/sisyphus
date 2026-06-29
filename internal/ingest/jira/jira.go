@@ -104,10 +104,6 @@ func New(opts Options) (*Fetcher, error) {
 	}, nil
 }
 
-// ---------------------------------------------------------------------------
-// Jira REST API intermediate types
-// ---------------------------------------------------------------------------
-
 type jiraSearchResponse struct {
 	StartAt    int         `json:"startAt"`
 	MaxResults int         `json:"maxResults"`
@@ -155,10 +151,6 @@ type jiraCommentItem struct {
 	Updated string    `json:"updated"`
 }
 
-// ---------------------------------------------------------------------------
-// Time parsing helpers
-// ---------------------------------------------------------------------------
-
 var jiraTimeLayouts = []string{
 	"2006-01-02T15:04:05.000-0700",
 	"2006-01-02T15:04:05.000Z",
@@ -193,10 +185,6 @@ func descriptionString(d any) string {
 		return string(b)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Conversion from Jira REST JSON to chunk/jira.Issue
-// ---------------------------------------------------------------------------
 
 func convertIssue(jiraIss jiraIssue) (chunkjira.Issue, error) {
 	iss := chunkjira.Issue{
@@ -266,10 +254,6 @@ func convertIssue(jiraIss jiraIssue) (chunkjira.Issue, error) {
 	return iss, nil
 }
 
-// ---------------------------------------------------------------------------
-// JQL building
-// ---------------------------------------------------------------------------
-
 func buildJQL(projects []string, cursor Cursor, opts FetchOptions) string {
 	quoted := make([]string, len(projects))
 	for i, p := range projects {
@@ -288,10 +272,6 @@ func buildJQL(projects []string, cursor Cursor, opts FetchOptions) string {
 	jql += " ORDER BY updated ASC"
 	return jql
 }
-
-// ---------------------------------------------------------------------------
-// HTTP request building
-// ---------------------------------------------------------------------------
 
 func (f *Fetcher) buildRequest(ctx context.Context, jql string, startAt, pageSize int, fields string) (*http.Request, error) {
 	u, err := url.Parse(f.baseURL + "/rest/api/2/search")
@@ -312,22 +292,20 @@ func (f *Fetcher) buildRequest(ctx context.Context, jql string, startAt, pageSiz
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "scpbot/ingest")
 
-	if f.pat != "" {
+	switch {
+	case f.pat != "":
 		req.Header.Set("Authorization", "Bearer "+f.pat)
-	} else if f.username != "" && f.password != "" {
+	case f.username != "" && f.password != "":
 		auth := base64.StdEncoding.EncodeToString([]byte(f.username + ":" + f.password))
 		req.Header.Set("Authorization", "Basic "+auth)
-	} else if f.email != "" && f.apiToken != "" {
+	case f.email != "" && f.apiToken != "":
 		auth := base64.StdEncoding.EncodeToString([]byte(f.email + ":" + f.apiToken))
 		req.Header.Set("Authorization", "Basic "+auth)
+	default:
+		return nil, errors.New("jira: no credentials configured")
 	}
-
 	return req, nil
 }
-
-// ---------------------------------------------------------------------------
-// Fetch
-// ---------------------------------------------------------------------------
 
 // Fetch performs ONE page of Jira's /rest/api/2/search endpoint, returning
 // the issues as index.Documents and an updated cursor.
@@ -431,10 +409,6 @@ func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions, cursor Cursor) (
 
 	return result, nil
 }
-
-// ---------------------------------------------------------------------------
-// FetchAll
-// ---------------------------------------------------------------------------
 
 // FetchAll pages through all results starting at cursor, calling fn for each
 // batch of documents.  Stops when HasMore is false.  Returns the final cursor

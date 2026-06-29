@@ -226,7 +226,7 @@ func configPath() string {
 }
 
 func loadFile(path string, c *fileConfig) error {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return errors.Wrap(err, "read config file")
 	}
@@ -368,7 +368,7 @@ func (s Secret) Resolve(baseDir string) (string, error) {
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(baseDir, path)
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return "", errors.Wrap(err, "read secret file")
 	}

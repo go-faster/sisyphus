@@ -63,10 +63,6 @@ func TestNew(t *testing.T) {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// Test helpers
-// ---------------------------------------------------------------------------
-
 func testJiraTime(t time.Time) string {
 	return t.Format("2006-01-02T15:04:05.000-0700")
 }
@@ -132,10 +128,6 @@ func paginatedHandler(issues []map[string]any) http.HandlerFunc {
 		_ = json.NewEncoder(w).Encode(resp)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Test cases
-// ---------------------------------------------------------------------------
 
 type testCase struct {
 	name string
@@ -513,10 +505,6 @@ func testEmptyProjects(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Additional verification: issues are mapped correctly into chunk/jira types
-// ---------------------------------------------------------------------------
-
 func TestIssueMapping(t *testing.T) {
 	t.Parallel()
 
@@ -643,10 +631,6 @@ func TestIssueMapping(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// URL construction / base URL trimming
-// ---------------------------------------------------------------------------
-
 func TestBaseURLTrim(t *testing.T) {
 	t.Parallel()
 
@@ -679,10 +663,6 @@ func TestBaseURLTrim(t *testing.T) {
 		t.Errorf("unexpected request path: %s", capturedURL)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// FetchAll returns the final cursor correctly
-// ---------------------------------------------------------------------------
 
 func TestFetchAllFinalCursor(t *testing.T) {
 	t.Parallel()
@@ -725,10 +705,6 @@ func TestFetchAllFinalCursor(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// UpdatedAfter with zero value produces no updated >= clause
-// ---------------------------------------------------------------------------
-
 func TestUpdatedAfterZero(t *testing.T) {
 	t.Parallel()
 
@@ -763,10 +739,6 @@ func TestUpdatedAfterZero(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// User-Agent header
-// ---------------------------------------------------------------------------
-
 func TestUserAgent(t *testing.T) {
 	t.Parallel()
 
@@ -799,10 +771,6 @@ func TestUserAgent(t *testing.T) {
 		t.Errorf("User-Agent: expected %q, got %q", "scpbot/ingest", gotUA)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// JQL URL encoding test
-// ---------------------------------------------------------------------------
 
 func TestJQLURLEncoding(t *testing.T) {
 	t.Parallel()
@@ -850,10 +818,6 @@ func TestJQLURLEncoding(t *testing.T) {
 		t.Errorf("missing updated clause in JQL: %s", jql)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Test error handling for unparseable times
-// ---------------------------------------------------------------------------
 
 func TestBadTimeSkipsIssue(t *testing.T) {
 	t.Parallel()

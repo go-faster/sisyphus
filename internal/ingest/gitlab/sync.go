@@ -61,7 +61,7 @@ func syncRepo(ctx context.Context, src Source, opts SyncOptions) error {
 	repoMu.Lock()
 	defer repoMu.Unlock()
 
-	if err := os.MkdirAll(filepath.Dir(src.Root), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(src.Root), 0o750); err != nil {
 		return errors.Wrap(err, "create work dir")
 	}
 
