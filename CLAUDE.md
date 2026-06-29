@@ -1,9 +1,9 @@
 # scpbot
 
-Internal support/dev assistant. Ingests knowledge sources (GitLab Markdown docs,
-Jira issues, Telegram support threads) into a hybrid search index
-(Postgres full-text + Qdrant vectors) and answers questions via a Telegram bot
-`/context` command.
+Internal support/dev assistant. Ingests knowledge sources (git repo docs and commits,
+GitLab REST API issues/MRs/releases, Jira issues, Telegram support threads) into a
+hybrid search index (Postgres full-text + Qdrant vectors) and answers questions via a
+Telegram bot `/context` command.
 
 ## Stack
 
@@ -28,18 +28,21 @@ Never store only embeddings — always keep Documents+Chunks in Postgres so we c
 ```
 cmd/scpbot              main; wires everything via go-faster/sdk app.Run
 cmd/scpmcp              MCP server entrypoint (Streamable HTTP or stdio)
-cmd/scpingest           one-shot ingestion CLI: gitlab|jira|telegram|all subcommands,
+cmd/scpingest           one-shot ingestion CLI: git|gitlab|jira|telegram|all subcommands,
                         --reset <src|all> (--yes-i-mean-all for all), --since, --limit, --dry-run.
                         Wires its dependencies inline (does NOT reuse internal/wire).
 internal/index          SHARED CONTRACT: Document, Chunk, Chunker, Embedder, Searcher, constants. Do not add deps here.
 internal/chunk/markdown heading-aware Markdown chunker (implements index.Chunker)
+internal/chunk/git      git commit message -> chunks (implements index.Chunker)
+internal/chunk/gitlab   GitLab REST API (issues, MRs, releases) -> chunks (implements index.Chunker)
 internal/chunk/jira     Jira issue -> chunks (implements index.Chunker)
 internal/embed/ollama   Ollama embedder (implements index.Embedder)
 internal/search/postgres FTS searcher over ent (implements index.Searcher)
 internal/search/qdrant  Qdrant client + searcher (implements index.Searcher)
                         Also implements pipeline.VectorStore (Upsert + Delete by point ID).
 internal/retrieval      merges + reranks Postgres+Qdrant results, authority/boost rules
-internal/ingest/gitlab  local-filesystem multi-root walk -> Document
+internal/ingest/git     git repo content (Markdown) + commits walker; local or clone/pull via git
+internal/ingest/gitlab  GitLab REST API client (stdlib net/http) with pagination + cursor per resource
 internal/ingest/jira    incremental Jira REST client (stdlib net/http) with sliding-window cursor
 internal/ingest/telegram gotd user-session backfill -> telegram_messages -> support_requests;
                         MessageFetcher interface for testability; bootstrapPeers resolves access hashes
@@ -104,22 +107,40 @@ quality demands it.
 ## Ingestion
 
 `make ingest` (= `go run ./cmd/scpingest all`) runs incremental backfills for every
-configured source. Per-source: `make ingest-gitlab`, `make ingest-jira`,
+configured source. Per-source: `make ingest-git`, `make ingest-gitlab`, `make ingest-jira`,
 `make ingest-telegram`.
 
-Each source has a `SyncState` row in ent: `source`, `last_synced_at`,
-`last_cursor` (opaque JSON), `status`, `error`, `document_count`. The CLI reads
-the cursor before the run and writes it back per batch (jira) or per chat
-(telegram) so a partial run resumes. GitLab has no cursor — it re-walks and
-relies on pipeline body-hash skip.
+Each source (or per-repo for git, per-resource type for gitlab REST) has a `SyncState` row
+in ent: `source`, `last_synced_at`, `last_cursor` (opaque JSON), `status`, `error`,
+`document_count`. The CLI reads the cursor before the run and writes it back per batch
+(jira, gitlab pagination) or per repo (git commits) so a partial run resumes.
+
+**Git ingestion** (`make ingest-git`):
+- Per-repo sources keyed `git_docs:<repo>` (Markdown content) and `git_commits:<repo>` (commit messages).
+- Docs source has no cursor; re-walks and relies on pipeline body-hash skip to avoid re-embedding.
+- Commits source uses cursor `{last_sha, branch}` to walk incrementally from HEAD backwards.
+
+**GitLab REST API** (`make ingest-gitlab`):
+- Per-resource-type sources: `gitlab_issue`, `gitlab_mr`, `gitlab_release`.
+- Pagination loop with cursor `{updated_after}` (RFC3339). Issues and MRs sorted by `updated_at` asc;
+  releases filtered client-side.
+- Per-page fetch, limit honored, cursor advanced to max `updated_at` (or `released_at` for releases).
+
+**Jira** (`make ingest-jira`):
+- Single source `jira`; incremental via cursor `{last_updated, start_at}`.
+- Respects `--since` to override `last_updated`.
+
+**Telegram** (`make ingest-telegram`):
+- Single source `telegram`; cursor `{per_chat}` tracks per-chat state.
 
 `--reset <src|all>` wipes the source end-to-end: in one ent Tx it deletes
 `documents`, `chunks`, and `SyncState` for that source (chunk IDs are captured
 pre-delete), commits, then `qdrant.Delete` removes the freed point IDs. `--reset
-all` refuses without `--yes-i-mean-all`.
+all` refuses without `--yes-i-mean-all`. For git, resetting "all" also resets per-repo
+docs and commits sources.
 
-`--since <RFC3339>` overrides the Jira cursor's `LastUpdated`. `--limit <int>`
-caps docs per source. `--dry-run` fetches and logs counts without indexing.
+`--since <RFC3339>` overrides cursors (Jira `LastUpdated`, GitLab `UpdatedAfter`).
+`--limit <int>` caps docs per source. `--dry-run` fetches and logs counts without indexing.
 
 ## Run
 

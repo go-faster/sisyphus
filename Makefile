@@ -27,13 +27,16 @@ run:
 ingest:
 	go run ./cmd/scpingest all
 
-ingest-jira:
-	go run ./cmd/scpingest jira
+ingest-git:
+	go run ./cmd/scpingest git
 
 ingest-gitlab:
 	go run ./cmd/scpingest gitlab
 
+ingest-jira:
+	go run ./cmd/scpingest jira
+
 ingest-telegram:
 	go run ./cmd/scpingest telegram
 
-.PHONY: lint fmt codegen run ingest ingest-jira ingest-gitlab ingest-telegram
+.PHONY: lint fmt codegen run ingest ingest-git ingest-gitlab ingest-jira ingest-telegram
