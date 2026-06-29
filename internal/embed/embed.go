@@ -5,6 +5,9 @@ import (
 	"strings"
 
 	"github.com/go-faster/errors"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/go-faster/scpbot/internal/config"
 	"github.com/go-faster/scpbot/internal/embed/ollama"
@@ -13,11 +16,33 @@ import (
 	"github.com/go-faster/scpbot/internal/netclient"
 )
 
+// NewOptions configures the embedding provider factory.
+type NewOptions struct {
+	TracerProvider trace.TracerProvider
+	MeterProvider  metric.MeterProvider
+}
+
+func (opts *NewOptions) setDefaults() {
+	if opts.TracerProvider == nil {
+		opts.TracerProvider = otel.GetTracerProvider()
+	}
+	if opts.MeterProvider == nil {
+		opts.MeterProvider = otel.GetMeterProvider()
+	}
+}
+
 // New creates the configured embedding provider.
-func New(cfg config.Config) (index.Embedder, error) {
+func New(cfg config.Config, opts NewOptions) (index.Embedder, error) {
+	opts.setDefaults()
+
+	httpOpts := netclient.HTTPClientOptions{
+		TracerProvider: opts.TracerProvider,
+		MeterProvider:  opts.MeterProvider,
+	}
+
 	switch strings.ToLower(cfg.EmbedProvider) {
 	case "", "ollama":
-		httpClient, err := netclient.HTTPClient(cfg.Proxies.Ollama)
+		httpClient, err := netclient.HTTPClient(cfg.Proxies.Ollama, httpOpts)
 		if err != nil {
 			return nil, errors.Wrap(err, "ollama http client")
 		}
@@ -29,7 +54,7 @@ func New(cfg config.Config) (index.Embedder, error) {
 		if cfg.OpenRouter.APIKey == "" {
 			return nil, errors.New("openrouter api_key is required for openrouter embeddings")
 		}
-		httpClient, err := netclient.HTTPClient(cfg.Proxies.OpenRouter)
+		httpClient, err := netclient.HTTPClient(cfg.Proxies.OpenRouter, httpOpts)
 		if err != nil {
 			return nil, errors.Wrap(err, "openrouter http client")
 		}

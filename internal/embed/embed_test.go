@@ -15,7 +15,7 @@ func TestNew_DefaultOllama(t *testing.T) {
 		OllamaURL:  "http://localhost:11434",
 		EmbedModel: "bge-m3",
 		EmbedDim:   1024,
-	})
+	}, NewOptions{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestNew_OpenRouter(t *testing.T) {
 		OpenRouter: config.OpenRouter{
 			APIKey: "test-key",
 		},
-	})
+	}, NewOptions{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestNew_OpenRouter(t *testing.T) {
 func TestNew_OpenRouterRequiresAPIKey(t *testing.T) {
 	t.Parallel()
 
-	_, err := New(config.Config{EmbedProvider: "openrouter"})
+	_, err := New(config.Config{EmbedProvider: "openrouter"}, NewOptions{})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -55,7 +55,7 @@ func TestNew_OpenRouterRequiresAPIKey(t *testing.T) {
 func TestNew_UnsupportedProvider(t *testing.T) {
 	t.Parallel()
 
-	_, err := New(config.Config{EmbedProvider: "unknown"})
+	_, err := New(config.Config{EmbedProvider: "unknown"}, NewOptions{})
 	if err == nil {
 		t.Fatal("expected error")
 	}

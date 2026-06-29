@@ -14,6 +14,8 @@ import (
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/app"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/go-faster/scpbot/internal/api"
@@ -32,16 +34,16 @@ import (
 )
 
 func main() {
-	app.Run(func(ctx context.Context, lg *zap.Logger, _ *app.Telemetry) error {
+	app.Run(func(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
 		cfg, err := config.Load()
 		if err != nil {
 			return errors.Wrap(err, "config")
 		}
-		return run(ctx, lg, cfg)
+		return run(ctx, lg, cfg, t.TracerProvider(), t.MeterProvider())
 	})
 }
 
-func run(ctx context.Context, lg *zap.Logger, cfg config.Config) error {
+func run(ctx context.Context, lg *zap.Logger, cfg config.Config, tp trace.TracerProvider, mp metric.MeterProvider) error {
 	// Postgres via pgx stdlib -> ent.
 	db, err := sql.Open("pgx", cfg.DatabaseDSN)
 	if err != nil {
@@ -60,7 +62,10 @@ func run(ctx context.Context, lg *zap.Logger, cfg config.Config) error {
 	}
 
 	// Embedder + vector store.
-	embedder, err := embed.New(cfg)
+	embedder, err := embed.New(cfg, embed.NewOptions{
+		TracerProvider: tp,
+		MeterProvider:  mp,
+	})
 	if err != nil {
 		return errors.Wrap(err, "embedder")
 	}
@@ -93,7 +98,10 @@ func run(ctx context.Context, lg *zap.Logger, cfg config.Config) error {
 	var answerer index.Answerer
 	if cfg.OpenRouter.Enabled() {
 		lg.Info("openrouter LLM enabled", zap.String("model", cfg.OpenRouter.Model))
-		httpClient, err := netclient.HTTPClient(cfg.Proxies.OpenRouter)
+		httpClient, err := netclient.HTTPClient(cfg.Proxies.OpenRouter, netclient.HTTPClientOptions{
+			TracerProvider: tp,
+			MeterProvider:  mp,
+		})
 		if err != nil {
 			return errors.Wrap(err, "openrouter http client")
 		}
@@ -106,7 +114,10 @@ func run(ctx context.Context, lg *zap.Logger, cfg config.Config) error {
 
 	// HTTP API.
 	handler := api.New(retr, answerer, "0.1.0")
-	srv, err := oas.NewServer(handler)
+	srv, err := oas.NewServer(handler,
+		oas.WithTracerProvider(tp),
+		oas.WithMeterProvider(mp),
+	)
 	if err != nil {
 		return errors.Wrap(err, "oas server")
 	}

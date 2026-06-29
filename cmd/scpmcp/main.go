@@ -21,17 +21,20 @@ func main() {
 	stdio := flag.Bool("stdio", false, "use stdio transport instead of Streamable HTTP")
 	flag.Parse()
 
-	app.Run(func(ctx context.Context, lg *zap.Logger, _ *app.Telemetry) error {
+	app.Run(func(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
 		cfg, err := config.Load()
 		if err != nil {
 			return errors.Wrap(err, "config")
 		}
-		return run(ctx, lg, cfg, *stdio)
+		return run(ctx, lg, cfg, *stdio, t)
 	})
 }
 
-func run(ctx context.Context, lg *zap.Logger, cfg config.Config, useStdio bool) error {
-	comp, err := wire.New(ctx, lg, cfg)
+func run(ctx context.Context, lg *zap.Logger, cfg config.Config, useStdio bool, t *app.Telemetry) error {
+	comp, err := wire.New(ctx, lg, cfg, wire.NewOptions{
+		TracerProvider: t.TracerProvider(),
+		MeterProvider:  t.MeterProvider(),
+	})
 	if err != nil {
 		return err
 	}

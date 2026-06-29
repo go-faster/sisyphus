@@ -11,6 +11,9 @@ import (
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/go-faster/errors"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/go-faster/scpbot/internal/config"
@@ -46,10 +49,27 @@ func (c Components) Close() {
 	}
 }
 
+// NewOptions configures wiring.
+type NewOptions struct {
+	TracerProvider trace.TracerProvider
+	MeterProvider  metric.MeterProvider
+}
+
+func (opts *NewOptions) setDefaults() {
+	if opts.TracerProvider == nil {
+		opts.TracerProvider = otel.GetTracerProvider()
+	}
+	if opts.MeterProvider == nil {
+		opts.MeterProvider = otel.GetMeterProvider()
+	}
+}
+
 // New builds Postgres, FTS, embedder, optional Qdrant vector store, retrieval
 // service and answerer (OpenRouter or stub) exactly as the original main did.
 // It performs schema and FTS migrations. On error, resources are cleaned up.
-func New(ctx context.Context, lg *zap.Logger, cfg config.Config) (Components, error) {
+func New(ctx context.Context, lg *zap.Logger, cfg config.Config, opts NewOptions) (Components, error) {
+	opts.setDefaults()
+
 	db, err := sql.Open("pgx", cfg.DatabaseDSN)
 	if err != nil {
 		return Components{}, errors.Wrap(err, "open db")
@@ -69,7 +89,10 @@ func New(ctx context.Context, lg *zap.Logger, cfg config.Config) (Components, er
 	}
 
 	// Embedder + vector store.
-	embedder, err := embed.New(cfg)
+	embedder, err := embed.New(cfg, embed.NewOptions{
+		TracerProvider: opts.TracerProvider,
+		MeterProvider:  opts.MeterProvider,
+	})
 	if err != nil {
 		_ = db.Close()
 		return Components{}, errors.Wrap(err, "embedder")
@@ -105,7 +128,10 @@ func New(ctx context.Context, lg *zap.Logger, cfg config.Config) (Components, er
 	var answerer index.Answerer
 	if cfg.OpenRouter.Enabled() {
 		lg.Info("openrouter LLM enabled", zap.String("model", cfg.OpenRouter.Model))
-		httpClient, err := netclient.HTTPClient(cfg.Proxies.OpenRouter)
+		httpClient, err := netclient.HTTPClient(cfg.Proxies.OpenRouter, netclient.HTTPClientOptions{
+			TracerProvider: opts.TracerProvider,
+			MeterProvider:  opts.MeterProvider,
+		})
 		if err != nil {
 			_ = db.Close()
 			return Components{}, errors.Wrap(err, "openrouter http client")

@@ -21,6 +21,8 @@ import (
 	"github.com/gotd/log/logzap"
 	gotdtelegram "github.com/gotd/td/telegram"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	chunkjira "github.com/go-faster/scpbot/internal/chunk/jira"
@@ -47,12 +49,12 @@ var (
 )
 
 func main() {
-	app.Run(func(ctx context.Context, lg *zap.Logger, _ *app.Telemetry) error {
-		return run(ctx, lg)
+	app.Run(func(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
+		return run(ctx, lg, t.TracerProvider(), t.MeterProvider())
 	})
 }
 
-func run(ctx context.Context, lg *zap.Logger) error {
+func run(ctx context.Context, lg *zap.Logger, tp trace.TracerProvider, mp metric.MeterProvider) error {
 	// Parse subcommand + flags (subcommand wins over -source).
 	cmd := ""
 	flagArgs := os.Args[1:]
@@ -141,7 +143,10 @@ func run(ctx context.Context, lg *zap.Logger) error {
 	}
 
 	// Embedder + optional vector store (match cmd/scpbot pattern).
-	embedder, err := embed.New(cfg)
+	embedder, err := embed.New(cfg, embed.NewOptions{
+		TracerProvider: tp,
+		MeterProvider:  mp,
+	})
 	if err != nil {
 		return errors.Wrap(err, "embedder")
 	}
@@ -183,7 +188,7 @@ func run(ctx context.Context, lg *zap.Logger) error {
 		ch := chunkjira.New()
 		pipe := pipeline.New(client, ch, embedder, vectors, lg.Named("pipeline"))
 		doReset := *resetFlag == "jira" || *resetFlag == "all"
-		if err := runJira(ctx, lg, client, pipe, vectors, cfg, since, doReset, *limit, *dryRun); err != nil {
+		if err := runJira(ctx, lg, client, pipe, vectors, cfg, since, doReset, *limit, *dryRun, tp, mp); err != nil {
 			if errors.Is(err, errNotConfigured) {
 				fmt.Fprintf(os.Stderr, "jira not configured\n")
 				os.Exit(1)
@@ -208,7 +213,7 @@ func run(ctx context.Context, lg *zap.Logger) error {
 		return nil
 
 	case "all":
-		return runAll(ctx, lg, client, embedder, vectors, cfg, since, *resetFlag, *yesAll, *limit, *dryRun)
+		return runAll(ctx, lg, client, embedder, vectors, cfg, since, *resetFlag, *yesAll, *limit, *dryRun, tp, mp)
 	default:
 		printUsage(os.Stderr)
 		os.Exit(2)
@@ -326,7 +331,7 @@ func gitLabSources(sources []config.GitLabSource) []gitlabingest.Source {
 	return out
 }
 
-func runJira(ctx context.Context, lg *zap.Logger, db *ent.Client, p *pipeline.Pipeline, vectors pipeline.VectorStore, cfg config.Config, since time.Time, reset bool, limit int, dry bool) error {
+func runJira(ctx context.Context, lg *zap.Logger, db *ent.Client, p *pipeline.Pipeline, vectors pipeline.VectorStore, cfg config.Config, since time.Time, reset bool, limit int, dry bool, tp trace.TracerProvider, mp metric.MeterProvider) error {
 	jc := cfg.Jira
 	if jc.BaseURL == "" || (jc.PAT == "" && (jc.Username == "" || jc.Password == "") && (jc.Email == "" || jc.APIToken == "")) {
 		lg.Info("jira not configured")
@@ -340,7 +345,10 @@ func runJira(ctx context.Context, lg *zap.Logger, db *ent.Client, p *pipeline.Pi
 		}
 	}
 
-	httpClient, err := netclient.HTTPClient(cfg.Proxies.Jira)
+	httpClient, err := netclient.HTTPClient(cfg.Proxies.Jira, netclient.HTTPClientOptions{
+		TracerProvider: tp,
+		MeterProvider:  mp,
+	})
 	if err != nil {
 		return errors.Wrap(err, "jira http client")
 	}
@@ -573,7 +581,7 @@ func parseMonitorChats(s string) []telegramingest.ChatSpec {
 	return out
 }
 
-func runAll(ctx context.Context, lg *zap.Logger, db *ent.Client, embedder index.Embedder, vectors pipeline.VectorStore, cfg config.Config, since time.Time, resetMode string, _ bool, limit int, dry bool) error {
+func runAll(ctx context.Context, lg *zap.Logger, db *ent.Client, embedder index.Embedder, vectors pipeline.VectorStore, cfg config.Config, since time.Time, resetMode string, _ bool, limit int, dry bool, tp trace.TracerProvider, mp metric.MeterProvider) error {
 	// Centralized all reset check already done in caller, but if reset all we pre-wipe.
 	if resetMode == "all" {
 		for _, s := range []index.Source{index.SourceGitLabDocs, index.SourceJira, index.SourceTelegram} {
@@ -605,7 +613,7 @@ func runAll(ctx context.Context, lg *zap.Logger, db *ent.Client, embedder index.
 		ch := chunkjira.New()
 		pipe := pipeline.New(db, ch, embedder, vectors, lg.Named("pipeline"))
 		doReset := resetMode == "all" || resetMode == "jira"
-		if err := runJira(ctx, lg, db, pipe, vectors, cfg, since, doReset, limit, dry); err != nil {
+		if err := runJira(ctx, lg, db, pipe, vectors, cfg, since, doReset, limit, dry, tp, mp); err != nil {
 			if errors.Is(err, errNotConfigured) {
 				lg.Info("skipping jira (not configured)")
 			} else {
