@@ -3,6 +3,7 @@ package netclient
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/net/proxy"
 
 	"github.com/go-faster/sdk/zctx"
 )
@@ -46,12 +48,15 @@ func HTTPClient(ctx context.Context, name, proxyURL string, opts HTTPClientOptio
 			return nil, errors.Wrap(err, "parse proxy url")
 		}
 		via = u.Host
-		transport, ok := transport.(*http.Transport)
+		baseTransport, ok := transport.(*http.Transport)
 		if !ok {
 			return nil, errors.Errorf("unexpected transport type: %T", transport)
 		}
-		transport = transport.Clone()
-		transport.Proxy = http.ProxyURL(u)
+		proxyTransport := baseTransport.Clone()
+		if err := configureProxy(proxyTransport, u); err != nil {
+			return nil, err
+		}
+		transport = proxyTransport
 	}
 	transport = otelhttp.NewTransport(transport,
 		otelhttp.WithMeterProvider(opts.MeterProvider),
@@ -68,6 +73,31 @@ func HTTPClient(ctx context.Context, name, proxyURL string, opts HTTPClientOptio
 		Transport: transport,
 		Timeout:   15 * time.Second,
 	}, nil
+}
+
+func configureProxy(transport *http.Transport, u *url.URL) error {
+	switch u.Scheme {
+	case "", "http", "https":
+		transport.Proxy = http.ProxyURL(u)
+		return nil
+	case "socks5", "socks5h":
+		dialer, err := proxy.FromURL(u, &net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		})
+		if err != nil {
+			return errors.Wrap(err, "create socks proxy dialer")
+		}
+		contextDialer, ok := dialer.(proxy.ContextDialer)
+		if !ok {
+			return errors.Errorf("unexpected socks dialer type: %T", dialer)
+		}
+		transport.Proxy = nil
+		transport.DialContext = contextDialer.DialContext
+		return nil
+	default:
+		return errors.Errorf("unsupported proxy scheme %q", u.Scheme)
+	}
 }
 
 type loggingRoundTripper struct {
