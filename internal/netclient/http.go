@@ -37,12 +37,16 @@ func (opts *HTTPClientOptions) setDefaults() {
 func HTTPClient(name, proxyURL string, opts HTTPClientOptions) (*http.Client, error) {
 	opts.setDefaults()
 
-	transport := http.DefaultTransport
+	var (
+		transport = http.DefaultTransport
+		via       string
+	)
 	if proxyURL != "" {
 		u, err := url.Parse(proxyURL)
 		if err != nil {
 			return nil, errors.Wrap(err, "parse proxy url")
 		}
+		via = u.Host
 		transport, ok := transport.(*http.Transport)
 		if !ok {
 			return nil, errors.Errorf("unexpected transport type: %T", transport)
@@ -57,6 +61,7 @@ func HTTPClient(name, proxyURL string, opts HTTPClientOptions) (*http.Client, er
 	)
 	transport = &loggingRoundTripper{
 		name:      name,
+		via:       via,
 		transport: transport,
 		logger:    opts.Logger,
 	}
@@ -68,15 +73,21 @@ func HTTPClient(name, proxyURL string, opts HTTPClientOptions) (*http.Client, er
 
 type loggingRoundTripper struct {
 	name      string
+	via       string
 	transport http.RoundTripper
 	logger    *zap.Logger
 }
 
 func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	viaField := zap.Skip()
+	if l.via != "" {
+		viaField = zap.String("via", l.via)
+	}
 	l.logger.Debug("HTTP request",
 		zap.String("client_name", l.name),
 		zap.String("method", req.Method),
 		zap.String("url", redactURL(req.URL)),
+		viaField,
 	)
 	resp, err := l.transport.RoundTrip(req)
 	if err != nil {
