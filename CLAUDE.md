@@ -50,7 +50,7 @@ internal/pipeline       Pipeline.Index: idempotent doc+chunk upsert (ent) + embe
 internal/bot            gotd bot, /context handler
 internal/ent            ent schema + generated code (Document, Chunk, SupportRequest,
                         TelegramMessage, SyncState)
-internal/wire           shared wiring for cmd/scpbot and cmd/scpmcp (NOT used by cmd/scpingest)
+internal/wire           shared wiring for cmd/scpbot, cmd/scpmcp, and cmd/scpingest (Services + Components)
 internal/oas            ogen generated code
 api/openapi.yaml        OpenAPI spec (source for ogen)
 deploy/                 docker-compose + configs + .env.example

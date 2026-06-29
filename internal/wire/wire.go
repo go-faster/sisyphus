@@ -1,5 +1,4 @@
-// Package wire provides shared construction of core services (retrieval, answerer)
-// used by cmd/scpd, cmd/scpmcp, and tests. Extracted from cmd/scpbot/main.go.
+// Package wire constructs shared core services: db, embedder, vector store, retrieval, answerer.
 package wire
 
 import (
@@ -25,6 +24,7 @@ import (
 	"github.com/go-faster/scpbot/internal/llm/openrouter"
 	"github.com/go-faster/scpbot/internal/llm/stub"
 	"github.com/go-faster/scpbot/internal/netclient"
+	"github.com/go-faster/scpbot/internal/pipeline"
 	"github.com/go-faster/scpbot/internal/retrieval"
 	pgsearch "github.com/go-faster/scpbot/internal/search/postgres"
 	"github.com/go-faster/scpbot/internal/search/qdrant"
@@ -34,6 +34,24 @@ import (
 // and mcpserver. Matches the method on *retrieval.Service.
 type Retriever interface {
 	Retrieve(ctx context.Context, q index.Query) ([]index.Result, error)
+}
+
+// Services holds low-level shared infrastructure: database, search, embedder, vectors.
+type Services struct {
+	DB       *ent.Client
+	PG       *pgsearch.Searcher
+	Embedder index.Embedder
+	Searcher index.Searcher       // for retrieval (nil if qdrant unavailable)
+	Vectors  pipeline.VectorStore // for indexing (nil if qdrant unavailable)
+
+	closeDB func()
+}
+
+// Close releases resources held by Services.
+func (s *Services) Close() {
+	if s.closeDB != nil {
+		s.closeDB()
+	}
 }
 
 // Components holds the wired services for retrieval and answering.
@@ -66,45 +84,43 @@ func (opts *NewOptions) setDefaults() {
 	}
 }
 
-// New builds Postgres, FTS, embedder, optional Qdrant vector store, retrieval
-// service and answerer (OpenRouter or stub) exactly as the original main did.
-// It performs schema and FTS migrations. On error, resources are cleaned up.
-func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, error) {
-	opts.setDefaults()
-
+// NewServices opens the database, runs migrations, and wires the embedder and optional vector store.
+func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trace.TracerProvider, mp metric.MeterProvider) (*Services, error) {
 	db, err := sql.Open("pgx", cfg.DatabaseDSN)
 	if err != nil {
-		return Components{}, errors.Wrap(err, "open db")
+		return nil, errors.Wrap(err, "open db")
 	}
 	cleanup := func() { _ = db.Close() }
 
 	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))
 	if err := client.Schema.Create(ctx); err != nil {
-		_ = db.Close()
-		return Components{}, errors.Wrap(err, "migrate schema")
+		cleanup()
+		return nil, errors.Wrap(err, "migrate schema")
 	}
 
 	pg := pgsearch.New(db)
 	if err := pg.Migrate(ctx); err != nil {
-		_ = db.Close()
-		return Components{}, errors.Wrap(err, "migrate fts")
+		cleanup()
+		return nil, errors.Wrap(err, "migrate fts")
 	}
 
-	// Embedder + vector store.
 	embedder, err := embed.New(ctx, cfg, embed.NewOptions{
-		TracerProvider: opts.TracerProvider,
-		MeterProvider:  opts.MeterProvider,
+		TracerProvider: tp,
+		MeterProvider:  mp,
 	})
 	if err != nil {
-		_ = db.Close()
-		return Components{}, errors.Wrap(err, "embedder")
+		cleanup()
+		return nil, errors.Wrap(err, "embedder")
 	}
 
-	var vector index.Searcher
+	var (
+		searcher index.Searcher
+		vectors  pipeline.VectorStore
+	)
 	host, port, err := splitHostPort(cfg.QdrantAddr)
 	if err != nil {
-		_ = db.Close()
-		return Components{}, errors.Wrap(err, "qdrant addr")
+		cleanup()
+		return nil, errors.Wrap(err, "qdrant addr")
 	}
 	store, err := qdrant.New(qdrant.Config{
 		Host:       host,
@@ -114,41 +130,64 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		Embedder:   embedder,
 	})
 	if err != nil {
-		zctx.From(ctx).Warn("qdrant unavailable, vector search disabled", zap.Error(err))
+		lg.Warn("qdrant unavailable, vector search disabled", zap.Error(err))
 	} else if err := store.EnsureCollection(ctx); err != nil {
-		zctx.From(ctx).Warn("qdrant collection setup failed, vector search disabled", zap.Error(err))
+		lg.Warn("qdrant collection setup failed, vector search disabled", zap.Error(err))
 	} else {
-		vector = store
+		searcher = store
+		vectors = store
 	}
 
-	retr, err := retrieval.New(pg, vector, pg)
+	return &Services{
+		DB:       client,
+		PG:       pg,
+		Embedder: embedder,
+		Searcher: searcher,
+		Vectors:  vectors,
+		closeDB:  cleanup,
+	}, nil
+}
+
+// New builds Postgres, FTS, embedder, optional Qdrant vector store, retrieval
+// service and answerer (OpenRouter or stub) exactly as the original main did.
+// It performs schema and FTS migrations. On error, resources are cleaned up.
+func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, error) {
+	opts.setDefaults()
+	lg := zctx.From(ctx)
+
+	svcs, err := NewServices(ctx, cfg, lg, opts.TracerProvider, opts.MeterProvider)
 	if err != nil {
-		_ = db.Close()
+		return Components{}, err
+	}
+
+	retr, err := retrieval.New(svcs.PG, svcs.Searcher, svcs.PG)
+	if err != nil {
+		svcs.Close()
 		return Components{}, errors.Wrap(err, "retrieval")
 	}
 
 	var answerer index.Answerer
 	if cfg.OpenRouter.Enabled() {
-		zctx.From(ctx).Info("openrouter LLM enabled", zap.String("model", cfg.OpenRouter.Model))
+		lg.Info("openrouter LLM enabled", zap.String("model", cfg.OpenRouter.Model))
 		httpClient, err := netclient.HTTPClient(ctx, "openrouter", cfg.Proxies.OpenRouter, netclient.HTTPClientOptions{
 			TracerProvider: opts.TracerProvider,
 			MeterProvider:  opts.MeterProvider,
 		})
 		if err != nil {
-			_ = db.Close()
+			svcs.Close()
 			return Components{}, errors.Wrap(err, "openrouter http client")
 		}
 		orClient := openrouter.New(cfg.OpenRouter.APIKey, openrouter.Options{HTTPClient: httpClient})
 		answerer = openrouter.NewAnswerer(orClient, cfg.OpenRouter.Model, openrouter.AnswererOptions{})
 	} else {
-		zctx.From(ctx).Warn("openrouter not configured, using stub answerer")
+		lg.Warn("openrouter not configured, using stub answerer")
 		answerer = stub.NewAnswerer()
 	}
 
 	return Components{
 		Retriever: retr,
 		Answerer:  answerer,
-		closeDB:   cleanup,
+		closeDB:   svcs.closeDB,
 	}, nil
 }
 

@@ -3,25 +3,20 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	"entgo.io/ent/dialect"
-	entsql "entgo.io/ent/dialect/sql"
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/app"
 	"github.com/go-faster/sdk/zctx"
 	"github.com/gotd/log/logzap"
 	gotdtelegram "github.com/gotd/td/telegram"
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -30,7 +25,6 @@ import (
 	chunkmd "github.com/go-faster/scpbot/internal/chunk/markdown"
 	chunktg "github.com/go-faster/scpbot/internal/chunk/telegram"
 	"github.com/go-faster/scpbot/internal/config"
-	"github.com/go-faster/scpbot/internal/embed"
 	"github.com/go-faster/scpbot/internal/ent"
 	"github.com/go-faster/scpbot/internal/ent/chunk"
 	"github.com/go-faster/scpbot/internal/ent/document"
@@ -41,7 +35,7 @@ import (
 	telegramingest "github.com/go-faster/scpbot/internal/ingest/telegram"
 	"github.com/go-faster/scpbot/internal/netclient"
 	"github.com/go-faster/scpbot/internal/pipeline"
-	qdrant "github.com/go-faster/scpbot/internal/search/qdrant"
+	"github.com/go-faster/scpbot/internal/wire"
 )
 
 var (
@@ -137,48 +131,16 @@ func run(ctx context.Context, tp trace.TracerProvider, mp metric.MeterProvider) 
 		return errors.Wrap(err, "config")
 	}
 
-	// Postgres + ent.
-	db, err := sql.Open("pgx", cfg.DatabaseDSN)
+	// Wire up services: db, embedder, vector store.
+	svc, err := wire.NewServices(ctx, cfg, lg, tp, mp)
 	if err != nil {
-		return errors.Wrap(err, "open db")
+		return errors.Wrap(err, "setup services")
 	}
-	defer func() { _ = db.Close() }()
-
-	entdb := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))
-	if err := entdb.Schema.Create(ctx); err != nil {
-		return errors.Wrap(err, "migrate schema")
-	}
-
-	// Embedder + optional vector store (match cmd/scpbot pattern).
-	embedder, err := embed.New(ctx, cfg, embed.NewOptions{
-		TracerProvider: tp,
-		MeterProvider:  mp,
-	})
-	if err != nil {
-		return errors.Wrap(err, "embedder")
-	}
-
-	var vectors pipeline.VectorStore
-	if host, port, err := splitHostPort(cfg.QdrantAddr); err == nil {
-		store, err := qdrant.New(qdrant.Config{
-			Host:       host,
-			Port:       port,
-			Collection: cfg.QdrantCollection,
-			Dim:        cfg.EmbedDim,
-			Embedder:   embedder,
-		})
-		if err != nil {
-			lg.Warn("qdrant unavailable, vectors disabled", zap.Error(err))
-		} else if err := store.EnsureCollection(ctx); err != nil {
-			lg.Warn("qdrant collection setup failed, vectors disabled", zap.Error(err))
-		} else {
-			vectors = store
-		}
-	}
+	defer svc.Close()
 
 	r := runner{
-		db:      entdb,
-		vectors: vectors,
+		db:      svc.DB,
+		vectors: svc.Vectors,
 		cfg:     cfg,
 		tp:      tp,
 		mp:      mp,
@@ -186,7 +148,7 @@ func run(ctx context.Context, tp trace.TracerProvider, mp metric.MeterProvider) 
 	switch eff {
 	case "gitlab":
 		ch := chunkmd.New(chunkmd.ChunkerOptions{})
-		pipe := pipeline.New(entdb, ch, embedder, vectors)
+		pipe := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors)
 		doReset := *resetFlag == "gitlab" || *resetFlag == "all"
 		if err := r.runGitLab(ctx, pipe, since, doReset, *limit, *dryRun); err != nil {
 			if errors.Is(err, errNotConfigured) {
@@ -200,7 +162,7 @@ func run(ctx context.Context, tp trace.TracerProvider, mp metric.MeterProvider) 
 
 	case "jira":
 		ch := chunkjira.New()
-		pipe := pipeline.New(entdb, ch, embedder, vectors)
+		pipe := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors)
 		doReset := *resetFlag == "jira" || *resetFlag == "all"
 		if err := r.runJira(ctx, pipe, since, doReset, *limit, *dryRun); err != nil {
 			if errors.Is(err, errNotConfigured) {
@@ -214,7 +176,7 @@ func run(ctx context.Context, tp trace.TracerProvider, mp metric.MeterProvider) 
 
 	case "telegram":
 		ch := chunktg.New()
-		pipe := pipeline.New(entdb, ch, embedder, vectors)
+		pipe := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors)
 		doReset := *resetFlag == "telegram" || *resetFlag == "all"
 		if err := r.runTelegram(ctx, pipe, since, doReset, *limit, *dryRun); err != nil {
 			if errors.Is(err, errNotConfigured) {
@@ -227,7 +189,7 @@ func run(ctx context.Context, tp trace.TracerProvider, mp metric.MeterProvider) 
 		return nil
 
 	case "all":
-		return runAll(ctx, entdb, embedder, vectors, cfg, since, *resetFlag, *yesAll, *limit, *dryRun, tp, mp)
+		return runAll(ctx, svc.DB, svc.Embedder, svc.Vectors, cfg, since, *resetFlag, *yesAll, *limit, *dryRun, tp, mp)
 	default:
 		printUsage(os.Stderr)
 		os.Exit(2)
@@ -253,19 +215,6 @@ Flags:
   -dry-run             fetch + log what would be indexed; skip pipeline.Index (and vector writes)
   -h, --help
 `)
-}
-
-func splitHostPort(addr string) (host string, port int, err error) {
-	portStr := ""
-	host, portStr, err = net.SplitHostPort(addr)
-	if err != nil {
-		return "", 0, errors.Wrap(err, "split host port")
-	}
-	p, perr := strconv.Atoi(portStr)
-	if perr != nil {
-		return "", 0, errors.Wrap(perr, "parse port")
-	}
-	return host, p, nil
 }
 
 type runner struct {
