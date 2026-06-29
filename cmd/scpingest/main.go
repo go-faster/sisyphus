@@ -74,6 +74,7 @@ func run(ctx context.Context, tp trace.TracerProvider, mp metric.MeterProvider) 
 	yesAll := fs.Bool("yes-i-mean-all", false, "confirm for -reset all")
 	limit := fs.Int("limit", 0, "cap documents per source (0=unlimited)")
 	dryRun := fs.Bool("dry-run", false, "fetch and log only; skip pipeline.Index")
+	noPrune := fs.Bool("no-prune", false, "skip orphan cleanup for gitlab (files removed from repo)")
 
 	if err := fs.Parse(flagArgs); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -150,7 +151,7 @@ func run(ctx context.Context, tp trace.TracerProvider, mp metric.MeterProvider) 
 		ch := chunkmd.New(chunkmd.ChunkerOptions{})
 		pipe := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors)
 		doReset := *resetFlag == "gitlab" || *resetFlag == "all"
-		if err := r.runGitLab(ctx, pipe, since, doReset, *limit, *dryRun); err != nil {
+		if err := r.runGitLab(ctx, pipe, since, doReset, *limit, *dryRun, !*noPrune); err != nil {
 			if errors.Is(err, errNotConfigured) {
 				fmt.Fprintf(os.Stderr, "gitlab not configured\n")
 				os.Exit(1)
@@ -189,7 +190,7 @@ func run(ctx context.Context, tp trace.TracerProvider, mp metric.MeterProvider) 
 		return nil
 
 	case "all":
-		return runAll(ctx, svc.DB, svc.Embedder, svc.Vectors, cfg, since, *resetFlag, *yesAll, *limit, *dryRun, tp, mp)
+		return runAll(ctx, svc.DB, svc.Embedder, svc.Vectors, cfg, since, *resetFlag, *yesAll, *limit, *dryRun, !*noPrune, tp, mp)
 	default:
 		printUsage(os.Stderr)
 		os.Exit(2)
@@ -227,7 +228,7 @@ type runner struct {
 	mp metric.MeterProvider
 }
 
-func (r *runner) runGitLab(ctx context.Context, p *pipeline.Pipeline, _ time.Time, reset bool, limit int, dry bool) error {
+func (r *runner) runGitLab(ctx context.Context, p *pipeline.Pipeline, _ time.Time, reset bool, limit int, dry bool, prune bool) error {
 	lg := zctx.From(ctx).Named("gitlab")
 	cfg := r.cfg
 	db := r.db
@@ -259,6 +260,11 @@ func (r *runner) runGitLab(ctx context.Context, p *pipeline.Pipeline, _ time.Tim
 		return errors.Wrap(err, "gitlab walk")
 	}
 
+	walkedIDs := make([]string, 0, len(docs))
+	for _, d := range docs {
+		walkedIDs = append(walkedIDs, d.SourceID)
+	}
+
 	processed := 0
 	anyErr := false
 	for _, d := range docs {
@@ -280,6 +286,13 @@ func (r *runner) runGitLab(ctx context.Context, p *pipeline.Pipeline, _ time.Tim
 		processed++
 	}
 
+	if !dry && prune && limit <= 0 {
+		if err := r.pruneGitLabOrphans(ctx, walkedIDs); err != nil {
+			lg.Error("prune gitlab orphans failed", zap.Error(err))
+			anyErr = true
+		}
+	}
+
 	now := time.Now()
 	status := "ok"
 	if anyErr && !dry {
@@ -290,6 +303,72 @@ func (r *runner) runGitLab(ctx context.Context, p *pipeline.Pipeline, _ time.Tim
 	}
 	if anyErr {
 		return errors.New("one or more gitlab documents failed to index")
+	}
+	return nil
+}
+
+// pruneGitLabOrphans deletes documents (and their chunks/vectors) that are no
+// longer present in the GitLab walk — i.e. files that have been deleted.
+func (r *runner) pruneGitLabOrphans(ctx context.Context, walkedSourceIDs []string) error {
+	lg := zctx.From(ctx).Named("gitlab.prune")
+	db := r.db
+
+	// Chunk IDs double as Qdrant point IDs.
+	orphanChunkIDs, err := db.Chunk.Query().
+		Where(chunk.HasDocumentWith(
+			document.Source(string(index.SourceGitLabDocs)),
+			document.SourceIDNotIn(walkedSourceIDs...),
+		)).
+		IDs(ctx)
+	if err != nil {
+		return errors.Wrap(err, "query orphan chunks")
+	}
+
+	if len(orphanChunkIDs) == 0 {
+		return nil
+	}
+
+	tx, err := db.Tx(ctx)
+	if err != nil {
+		return errors.Wrap(err, "tx begin for prune")
+	}
+	if _, err := tx.Chunk.Delete().
+		Where(chunk.HasDocumentWith(
+			document.Source(string(index.SourceGitLabDocs)),
+			document.SourceIDNotIn(walkedSourceIDs...),
+		)).
+		Exec(ctx); err != nil {
+		_ = tx.Rollback()
+		return errors.Wrap(err, "delete orphan chunks")
+	}
+	n, err := tx.Document.Delete().
+		Where(
+			document.Source(string(index.SourceGitLabDocs)),
+			document.SourceIDNotIn(walkedSourceIDs...),
+		).
+		Exec(ctx)
+	if err != nil {
+		_ = tx.Rollback()
+		return errors.Wrap(err, "delete orphan documents")
+	}
+	if err := tx.Commit(); err != nil {
+		return errors.Wrap(err, "commit prune")
+	}
+
+	lg.Info("pruned orphan gitlab documents",
+		zap.Int("documents", n),
+		zap.Int("chunks", len(orphanChunkIDs)))
+
+	if r.vectors != nil {
+		const batch = 1000
+		for i := 0; i < len(orphanChunkIDs); i += batch {
+			j := min(i+batch, len(orphanChunkIDs))
+			if derr := r.vectors.Delete(ctx, orphanChunkIDs[i:j]); derr != nil {
+				lg.Warn("qdrant delete for orphan chunks (non-fatal)",
+					zap.Error(derr),
+					zap.Int("count", j-i))
+			}
+		}
 	}
 	return nil
 }
@@ -572,7 +651,7 @@ func parseMonitorChats(s string) []telegramingest.ChatSpec {
 	return out
 }
 
-func runAll(ctx context.Context, db *ent.Client, embedder index.Embedder, vectors pipeline.VectorStore, cfg config.Config, since time.Time, resetMode string, _ bool, limit int, dry bool, tp trace.TracerProvider, mp metric.MeterProvider) error {
+func runAll(ctx context.Context, db *ent.Client, embedder index.Embedder, vectors pipeline.VectorStore, cfg config.Config, since time.Time, resetMode string, _ bool, limit int, dry bool, prune bool, tp trace.TracerProvider, mp metric.MeterProvider) error {
 	lg := zctx.From(ctx)
 	// Centralized all reset check already done in caller, but if reset all we pre-wipe.
 	if resetMode == "all" {
@@ -598,7 +677,7 @@ func runAll(ctx context.Context, db *ent.Client, embedder index.Embedder, vector
 		ch := chunkmd.New(chunkmd.ChunkerOptions{})
 		pipe := pipeline.New(db, ch, embedder, vectors)
 		doReset := resetMode == "all" || resetMode == "gitlab"
-		if err := runner.runGitLab(ctx, pipe, since, doReset, limit, dry); err != nil {
+		if err := runner.runGitLab(ctx, pipe, since, doReset, limit, dry, prune); err != nil {
 			if errors.Is(err, errNotConfigured) {
 				lg.Info("skipping gitlab (not configured)")
 			} else {
