@@ -140,6 +140,9 @@ func TestFetcher(t *testing.T) {
 		{name: "CloudAuth", run: testCloudAuth},
 		{name: "UsernamePasswordAuth", run: testUsernamePasswordAuth},
 		{name: "PAT", run: testPAT},
+		{name: "CheckAuth", run: testCheckAuth},
+		{name: "CheckAuthUnauthorized", run: testCheckAuthUnauthorized},
+		{name: "CheckAuthProjectMissing", run: testCheckAuthProjectMissing},
 		{name: "ErrorPath", run: testErrorPath},
 		{name: "EmptyProjects", run: testEmptyProjects},
 	}
@@ -442,6 +445,113 @@ func testUsernamePasswordAuth(t *testing.T) {
 
 	if gotAuth != expectedAuth {
 		t.Errorf("Authorization: expected %q, got %q", expectedAuth, gotAuth)
+	}
+}
+
+func testCheckAuth(t *testing.T) {
+	t.Parallel()
+
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/rest/api/2/myself":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"accountId":   "abc-123",
+				"displayName": "Test User",
+				"name":        "test-user",
+			})
+		case "/rest/api/2/project/TEST", "/rest/api/2/project/OPS":
+			_ = json.NewEncoder(w).Encode(map[string]any{"key": strings.TrimPrefix(r.URL.Path, "/rest/api/2/project/")})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	f, err := New(Options{
+		BaseURL: srv.URL,
+		PAT:     "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	status, err := f.CheckAuth(context.Background(), []string{"TEST", "OPS"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.AccountID != "abc-123" || status.DisplayName != "Test User" {
+		t.Fatalf("unexpected status: %+v", status)
+	}
+
+	expectedPaths := []string{"/rest/api/2/myself", "/rest/api/2/project/TEST", "/rest/api/2/project/OPS"}
+	if strings.Join(paths, ",") != strings.Join(expectedPaths, ",") {
+		t.Fatalf("paths: expected %v, got %v", expectedPaths, paths)
+	}
+}
+
+func testCheckAuthUnauthorized(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/api/2/myself" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(map[string]any{"errorMessages": []string{"Unauthorized"}})
+	}))
+	defer srv.Close()
+
+	f, err := New(Options{
+		BaseURL: srv.URL,
+		PAT:     "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = f.CheckAuth(context.Background(), []string{"TEST"})
+	if err == nil {
+		t.Fatal("expected auth error")
+	}
+	if !strings.Contains(err.Error(), "jira auth check status 401") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func testCheckAuthProjectMissing(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/rest/api/2/myself":
+			_ = json.NewEncoder(w).Encode(map[string]any{"displayName": "Test User"})
+		case "/rest/api/2/project/MISSING":
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]any{"errorMessages": []string{"No project could be found"}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	f, err := New(Options{
+		BaseURL: srv.URL,
+		PAT:     "test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = f.CheckAuth(context.Background(), []string{"MISSING"})
+	if err == nil {
+		t.Fatal("expected project error")
+	}
+	if !strings.Contains(err.Error(), "jira project MISSING check status 404") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

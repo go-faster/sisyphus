@@ -69,6 +69,15 @@ type FetchResult struct {
 	HasMore    bool
 }
 
+// AuthStatus describes the Jira identity used by the configured credentials.
+type AuthStatus struct {
+	AccountID    string
+	Name         string
+	Key          string
+	DisplayName  string
+	EmailAddress string
+}
+
 // Fetcher retrieves Jira issues via the REST API.
 type Fetcher struct {
 	baseURL    string
@@ -104,6 +113,14 @@ type jiraSearchResponse struct {
 	MaxResults int         `json:"maxResults"`
 	Total      int         `json:"total"`
 	Issues     []jiraIssue `json:"issues"`
+}
+
+type jiraUserResponse struct {
+	AccountID    string `json:"accountId"`
+	Name         string `json:"name"`
+	Key          string `json:"key"`
+	DisplayName  string `json:"displayName"`
+	EmailAddress string `json:"emailAddress"`
 }
 
 type jiraIssue struct {
@@ -268,23 +285,12 @@ func buildJQL(projects []string, cursor Cursor, opts FetchOptions) string {
 	return jql
 }
 
-func (f *Fetcher) buildRequest(ctx context.Context, jql string, startAt, pageSize int, fields string) (*http.Request, error) {
-	u, err := url.Parse(f.baseURL + "/rest/api/2/search")
-	if err != nil {
-		return nil, errors.Wrap(err, "parse url")
-	}
-	q := url.Values{}
-	q.Set("jql", jql)
-	q.Set("startAt", strconv.Itoa(startAt))
-	q.Set("maxResults", strconv.Itoa(pageSize))
-	q.Set("fields", fields)
-	u.RawQuery = q.Encode()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), http.NoBody)
+func (f *Fetcher) buildAPIRequest(ctx context.Context, path string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.baseURL+path, http.NoBody)
 	if err != nil {
 		return nil, errors.Wrap(err, "create request")
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "scpbot/ingest")
 
 	switch {
@@ -300,6 +306,82 @@ func (f *Fetcher) buildRequest(ctx context.Context, jql string, startAt, pageSiz
 		return nil, errors.New("jira: no credentials configured")
 	}
 	return req, nil
+}
+
+func (f *Fetcher) buildRequest(ctx context.Context, jql string, startAt, pageSize int, fields string) (*http.Request, error) {
+	u, err := url.Parse(f.baseURL + "/rest/api/2/search")
+	if err != nil {
+		return nil, errors.Wrap(err, "parse url")
+	}
+	q := url.Values{}
+	q.Set("jql", jql)
+	q.Set("startAt", strconv.Itoa(startAt))
+	q.Set("maxResults", strconv.Itoa(pageSize))
+	q.Set("fields", fields)
+	u.RawQuery = q.Encode()
+
+	req, err := f.buildAPIRequest(ctx, u.RequestURI())
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return req, nil
+}
+
+// CheckAuth verifies that Jira accepts the configured credentials and that the
+// authenticated user can access every configured project.
+func (f *Fetcher) CheckAuth(ctx context.Context, projects []string) (AuthStatus, error) {
+	if len(projects) == 0 {
+		return AuthStatus{}, errors.New("jira: empty projects list")
+	}
+
+	req, err := f.buildAPIRequest(ctx, "/rest/api/2/myself")
+	if err != nil {
+		return AuthStatus{}, err
+	}
+	body, err := f.doPreflight(req, "jira auth check")
+	if err != nil {
+		return AuthStatus{}, err
+	}
+
+	var user jiraUserResponse
+	if err := json.Unmarshal(body, &user); err != nil {
+		return AuthStatus{}, errors.Wrap(err, "parse jira auth check")
+	}
+	status := AuthStatus(user)
+
+	for _, project := range projects {
+		project = strings.TrimSpace(project)
+		if project == "" {
+			continue
+		}
+		req, err := f.buildAPIRequest(ctx, "/rest/api/2/project/"+url.PathEscape(project))
+		if err != nil {
+			return AuthStatus{}, err
+		}
+		if _, err := f.doPreflight(req, "jira project "+project+" check"); err != nil {
+			return AuthStatus{}, err
+		}
+	}
+
+	return status, nil
+}
+
+func (f *Fetcher) doPreflight(req *http.Request, op string) ([]byte, error) {
+	resp, err := f.httpClient.Do(req)
+	if err != nil {
+		return nil, errors.Wrap(err, op)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, errors.Wrap(err, "read "+op+" response")
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, errors.Errorf("%s status %d: %s", op, resp.StatusCode, string(body))
+	}
+	return body, nil
 }
 
 // Fetch performs ONE page of Jira's /rest/api/2/search endpoint, returning
@@ -320,7 +402,12 @@ func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions, cursor Cursor) (
 	}
 
 	jql := buildJQL(opts.Projects, cursor, opts)
-
+	zctx.From(ctx).Debug("jira fetch",
+		zap.String("jql", jql),
+		zap.Int("start_at", cursor.StartAt),
+		zap.Int("page_size", pageSize),
+		zap.String("fields", fields),
+	)
 	req, err := f.buildRequest(ctx, jql, cursor.StartAt, pageSize, fields)
 	if err != nil {
 		return FetchResult{}, errors.Wrap(err, "build request")

@@ -370,12 +370,6 @@ func (r *runner) runJira(ctx context.Context, p *pipeline.Pipeline, since time.T
 	}
 
 	src := index.SourceJira
-	if reset {
-		if err := resetSource(ctx, db, vectors, src); err != nil {
-			return err
-		}
-	}
-
 	httpClient, err := netclient.HTTPClient(ctx, "jira", cfg.Proxies.Jira, netclient.HTTPClientOptions{
 		TracerProvider: tp,
 		MeterProvider:  mp,
@@ -395,14 +389,28 @@ func (r *runner) runJira(ctx context.Context, p *pipeline.Pipeline, since time.T
 	if err != nil {
 		return errors.Wrap(err, "jira new fetcher")
 	}
+	projects := splitCSV(jc.Projects)
+	authStatus, err := fetcher.CheckAuth(ctx, projects)
+	if err != nil {
+		return errors.Wrap(err, "jira preflight")
+	}
+	lg.Info("jira auth ok",
+		zap.String("account_id", authStatus.AccountID),
+		zap.String("name", authStatus.Name),
+		zap.String("display_name", authStatus.DisplayName),
+	)
+
+	if reset {
+		if err := resetSource(ctx, db, vectors, src); err != nil {
+			return err
+		}
+	}
 
 	cur, _ := loadJiraCursor(ctx, db, string(src))
 	if !since.IsZero() {
 		cur.LastUpdated = since.Format(time.RFC3339)
 		cur.StartAt = 0
 	}
-
-	projects := splitCSV(jc.Projects)
 
 	processed := 0
 	anyErr := false
