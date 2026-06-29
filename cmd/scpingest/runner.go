@@ -14,12 +14,15 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	chunkgit "github.com/go-faster/scpbot/internal/chunk/git"
+	chunkmd "github.com/go-faster/scpbot/internal/chunk/markdown"
 	"github.com/go-faster/scpbot/internal/config"
 	"github.com/go-faster/scpbot/internal/ent"
 	"github.com/go-faster/scpbot/internal/ent/chunk"
 	"github.com/go-faster/scpbot/internal/ent/document"
 	"github.com/go-faster/scpbot/internal/ent/syncstate"
 	"github.com/go-faster/scpbot/internal/index"
+	gitingest "github.com/go-faster/scpbot/internal/ingest/git"
 	gitlabingest "github.com/go-faster/scpbot/internal/ingest/gitlab"
 	jiraingest "github.com/go-faster/scpbot/internal/ingest/jira"
 	telegramingest "github.com/go-faster/scpbot/internal/ingest/telegram"
@@ -37,99 +40,176 @@ var (
 )
 
 type runner struct {
-	db      *ent.Client
-	vectors pipeline.VectorStore
-	cfg     config.Config
-	tp      trace.TracerProvider
-	mp      metric.MeterProvider
+	db       *ent.Client
+	vectors  pipeline.VectorStore
+	cfg      config.Config
+	tp       trace.TracerProvider
+	mp       metric.MeterProvider
+	embedder index.Embedder
 }
 
-func (r *runner) runGitLab(ctx context.Context, p *pipeline.Pipeline, _ time.Time, reset bool, limit int, dry, prune bool) error {
-	lg := zctx.From(ctx).Named("gitlab")
+func (r *runner) runGit(ctx context.Context, reset bool, limit int, dry, prune bool) error {
+	lg := zctx.From(ctx).Named("git")
 	cfg := r.cfg
 	db := r.db
 	vectors := r.vectors
 
-	roots := gitLabSources(cfg.GitLab.Repos)
-	if len(roots) == 0 {
-		lg.Info("gitlab not configured, zero sources")
+	sources := gitSources(cfg.Git.Repos)
+	if len(sources) == 0 {
+		lg.Info("git not configured, zero sources")
 		return errNotConfigured
 	}
-	roots, err := gitlabingest.Prepare(ctx, roots, gitlabingest.SyncOptions{
-		WorkDir: cfg.GitLab.WorkDir,
-		Token:   cfg.GitLab.Token,
-		Proxy:   cfg.Proxies.GitLab,
+
+	sources, err := gitingest.Prepare(ctx, sources, gitingest.SyncOptions{
+		WorkDir: cfg.Git.WorkDir,
+		Token:   cfg.Git.Token,
+		Proxy:   cfg.Proxies.Git,
 	})
 	if err != nil {
-		return errors.Wrap(err, "prepare gitlab repos")
+		return errors.Wrap(err, "prepare git repos")
 	}
 
-	src := index.SourceGitLabDocs
-	if reset {
-		if err := resetSource(ctx, db, vectors, src); err != nil {
-			return err
-		}
-	}
+	// Build two pipelines: one for docs, one for commits
+	docsPipe := r.buildPipeline(r.buildDocChunker())
+	commitsPipe := r.buildPipeline(r.buildCommitChunker())
 
-	docs, err := gitlabingest.WalkAll(ctx, roots, gitlabingest.WalkOptions{})
-	if err != nil {
-		return errors.Wrap(err, "gitlab walk")
-	}
-
-	walkedIDs := make([]string, 0, len(docs))
-	for _, d := range docs {
-		walkedIDs = append(walkedIDs, d.SourceID)
-	}
-
-	processed := 0
 	anyErr := false
-	for _, d := range docs {
-		if limit > 0 && processed >= limit {
-			break
+
+	for _, s := range sources {
+		// Ingest docs content
+		docsSrc := index.SourceGitDocs(s.Repo)
+		if reset {
+			if err := resetSource(ctx, db, vectors, docsSrc); err != nil {
+				return err
+			}
 		}
-		if dry {
-			lg.Info("dry-run would index gitlab",
-				zap.String("source_id", d.SourceID),
-				zap.String("title", d.Title))
+
+		docs, err := gitingest.WalkAll(ctx, []gitingest.Source{s}, gitingest.WalkOptions{})
+		if err != nil {
+			lg.Error("git walk failed", zap.Error(err), zap.String("repo", s.Repo))
+			anyErr = true
+			continue
+		}
+
+		walkedIDs := make([]string, 0, len(docs))
+		for _, d := range docs {
+			walkedIDs = append(walkedIDs, d.SourceID)
+		}
+
+		processed := 0
+		for _, d := range docs {
+			if limit > 0 && processed >= limit {
+				break
+			}
+			if dry {
+				lg.Info("dry-run would index git docs",
+					zap.String("source_id", d.SourceID),
+					zap.String("title", d.Title),
+					zap.String("repo", s.Repo))
+				processed++
+				continue
+			}
+			if ierr := docsPipe.Index(ctx, d); ierr != nil {
+				lg.Error("index git doc failed", zap.Error(ierr), zap.String("source_id", d.SourceID))
+				anyErr = true
+				continue
+			}
 			processed++
-			continue
 		}
-		if err := p.Index(ctx, d); err != nil {
-			lg.Error("index gitlab doc failed", zap.Error(err), zap.String("source_id", d.SourceID))
-			anyErr = true
-			continue
+
+		if !dry && prune && limit <= 0 {
+			if err := r.pruneOrphans(ctx, docsSrc, walkedIDs); err != nil {
+				lg.Error("prune git docs orphans failed", zap.Error(err), zap.String("repo", s.Repo))
+				anyErr = true
+			}
 		}
-		processed++
+
+		status := "ok"
+		if anyErr && !dry {
+			status = "error"
+		}
+		if err := upsertSyncState(ctx, db, string(docsSrc), time.Now(), "", status, processed); err != nil {
+			return errors.Wrap(err, "upsert syncstate")
+		}
+
+		// Ingest commits if enabled
+		if s.Commits {
+			commitsSrc := index.SourceGitCommit(s.Repo)
+			if reset {
+				if err := resetSource(ctx, db, vectors, commitsSrc); err != nil {
+					return err
+				}
+			}
+
+			cur, _ := loadGitCursor(ctx, db, string(commitsSrc))
+
+			res, err := gitingest.WalkCommits(ctx, s, cur, limit)
+			if err != nil {
+				lg.Error("git walk commits failed", zap.Error(err), zap.String("repo", s.Repo))
+				anyErr = true
+				continue
+			}
+
+			processed := 0
+			for _, d := range res.Documents {
+				if limit > 0 && processed >= limit {
+					break
+				}
+				if dry {
+					lg.Info("dry-run would index git commits",
+						zap.String("source_id", d.SourceID),
+						zap.String("title", d.Title),
+						zap.String("repo", s.Repo))
+					processed++
+					continue
+				}
+				if ierr := commitsPipe.Index(ctx, d); ierr != nil {
+					lg.Error("index git commit failed", zap.Error(ierr), zap.String("source_id", d.SourceID))
+					anyErr = true
+					continue
+				}
+				processed++
+			}
+
+			cursorJSON, _ := gitingest.MarshalCursor(res.NextCursor)
+			status := "ok"
+			if anyErr && !dry {
+				status = "error"
+			}
+			if err := upsertSyncState(ctx, db, string(commitsSrc), time.Now(), string(cursorJSON), status, processed); err != nil {
+				return errors.Wrap(err, "upsert syncstate")
+			}
+		}
 	}
 
-	if !dry && prune && limit <= 0 {
-		if err := r.pruneGitLabOrphans(ctx, walkedIDs); err != nil {
-			lg.Error("prune gitlab orphans failed", zap.Error(err))
-			anyErr = true
-		}
-	}
-
-	now := time.Now()
-	status := "ok"
-	if anyErr && !dry {
-		status = "error"
-	}
-	if err := upsertSyncState(ctx, db, string(src), now, "", status, processed); err != nil {
-		return errors.Wrap(err, "upsert syncstate")
-	}
 	if anyErr {
-		return errors.New("one or more gitlab documents failed to index")
+		return errors.New("one or more git documents failed to index")
 	}
 	return nil
 }
 
-func (r *runner) pruneGitLabOrphans(ctx context.Context, walkedSourceIDs []string) error {
-	lg := zctx.From(ctx).Named("gitlab.prune")
+func (r *runner) buildDocChunker() index.Chunker {
+	return chunkmd.New(chunkmd.ChunkerOptions{})
+}
+
+func (r *runner) buildCommitChunker() index.Chunker {
+	return chunkgit.New()
+}
+
+func (r *runner) buildPipeline(ch index.Chunker) *pipeline.Pipeline {
+	return pipeline.New(r.db, ch, r.embedder, r.vectors, pipeline.PipelineOptions{
+		TracerProvider: r.tp,
+		MeterProvider:  r.mp,
+	})
+}
+
+func (r *runner) pruneOrphans(ctx context.Context, src index.Source, walkedSourceIDs []string) error {
+	lg := zctx.From(ctx).Named("prune")
 	db := r.db
 
 	orphanChunkIDs, err := db.Chunk.Query().
 		Where(chunk.HasDocumentWith(
-			document.Source(string(index.SourceGitLabDocs)),
+			document.Source(string(src)),
 			document.SourceIDNotIn(walkedSourceIDs...),
 		)).
 		IDs(ctx)
@@ -147,7 +227,7 @@ func (r *runner) pruneGitLabOrphans(ctx context.Context, walkedSourceIDs []strin
 	}
 	if _, err := tx.Chunk.Delete().
 		Where(chunk.HasDocumentWith(
-			document.Source(string(index.SourceGitLabDocs)),
+			document.Source(string(src)),
 			document.SourceIDNotIn(walkedSourceIDs...),
 		)).
 		Exec(ctx); err != nil {
@@ -156,7 +236,7 @@ func (r *runner) pruneGitLabOrphans(ctx context.Context, walkedSourceIDs []strin
 	}
 	n, err := tx.Document.Delete().
 		Where(
-			document.Source(string(index.SourceGitLabDocs)),
+			document.Source(string(src)),
 			document.SourceIDNotIn(walkedSourceIDs...),
 		).
 		Exec(ctx)
@@ -168,7 +248,8 @@ func (r *runner) pruneGitLabOrphans(ctx context.Context, walkedSourceIDs []strin
 		return errors.Wrap(err, "commit prune")
 	}
 
-	lg.Info("pruned orphan gitlab documents",
+	lg.Info("pruned orphan documents",
+		zap.String("source", string(src)),
 		zap.Int("documents", n),
 		zap.Int("chunks", len(orphanChunkIDs)))
 
@@ -179,10 +260,157 @@ func (r *runner) pruneGitLabOrphans(ctx context.Context, walkedSourceIDs []strin
 			if derr := r.vectors.Delete(ctx, orphanChunkIDs[i:j]); derr != nil {
 				lg.Warn("qdrant delete for orphan chunks (non-fatal)",
 					zap.Error(derr),
-					zap.Int("count", j-i))
+					zap.Int("count", j-i),
+					zap.String("source", string(src)))
 			}
 		}
 	}
+	return nil
+}
+
+func (r *runner) runGitLabAPI(ctx context.Context, p *pipeline.Pipeline, since time.Time, reset bool, limit int, dry bool) error {
+	lg := zctx.From(ctx).Named("gitlab")
+	cfg := r.cfg
+	db := r.db
+	vectors := r.vectors
+
+	if cfg.GitLab.BaseURL == "" || cfg.GitLab.Token == "" || cfg.GitLab.Projects == "" {
+		lg.Info("gitlab not configured")
+		return errNotConfigured
+	}
+
+	httpClient, err := netclient.HTTPClient(ctx, "gitlab", cfg.Proxies.GitLab, netclient.HTTPClientOptions{
+		TracerProvider: r.tp,
+		MeterProvider:  r.mp,
+	})
+	if err != nil {
+		return errors.Wrap(err, "gitlab http client")
+	}
+
+	fetcher, err := gitlabingest.New(gitlabingest.Options{
+		BaseURL:    cfg.GitLab.BaseURL,
+		Token:      cfg.GitLab.Token,
+		Projects:   cfg.GitLab.Projects,
+		HTTPClient: httpClient,
+	})
+	if err != nil {
+		return errors.Wrap(err, "gitlab new fetcher")
+	}
+
+	if err := fetcher.CheckAuth(ctx); err != nil {
+		return errors.Wrap(err, "gitlab auth check")
+	}
+
+	// Helper to ingest a resource type
+	ingestResource := func(resourceName string, enabled bool, srcGenerator func() index.Source, fetch func(context.Context, int, gitlabingest.Cursor) (gitlabingest.FetchResult, error)) error {
+		if !enabled {
+			return nil
+		}
+
+		src := srcGenerator()
+		if reset {
+			if err := resetSource(ctx, db, vectors, src); err != nil {
+				return err
+			}
+		}
+
+		startCur, _ := loadGitLabCursor(ctx, db, string(src))
+		if !since.IsZero() {
+			startCur.UpdatedAfter = since.Format(time.RFC3339)
+		}
+
+		processed := 0
+		anyErr := false
+		page := 1
+		limReached := false
+		// Keep the request cursor (updated_after) FIXED while paginating by page;
+		// track the max updated_at observed across pages and persist that as the
+		// cursor for the next run. Advancing updated_after mid-pagination would
+		// skip records.
+		maxObserved := startCur.UpdatedAfter
+
+		for {
+			res, err := fetch(ctx, page, startCur)
+			if err != nil {
+				lg.Error("gitlab fetch failed", zap.Error(err), zap.String("resource", resourceName))
+				anyErr = true
+				break
+			}
+
+			for _, d := range res.Documents {
+				if limit > 0 && processed >= limit {
+					limReached = true
+					break
+				}
+				if dry {
+					lg.Info("dry-run would index gitlab "+resourceName,
+						zap.String("source_id", d.SourceID),
+						zap.String("title", d.Title))
+					processed++
+					continue
+				}
+				if ierr := p.Index(ctx, d); ierr != nil {
+					lg.Error("index gitlab "+resourceName+" failed", zap.Error(ierr), zap.String("source_id", d.SourceID))
+					anyErr = true
+					continue
+				}
+				processed++
+			}
+
+			if res.NextCursor.UpdatedAfter > maxObserved {
+				maxObserved = res.NextCursor.UpdatedAfter
+			}
+			if limReached || !res.HasMore {
+				break
+			}
+			page++
+		}
+
+		curStr, _ := json.Marshal(gitlabingest.Cursor{UpdatedAfter: maxObserved})
+		status := "ok"
+		if anyErr && !dry {
+			status = "error"
+		}
+		if err := upsertSyncState(ctx, db, string(src), time.Now(), string(curStr), status, processed); err != nil {
+			return errors.Wrap(err, "upsert syncstate")
+		}
+
+		if anyErr {
+			return errors.New("one or more " + resourceName + " documents failed to index")
+		}
+		return nil
+	}
+
+	// Process issues
+	if err := ingestResource("issues", cfg.GitLab.Issues,
+		func() index.Source { return index.SourceGitLabIssue },
+		func(ctx context.Context, page int, cur gitlabingest.Cursor) (gitlabingest.FetchResult, error) {
+			return fetcher.FetchIssues(ctx, page, cur)
+		},
+	); err != nil && !errors.Is(err, errNotConfigured) {
+		return err
+	}
+
+	// Process merge requests
+	if err := ingestResource("merge_requests", cfg.GitLab.MergeRequests,
+		func() index.Source { return index.SourceGitLabMR },
+		func(ctx context.Context, page int, cur gitlabingest.Cursor) (gitlabingest.FetchResult, error) {
+			return fetcher.FetchMergeRequests(ctx, page, cur)
+		},
+	); err != nil && !errors.Is(err, errNotConfigured) {
+		return err
+	}
+
+	// Process releases
+	if err := ingestResource("releases", cfg.GitLab.Releases,
+		func() index.Source { return index.SourceGitLabRelease },
+		func(ctx context.Context, page int, cur gitlabingest.Cursor) (gitlabingest.FetchResult, error) {
+			return fetcher.FetchReleases(ctx, page, cur)
+		},
+	); err != nil && !errors.Is(err, errNotConfigured) {
+		return err
+	}
+
 	return nil
 }
 
@@ -466,18 +694,55 @@ func upsertSyncState(ctx context.Context, db *ent.Client, src string, lastSynced
 		Exec(ctx)
 }
 
-func gitLabSources(sources []config.GitLabSource) []gitlabingest.Source {
-	out := make([]gitlabingest.Source, 0, len(sources))
+func gitSources(sources []config.GitSource) []gitingest.Source {
+	out := make([]gitingest.Source, 0, len(sources))
 	for _, src := range sources {
-		out = append(out, gitlabingest.Source{
+		out = append(out, gitingest.Source{
 			Root:    src.Root,
 			URL:     src.URL,
 			Repo:    src.Repo,
 			Branch:  src.Branch,
 			BaseURL: src.BaseURL,
+			Include: src.Include,
+			Exclude: src.Exclude,
+			Commits: src.Commits,
 		})
 	}
 	return out
+}
+
+func loadGitCursor(ctx context.Context, db *ent.Client, src string) (gitingest.CommitCursor, error) {
+	ss, err := db.SyncState.Query().Where(syncstate.Source(src)).Only(ctx)
+	if ent.IsNotFound(err) {
+		return gitingest.CommitCursor{}, nil
+	}
+	if err != nil {
+		return gitingest.CommitCursor{}, errors.Wrap(err, "query syncstate")
+	}
+	var c gitingest.CommitCursor
+	if ss.LastCursor != "" {
+		if uerr := json.Unmarshal([]byte(ss.LastCursor), &c); uerr != nil {
+			return gitingest.CommitCursor{}, nil
+		}
+	}
+	return c, nil
+}
+
+func loadGitLabCursor(ctx context.Context, db *ent.Client, src string) (gitlabingest.Cursor, error) {
+	ss, err := db.SyncState.Query().Where(syncstate.Source(src)).Only(ctx)
+	if ent.IsNotFound(err) {
+		return gitlabingest.Cursor{}, nil
+	}
+	if err != nil {
+		return gitlabingest.Cursor{}, errors.Wrap(err, "query syncstate")
+	}
+	var c gitlabingest.Cursor
+	if ss.LastCursor != "" {
+		if uerr := json.Unmarshal([]byte(ss.LastCursor), &c); uerr != nil {
+			return gitlabingest.Cursor{}, nil
+		}
+	}
+	return c, nil
 }
 
 func loadJiraCursor(ctx context.Context, db *ent.Client, src string) (jiraingest.Cursor, error) {

@@ -8,16 +8,16 @@ import (
 	"github.com/go-faster/errors"
 	"github.com/spf13/cobra"
 
-	chunkmd "github.com/go-faster/scpbot/internal/chunk/markdown"
+	chunkgitlab "github.com/go-faster/scpbot/internal/chunk/gitlab"
 	"github.com/go-faster/scpbot/internal/pipeline"
 )
 
 func newGitLabCmd() *cobra.Command {
-	var noPrune bool
+	var sinceStr string
 
 	cmd := &cobra.Command{
 		Use:   "gitlab",
-		Short: "ingest GitLab docs",
+		Short: "ingest GitLab issues, MRs, releases (REST)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			dryRun, _ := cmd.Flags().GetBool("dry-run")
@@ -25,20 +25,30 @@ func newGitLabCmd() *cobra.Command {
 			resetFlag, _ := cmd.Flags().GetString("reset")
 			doReset := resetFlag == "gitlab" || resetFlag == "all"
 
-			ch := chunkmd.New(chunkmd.ChunkerOptions{})
+			var since time.Time
+			if sinceStr != "" {
+				var err error
+				since, err = time.Parse(time.RFC3339, sinceStr)
+				if err != nil {
+					return errors.Wrap(err, "invalid --since")
+				}
+			}
+
+			ch := chunkgitlab.New()
 			pipe := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors, pipeline.PipelineOptions{
 				TracerProvider: globalTP,
 				MeterProvider:  globalMP,
 			})
 
 			r := runner{
-				db:      svc.DB,
-				vectors: svc.Vectors,
-				cfg:     cfg,
-				tp:      globalTP,
-				mp:      globalMP,
+				db:       svc.DB,
+				vectors:  svc.Vectors,
+				cfg:      cfg,
+				tp:       globalTP,
+				mp:       globalMP,
+				embedder: svc.Embedder,
 			}
-			if err := r.runGitLab(ctx, pipe, time.Time{}, doReset, limit, dryRun, !noPrune); err != nil {
+			if err := r.runGitLabAPI(ctx, pipe, since, doReset, limit, dryRun); err != nil {
 				if errors.Is(err, errNotConfigured) {
 					fmt.Fprintf(os.Stderr, "gitlab not configured\n")
 					os.Exit(1)
@@ -49,6 +59,6 @@ func newGitLabCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&noPrune, "no-prune", false, "skip orphan cleanup for gitlab (files removed from repo)")
+	cmd.Flags().StringVar(&sinceStr, "since", "", "RFC3339 override for cursor (gitlab)")
 	return cmd
 }

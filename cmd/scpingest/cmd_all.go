@@ -9,8 +9,8 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
+	chunkgitlab "github.com/go-faster/scpbot/internal/chunk/gitlab"
 	chunkjira "github.com/go-faster/scpbot/internal/chunk/jira"
-	chunkmd "github.com/go-faster/scpbot/internal/chunk/markdown"
 	chunktg "github.com/go-faster/scpbot/internal/chunk/telegram"
 	"github.com/go-faster/scpbot/internal/index"
 	"github.com/go-faster/scpbot/internal/pipeline"
@@ -19,7 +19,7 @@ import (
 func newAllCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "all",
-		Short: "run gitlab then jira then telegram in sequence",
+		Short: "run git then gitlab then jira then telegram in sequence",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 			lg := zctx.From(ctx)
@@ -28,15 +28,34 @@ func newAllCmd() *cobra.Command {
 			resetFlag, _ := cmd.Flags().GetString("reset")
 
 			r := runner{
-				db:      svc.DB,
-				vectors: svc.Vectors,
-				cfg:     cfg,
-				tp:      globalTP,
-				mp:      globalMP,
+				db:       svc.DB,
+				vectors:  svc.Vectors,
+				cfg:      cfg,
+				tp:       globalTP,
+				mp:       globalMP,
+				embedder: svc.Embedder,
 			}
 
 			if resetFlag == "all" {
-				for _, src := range []index.Source{index.SourceGitLabDocs, index.SourceJira, index.SourceTelegram} {
+				// Reset all git sources
+				for _, gitSrc := range cfg.Git.Repos {
+					if err := resetSource(ctx, svc.DB, svc.Vectors, index.SourceGitDocs(gitSrc.Repo)); err != nil {
+						return err
+					}
+					if gitSrc.Commits {
+						if err := resetSource(ctx, svc.DB, svc.Vectors, index.SourceGitCommit(gitSrc.Repo)); err != nil {
+							return err
+						}
+					}
+				}
+				// Reset all gitlab REST sources
+				for _, src := range []index.Source{
+					index.SourceGitLabIssue,
+					index.SourceGitLabMR,
+					index.SourceGitLabRelease,
+					index.SourceJira,
+					index.SourceTelegram,
+				} {
 					if err := resetSource(ctx, svc.DB, svc.Vectors, src); err != nil {
 						return err
 					}
@@ -44,15 +63,29 @@ func newAllCmd() *cobra.Command {
 			}
 
 			var failed []string
-			// gitlab
+
+			// git
 			{
-				ch := chunkmd.New(chunkmd.ChunkerOptions{})
+				doReset := resetFlag == "all" || resetFlag == "git"
+				if err := r.runGit(ctx, doReset, limit, dryRun, true); err != nil {
+					if errors.Is(err, errNotConfigured) {
+						lg.Info("skipping git (not configured)")
+					} else {
+						lg.Error("git failed", zap.Error(err))
+						failed = append(failed, "git")
+					}
+				}
+			}
+
+			// gitlab REST
+			{
+				ch := chunkgitlab.New()
 				pipe := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors, pipeline.PipelineOptions{
 					TracerProvider: globalTP,
 					MeterProvider:  globalMP,
 				})
 				doReset := resetFlag == "all" || resetFlag == "gitlab"
-				if err := r.runGitLab(ctx, pipe, time.Time{}, doReset, limit, dryRun, true); err != nil {
+				if err := r.runGitLabAPI(ctx, pipe, time.Time{}, doReset, limit, dryRun); err != nil {
 					if errors.Is(err, errNotConfigured) {
 						lg.Info("skipping gitlab (not configured)")
 					} else {
@@ -61,6 +94,7 @@ func newAllCmd() *cobra.Command {
 					}
 				}
 			}
+
 			// jira
 			{
 				ch := chunkjira.New()
@@ -78,6 +112,7 @@ func newAllCmd() *cobra.Command {
 					}
 				}
 			}
+
 			// telegram
 			{
 				ch := chunktg.New()
