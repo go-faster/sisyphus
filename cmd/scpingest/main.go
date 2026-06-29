@@ -235,7 +235,7 @@ func (r *runner) runGitLab(ctx context.Context, p *pipeline.Pipeline, _ time.Tim
 
 	roots := gitLabSources(cfg.GitLab.Repos)
 	if len(roots) == 0 {
-		lg.Info("gitlab not configured")
+		lg.Info("gitlab not configured, zero sources")
 		return errNotConfigured
 	}
 	roots, err := gitlabingest.Prepare(ctx, roots, gitlabingest.SyncOptions{
