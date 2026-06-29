@@ -3,7 +3,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"net/http"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 	"github.com/go-faster/sdk/app"
 	"github.com/go-faster/sdk/zctx"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
 	"github.com/go-faster/scpbot/internal/config"
@@ -19,17 +19,26 @@ import (
 )
 
 func main() {
-	stdio := flag.Bool("stdio", false, "use stdio transport instead of Streamable HTTP")
-	flag.Parse()
-
 	app.Run(
 		func(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
 			ctx = zctx.Base(ctx, lg)
-			cfg, err := config.Load()
-			if err != nil {
-				return errors.Wrap(err, "config")
+			var stdio bool
+			cmd := &cobra.Command{
+				Use:   "scpmcp",
+				Short: "runs the MCP server exposing the knowledge base",
+				RunE: func(cmd *cobra.Command, _ []string) error {
+					cfg, err := config.Load()
+					if err != nil {
+						return errors.Wrap(err, "config")
+					}
+					return run(cmd.Context(), cfg, stdio, t)
+				},
+				SilenceUsage:  true,
+				SilenceErrors: true,
 			}
-			return run(ctx, cfg, *stdio, t)
+			cmd.Flags().BoolVar(&stdio, "stdio", false, "use stdio transport instead of Streamable HTTP")
+			cmd.SetContext(ctx)
+			return cmd.Execute()
 		},
 		app.WithServiceName("scpmcp"),
 		app.WithServiceNamespace("scpbot"),
@@ -53,7 +62,6 @@ func run(ctx context.Context, cfg config.Config, useStdio bool, t *app.Telemetry
 		return srv.Run(ctx, &mcp.StdioTransport{})
 	}
 
-	// Streamable HTTP
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, nil)
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", handler)

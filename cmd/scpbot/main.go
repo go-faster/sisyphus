@@ -9,6 +9,7 @@ import (
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/app"
 	"github.com/go-faster/sdk/zctx"
+	"github.com/spf13/cobra"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -24,11 +25,21 @@ func main() {
 	app.Run(
 		func(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
 			ctx = zctx.Base(ctx, lg)
-			cfg, err := config.Load()
-			if err != nil {
-				return errors.Wrap(err, "config")
+			cmd := &cobra.Command{
+				Use:   "scpbot",
+				Short: "runs the ingestion/index API and the Telegram /context bot",
+				RunE: func(cmd *cobra.Command, _ []string) error {
+					cfg, err := config.Load()
+					if err != nil {
+						return errors.Wrap(err, "config")
+					}
+					return run(cmd.Context(), cfg, t.TracerProvider(), t.MeterProvider())
+				},
+				SilenceUsage:  true,
+				SilenceErrors: true,
 			}
-			return run(ctx, cfg, t.TracerProvider(), t.MeterProvider())
+			cmd.SetContext(ctx)
+			return cmd.Execute()
 		},
 		app.WithServiceName("scpmcp"),
 		app.WithServiceNamespace("scpbot"),
@@ -47,7 +58,6 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 	}
 	defer comp.Close()
 
-	// HTTP API.
 	handler := api.New(comp.Retriever, comp.Answerer, "0.1.0")
 	srv, err := oas.NewServer(handler,
 		oas.WithTracerProvider(tp),
@@ -70,7 +80,6 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 		}
 	}()
 
-	// Telegram bot (optional: only when credentials are present).
 	if cfg.Telegram.AppID != 0 && cfg.Telegram.BotToken != "" {
 		b := bot.New(ctx, bot.Config{
 			AppID:      cfg.Telegram.AppID,
