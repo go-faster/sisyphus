@@ -121,7 +121,7 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		vector = store
 	}
 
-	retr, err := retrieval.New(pg, vector)
+	retr, err := retrieval.New(pg, vector, pg)
 	if err != nil {
 		_ = db.Close()
 		return Components{}, errors.Wrap(err, "retrieval")

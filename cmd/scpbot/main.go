@@ -93,7 +93,7 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 		vector = store
 	}
 
-	retr, err := retrieval.New(pg, vector)
+	retr, err := retrieval.New(pg, vector, pg)
 	if err != nil {
 		return errors.Wrap(err, "retrieval")
 	}

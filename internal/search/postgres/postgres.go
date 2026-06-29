@@ -6,6 +6,8 @@ import (
 	"database/sql"
 	_ "embed"
 	"encoding/json"
+	"strconv"
+	"strings"
 
 	"github.com/go-faster/errors"
 	"github.com/google/uuid"
@@ -89,6 +91,46 @@ func (s *Searcher) Search(ctx context.Context, q index.Query) ([]index.Result, e
 	}
 
 	return results, nil
+}
+
+// FetchChunks loads source-of-truth chunk fields by chunk ID. It is used to
+// hydrate vector search hits because Qdrant stores IDs and metadata, not text.
+func (s *Searcher) FetchChunks(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]index.Chunk, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "$" + strconv.Itoa(i+1)
+		args[i] = id
+	}
+	query := `
+		SELECT id, text, token_count
+		FROM chunks
+		WHERE id IN (` + strings.Join(placeholders, ",") + `)
+	`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, errors.Wrap(err, "query chunks by id")
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+
+	out := make(map[uuid.UUID]index.Chunk, len(ids))
+	for rows.Next() {
+		var chunk index.Chunk
+		if err := rows.Scan(&chunk.ID, &chunk.Text, &chunk.TokenCount); err != nil {
+			return nil, errors.Wrap(err, "scan chunk")
+		}
+		out[chunk.ID] = chunk
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "rows error")
+	}
+	return out, nil
 }
 
 // buildQuery constructs the SQL query and arguments for a full-text search.

@@ -19,6 +19,15 @@ func (f fakeSearcher) Search(_ context.Context, _ index.Query) ([]index.Result, 
 	return f.results, f.err
 }
 
+type fakeChunkFetcher struct {
+	chunks map[uuid.UUID]index.Chunk
+	err    error
+}
+
+func (f fakeChunkFetcher) FetchChunks(_ context.Context, _ []uuid.UUID) (map[uuid.UUID]index.Chunk, error) {
+	return f.chunks, f.err
+}
+
 func result(id uuid.UUID, score float64, vector bool, meta map[string]any) index.Result {
 	return index.Result{
 		Chunk:  index.Chunk{ID: id, Metadata: meta},
@@ -41,7 +50,7 @@ func TestRetrieveMergesAndBoosts(t *testing.T) {
 		result(vecOnly, 0.9, true, map[string]any{"authority": string(index.AuthorityHigh)}),
 	}}
 
-	svc, err := New(lexical, vector)
+	svc, err := New(lexical, vector, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +78,7 @@ func TestRetrieveServiceBoost(t *testing.T) {
 		result(a, 1.0, false, map[string]any{"service": "other"}),
 		result(b, 1.0, false, map[string]any{"service": "billing-api"}),
 	}}
-	svc, err := New(lexical, nil)
+	svc, err := New(lexical, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +95,7 @@ func TestRetrieveSurvivesBackendError(t *testing.T) {
 	ok := uuid.New()
 	lexical := fakeSearcher{err: context.DeadlineExceeded}
 	vector := fakeSearcher{results: []index.Result{result(ok, 0.7, true, nil)}}
-	svc, err := New(lexical, vector)
+	svc, err := New(lexical, vector, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +109,39 @@ func TestRetrieveSurvivesBackendError(t *testing.T) {
 }
 
 func TestNewRequiresSearcher(t *testing.T) {
-	if _, err := New(nil, nil); err == nil {
+	if _, err := New(nil, nil, nil); err == nil {
 		t.Fatal("expected error when no searcher provided")
+	}
+}
+
+func TestRetrieveHydratesVectorOnlyText(t *testing.T) {
+	id := uuid.New()
+	vector := fakeSearcher{results: []index.Result{
+		result(id, 0.7, true, nil),
+	}}
+	fetcher := fakeChunkFetcher{chunks: map[uuid.UUID]index.Chunk{
+		id: {
+			ID:         id,
+			Text:       "hydrated text",
+			TokenCount: 42,
+		},
+	}}
+	svc, err := New(nil, vector, fetcher)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := svc.Retrieve(t.Context(), index.Query{Text: "semantic", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(got))
+	}
+	if got[0].Chunk.Text != "hydrated text" {
+		t.Fatalf("text: expected hydrated text, got %q", got[0].Chunk.Text)
+	}
+	if got[0].Chunk.TokenCount != 42 {
+		t.Fatalf("token count: expected 42, got %d", got[0].Chunk.TokenCount)
 	}
 }

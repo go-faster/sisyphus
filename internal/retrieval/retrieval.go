@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/go-faster/scpbot/internal/index"
@@ -28,15 +29,22 @@ var authorityWeight = map[index.Authority]float64{
 type Service struct {
 	lexical index.Searcher
 	vector  index.Searcher
+	fetcher ChunkFetcher
+}
+
+// ChunkFetcher hydrates chunk fields that are intentionally not stored in
+// vector payloads. Postgres remains the source of truth for chunk text.
+type ChunkFetcher interface {
+	FetchChunks(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]index.Chunk, error)
 }
 
 // New builds a retrieval Service. Either searcher may be nil (e.g. vector
 // search unavailable); at least one must be set.
-func New(lexical, vector index.Searcher) (*Service, error) {
+func New(lexical, vector index.Searcher, fetcher ChunkFetcher) (*Service, error) {
 	if lexical == nil && vector == nil {
 		return nil, errors.New("retrieval: at least one searcher required")
 	}
-	return &Service{lexical: lexical, vector: vector}, nil
+	return &Service{lexical: lexical, vector: vector, fetcher: fetcher}, nil
 }
 
 // Retrieve runs both backends, merges by chunk ID, applies boosts, and returns
@@ -78,6 +86,7 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) ([]index.Result, 
 		if err != nil {
 			zctx.From(ctx).Warn("vector search failed", zap.Error(err))
 		} else {
+			s.hydrate(ctx, rs)
 			add(rs)
 		}
 	}
@@ -100,6 +109,40 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) ([]index.Result, 
 		out = out[:q.Limit]
 	}
 	return out, nil
+}
+
+func (s *Service) hydrate(ctx context.Context, rs []index.Result) {
+	if s.fetcher == nil {
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(rs))
+	seen := map[uuid.UUID]bool{}
+	for _, r := range rs {
+		if r.Chunk.Text != "" || r.Chunk.ID == uuid.Nil || seen[r.Chunk.ID] {
+			continue
+		}
+		seen[r.Chunk.ID] = true
+		ids = append(ids, r.Chunk.ID)
+	}
+	if len(ids) == 0 {
+		return
+	}
+	chunks, err := s.fetcher.FetchChunks(ctx, ids)
+	if err != nil {
+		zctx.From(ctx).Warn("hydrate vector chunks failed", zap.Error(err), zap.Int("count", len(ids)))
+		return
+	}
+	for i := range rs {
+		if rs[i].Chunk.Text != "" {
+			continue
+		}
+		chunk, ok := chunks[rs[i].Chunk.ID]
+		if !ok {
+			continue
+		}
+		rs[i].Chunk.Text = chunk.Text
+		rs[i].Chunk.TokenCount = chunk.TokenCount
+	}
 }
 
 // boost applies authority and exact-match boosts to a result's score (plan §11).
