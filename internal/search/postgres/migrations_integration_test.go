@@ -9,10 +9,12 @@ import (
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/go-faster/scpbot/internal/ent"
+	entmigrate "github.com/go-faster/scpbot/internal/ent/migrate"
 )
 
 func TestMigrationsE2E(t *testing.T) {
@@ -26,45 +28,58 @@ func TestMigrationsE2E(t *testing.T) {
 		tcpostgres.WithPassword("scpbot"),
 		tcpostgres.BasicWaitStrategies(),
 	)
-	if err != nil {
-		t.Fatalf("start postgres container: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() {
-		if err := testcontainers.TerminateContainer(container); err != nil {
-			t.Errorf("terminate postgres container: %v", err)
-		}
+		require.NoError(t, testcontainers.TerminateContainer(container))
 	})
 
 	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("postgres connection string: %v", err)
-	}
+	require.NoError(t, err)
 
 	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatalf("open database: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := db.Close(); err != nil {
-			t.Errorf("close database: %v", err)
-		}
-	})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
 
 	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))
-	t.Cleanup(func() {
-		if err := client.Close(); err != nil {
-			t.Errorf("close ent client: %v", err)
-		}
-	})
-	if err := client.Schema.Create(ctx); err != nil {
-		t.Fatalf("ent schema migration: %v", err)
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
+
+	r := entmigrate.NewRunner(db)
+
+	require.NoError(t, r.Run(ctx))
+
+	// Verify tracking table has entries.
+	var count int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&count))
+	require.Equal(t, 2, count)
+
+	// Verify tables exist.
+	tables := []string{"documents", "chunks", "support_requests", "sync_states", "telegram_messages"}
+	for _, name := range tables {
+		var exists bool
+		require.NoError(t, db.QueryRowContext(ctx,
+			`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = $1)`, name,
+		).Scan(&exists))
+		require.True(t, exists, "table %s should exist", name)
 	}
 
+	// Verify FTS column and index.
+	var hasFTS bool
+	require.NoError(t, db.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name='chunks' AND column_name='search_vector')`,
+	).Scan(&hasFTS))
+	require.True(t, hasFTS, "search_vector column should exist")
+
+	// Verify ent can query.
+	n, err := client.Document.Query().Count(ctx)
+	require.NoError(t, err)
+	require.Zero(t, n)
+
+	// Idempotency.
+	require.NoError(t, r.Run(ctx))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&count))
+	require.Equal(t, 2, count)
+
+	// postgres searcher still works.
 	searcher := New(db, client)
-	if err := searcher.Migrate(ctx); err != nil {
-		t.Fatalf("fts migration: %v", err)
-	}
-	if err := searcher.Migrate(ctx); err != nil {
-		t.Fatalf("fts migration idempotency: %v", err)
-	}
+	require.NoError(t, searcher.Migrate(ctx), "fts migrate idempotency")
 }

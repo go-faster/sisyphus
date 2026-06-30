@@ -20,6 +20,7 @@ import (
 	"github.com/go-faster/scpbot/internal/config"
 	"github.com/go-faster/scpbot/internal/embed"
 	"github.com/go-faster/scpbot/internal/ent"
+	entmigrate "github.com/go-faster/scpbot/internal/ent/migrate"
 	"github.com/go-faster/scpbot/internal/index"
 	"github.com/go-faster/scpbot/internal/llm/openrouter"
 	"github.com/go-faster/scpbot/internal/llm/stub"
@@ -98,16 +99,14 @@ func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trac
 	cleanup := func() { _ = db.Close() }
 
 	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))
-	if err := client.Schema.Create(ctx); err != nil {
+
+	migrator := entmigrate.NewRunner(db)
+	if err := migrator.Run(ctx); err != nil {
 		cleanup()
 		return nil, errors.Wrap(err, "migrate schema")
 	}
 
 	pg := pgsearch.New(db, client)
-	if err := pg.Migrate(ctx); err != nil {
-		cleanup()
-		return nil, errors.Wrap(err, "migrate fts")
-	}
 
 	embedder, err := embed.New(ctx, cfg, embed.NewOptions{
 		TracerProvider: tp,
