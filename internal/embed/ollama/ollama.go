@@ -100,7 +100,7 @@ func (e *Embedder) Embed(ctx context.Context, texts []string) ([][]float32, erro
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		// Read a snippet of the body for error reporting.
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, errors.Wrapf(nil, "ollama returned status %d: %s", resp.StatusCode, string(respBody))
+		return nil, errors.Errorf("ollama returned status %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	// Parse the response.
@@ -111,7 +111,7 @@ func (e *Embedder) Embed(ctx context.Context, texts []string) ([][]float32, erro
 
 	// Validate the response length matches the input length.
 	if len(respData.Embeddings) != len(texts) {
-		return nil, errors.Wrapf(nil, "ollama returned %d embeddings but %d were requested", len(respData.Embeddings), len(texts))
+		return nil, errors.Errorf("ollama returned %d embeddings but %d were requested", len(respData.Embeddings), len(texts))
 	}
 
 	return respData.Embeddings, nil
