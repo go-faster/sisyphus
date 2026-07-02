@@ -52,6 +52,7 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 	comp, err := wire.New(ctx, cfg, wire.NewOptions{
 		TracerProvider: tp,
 		MeterProvider:  mp,
+		RunMigrations:  true,
 	})
 	if err != nil {
 		return err

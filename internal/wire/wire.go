@@ -76,6 +76,12 @@ func (c Components) Close() {
 type NewOptions struct {
 	TracerProvider trace.TracerProvider
 	MeterProvider  metric.MeterProvider
+
+	// RunMigrations applies pending schema migrations on startup. Only one
+	// long-running service should set this — scpbot — so migrations run
+	// exactly once per deploy instead of racing across every process/replica
+	// sharing the database.
+	RunMigrations bool
 }
 
 func (opts *NewOptions) setDefaults() {
@@ -87,8 +93,11 @@ func (opts *NewOptions) setDefaults() {
 	}
 }
 
-// NewServices opens the database, runs migrations, and wires the embedder and optional vector store.
-func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trace.TracerProvider, mp metric.MeterProvider) (*Services, error) {
+// NewServices opens the database, optionally runs migrations, and wires the
+// embedder and optional vector store. runMigrations is false for scpingest:
+// it runs frequently (cron, concurrently per source) and must not race
+// schema migrations against itself or the long-running services.
+func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trace.TracerProvider, mp metric.MeterProvider, runMigrations bool) (*Services, error) {
 	db, err := otelsql.Open("pgx", cfg.DatabaseDSN,
 		otelsql.WithAttributes(semconv.DBSystemPostgreSQL),
 		otelsql.WithSpanOptions(otelsql.SpanOptions{DisableErrSkip: true}),
@@ -100,10 +109,12 @@ func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trac
 
 	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))
 
-	migrator := entmigrate.NewRunner(db)
-	if err := migrator.Run(ctx); err != nil {
-		cleanup()
-		return nil, errors.Wrap(err, "migrate schema")
+	if runMigrations {
+		migrator := entmigrate.NewRunner(db)
+		if err := migrator.Run(ctx); err != nil {
+			cleanup()
+			return nil, errors.Wrap(err, "migrate schema")
+		}
 	}
 
 	pg := pgsearch.New(db, client)
@@ -159,7 +170,7 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 	opts.setDefaults()
 	lg := zctx.From(ctx)
 
-	svcs, err := NewServices(ctx, cfg, lg, opts.TracerProvider, opts.MeterProvider)
+	svcs, err := NewServices(ctx, cfg, lg, opts.TracerProvider, opts.MeterProvider, opts.RunMigrations)
 	if err != nil {
 		return Components{}, err
 	}

@@ -50,7 +50,7 @@ func newRoot(t *app.Telemetry) *cobra.Command {
 			return errors.Wrap(err, "config")
 		}
 
-		services, err := wire.NewServices(ctx, c, lg, globalTP, globalMP)
+		services, err := wire.NewServices(ctx, c, lg, globalTP, globalMP, false)
 		if err != nil {
 			return errors.Wrap(err, "setup services")
 		}
