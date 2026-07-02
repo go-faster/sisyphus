@@ -74,17 +74,17 @@ func (e *Embedder) Embed(ctx context.Context, texts []string) ([][]float32, erro
 		return nil, errors.Wrap(err, "create embedding")
 	}
 	if len(resp.Data) != len(texts) {
-		return nil, errors.Wrapf(nil, "openrouter returned %d embeddings but %d were requested", len(resp.Data), len(texts))
+		return nil, errors.Errorf("openrouter returned %d embeddings but %d were requested", len(resp.Data), len(texts))
 	}
 
 	out := make([][]float32, len(texts))
 	for _, item := range resp.Data {
 		idx := int(item.Index)
 		if idx < 0 || idx >= len(texts) {
-			return nil, errors.Wrapf(nil, "openrouter returned embedding with invalid index %d", item.Index)
+			return nil, errors.Errorf("openrouter returned embedding with invalid index %d", item.Index)
 		}
 		if out[idx] != nil {
-			return nil, errors.Wrapf(nil, "openrouter returned duplicate embedding index %d", item.Index)
+			return nil, errors.Errorf("openrouter returned duplicate embedding index %d", item.Index)
 		}
 
 		vec := make([]float32, len(item.Embedding))
@@ -96,7 +96,7 @@ func (e *Embedder) Embed(ctx context.Context, texts []string) ([][]float32, erro
 
 	for i, vec := range out {
 		if vec == nil {
-			return nil, errors.Wrapf(nil, "openrouter did not return embedding index %d", i)
+			return nil, errors.Errorf("openrouter did not return embedding index %d", i)
 		}
 	}
 	return out, nil
