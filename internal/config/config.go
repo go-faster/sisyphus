@@ -43,7 +43,12 @@ type JiraConfig struct {
 	APIToken string
 	Password string
 	PAT      string
-	Projects string
+	Projects []JiraProject
+}
+
+// JiraProject describes one Jira project to ingest.
+type JiraProject struct {
+	Key string `yaml:"key"`
 }
 
 // OpenRouter holds configuration for the OpenRouter LLM API.
@@ -61,8 +66,15 @@ type Telegram struct {
 	AppHash       string
 	BotToken      string
 	SessionDir    string
-	MonitorChats  string
+	MonitorChats  []TelegramChat
 	IngestSession string
+}
+
+// TelegramChat describes one Telegram chat to monitor.
+type TelegramChat struct {
+	ID       int64  `yaml:"id"`
+	Username string `yaml:"username"`
+	Limit    int    `yaml:"limit"`
 }
 
 type fileConfig struct {
@@ -107,13 +119,13 @@ type fileProxyConfig struct {
 }
 
 type fileJiraConfig struct {
-	BaseURL  string `yaml:"base_url"`
-	Email    string `yaml:"email"`
-	Username string `yaml:"username"`
-	APIToken Secret `yaml:"api_token"`
-	Password Secret `yaml:"password"`
-	PAT      Secret `yaml:"pat"`
-	Projects string `yaml:"projects"`
+	BaseURL  string        `yaml:"base_url"`
+	Email    string        `yaml:"email"`
+	Username string        `yaml:"username"`
+	APIToken Secret        `yaml:"api_token"`
+	Password Secret        `yaml:"password"`
+	PAT      Secret        `yaml:"pat"`
+	Projects []JiraProject `yaml:"projects"`
 }
 
 // GitConfig configures git repository content + commit ingestion.
@@ -146,21 +158,26 @@ type GitSource struct {
 
 // GitLabConfig configures GitLab REST API ingestion (issues, MRs, releases).
 type GitLabConfig struct {
-	BaseURL       string `yaml:"-"`
-	Token         string `yaml:"-"`
-	Projects      string `yaml:"-"` // CSV of project IDs or paths
-	Issues        bool   `yaml:"-"`
-	MergeRequests bool   `yaml:"-"`
-	Releases      bool   `yaml:"-"`
+	BaseURL       string
+	Token         string
+	Projects      []GitLabProject
+	Issues        bool
+	MergeRequests bool
+	Releases      bool
+}
+
+// GitLabProject describes one GitLab project to ingest by numeric ID or path.
+type GitLabProject struct {
+	Ref string `yaml:"ref"`
 }
 
 type fileGitLabConfig struct {
-	BaseURL       string `yaml:"base_url"`
-	Token         Secret `yaml:"token"`
-	Projects      string `yaml:"projects"`
-	Issues        bool   `yaml:"issues"`
-	MergeRequests bool   `yaml:"merge_requests"`
-	Releases      bool   `yaml:"releases"`
+	BaseURL       string          `yaml:"base_url"`
+	Token         Secret          `yaml:"token"`
+	Projects      []GitLabProject `yaml:"projects"`
+	Issues        bool            `yaml:"issues"`
+	MergeRequests bool            `yaml:"merge_requests"`
+	Releases      bool            `yaml:"releases"`
 }
 
 type fileOpenRouter struct {
@@ -169,12 +186,12 @@ type fileOpenRouter struct {
 }
 
 type fileTelegram struct {
-	AppID         int    `yaml:"app_id"`
-	AppHash       Secret `yaml:"app_hash"`
-	BotToken      Secret `yaml:"bot_token"`
-	SessionDir    string `yaml:"session_dir"`
-	MonitorChats  string `yaml:"monitor_chats"`
-	IngestSession string `yaml:"ingest_session"`
+	AppID         int            `yaml:"app_id"`
+	AppHash       Secret         `yaml:"app_hash"`
+	BotToken      Secret         `yaml:"bot_token"`
+	SessionDir    string         `yaml:"session_dir"`
+	MonitorChats  []TelegramChat `yaml:"monitor_chats"`
+	IngestSession string         `yaml:"ingest_session"`
 }
 
 // Secret describes a secret loaded from a literal value, environment variable,

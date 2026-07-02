@@ -25,7 +25,7 @@ import (
 type Options struct {
 	BaseURL    string
 	Token      string
-	Projects   string // CSV of project IDs or paths
+	Projects   []string // Project IDs or paths.
 	HTTPClient *http.Client
 	PageSize   int // default 100 via setDefaults
 }
@@ -57,7 +57,7 @@ type FetchResult struct {
 type Fetcher struct {
 	baseURL    string
 	token      string
-	projects   string
+	projects   []string
 	httpClient *http.Client
 	pageSize   int
 }
@@ -74,7 +74,7 @@ func New(opts Options) (*Fetcher, error) {
 	return &Fetcher{
 		baseURL:    opts.BaseURL,
 		token:      opts.Token,
-		projects:   opts.Projects,
+		projects:   append([]string(nil), opts.Projects...),
 		httpClient: opts.HTTPClient,
 		pageSize:   opts.PageSize,
 	}, nil
@@ -195,19 +195,17 @@ func (f *Fetcher) CheckAuth(ctx context.Context) error {
 	return err
 }
 
-// parseProjectRefs parses a CSV of project IDs or paths.
-func parseProjectRefs(csv string) []string {
-	if csv == "" {
+func projectRefs(projects []string) []string {
+	if len(projects) == 0 {
 		return nil
 	}
-	parts := strings.Split(csv, ",")
-	var projects []string
-	for _, p := range parts {
+	out := make([]string, 0, len(projects))
+	for _, p := range projects {
 		if p = strings.TrimSpace(p); p != "" {
-			projects = append(projects, p)
+			out = append(out, p)
 		}
 	}
-	return projects
+	return out
 }
 
 // encodeProjectRef URL-encodes a project ID or path for use in URLs.
@@ -221,7 +219,7 @@ func (f *Fetcher) FetchIssues(
 	page int,
 	cursor Cursor,
 ) (FetchResult, error) {
-	projects := parseProjectRefs(f.projects)
+	projects := projectRefs(f.projects)
 	if len(projects) == 0 {
 		return FetchResult{}, errors.New("gitlab: no projects configured")
 	}
@@ -371,7 +369,7 @@ func (f *Fetcher) FetchMergeRequests(
 	page int,
 	cursor Cursor,
 ) (FetchResult, error) {
-	projects := parseProjectRefs(f.projects)
+	projects := projectRefs(f.projects)
 	if len(projects) == 0 {
 		return FetchResult{}, errors.New("gitlab: no projects configured")
 	}
@@ -522,7 +520,7 @@ func (f *Fetcher) FetchReleases(
 	page int,
 	cursor Cursor,
 ) (FetchResult, error) {
-	projects := parseProjectRefs(f.projects)
+	projects := projectRefs(f.projects)
 	if len(projects) == 0 {
 		return FetchResult{}, errors.New("gitlab: no projects configured")
 	}

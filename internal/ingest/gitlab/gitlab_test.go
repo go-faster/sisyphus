@@ -210,7 +210,7 @@ func TestFetchIssuesBasic(t *testing.T) {
 	f, err := New(Options{
 		BaseURL:  srv.URL,
 		Token:    "test-token",
-		Projects: "1",
+		Projects: []string{"1"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -252,7 +252,7 @@ func TestFetchMergeRequestsBasic(t *testing.T) {
 	f, err := New(Options{
 		BaseURL:  srv.URL,
 		Token:    "test-token",
-		Projects: "1",
+		Projects: []string{"1"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -340,7 +340,7 @@ func TestPrivateTokenHeader(t *testing.T) {
 	f, err := New(Options{
 		BaseURL:  srv.URL,
 		Token:    "secret-token-xyz",
-		Projects: "1",
+		Projects: []string{"1"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -392,7 +392,7 @@ func TestSystemNotesFiltered(t *testing.T) {
 	f, err := New(Options{
 		BaseURL:  srv.URL,
 		Token:    "test",
-		Projects: "1",
+		Projects: []string{"1"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -429,7 +429,7 @@ func TestProjectURLEncoding(t *testing.T) {
 	f, err := New(Options{
 		BaseURL:  srv.URL,
 		Token:    "test",
-		Projects: "group/sub/project",
+		Projects: []string{"group/sub/project"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -460,7 +460,7 @@ func TestBaseURLTrim(t *testing.T) {
 	f, err := New(Options{
 		BaseURL:  srv.URL + "/", // Trailing slash should be trimmed
 		Token:    "test",
-		Projects: "1",
+		Projects: []string{"1"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -488,7 +488,7 @@ func TestEmptyProjects(t *testing.T) {
 	f, err := New(Options{
 		BaseURL:  srv.URL,
 		Token:    "test",
-		Projects: "",
+		Projects: nil,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -517,7 +517,7 @@ func TestCursorUpdatedAfter(t *testing.T) {
 	f, err := New(Options{
 		BaseURL:  srv.URL,
 		Token:    "test",
-		Projects: "1",
+		Projects: []string{"1"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -555,7 +555,7 @@ func TestUserAgent(t *testing.T) {
 	f, err := New(Options{
 		BaseURL:  srv.URL,
 		Token:    "test",
-		Projects: "1",
+		Projects: []string{"1"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -599,7 +599,7 @@ func TestMultipleProjects(t *testing.T) {
 	f, err := New(Options{
 		BaseURL:  srv.URL,
 		Token:    "test",
-		Projects: "1,2,3",
+		Projects: []string{"1", "2", "3"},
 	})
 	if err != nil {
 		t.Fatal(err)

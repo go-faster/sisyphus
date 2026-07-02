@@ -84,6 +84,7 @@ quality demands it.
       // ...
   }
   ```
+- Configuration lists are YAML sequences of objects, not comma-separated strings. Examples: `gitlab.projects: [{ref: group/docs}]`, `jira.projects: [{key: IDP}]`, `telegram.monitor_chats: [{id: -100123, username: support}]`.
 - Errors: wrap with `github.com/go-faster/errors` (`errors.Wrap`). No `fmt.Errorf("...%w")`.
 - `errors.Wrap(f(), "msg")` as a return statement is wrong: if `f()` returns nil, `errors.Wrap` still returns a non-nil error. Always check first: `if err := f(); err != nil { return errors.Wrap(err, "msg") }`.
 - File structure: split logical sections into separate files instead of separating them with `//` comments using `--` dividers. Even if a file seems large, prefer multiple focused files over in-file section markers.

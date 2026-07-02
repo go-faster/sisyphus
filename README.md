@@ -130,7 +130,9 @@ gitlab:
   base_url: https://gitlab.example.com
   token:
     env: SCPBOT_GITLAB_TOKEN
-  projects: "group/docs,42"
+  projects:
+    - ref: group/docs
+    - ref: "42"
   issues: true
   merge_requests: true
   releases: true
@@ -140,7 +142,7 @@ GitLab stores independent cursors for issues, merge requests, and releases so in
 
 ## Jira Ingestion
 
-Configure Jira with one supported auth method and a CSV list of projects:
+Configure Jira with one supported auth method and a list of project objects:
 
 ```yaml
 jira:
@@ -148,7 +150,9 @@ jira:
   email: bot@example.com
   api_token:
     env: SCPBOT_JIRA_APITOKEN
-  projects: "SUP,PLAT"
+  projects:
+    - key: SUP
+    - key: PLAT
 ```
 
 Use `--since` to backfill from a specific RFC3339 timestamp instead of the saved cursor.
@@ -165,7 +169,11 @@ telegram:
   bot_token:
     env: SCPBOT_TELEGRAM_BOT_TOKEN
   session_dir: /data/scp/session
-  monitor_chats: "support-chat,another-chat"
+  monitor_chats:
+    - id: -1001234567890
+      username: support-chat
+    - id: -1009876543210
+      username: another-chat
   ingest_session: support-ingest
 ```
 

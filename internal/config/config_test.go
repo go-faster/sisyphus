@@ -33,10 +33,15 @@ gitlab:
   base_url: https://gitlab.example.com
   token:
     env: TEST_SCPBOT_GITLAB_TOKEN
-  projects: group/docs,42
+  projects:
+    - ref: group/docs
+    - ref: "42"
   issues: true
   merge_requests: true
   releases: true
+jira:
+  projects:
+    - key: TEST
 proxies:
   git:
     env: TEST_SCPBOT_GIT_PROXY
@@ -49,6 +54,10 @@ proxies:
 telegram:
   app_id: 123
   session_dir: /tmp/scpbot-session
+  monitor_chats:
+    - id: -100123
+      username: support-chat
+      limit: 50
 openrouter:
   model: test-model
 `)
@@ -83,10 +92,12 @@ openrouter:
 	// gitlab: REST API
 	require.Equal(t, "https://gitlab.example.com", cfg.GitLab.BaseURL)
 	require.Equal(t, "gitlab-token", cfg.GitLab.Token)
-	require.Equal(t, "group/docs,42", cfg.GitLab.Projects)
+	require.Equal(t, []GitLabProject{{Ref: "group/docs"}, {Ref: "42"}}, cfg.GitLab.Projects)
 	require.True(t, cfg.GitLab.Issues)
 	require.True(t, cfg.GitLab.MergeRequests)
 	require.True(t, cfg.GitLab.Releases)
+	require.Equal(t, []JiraProject{{Key: "TEST"}}, cfg.Jira.Projects)
+	require.Equal(t, []TelegramChat{{ID: -100123, Username: "support-chat", Limit: 50}}, cfg.Telegram.MonitorChats)
 
 	require.Equal(t, "http://127.0.0.1:8083", cfg.Proxies.Git)
 	require.Equal(t, "http://127.0.0.1:8080", cfg.Proxies.Jira)
