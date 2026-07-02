@@ -80,10 +80,13 @@ func newAllCmd() *cobra.Command {
 			// gitlab REST
 			{
 				ch := chunkgitlab.New()
-				pipe := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors, pipeline.PipelineOptions{
+				pipe, err := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors, pipeline.PipelineOptions{
 					TracerProvider: globalTP,
 					MeterProvider:  globalMP,
 				})
+				if err != nil {
+					return errors.Wrap(err, "build gitlab pipeline")
+				}
 				doReset := resetFlag == "all" || resetFlag == "gitlab"
 				if err := r.runGitLabAPI(ctx, pipe, time.Time{}, doReset, limit, dryRun); err != nil {
 					if errors.Is(err, errNotConfigured) {
@@ -98,10 +101,13 @@ func newAllCmd() *cobra.Command {
 			// jira
 			{
 				ch := chunkjira.New()
-				pipe := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors, pipeline.PipelineOptions{
+				pipe, err := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors, pipeline.PipelineOptions{
 					TracerProvider: globalTP,
 					MeterProvider:  globalMP,
 				})
+				if err != nil {
+					return errors.Wrap(err, "build jira pipeline")
+				}
 				doReset := resetFlag == "all" || resetFlag == "jira"
 				if err := r.runJira(ctx, pipe, time.Time{}, doReset, limit, dryRun); err != nil {
 					if errors.Is(err, errNotConfigured) {
@@ -116,10 +122,13 @@ func newAllCmd() *cobra.Command {
 			// telegram
 			{
 				ch := chunktg.New()
-				pipe := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors, pipeline.PipelineOptions{
+				pipe, err := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors, pipeline.PipelineOptions{
 					TracerProvider: globalTP,
 					MeterProvider:  globalMP,
 				})
+				if err != nil {
+					return errors.Wrap(err, "build telegram pipeline")
+				}
 				doReset := resetFlag == "all" || resetFlag == "telegram"
 				if err := r.runTelegram(ctx, pipe, time.Time{}, doReset, limit, dryRun); err != nil {
 					if errors.Is(err, errNotConfigured) {

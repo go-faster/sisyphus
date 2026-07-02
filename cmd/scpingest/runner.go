@@ -115,8 +115,14 @@ func (r *runner) runGit(ctx context.Context, reset bool, limit int, dry, prune b
 	}
 
 	// Build two pipelines: one for docs, one for commits
-	docsPipe := r.buildPipeline(r.buildDocChunker())
-	commitsPipe := r.buildPipeline(r.buildCommitChunker())
+	docsPipe, err := r.buildPipeline(r.buildDocChunker())
+	if err != nil {
+		return errors.Wrap(err, "build docs pipeline")
+	}
+	commitsPipe, err := r.buildPipeline(r.buildCommitChunker())
+	if err != nil {
+		return errors.Wrap(err, "build commits pipeline")
+	}
 
 	anyErr := false
 
@@ -263,7 +269,7 @@ func (r *runner) buildCommitChunker() index.Chunker {
 	return chunkgit.New()
 }
 
-func (r *runner) buildPipeline(ch index.Chunker) *pipeline.Pipeline {
+func (r *runner) buildPipeline(ch index.Chunker) (*pipeline.Pipeline, error) {
 	return pipeline.New(r.db, ch, r.embedder, r.vectors, pipeline.PipelineOptions{
 		TracerProvider: r.tp,
 		MeterProvider:  r.mp,

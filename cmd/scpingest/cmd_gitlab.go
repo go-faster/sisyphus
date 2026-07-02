@@ -35,10 +35,13 @@ func newGitLabCmd() *cobra.Command {
 			}
 
 			ch := chunkgitlab.New()
-			pipe := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors, pipeline.PipelineOptions{
+			pipe, err := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors, pipeline.PipelineOptions{
 				TracerProvider: globalTP,
 				MeterProvider:  globalMP,
 			})
+			if err != nil {
+				return errors.Wrap(err, "build pipeline")
+			}
 
 			r := runner{
 				db:       svc.DB,

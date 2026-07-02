@@ -24,10 +24,13 @@ func newTelegramCmd() *cobra.Command {
 			doReset := resetFlag == "telegram" || resetFlag == "all"
 
 			ch := chunktg.New()
-			pipe := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors, pipeline.PipelineOptions{
+			pipe, err := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors, pipeline.PipelineOptions{
 				TracerProvider: globalTP,
 				MeterProvider:  globalMP,
 			})
+			if err != nil {
+				return errors.Wrap(err, "build pipeline")
+			}
 
 			r := runner{
 				db:      svc.DB,

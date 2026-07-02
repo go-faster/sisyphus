@@ -4,6 +4,7 @@ package pipeline
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"entgo.io/ent/dialect/sql"
@@ -52,14 +53,15 @@ type Pipeline struct {
 	vectors  VectorStore
 	tracer   trace.Tracer
 	metrics  *pipelineMetrics
+	docLocks *keyLocker
 }
 
 // New builds a Pipeline. vectors may be nil to skip vector indexing.
-func New(db *ent.Client, chunker index.Chunker, embedder index.Embedder, vectors VectorStore, opts PipelineOptions) *Pipeline {
+func New(db *ent.Client, chunker index.Chunker, embedder index.Embedder, vectors VectorStore, opts PipelineOptions) (*Pipeline, error) {
 	opts.setDefaults()
 	m, err := newPipelineMetrics(opts.MeterProvider)
 	if err != nil {
-		panic(err)
+		return nil, errors.Wrap(err, "pipeline metrics")
 	}
 	return &Pipeline{
 		db:       db,
@@ -68,6 +70,44 @@ func New(db *ent.Client, chunker index.Chunker, embedder index.Embedder, vectors
 		vectors:  vectors,
 		tracer:   opts.TracerProvider.Tracer("github.com/go-faster/scpbot/pipeline"),
 		metrics:  m,
+		docLocks: newKeyLocker(),
+	}, nil
+}
+
+type keyLock struct {
+	mu   sync.Mutex
+	refs int
+}
+
+type keyLocker struct {
+	mu    sync.Mutex
+	locks map[string]*keyLock
+}
+
+func newKeyLocker() *keyLocker {
+	return &keyLocker{locks: make(map[string]*keyLock)}
+}
+
+func (l *keyLocker) lock(key string) func() {
+	l.mu.Lock()
+	kl := l.locks[key]
+	if kl == nil {
+		kl = new(keyLock)
+		l.locks[key] = kl
+	}
+	kl.refs++
+	l.mu.Unlock()
+
+	kl.mu.Lock()
+	return func() {
+		kl.mu.Unlock()
+
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		kl.refs--
+		if kl.refs == 0 {
+			delete(l.locks, key)
+		}
 	}
 }
 
@@ -82,6 +122,8 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 	if doc.BodyHash == "" {
 		doc.BodyHash = index.Hash(doc.Body)
 	}
+	unlock := p.docLocks.lock(string(doc.Source) + "\x00" + doc.SourceID)
+	defer unlock()
 
 	ctx, span := p.tracer.Start(ctx, "pipeline.Index",
 		trace.WithAttributes(

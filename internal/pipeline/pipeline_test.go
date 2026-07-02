@@ -102,13 +102,21 @@ func cleanDB(t *testing.T, client *ent.Client) {
 	_, _ = client.Document.Delete().Exec(ctx)
 }
 
+func newTestPipeline(t *testing.T, client *ent.Client, store *fakeVectorStore) *Pipeline {
+	t.Helper()
+	p, err := New(client, testChunker{}, &fakeEmbedder{}, store, PipelineOptions{})
+	if err != nil {
+		t.Fatalf("new pipeline: %v", err)
+	}
+	return p
+}
+
 func TestPipeline_UnchangedDoc(t *testing.T) {
 	client := openTestDB(t)
 	defer cleanDB(t, client)
 
 	store := &fakeVectorStore{}
-	emb := &fakeEmbedder{}
-	p := New(client, testChunker{}, emb, store, PipelineOptions{})
+	p := newTestPipeline(t, client, store)
 
 	ctx := context.Background()
 	doc := index.Document{
@@ -150,8 +158,7 @@ func TestPipeline_ChangedDoc(t *testing.T) {
 	defer cleanDB(t, client)
 
 	store := &fakeVectorStore{}
-	emb := &fakeEmbedder{}
-	p := New(client, testChunker{}, emb, store, PipelineOptions{})
+	p := newTestPipeline(t, client, store)
 
 	ctx := context.Background()
 	doc := index.Document{
@@ -200,8 +207,7 @@ func TestPipeline_NewDoc(t *testing.T) {
 	defer cleanDB(t, client)
 
 	store := &fakeVectorStore{}
-	emb := &fakeEmbedder{}
-	p := New(client, testChunker{}, emb, store, PipelineOptions{})
+	p := newTestPipeline(t, client, store)
 
 	ctx := context.Background()
 	doc := index.Document{
@@ -228,8 +234,7 @@ func TestPipeline_Idempotent(t *testing.T) {
 	defer cleanDB(t, client)
 
 	store := &fakeVectorStore{}
-	emb := &fakeEmbedder{}
-	p := New(client, testChunker{}, emb, store, PipelineOptions{})
+	p := newTestPipeline(t, client, store)
 
 	ctx := context.Background()
 	doc := index.Document{
@@ -277,7 +282,10 @@ func TestPipeline_VectorStoreNil(t *testing.T) {
 	defer cleanDB(t, client)
 
 	// vectors=nil should not panic.
-	p := New(client, testChunker{}, &fakeEmbedder{}, nil, PipelineOptions{})
+	p, err := New(client, testChunker{}, &fakeEmbedder{}, nil, PipelineOptions{})
+	if err != nil {
+		t.Fatalf("new pipeline: %v", err)
+	}
 
 	ctx := context.Background()
 	doc := index.Document{
