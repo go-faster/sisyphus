@@ -201,6 +201,52 @@ func (r *runner) runGit(ctx context.Context, reset bool, limit int, dry, prune b
 				return errors.Wrap(err, "upsert syncstate")
 			}
 		}
+
+		// Ingest tags if enabled
+		if s.Tags {
+			tagsSrc := index.SourceGitTag(s.Repo)
+			if reset {
+				if err := resetSource(ctx, db, vectors, tagsSrc); err != nil {
+					return err
+				}
+			}
+
+			tags, err := gitingest.WalkTags(ctx, s)
+			if err != nil {
+				lg.Error("git walk tags failed", zap.Error(err), zap.String("repo", s.Repo))
+				anyErr = true
+				continue
+			}
+
+			walkedTagIDs := make([]string, 0, len(tags))
+			for _, d := range tags {
+				walkedTagIDs = append(walkedTagIDs, d.SourceID)
+			}
+
+			batch := tags
+			if limit > 0 && limit < len(batch) {
+				batch = batch[:limit]
+			}
+			processed, errFound := indexBatch(ctx, lg, commitsPipe, batch, dry, "git tags")
+			if errFound {
+				anyErr = true
+			}
+
+			if !dry && prune && limit <= 0 {
+				if err := r.pruneOrphans(ctx, tagsSrc, walkedTagIDs); err != nil {
+					lg.Error("prune git tags orphans failed", zap.Error(err), zap.String("repo", s.Repo))
+					anyErr = true
+				}
+			}
+
+			status := "ok"
+			if anyErr && !dry {
+				status = "error"
+			}
+			if err := upsertSyncState(ctx, db, string(tagsSrc), time.Now(), "", status, processed); err != nil {
+				return errors.Wrap(err, "upsert syncstate")
+			}
+		}
 	}
 
 	if anyErr {
@@ -335,6 +381,10 @@ func (r *runner) runGitLabAPI(ctx context.Context, p *pipeline.Pipeline, since t
 				return err
 			}
 		}
+		lg := lg.WithLazy(
+			zap.String("src", string(src)),
+			zap.String("resource", resourceName),
+		)
 
 		startCur, _ := loadGitLabCursor(ctx, db, string(src))
 		if !since.IsZero() {
@@ -354,7 +404,7 @@ func (r *runner) runGitLabAPI(ctx context.Context, p *pipeline.Pipeline, since t
 		for {
 			res, err := fetch(ctx, page, startCur)
 			if err != nil {
-				lg.Error("gitlab fetch failed", zap.Error(err), zap.String("resource", resourceName))
+				lg.Error("gitlab fetch failed", zap.Error(err))
 				anyErr = true
 				break
 			}
@@ -709,6 +759,7 @@ func gitSources(sources []config.GitSource) []gitingest.Source {
 			Include: src.Include,
 			Exclude: src.Exclude,
 			Commits: src.Commits,
+			Tags:    src.Tags,
 		})
 	}
 	return out

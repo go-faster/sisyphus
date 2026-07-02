@@ -154,6 +154,8 @@ type GitSource struct {
 	Exclude []string `yaml:"exclude"`
 	// Commits enables ingestion of commit messages on the default branch.
 	Commits bool `yaml:"commits"`
+	// Tags enables ingestion of git tags.
+	Tags bool `yaml:"tags"`
 }
 
 // GitLabConfig configures GitLab REST API ingestion (issues, MRs, releases).

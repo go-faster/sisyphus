@@ -33,7 +33,7 @@ cmd/scpingest           one-shot ingestion CLI: git|gitlab|jira|telegram|all sub
                         Wires its dependencies inline (does NOT reuse internal/wire).
 internal/index          SHARED CONTRACT: Document, Chunk, Chunker, Embedder, Searcher, constants. Do not add deps here.
 internal/chunk/markdown heading-aware Markdown chunker (implements index.Chunker)
-internal/chunk/git      git commit message -> chunks (implements index.Chunker)
+internal/chunk/git      git commit message / tag -> chunks (implements index.Chunker)
 internal/chunk/gitlab   GitLab REST API (issues, MRs, releases) -> chunks (implements index.Chunker)
 internal/chunk/jira     Jira issue -> chunks (implements index.Chunker)
 internal/embed/ollama   Ollama embedder (implements index.Embedder)
@@ -41,7 +41,7 @@ internal/search/postgres FTS searcher over ent (implements index.Searcher)
 internal/search/qdrant  Qdrant client + searcher (implements index.Searcher)
                         Also implements pipeline.VectorStore (Upsert + Delete by point ID).
 internal/retrieval      merges + reranks Postgres+Qdrant results, authority/boost rules
-internal/ingest/git     git repo content (Markdown) + commits walker; local or clone/pull via git
+internal/ingest/git     git repo content (Markdown) + commits + tags walker; local or clone/pull via git
 internal/ingest/gitlab  GitLab REST API client (stdlib net/http) with pagination + cursor per resource
 internal/ingest/jira    incremental Jira REST client (stdlib net/http) with sliding-window cursor
 internal/ingest/telegram gotd user-session backfill -> telegram_messages -> support_requests;
@@ -151,15 +151,25 @@ in ent: `source`, `last_synced_at`, `last_cursor` (opaque JSON), `status`, `erro
 (jira, gitlab pagination) or per repo (git commits) so a partial run resumes.
 
 **Git ingestion** (`make ingest-git`):
-- Per-repo sources keyed `git_docs:<repo>` (Markdown content) and `git_commits:<repo>` (commit messages).
-- Docs source has no cursor; re-walks and relies on pipeline body-hash skip to avoid re-embedding.
+- Per-repo sources keyed `git_docs:<repo>` (Markdown content), `git_commits:<repo>` (commit messages),
+  and `git_tags:<repo>` (tags, opt-in via `tags: true`).
+- Docs and tags sources have no cursor; re-walk and rely on pipeline body-hash skip to avoid re-embedding.
 - Commits source uses cursor `{last_sha, branch}` to walk incrementally from HEAD backwards.
+- Tags: annotated tags use the tag message/tagger; lightweight tags fall back to the
+  target commit's subject/author.
 
 **GitLab REST API** (`make ingest-gitlab`):
 - Per-resource-type sources: `gitlab_issue`, `gitlab_mr`, `gitlab_release`.
 - Pagination loop with cursor `{updated_after}` (RFC3339). Issues and MRs sorted by `updated_at` asc;
   releases filtered client-side.
 - Per-page fetch, limit honored, cursor advanced to max `updated_at` (or `released_at` for releases).
+- Issues/MRs also carry assignees, and MRs carry reviewers, merge metadata (merged_at/by,
+  merge_commit_sha, source/target branch, draft), and cross-references (`closes`/`relates_to`
+  links via the issue links / MR closes_issues endpoints — fetched best-effort, non-fatal on error
+  since they can be edition/permission-gated).
+- Comments are fetched via the discussions endpoint (not flat notes) and grouped into threads,
+  preserving resolved state; trivial notes are filtered per-note, empty threads dropped.
+- No code diffs, no wiki, no CI/pipeline status, no merge-commit ingestion (by design).
 
 **Jira** (`make ingest-jira`):
 - Single source `jira`; incremental via cursor `{last_updated, start_at}`.
