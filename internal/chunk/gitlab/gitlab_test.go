@@ -125,16 +125,28 @@ func TestChunkIssue(t *testing.T) {
 		WebURL:      "https://example.com",
 		Created:     baseTime,
 		Updated:     baseTime,
-		Comments: []Comment{
+		Threads: []Thread{
 			{
-				Author:  "bob",
-				Body:    "First comment",
-				Created: baseTime.Add(time.Hour),
+				ID:       "thread-1",
+				Resolved: false,
+				Comments: []Comment{
+					{
+						Author:  "bob",
+						Body:    "First comment",
+						Created: baseTime.Add(time.Hour),
+					},
+				},
 			},
 			{
-				Author:  "charlie",
-				Body:    "ok",
-				Created: baseTime.Add(2 * time.Hour),
+				ID:       "thread-2",
+				Resolved: false,
+				Comments: []Comment{
+					{
+						Author:  "charlie",
+						Body:    "ok",
+						Created: baseTime.Add(2 * time.Hour),
+					},
+				},
 			},
 		},
 	}
@@ -186,11 +198,17 @@ func TestChunkMergeRequest(t *testing.T) {
 		WebURL:      "https://example.com",
 		Created:     baseTime,
 		Updated:     baseTime,
-		Comments: []Comment{
+		Threads: []Thread{
 			{
-				Author:  "alice",
-				Body:    "Looks good!",
-				Created: baseTime.Add(time.Hour),
+				ID:       "thread-1",
+				Resolved: false,
+				Comments: []Comment{
+					{
+						Author:  "alice",
+						Body:    "Looks good!",
+						Created: baseTime.Add(time.Hour),
+					},
+				},
 			},
 		},
 	}
@@ -292,9 +310,21 @@ func TestChunkIndexing(t *testing.T) {
 		State:       "opened",
 		Created:     baseTime,
 		Updated:     baseTime,
-		Comments: []Comment{
-			{Author: "alice", Body: "Comment 1", Created: baseTime.Add(time.Hour)},
-			{Author: "bob", Body: "Comment 2", Created: baseTime.Add(2 * time.Hour)},
+		Threads: []Thread{
+			{
+				ID:       "thread-1",
+				Resolved: false,
+				Comments: []Comment{
+					{Author: "alice", Body: "Comment 1", Created: baseTime.Add(time.Hour)},
+				},
+			},
+			{
+				ID:       "thread-2",
+				Resolved: false,
+				Comments: []Comment{
+					{Author: "bob", Body: "Comment 2", Created: baseTime.Add(2 * time.Hour)},
+				},
+			},
 		},
 	}
 
@@ -322,23 +352,29 @@ func TestCommentGrouping(t *testing.T) {
 
 	baseTime := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
 
-	// Create 10 substantive comments to trigger multiple groups (8 per group)
-	var comments []Comment
+	// Create 10 substantive threads to trigger multiple groups (8 per group)
+	var threads []Thread
 	for i := range 10 {
-		comments = append(comments, Comment{
-			Author:  "user" + string(rune('0'+i)),
-			Body:    "Comment " + string(rune('0'+i)),
-			Created: baseTime.Add(time.Duration(i) * time.Hour),
+		threads = append(threads, Thread{
+			ID:       "thread-" + string(rune('0'+i)),
+			Resolved: false,
+			Comments: []Comment{
+				{
+					Author:  "user" + string(rune('0'+i)),
+					Body:    "Comment " + string(rune('0'+i)),
+					Created: baseTime.Add(time.Duration(i) * time.Hour),
+				},
+			},
 		})
 	}
 
 	issue := Issue{
-		IID:      1,
-		Title:    "Test",
-		State:    "opened",
-		Created:  baseTime,
-		Updated:  baseTime,
-		Comments: comments,
+		IID:     1,
+		Title:   "Test",
+		State:   "opened",
+		Created: baseTime,
+		Updated: baseTime,
+		Threads: threads,
 	}
 
 	doc := DocumentFromIssue("project", issue)
@@ -370,10 +406,28 @@ func TestAllTrivialCommentsFiltered(t *testing.T) {
 		State:   "opened",
 		Created: baseTime,
 		Updated: baseTime,
-		Comments: []Comment{
-			{Author: "a", Body: "ok", Created: baseTime.Add(time.Hour)},
-			{Author: "b", Body: "done", Created: baseTime.Add(2 * time.Hour)},
-			{Author: "c", Body: "+1", Created: baseTime.Add(3 * time.Hour)},
+		Threads: []Thread{
+			{
+				ID:       "thread-1",
+				Resolved: false,
+				Comments: []Comment{
+					{Author: "a", Body: "ok", Created: baseTime.Add(time.Hour)},
+				},
+			},
+			{
+				ID:       "thread-2",
+				Resolved: false,
+				Comments: []Comment{
+					{Author: "b", Body: "done", Created: baseTime.Add(2 * time.Hour)},
+				},
+			},
+			{
+				ID:       "thread-3",
+				Resolved: false,
+				Comments: []Comment{
+					{Author: "c", Body: "+1", Created: baseTime.Add(3 * time.Hour)},
+				},
+			},
 		},
 	}
 
@@ -451,5 +505,146 @@ func TestChunkTextHash(t *testing.T) {
 		if chunk.TextHash != expectedHash {
 			t.Errorf("chunk %d: hash mismatch", i)
 		}
+	}
+}
+
+func TestResolvedThread(t *testing.T) {
+	t.Parallel()
+
+	baseTime := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
+
+	issue := Issue{
+		IID:     1,
+		Title:   "Test issue with resolved thread",
+		State:   "opened",
+		Created: baseTime,
+		Updated: baseTime,
+		Threads: []Thread{
+			{
+				ID:       "thread-1",
+				Resolved: true,
+				Comments: []Comment{
+					{
+						Author:  "alice",
+						Body:    "This is resolved",
+						Created: baseTime.Add(time.Hour),
+					},
+				},
+			},
+			{
+				ID:       "thread-2",
+				Resolved: false,
+				Comments: []Comment{
+					{
+						Author:  "bob",
+						Body:    "This is not resolved",
+						Created: baseTime.Add(2 * time.Hour),
+					},
+				},
+			},
+		},
+	}
+
+	doc := DocumentFromIssue("project", issue)
+	chunker := New()
+
+	chunks, err := chunker.Chunk(context.Background(), doc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Find the comment chunk
+	var commentChunk *index.Chunk
+	for i := range chunks {
+		if chunks[i].Type == index.ChunkGitLabIssueComments {
+			commentChunk = &chunks[i]
+			break
+		}
+	}
+
+	if commentChunk == nil {
+		t.Fatalf("expected comment chunk to be present")
+	}
+
+	// Check that resolved marker is present
+	if !strings.Contains(commentChunk.Text, "[resolved]") {
+		t.Errorf("expected [resolved] marker in comment chunk")
+	}
+
+	// Check that both threads are present
+	if !strings.Contains(commentChunk.Text, "This is resolved") {
+		t.Errorf("expected resolved comment in chunk")
+	}
+	if !strings.Contains(commentChunk.Text, "This is not resolved") {
+		t.Errorf("expected unresolved comment in chunk")
+	}
+}
+
+func TestTrivialThreadDropped(t *testing.T) {
+	t.Parallel()
+
+	baseTime := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
+
+	issue := Issue{
+		IID:     1,
+		Title:   "Test issue with trivial thread",
+		State:   "opened",
+		Created: baseTime,
+		Updated: baseTime,
+		Threads: []Thread{
+			{
+				ID:       "thread-1",
+				Resolved: false,
+				Comments: []Comment{
+					{
+						Author:  "alice",
+						Body:    "ok",
+						Created: baseTime.Add(time.Hour),
+					},
+				},
+			},
+			{
+				ID:       "thread-2",
+				Resolved: false,
+				Comments: []Comment{
+					{
+						Author:  "bob",
+						Body:    "Substantial comment",
+						Created: baseTime.Add(2 * time.Hour),
+					},
+				},
+			},
+		},
+	}
+
+	doc := DocumentFromIssue("project", issue)
+	chunker := New()
+
+	chunks, err := chunker.Chunk(context.Background(), doc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Find the comment chunk
+	var commentChunk *index.Chunk
+	for i := range chunks {
+		if chunks[i].Type == index.ChunkGitLabIssueComments {
+			commentChunk = &chunks[i]
+			break
+		}
+	}
+
+	if commentChunk == nil {
+		t.Fatalf("expected comment chunk to be present")
+	}
+
+	// Check that trivial comment is not present
+	if strings.Contains(commentChunk.Text, "ok") {
+		t.Errorf("expected trivial comment to be filtered out")
+	}
+
+	// Check that substantial comment is present
+	if !strings.Contains(commentChunk.Text, "Substantial comment") {
+		t.Errorf("expected substantial comment in chunk")
 	}
 }

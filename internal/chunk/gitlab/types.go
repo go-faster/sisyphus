@@ -20,6 +20,22 @@ type Comment struct {
 	Created time.Time
 }
 
+// Thread groups comments from a discussion, tracking resolved state.
+type Thread struct {
+	ID       string
+	Resolved bool
+	Comments []Comment
+}
+
+// Link represents a cross-reference between issues/MRs.
+type Link struct {
+	Type       string // "relates_to", "blocks", "closes"
+	TargetKind string // "issue" or "merge_request"
+	TargetIID  int
+	Title      string
+	WebURL     string
+}
+
 // Issue models a GitLab issue.
 type Issue struct {
 	IID         int
@@ -31,21 +47,32 @@ type Issue struct {
 	WebURL      string
 	Created     time.Time
 	Updated     time.Time
-	Comments    []Comment
+	Assignees   []string
+	Threads     []Thread
+	Links       []Link
 }
 
 // MergeRequest models a GitLab merge request.
 type MergeRequest struct {
-	IID         int
-	Title       string
-	Description string
-	State       string
-	Labels      []string
-	Author      string
-	WebURL      string
-	Created     time.Time
-	Updated     time.Time
-	Comments    []Comment
+	IID            int
+	Title          string
+	Description    string
+	State          string
+	Labels         []string
+	Author         string
+	WebURL         string
+	Created        time.Time
+	Updated        time.Time
+	Assignees      []string
+	Reviewers      []string
+	Draft          bool
+	TargetBranch   string
+	SourceBranch   string
+	MergedAt       time.Time
+	MergedBy       string
+	MergeCommitSHA string
+	Threads        []Thread
+	Links          []Link
 }
 
 // Release models a GitLab release.
@@ -155,6 +182,10 @@ func buildIssueBody(issue Issue) string {
 		fmt.Fprintf(&sb, "Labels: %s\n", strings.Join(issue.Labels, ", "))
 	}
 
+	if len(issue.Assignees) > 0 {
+		fmt.Fprintf(&sb, "Assignees: %s\n", strings.Join(issue.Assignees, ", "))
+	}
+
 	if issue.Author != "" {
 		fmt.Fprintf(&sb, "Author: %s\n", issue.Author)
 	}
@@ -172,11 +203,12 @@ func buildIssueBody(issue Issue) string {
 		fmt.Fprintf(&sb, "Description:\n%s\n\n", issue.Description)
 	}
 
-	if len(issue.Comments) > 0 {
-		fmt.Fprintf(&sb, "Comments (%d):\n", len(issue.Comments))
-		for i, c := range issue.Comments {
-			fmt.Fprintf(&sb, "%d. %s (%s):\n%s\n\n", i+1, c.Author, c.Created.Format(time.RFC3339), c.Body)
+	if len(issue.Links) > 0 {
+		fmt.Fprintf(&sb, "Related:\n")
+		for _, link := range issue.Links {
+			fmt.Fprintf(&sb, "- %s #%d: %s (%s)\n", link.Type, link.TargetIID, link.Title, link.WebURL)
 		}
+		sb.WriteString("\n")
 	}
 
 	return sb.String()
@@ -196,6 +228,22 @@ func buildMRBody(mr MergeRequest) string {
 		fmt.Fprintf(&sb, "Labels: %s\n", strings.Join(mr.Labels, ", "))
 	}
 
+	if len(mr.Assignees) > 0 {
+		fmt.Fprintf(&sb, "Assignees: %s\n", strings.Join(mr.Assignees, ", "))
+	}
+
+	if len(mr.Reviewers) > 0 {
+		fmt.Fprintf(&sb, "Reviewers: %s\n", strings.Join(mr.Reviewers, ", "))
+	}
+
+	if mr.Draft {
+		fmt.Fprintf(&sb, "Draft: yes\n")
+	}
+
+	if mr.SourceBranch != "" && mr.TargetBranch != "" {
+		fmt.Fprintf(&sb, "Branch: %s -> %s\n", mr.SourceBranch, mr.TargetBranch)
+	}
+
 	if mr.Author != "" {
 		fmt.Fprintf(&sb, "Author: %s\n", mr.Author)
 	}
@@ -207,17 +255,25 @@ func buildMRBody(mr MergeRequest) string {
 		fmt.Fprintf(&sb, "Updated: %s\n", mr.Updated.Format(time.RFC3339))
 	}
 
+	if !mr.MergedAt.IsZero() {
+		fmt.Fprintf(&sb, "Merged: %s by %s\n", mr.MergedAt.Format(time.RFC3339), mr.MergedBy)
+		if mr.MergeCommitSHA != "" {
+			fmt.Fprintf(&sb, "Merge commit: %s\n", mr.MergeCommitSHA)
+		}
+	}
+
 	sb.WriteString("\n")
 
 	if mr.Description != "" {
 		fmt.Fprintf(&sb, "Description:\n%s\n\n", mr.Description)
 	}
 
-	if len(mr.Comments) > 0 {
-		fmt.Fprintf(&sb, "Comments (%d):\n", len(mr.Comments))
-		for i, c := range mr.Comments {
-			fmt.Fprintf(&sb, "%d. %s (%s):\n%s\n\n", i+1, c.Author, c.Created.Format(time.RFC3339), c.Body)
+	if len(mr.Links) > 0 {
+		fmt.Fprintf(&sb, "Related:\n")
+		for _, link := range mr.Links {
+			fmt.Fprintf(&sb, "- %s #%d: %s (%s)\n", link.Type, link.TargetIID, link.Title, link.WebURL)
 		}
+		sb.WriteString("\n")
 	}
 
 	return sb.String()
@@ -319,9 +375,9 @@ func (c *Chunker) chunkIssue(doc index.Document) ([]index.Chunk, error) {
 		chunkIndex++
 	}
 
-	// Comment chunks
-	commentChunks := c.buildCommentChunks(issue.Comments, doc.ID, chunkMetadata, chunkIndex, "Issue")
-	chunks = append(chunks, commentChunks...)
+	// Thread chunks
+	threadChunks := c.buildThreadChunks(issue.Threads, doc.ID, chunkMetadata, chunkIndex, "Issue")
+	chunks = append(chunks, threadChunks...)
 
 	return chunks, nil
 }
@@ -377,9 +433,9 @@ func (c *Chunker) chunkMR(doc index.Document) ([]index.Chunk, error) {
 		chunkIndex++
 	}
 
-	// Comment chunks
-	commentChunks := c.buildCommentChunks(mr.Comments, doc.ID, chunkMetadata, chunkIndex, "MR")
-	chunks = append(chunks, commentChunks...)
+	// Thread chunks
+	threadChunks := c.buildThreadChunks(mr.Threads, doc.ID, chunkMetadata, chunkIndex, "MR")
+	chunks = append(chunks, threadChunks...)
 
 	return chunks, nil
 }
@@ -437,6 +493,10 @@ func buildIssueSummaryChunk(issue Issue) string {
 		fmt.Fprintf(&sb, "Labels: %s\n", strings.Join(issue.Labels, ", "))
 	}
 
+	if len(issue.Assignees) > 0 {
+		fmt.Fprintf(&sb, "Assignees: %s\n", strings.Join(issue.Assignees, ", "))
+	}
+
 	return strings.TrimSpace(sb.String())
 }
 
@@ -454,6 +514,14 @@ func buildMRSummaryChunk(mr MergeRequest) string {
 		fmt.Fprintf(&sb, "Labels: %s\n", strings.Join(mr.Labels, ", "))
 	}
 
+	if len(mr.Assignees) > 0 {
+		fmt.Fprintf(&sb, "Assignees: %s\n", strings.Join(mr.Assignees, ", "))
+	}
+
+	if len(mr.Reviewers) > 0 {
+		fmt.Fprintf(&sb, "Reviewers: %s\n", strings.Join(mr.Reviewers, ", "))
+	}
+
 	return strings.TrimSpace(sb.String())
 }
 
@@ -467,34 +535,43 @@ func isTrivialComment(body string) bool {
 	return false
 }
 
-// buildCommentChunks groups comments into chunks, skipping trivial ones.
-func (c *Chunker) buildCommentChunks(comments []Comment, docID uuid.UUID, metadata map[string]any, startIndex int, resourceType string) []index.Chunk {
-	if len(comments) == 0 {
+// buildThreadChunks groups threads into chunks, filtering trivial comments within threads.
+func (c *Chunker) buildThreadChunks(threads []Thread, docID uuid.UUID, metadata map[string]any, startIndex int, resourceType string) []index.Chunk {
+	if len(threads) == 0 {
 		return nil
 	}
 
-	// Filter out trivial comments
-	var substantiveComments []Comment
-	for _, cmt := range comments {
-		if !isTrivialComment(cmt.Body) {
-			substantiveComments = append(substantiveComments, cmt)
+	// Filter threads: for each thread, filter out trivial comments
+	// and drop threads that have no substantive comments after filtering.
+	var substantiveThreads []Thread
+	for _, thread := range threads {
+		var substantiveComments []Comment
+		for _, cmt := range thread.Comments {
+			if !isTrivialComment(cmt.Body) {
+				substantiveComments = append(substantiveComments, cmt)
+			}
+		}
+		// Only include thread if it has substantive comments
+		if len(substantiveComments) > 0 {
+			thread.Comments = substantiveComments
+			substantiveThreads = append(substantiveThreads, thread)
 		}
 	}
 
-	if len(substantiveComments) == 0 {
+	if len(substantiveThreads) == 0 {
 		return nil
 	}
 
 	var chunks []index.Chunk
 	chunkIndex := startIndex
 
-	// Group comments into chunks of up to 8
-	const commentsPerChunk = 8
-	for i := 0; i < len(substantiveComments); i += commentsPerChunk {
-		end := min(i+commentsPerChunk, len(substantiveComments))
+	// Group threads into chunks of up to 8
+	const threadsPerChunk = 8
+	for i := 0; i < len(substantiveThreads); i += threadsPerChunk {
+		end := min(i+threadsPerChunk, len(substantiveThreads))
 
-		groupComments := substantiveComments[i:end]
-		commentText := formatCommentGroup(groupComments)
+		groupThreads := substantiveThreads[i:end]
+		threadText := formatThreadGroup(groupThreads)
 
 		chunkType := index.ChunkGitLabIssueComments
 		if resourceType == "MR" {
@@ -507,8 +584,8 @@ func (c *Chunker) buildCommentChunks(comments []Comment, docID uuid.UUID, metada
 			Index:      chunkIndex,
 			Type:       chunkType,
 			Title:      fmt.Sprintf("Comments [%d-%d]", i+1, end),
-			Text:       commentText,
-			TextHash:   index.Hash(commentText),
+			Text:       threadText,
+			TextHash:   index.Hash(threadText),
 			Metadata:   copyMetadata(metadata),
 		})
 		chunkIndex++
@@ -517,15 +594,27 @@ func (c *Chunker) buildCommentChunks(comments []Comment, docID uuid.UUID, metada
 	return chunks
 }
 
-// formatCommentGroup formats a group of comments as text.
-func formatCommentGroup(comments []Comment) string {
+// formatThreadGroup formats a group of threads as text.
+func formatThreadGroup(threads []Thread) string {
 	var sb strings.Builder
 
-	for i, cmt := range comments {
+	for i, thread := range threads {
 		if i > 0 {
 			sb.WriteString("\n---\n\n")
 		}
-		fmt.Fprintf(&sb, "%s (%s):\n%s", cmt.Author, cmt.Created.Format(time.RFC3339), cmt.Body)
+
+		// Prefix with [resolved] if the thread is resolved
+		if thread.Resolved {
+			sb.WriteString("[resolved] ")
+		}
+
+		// Format all comments in this thread
+		for j, cmt := range thread.Comments {
+			if j > 0 {
+				sb.WriteString("\n\n")
+			}
+			fmt.Fprintf(&sb, "%s (%s):\n%s", cmt.Author, cmt.Created.Format(time.RFC3339), cmt.Body)
+		}
 	}
 
 	return sb.String()

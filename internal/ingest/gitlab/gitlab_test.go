@@ -93,10 +93,14 @@ func generateIssues(n int, baseTime time.Time) []map[string]any {
 }
 
 type testHandler struct {
-	issues  []map[string]any
-	mrs     []map[string]any
-	notes   map[int][]map[string]any // iid -> notes
-	mrNotes map[int][]map[string]any // iid -> notes
+	issues         []map[string]any
+	mrs            []map[string]any
+	notes          map[int][]map[string]any // iid -> notes
+	mrNotes        map[int][]map[string]any // iid -> notes
+	discussions    map[int][]map[string]any // iid -> discussions
+	mrDiscussions  map[int][]map[string]any // iid -> discussions
+	issueLinks     map[int][]map[string]any // iid -> links
+	mrClosesIssues map[int][]map[string]any // iid -> closes issues
 }
 
 func (h *testHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -112,8 +116,34 @@ func (h *testHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.Contains(r.URL.Path, "/api/v4/version"):
 		_ = json.NewEncoder(w).Encode(map[string]any{"version": "15.0.0"})
 
+	case strings.Contains(r.URL.Path, "/issues") && strings.Contains(r.URL.Path, "/discussions"):
+		// Issue discussions endpoint
+		parts := strings.Split(r.URL.Path, "/")
+		for i, p := range parts {
+			if p == "issues" && i+1 < len(parts) {
+				iid, _ := strconv.Atoi(parts[i+1])
+				discussions := h.discussions[iid]
+				_ = json.NewEncoder(w).Encode(discussions)
+				return
+			}
+		}
+		_ = json.NewEncoder(w).Encode([]map[string]any{})
+
+	case strings.Contains(r.URL.Path, "/issues") && strings.Contains(r.URL.Path, "/links"):
+		// Issue links endpoint
+		parts := strings.Split(r.URL.Path, "/")
+		for i, p := range parts {
+			if p == "issues" && i+1 < len(parts) {
+				iid, _ := strconv.Atoi(parts[i+1])
+				links := h.issueLinks[iid]
+				_ = json.NewEncoder(w).Encode(links)
+				return
+			}
+		}
+		_ = json.NewEncoder(w).Encode([]map[string]any{})
+
 	case strings.Contains(r.URL.Path, "/issues") && strings.Contains(r.URL.Path, "/notes"):
-		// Issue notes endpoint
+		// Issue notes endpoint (deprecated, kept for backward compat)
 		parts := strings.Split(r.URL.Path, "/")
 		for i, p := range parts {
 			if p == "issues" && i+1 < len(parts) {
@@ -150,8 +180,34 @@ func (h *testHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		_ = json.NewEncoder(w).Encode(h.issues[start:end])
 
+	case strings.Contains(r.URL.Path, "/merge_requests") && strings.Contains(r.URL.Path, "/discussions"):
+		// MR discussions endpoint
+		parts := strings.Split(r.URL.Path, "/")
+		for i, p := range parts {
+			if p == "merge_requests" && i+1 < len(parts) {
+				iid, _ := strconv.Atoi(parts[i+1])
+				discussions := h.mrDiscussions[iid]
+				_ = json.NewEncoder(w).Encode(discussions)
+				return
+			}
+		}
+		_ = json.NewEncoder(w).Encode([]map[string]any{})
+
+	case strings.Contains(r.URL.Path, "/merge_requests") && strings.Contains(r.URL.Path, "/closes_issues"):
+		// MR closes issues endpoint
+		parts := strings.Split(r.URL.Path, "/")
+		for i, p := range parts {
+			if p == "merge_requests" && i+1 < len(parts) {
+				iid, _ := strconv.Atoi(parts[i+1])
+				issues := h.mrClosesIssues[iid]
+				_ = json.NewEncoder(w).Encode(issues)
+				return
+			}
+		}
+		_ = json.NewEncoder(w).Encode([]map[string]any{})
+
 	case strings.Contains(r.URL.Path, "/merge_requests") && strings.Contains(r.URL.Path, "/notes"):
-		// MR notes endpoint
+		// MR notes endpoint (deprecated, kept for backward compat)
 		parts := strings.Split(r.URL.Path, "/")
 		for i, p := range parts {
 			if p == "merge_requests" && i+1 < len(parts) {
@@ -356,35 +412,126 @@ func TestPrivateTokenHeader(t *testing.T) {
 	}
 }
 
+func TestDiscussionsAndLinksEndpoint(t *testing.T) {
+	t.Parallel()
+
+	baseTime := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	issue := makeGitLabIssue(1, "Issue with discussions", baseTime)
+	issue["assignees"] = []map[string]any{
+		{
+			"username": "bob",
+			"name":     "Bob",
+		},
+	}
+	issues := []map[string]any{issue}
+
+	discussions := []map[string]any{
+		{
+			"id":              "disc-1",
+			"individual_note": false,
+			"notes": []map[string]any{
+				{
+					"id":         1,
+					"system":     false,
+					"body":       "Discussion comment",
+					"created_at": baseTime.Format(time.RFC3339),
+					"resolvable": true,
+					"resolved":   false,
+					"author": map[string]any{
+						"username": "alice",
+						"name":     "Alice",
+					},
+				},
+			},
+		},
+	}
+
+	links := []map[string]any{
+		{
+			"iid":       2,
+			"title":     "Related issue",
+			"web_url":   "http://example.com/project/issues/2",
+			"link_type": "relates_to",
+		},
+	}
+
+	handler := &testHandler{
+		issues:      issues,
+		discussions: map[int][]map[string]any{1: discussions},
+		issueLinks:  map[int][]map[string]any{1: links},
+	}
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	f, err := New(Options{
+		BaseURL:  srv.URL,
+		Token:    "test",
+		Projects: []string{"1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := f.FetchIssues(context.Background(), 1, Cursor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(result.Documents) != 1 {
+		t.Fatalf("expected 1 doc, got %d", len(result.Documents))
+	}
+
+	doc := result.Documents[0]
+
+	// Check that assignees and links appear in the body
+	if !strings.Contains(doc.Body, "bob") {
+		t.Errorf("expected assignee bob in body")
+	}
+	if !strings.Contains(doc.Body, "relates_to") {
+		t.Errorf("expected link in body")
+	}
+}
+
 func TestSystemNotesFiltered(t *testing.T) {
 	t.Parallel()
 
 	baseTime := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	issues := []map[string]any{makeGitLabIssue(1, "Issue with notes", baseTime)}
 
-	notes := []map[string]any{
+	discussions := []map[string]any{
 		{
-			"id":         1,
-			"system":     false,
-			"body":       "Real comment",
-			"created_at": baseTime.Format(time.RFC3339),
-			"author": map[string]any{
-				"username": "alice",
-				"name":     "Alice",
+			"id":              "disc-1",
+			"individual_note": false,
+			"notes": []map[string]any{
+				{
+					"id":         1,
+					"system":     false,
+					"body":       "Real comment",
+					"created_at": baseTime.Format(time.RFC3339),
+					"resolvable": true,
+					"resolved":   false,
+					"author": map[string]any{
+						"username": "alice",
+						"name":     "Alice",
+					},
+				},
+				{
+					"id":         2,
+					"system":     true,
+					"body":       "System comment",
+					"created_at": baseTime.Format(time.RFC3339),
+					"resolvable": false,
+					"resolved":   false,
+					"author":     nil,
+				},
 			},
-		},
-		{
-			"id":         2,
-			"system":     true,
-			"body":       "System comment",
-			"created_at": baseTime.Format(time.RFC3339),
-			"author":     nil,
 		},
 	}
 
 	handler := &testHandler{
-		issues: issues,
-		notes:  map[int][]map[string]any{1: notes},
+		issues:      issues,
+		discussions: map[int][]map[string]any{1: discussions},
 	}
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
@@ -585,13 +732,16 @@ func TestMultipleProjects(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 
-		if strings.Contains(r.URL.Path, "/issues") && !strings.Contains(r.URL.Path, "/notes") {
+		if strings.Contains(r.URL.Path, "/issues") &&
+			!strings.Contains(r.URL.Path, "/notes") &&
+			!strings.Contains(r.URL.Path, "/discussions") &&
+			!strings.Contains(r.URL.Path, "/links") {
 			issueRequestCount++
 			_ = json.NewEncoder(w).Encode(issues)
 			return
 		}
 
-		// Notes endpoint
+		// Notes/discussions/links endpoints
 		_ = json.NewEncoder(w).Encode([]map[string]any{})
 	}))
 	defer srv.Close()

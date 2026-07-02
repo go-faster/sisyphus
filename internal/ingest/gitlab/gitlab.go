@@ -83,29 +83,38 @@ func New(opts Options) (*Fetcher, error) {
 // GitLab API response types.
 
 type gitlabIssue struct {
-	IID         int         `json:"iid"`
-	ProjectID   int         `json:"project_id"`
-	Title       string      `json:"title"`
-	State       string      `json:"state"`
-	CreatedAt   string      `json:"created_at"`
-	UpdatedAt   string      `json:"updated_at"`
-	WebURL      string      `json:"web_url"`
-	Labels      []string    `json:"labels"`
-	Author      *gitlabUser `json:"author"`
-	Description string      `json:"description"`
+	IID         int           `json:"iid"`
+	ProjectID   int           `json:"project_id"`
+	Title       string        `json:"title"`
+	State       string        `json:"state"`
+	CreatedAt   string        `json:"created_at"`
+	UpdatedAt   string        `json:"updated_at"`
+	WebURL      string        `json:"web_url"`
+	Labels      []string      `json:"labels"`
+	Author      *gitlabUser   `json:"author"`
+	Description string        `json:"description"`
+	Assignees   []*gitlabUser `json:"assignees"`
 }
 
 type gitlabMergeRequest struct {
-	IID         int         `json:"iid"`
-	ProjectID   int         `json:"project_id"`
-	Title       string      `json:"title"`
-	State       string      `json:"state"`
-	CreatedAt   string      `json:"created_at"`
-	UpdatedAt   string      `json:"updated_at"`
-	WebURL      string      `json:"web_url"`
-	Labels      []string    `json:"labels"`
-	Author      *gitlabUser `json:"author"`
-	Description string      `json:"description"`
+	IID            int           `json:"iid"`
+	ProjectID      int           `json:"project_id"`
+	Title          string        `json:"title"`
+	State          string        `json:"state"`
+	CreatedAt      string        `json:"created_at"`
+	UpdatedAt      string        `json:"updated_at"`
+	WebURL         string        `json:"web_url"`
+	Labels         []string      `json:"labels"`
+	Author         *gitlabUser   `json:"author"`
+	Description    string        `json:"description"`
+	Assignees      []*gitlabUser `json:"assignees"`
+	Reviewers      []*gitlabUser `json:"reviewers"`
+	Draft          bool          `json:"draft"`
+	TargetBranch   string        `json:"target_branch"`
+	SourceBranch   string        `json:"source_branch"`
+	MergedAt       string        `json:"merged_at"`
+	MergedBy       *gitlabUser   `json:"merged_by"`
+	MergeCommitSHA string        `json:"merge_commit_sha"`
 }
 
 type gitlabRelease struct {
@@ -127,11 +136,26 @@ type gitlabUser struct {
 }
 
 type gitlabNote struct {
-	ID        int         `json:"id"`
-	System    bool        `json:"system"`
-	Body      string      `json:"body"`
-	CreatedAt string      `json:"created_at"`
-	Author    *gitlabUser `json:"author"`
+	ID         int         `json:"id"`
+	System     bool        `json:"system"`
+	Body       string      `json:"body"`
+	CreatedAt  string      `json:"created_at"`
+	Author     *gitlabUser `json:"author"`
+	Resolvable bool        `json:"resolvable"`
+	Resolved   bool        `json:"resolved"`
+}
+
+type gitlabDiscussion struct {
+	ID             string       `json:"id"`
+	IndividualNote bool         `json:"individual_note"`
+	Notes          []gitlabNote `json:"notes"`
+}
+
+type gitlabLinkedItem struct {
+	IID      int    `json:"iid"`
+	Title    string `json:"title"`
+	WebURL   string `json:"web_url"`
+	LinkType string `json:"link_type"`
 }
 
 func parseGitLabTime(s string) (time.Time, error) {
@@ -280,18 +304,28 @@ func (f *Fetcher) fetchProjectIssues(ctx context.Context, project string, page i
 	var maxUpdatedAt string
 
 	for _, issue := range issues {
-		// Fetch notes (comments) for this issue
-		notes, err := f.fetchIssueNotes(ctx, project, issue.IID)
+		// Fetch discussions (comments) and links for this issue
+		threads, err := f.fetchIssueDiscussions(ctx, project, issue.IID)
 		if err != nil {
-			zctx.From(ctx).Warn("failed to fetch issue notes",
+			zctx.From(ctx).Warn("failed to fetch issue discussions",
 				zap.String("project", project),
 				zap.Int("iid", issue.IID),
 				zap.Error(err),
 			)
-			notes = nil
+			threads = nil
 		}
 
-		chunkIssue, err := convertGitLabIssue(issue, notes)
+		links, err := f.fetchIssueLinks(ctx, project, issue.IID)
+		if err != nil {
+			zctx.From(ctx).Warn("failed to fetch issue links",
+				zap.String("project", project),
+				zap.Int("iid", issue.IID),
+				zap.Error(err),
+			)
+			links = nil
+		}
+
+		chunkIssue, err := convertGitLabIssue(issue, threads, links)
 		if err != nil {
 			zctx.From(ctx).Warn("skipping issue with unparseable time",
 				zap.String("project", project),
@@ -312,55 +346,119 @@ func (f *Fetcher) fetchProjectIssues(ctx context.Context, project string, page i
 	return docs, maxUpdatedAt, nil
 }
 
-func (f *Fetcher) fetchIssueNotes(ctx context.Context, project string, iid int) ([]chunkgitlab.Comment, error) {
+func (f *Fetcher) fetchIssueDiscussions(ctx context.Context, project string, iid int) ([]chunkgitlab.Thread, error) {
 	q := url.Values{}
 	q.Set("per_page", strconv.Itoa(100))
 	q.Set("order_by", "created_at")
 	q.Set("sort", "asc")
 
-	path := fmt.Sprintf("/api/v4/projects/%s/issues/%d/notes", encodeProjectRef(project), iid)
+	path := fmt.Sprintf("/api/v4/projects/%s/issues/%d/discussions", encodeProjectRef(project), iid)
 	req, err := f.buildRequest(ctx, path, q)
 	if err != nil {
 		return nil, err
 	}
 
-	body, err := f.doRequest(req, "gitlab fetch issue notes")
+	body, err := f.doRequest(req, "gitlab fetch issue discussions")
 	if err != nil {
 		return nil, err
 	}
 
-	var notes []gitlabNote
-	if err := json.Unmarshal(body, &notes); err != nil {
-		return nil, errors.Wrap(err, "parse notes response")
+	var discussions []gitlabDiscussion
+	if err := json.Unmarshal(body, &discussions); err != nil {
+		return nil, errors.Wrap(err, "parse discussions response")
 	}
 
-	var comments []chunkgitlab.Comment
-	for _, note := range notes {
-		if note.System {
-			continue // Skip system notes
-		}
+	var threads []chunkgitlab.Thread
+	for _, discussion := range discussions {
+		var comments []chunkgitlab.Comment
+		resolved := false
 
-		created, err := parseGitLabTime(note.CreatedAt)
-		if err != nil {
-			continue // Skip notes with unparseable time
-		}
+		for _, note := range discussion.Notes {
+			if note.System {
+				continue // Skip system notes
+			}
 
-		author := ""
-		if note.Author != nil {
-			author = note.Author.Username
-			if author == "" {
-				author = note.Author.Name
+			created, err := parseGitLabTime(note.CreatedAt)
+			if err != nil {
+				continue // Skip notes with unparseable time
+			}
+
+			author := ""
+			if note.Author != nil {
+				author = note.Author.Username
+				if author == "" {
+					author = note.Author.Name
+				}
+			}
+
+			comments = append(comments, chunkgitlab.Comment{
+				Author:  author,
+				Body:    note.Body,
+				Created: created,
+			})
+
+			// Track if any note in the discussion is resolved
+			if note.Resolved {
+				resolved = true
 			}
 		}
 
-		comments = append(comments, chunkgitlab.Comment{
-			Author:  author,
-			Body:    note.Body,
-			Created: created,
+		// Only include thread if it has substantive comments
+		if len(comments) > 0 {
+			threads = append(threads, chunkgitlab.Thread{
+				ID:       discussion.ID,
+				Resolved: resolved,
+				Comments: comments,
+			})
+		}
+	}
+
+	return threads, nil
+}
+
+func (f *Fetcher) fetchIssueLinks(ctx context.Context, project string, iid int) ([]chunkgitlab.Link, error) {
+	q := url.Values{}
+	q.Set("per_page", strconv.Itoa(100))
+
+	path := fmt.Sprintf("/api/v4/projects/%s/issues/%d/links", encodeProjectRef(project), iid)
+	req, err := f.buildRequest(ctx, path, q)
+	if err != nil {
+		return nil, err
+	}
+
+	body, err := f.doRequest(req, "gitlab fetch issue links")
+	if err != nil {
+		// Non-fatal error: log and return nil
+		zctx.From(ctx).Warn("failed to fetch issue links",
+			zap.String("project", project),
+			zap.Int("iid", iid),
+			zap.Error(err),
+		)
+		return nil, nil
+	}
+
+	var items []gitlabLinkedItem
+	if err := json.Unmarshal(body, &items); err != nil {
+		zctx.From(ctx).Warn("failed to parse issue links response",
+			zap.String("project", project),
+			zap.Int("iid", iid),
+			zap.Error(err),
+		)
+		return nil, nil
+	}
+
+	var links []chunkgitlab.Link
+	for _, item := range items {
+		links = append(links, chunkgitlab.Link{
+			Type:       item.LinkType,
+			TargetKind: "issue",
+			TargetIID:  item.IID,
+			Title:      item.Title,
+			WebURL:     item.WebURL,
 		})
 	}
 
-	return comments, nil
+	return links, nil
 }
 
 // FetchMergeRequests fetches merge requests from configured projects.
@@ -430,18 +528,28 @@ func (f *Fetcher) fetchProjectMergeRequests(ctx context.Context, project string,
 	var maxUpdatedAt string
 
 	for _, mr := range mrs {
-		// Fetch notes (comments) for this MR
-		notes, err := f.fetchMRNotes(ctx, project, mr.IID)
+		// Fetch discussions (comments) and closes issues for this MR
+		threads, err := f.fetchMRDiscussions(ctx, project, mr.IID)
 		if err != nil {
-			zctx.From(ctx).Warn("failed to fetch MR notes",
+			zctx.From(ctx).Warn("failed to fetch MR discussions",
 				zap.String("project", project),
 				zap.Int("iid", mr.IID),
 				zap.Error(err),
 			)
-			notes = nil
+			threads = nil
 		}
 
-		chunkMR, err := convertGitLabMR(mr, notes)
+		links, err := f.fetchMRClosesIssues(ctx, project, mr.IID)
+		if err != nil {
+			zctx.From(ctx).Warn("failed to fetch MR closes issues",
+				zap.String("project", project),
+				zap.Int("iid", mr.IID),
+				zap.Error(err),
+			)
+			links = nil
+		}
+
+		chunkMR, err := convertGitLabMR(mr, threads, links)
 		if err != nil {
 			zctx.From(ctx).Warn("skipping MR with unparseable time",
 				zap.String("project", project),
@@ -462,55 +570,119 @@ func (f *Fetcher) fetchProjectMergeRequests(ctx context.Context, project string,
 	return docs, maxUpdatedAt, nil
 }
 
-func (f *Fetcher) fetchMRNotes(ctx context.Context, project string, iid int) ([]chunkgitlab.Comment, error) {
+func (f *Fetcher) fetchMRDiscussions(ctx context.Context, project string, iid int) ([]chunkgitlab.Thread, error) {
 	q := url.Values{}
 	q.Set("per_page", strconv.Itoa(100))
 	q.Set("order_by", "created_at")
 	q.Set("sort", "asc")
 
-	path := fmt.Sprintf("/api/v4/projects/%s/merge_requests/%d/notes", encodeProjectRef(project), iid)
+	path := fmt.Sprintf("/api/v4/projects/%s/merge_requests/%d/discussions", encodeProjectRef(project), iid)
 	req, err := f.buildRequest(ctx, path, q)
 	if err != nil {
 		return nil, err
 	}
 
-	body, err := f.doRequest(req, "gitlab fetch mr notes")
+	body, err := f.doRequest(req, "gitlab fetch mr discussions")
 	if err != nil {
 		return nil, err
 	}
 
-	var notes []gitlabNote
-	if err := json.Unmarshal(body, &notes); err != nil {
-		return nil, errors.Wrap(err, "parse notes response")
+	var discussions []gitlabDiscussion
+	if err := json.Unmarshal(body, &discussions); err != nil {
+		return nil, errors.Wrap(err, "parse discussions response")
 	}
 
-	var comments []chunkgitlab.Comment
-	for _, note := range notes {
-		if note.System {
-			continue
-		}
+	var threads []chunkgitlab.Thread
+	for _, discussion := range discussions {
+		var comments []chunkgitlab.Comment
+		resolved := false
 
-		created, err := parseGitLabTime(note.CreatedAt)
-		if err != nil {
-			continue
-		}
+		for _, note := range discussion.Notes {
+			if note.System {
+				continue // Skip system notes
+			}
 
-		author := ""
-		if note.Author != nil {
-			author = note.Author.Username
-			if author == "" {
-				author = note.Author.Name
+			created, err := parseGitLabTime(note.CreatedAt)
+			if err != nil {
+				continue // Skip notes with unparseable time
+			}
+
+			author := ""
+			if note.Author != nil {
+				author = note.Author.Username
+				if author == "" {
+					author = note.Author.Name
+				}
+			}
+
+			comments = append(comments, chunkgitlab.Comment{
+				Author:  author,
+				Body:    note.Body,
+				Created: created,
+			})
+
+			// Track if any note in the discussion is resolved
+			if note.Resolved {
+				resolved = true
 			}
 		}
 
-		comments = append(comments, chunkgitlab.Comment{
-			Author:  author,
-			Body:    note.Body,
-			Created: created,
+		// Only include thread if it has substantive comments
+		if len(comments) > 0 {
+			threads = append(threads, chunkgitlab.Thread{
+				ID:       discussion.ID,
+				Resolved: resolved,
+				Comments: comments,
+			})
+		}
+	}
+
+	return threads, nil
+}
+
+func (f *Fetcher) fetchMRClosesIssues(ctx context.Context, project string, iid int) ([]chunkgitlab.Link, error) {
+	q := url.Values{}
+	q.Set("per_page", strconv.Itoa(100))
+
+	path := fmt.Sprintf("/api/v4/projects/%s/merge_requests/%d/closes_issues", encodeProjectRef(project), iid)
+	req, err := f.buildRequest(ctx, path, q)
+	if err != nil {
+		return nil, err
+	}
+
+	body, err := f.doRequest(req, "gitlab fetch mr closes issues")
+	if err != nil {
+		// Non-fatal error: log and return nil
+		zctx.From(ctx).Warn("failed to fetch mr closes issues",
+			zap.String("project", project),
+			zap.Int("iid", iid),
+			zap.Error(err),
+		)
+		return nil, nil
+	}
+
+	var items []gitlabLinkedItem
+	if err := json.Unmarshal(body, &items); err != nil {
+		zctx.From(ctx).Warn("failed to parse mr closes issues response",
+			zap.String("project", project),
+			zap.Int("iid", iid),
+			zap.Error(err),
+		)
+		return nil, nil
+	}
+
+	var links []chunkgitlab.Link
+	for _, item := range items {
+		links = append(links, chunkgitlab.Link{
+			Type:       "closes",
+			TargetKind: "issue",
+			TargetIID:  item.IID,
+			Title:      item.Title,
+			WebURL:     item.WebURL,
 		})
 	}
 
-	return comments, nil
+	return links, nil
 }
 
 // FetchReleases fetches releases from configured projects.
@@ -607,7 +779,7 @@ func (f *Fetcher) fetchProjectReleases(ctx context.Context, project string, page
 
 // Conversion functions from GitLab API types to chunker types.
 
-func convertGitLabIssue(issue gitlabIssue, notes []chunkgitlab.Comment) (chunkgitlab.Issue, error) {
+func convertGitLabIssue(issue gitlabIssue, threads []chunkgitlab.Thread, links []chunkgitlab.Link) (chunkgitlab.Issue, error) {
 	created, err := parseGitLabTime(issue.CreatedAt)
 	if err != nil {
 		return chunkgitlab.Issue{}, err
@@ -626,6 +798,20 @@ func convertGitLabIssue(issue gitlabIssue, notes []chunkgitlab.Comment) (chunkgi
 		}
 	}
 
+	// Convert assignees to usernames
+	var assignees []string
+	for _, a := range issue.Assignees {
+		if a != nil {
+			username := a.Username
+			if username == "" {
+				username = a.Name
+			}
+			if username != "" {
+				assignees = append(assignees, username)
+			}
+		}
+	}
+
 	return chunkgitlab.Issue{
 		IID:         issue.IID,
 		Title:       issue.Title,
@@ -636,17 +822,24 @@ func convertGitLabIssue(issue gitlabIssue, notes []chunkgitlab.Comment) (chunkgi
 		WebURL:      issue.WebURL,
 		Created:     created,
 		Updated:     updated,
-		Comments:    notes,
+		Assignees:   assignees,
+		Threads:     threads,
+		Links:       links,
 	}, nil
 }
 
-func convertGitLabMR(mr gitlabMergeRequest, notes []chunkgitlab.Comment) (chunkgitlab.MergeRequest, error) {
+func convertGitLabMR(mr gitlabMergeRequest, threads []chunkgitlab.Thread, links []chunkgitlab.Link) (chunkgitlab.MergeRequest, error) {
 	created, err := parseGitLabTime(mr.CreatedAt)
 	if err != nil {
 		return chunkgitlab.MergeRequest{}, err
 	}
 
 	updated, err := parseGitLabTime(mr.UpdatedAt)
+	if err != nil {
+		return chunkgitlab.MergeRequest{}, err
+	}
+
+	mergedAt, err := parseGitLabTime(mr.MergedAt)
 	if err != nil {
 		return chunkgitlab.MergeRequest{}, err
 	}
@@ -659,17 +852,63 @@ func convertGitLabMR(mr gitlabMergeRequest, notes []chunkgitlab.Comment) (chunkg
 		}
 	}
 
+	// Convert assignees to usernames
+	var assignees []string
+	for _, a := range mr.Assignees {
+		if a != nil {
+			username := a.Username
+			if username == "" {
+				username = a.Name
+			}
+			if username != "" {
+				assignees = append(assignees, username)
+			}
+		}
+	}
+
+	// Convert reviewers to usernames
+	var reviewers []string
+	for _, r := range mr.Reviewers {
+		if r != nil {
+			username := r.Username
+			if username == "" {
+				username = r.Name
+			}
+			if username != "" {
+				reviewers = append(reviewers, username)
+			}
+		}
+	}
+
+	// Convert merged_by to username
+	mergedBy := ""
+	if mr.MergedBy != nil {
+		mergedBy = mr.MergedBy.Username
+		if mergedBy == "" {
+			mergedBy = mr.MergedBy.Name
+		}
+	}
+
 	return chunkgitlab.MergeRequest{
-		IID:         mr.IID,
-		Title:       mr.Title,
-		Description: mr.Description,
-		State:       mr.State,
-		Labels:      mr.Labels,
-		Author:      author,
-		WebURL:      mr.WebURL,
-		Created:     created,
-		Updated:     updated,
-		Comments:    notes,
+		IID:            mr.IID,
+		Title:          mr.Title,
+		Description:    mr.Description,
+		State:          mr.State,
+		Labels:         mr.Labels,
+		Author:         author,
+		WebURL:         mr.WebURL,
+		Created:        created,
+		Updated:        updated,
+		Assignees:      assignees,
+		Reviewers:      reviewers,
+		Draft:          mr.Draft,
+		TargetBranch:   mr.TargetBranch,
+		SourceBranch:   mr.SourceBranch,
+		MergedAt:       mergedAt,
+		MergedBy:       mergedBy,
+		MergeCommitSHA: mr.MergeCommitSHA,
+		Threads:        threads,
+		Links:          links,
 	}, nil
 }
 
