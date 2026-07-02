@@ -24,17 +24,24 @@ git:
       base_url: ""
       # commits: index commit messages on the default branch (default false).
       commits: false
+      # tags: index git tags (annotated + lightweight) as documents, source
+      # git_tags:<repo> (default false).
+      tags: false
       # include/exclude: doublestar globs over repo-relative paths, applied on
       # top of the built-in default skiplist (CLAUDE.md, .github/**, LICENSE*, ...).
       include: []
       exclude: []
 
 # gitlab: GitLab REST API — issues, merge requests, releases (no code diffs).
+# Issues/MRs also include assignees/reviewers, MR merge metadata (merged_at/by,
+# merge commit, source/target branch), cross-references (closes/relates_to
+# links), and comments grouped into discussion threads with resolved state.
 gitlab:
   base_url: https://gitlab.example.com
   token:
     env: SCPBOT_GITLAB_TOKEN
-  projects: "" # CSV of project IDs or paths, e.g. "group/docs,42"
+  projects:
+    - ref: group/docs # Project ID or path.
   issues: true
   merge_requests: true
   releases: true
