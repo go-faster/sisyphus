@@ -93,14 +93,13 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) (_ []index.Result
 		s.m.searchDur.Record(ctx, time.Since(start).Seconds())
 	}()
 
-	qText := q.Text
-	if utf8.RuneCountInString(qText) > 1024 {
-		qText = string([]rune(qText)[:1024]) + "..."
-	}
+	queryLen := utf8.RuneCountInString(q.Text)
 	ctx, span := s.tracer.Start(ctx, "retrieval.Retrieve",
 		trace.WithAttributes(
-			attribute.String("query.text", qText),
+			attribute.Int("query.length", queryLen),
 			attribute.Int("query.limit", q.Limit),
+			attribute.Bool("backend.lexical.enabled", s.lexical != nil),
+			attribute.Bool("backend.vector.enabled", s.vector != nil),
 		),
 	)
 	defer func() {
@@ -141,21 +140,13 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) (_ []index.Result
 	)
 	if s.lexical != nil {
 		wg.Go(func() {
-			rs, err := s.lexical.Search(ctx, q)
-			s.m.recordSearch(ctx, "lexical", err)
-			if err != nil {
-				zctx.From(ctx).Warn("lexical search failed", zap.Error(err))
-				return
-			}
-			lexicalResult = rs
+			lexicalResult = s.searchBackend(ctx, "lexical", s.lexical, q)
 		})
 	}
 	if s.vector != nil {
 		wg.Go(func() {
-			rs, err := s.vector.Search(ctx, q)
-			s.m.recordSearch(ctx, "vector", err)
-			if err != nil {
-				zctx.From(ctx).Warn("vector search failed", zap.Error(err))
+			rs := s.searchBackend(ctx, "vector", s.vector, q)
+			if rs == nil {
 				return
 			}
 			s.hydrate(ctx, rs)
@@ -163,6 +154,8 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) (_ []index.Result
 		})
 	}
 	wg.Wait()
+	span.AddEvent("lexical_search.done", trace.WithAttributes(attribute.Int("results.count", len(lexicalResult))))
+	span.AddEvent("vector_search.done", trace.WithAttributes(attribute.Int("results.count", len(vectorResult))))
 	if lexicalResult != nil {
 		add(lexicalResult)
 	}
@@ -170,6 +163,8 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) (_ []index.Result
 		add(vectorResult)
 	}
 	if len(merged) == 0 {
+		s.m.recordResults(ctx, 0)
+		span.SetAttributes(attribute.Int("results.count", 0), attribute.Bool("results.empty", true))
 		return nil, nil
 	}
 
@@ -187,8 +182,29 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) (_ []index.Result
 	if len(out) > q.Limit {
 		out = out[:q.Limit]
 	}
-	span.SetAttributes(attribute.Int("results.count", len(out)))
+	s.m.recordResults(ctx, len(out))
+	span.SetAttributes(attribute.Int("results.count", len(out)), attribute.Bool("results.empty", false))
 	return out, nil
+}
+
+func (s *Service) searchBackend(ctx context.Context, backend string, searcher index.Searcher, q index.Query) (_ []index.Result) {
+	start := time.Now()
+	ctx, span := s.tracer.Start(ctx, "retrieval.backend_search",
+		trace.WithAttributes(attribute.String("backend", backend)),
+	)
+	defer span.End()
+
+	rs, err := searcher.Search(ctx, q)
+	s.m.recordBackend(ctx, backend, len(rs), time.Since(start).Seconds(), err)
+	span.SetAttributes(attribute.Int("results.count", len(rs)))
+	span.AddEvent("backend_search.done", trace.WithAttributes(attribute.Int("results.count", len(rs))))
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		zctx.From(ctx).Warn(backend+" search failed", zap.Error(err))
+		return nil
+	}
+	return rs
 }
 
 func (s *Service) hydrate(ctx context.Context, rs []index.Result) {
@@ -207,11 +223,18 @@ func (s *Service) hydrate(ctx context.Context, rs []index.Result) {
 	if len(ids) == 0 {
 		return
 	}
+	ctx, span := s.tracer.Start(ctx, "retrieval.hydrate_chunks",
+		trace.WithAttributes(attribute.Int("chunks.requested", len(ids))),
+	)
+	defer span.End()
 	chunks, err := s.fetcher.FetchChunks(ctx, ids)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		zctx.From(ctx).Warn("hydrate vector chunks failed", zap.Error(err), zap.Int("count", len(ids)))
 		return
 	}
+	found := 0
 	for i := range rs {
 		if rs[i].Chunk.Text != "" {
 			continue
@@ -222,7 +245,13 @@ func (s *Service) hydrate(ctx context.Context, rs []index.Result) {
 		}
 		rs[i].Chunk.Text = chunk.Text
 		rs[i].Chunk.TokenCount = chunk.TokenCount
+		found++
 	}
+	span.SetAttributes(attribute.Int("chunks.found", found))
+	span.AddEvent("hydrate.done", trace.WithAttributes(
+		attribute.Int("chunks.requested", len(ids)),
+		attribute.Int("chunks.found", found),
+	))
 }
 
 // boost applies authority and exact-match boosts to a result's score (plan §11).

@@ -3,6 +3,7 @@ package netclient
 
 import (
 	"context"
+	stderrors "errors"
 	"net"
 	"net/http"
 	"net/url"
@@ -117,6 +118,7 @@ type loggingRoundTripper struct {
 }
 
 func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	start := time.Now()
 	logger := zctx.From(req.Context())
 	viaField := zap.Skip()
 	if l.via != "" {
@@ -130,6 +132,7 @@ func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	)
 	resp, err := l.transport.RoundTrip(req)
 	if err != nil {
+		l.metrics.recordError(req.Context(), l.name, httpErrorType(err), time.Since(start).Seconds())
 		logger.Error("HTTP request failed", zap.Error(err))
 		return nil, err
 	}
@@ -143,8 +146,22 @@ func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 		zap.Int("content_length", int(resp.ContentLength)),
 		ctField,
 	)
-	l.metrics.record(req.Context(), l.name, resp.StatusCode)
+	l.metrics.record(req.Context(), l.name, resp.StatusCode, time.Since(start).Seconds())
 	return resp, nil
+}
+
+func httpErrorType(err error) string {
+	if stderrors.Is(err, context.Canceled) {
+		return "canceled"
+	}
+	if stderrors.Is(err, context.DeadlineExceeded) {
+		return "deadline_exceeded"
+	}
+	var netErr net.Error
+	if stderrors.As(err, &netErr) && netErr.Timeout() {
+		return "timeout"
+	}
+	return "transport"
 }
 
 func redactURL(u *url.URL) string {

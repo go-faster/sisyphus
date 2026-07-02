@@ -122,8 +122,12 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 	if doc.BodyHash == "" {
 		doc.BodyHash = index.Hash(doc.Body)
 	}
+	lockStart := time.Now()
 	unlock := p.docLocks.lock(string(doc.Source) + "\x00" + doc.SourceID)
 	defer unlock()
+	p.metrics.lockWait.Record(ctx, time.Since(lockStart).Seconds(),
+		metric.WithAttributes(attribute.String("source", string(doc.Source))),
+	)
 
 	ctx, span := p.tracer.Start(ctx, "pipeline.Index",
 		trace.WithAttributes(
@@ -150,6 +154,8 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 		return errors.Wrap(err, "query document")
 	}
 	if exists {
+		span.SetAttributes(attribute.Bool("document.unchanged", true))
+		span.AddEvent("document.unchanged")
 		zctx.From(ctx).Debug("document unchanged, skipping",
 			zap.String("source", string(doc.Source)), zap.String("source_id", doc.SourceID))
 		p.metrics.documents.Add(ctx, 1,
@@ -161,10 +167,21 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 		return nil
 	}
 
-	chunks, err := p.chunker.Chunk(ctx, doc)
+	phaseStart := time.Now()
+	chunkCtx, chunkSpan := p.tracer.Start(ctx, "pipeline.chunk",
+		trace.WithAttributes(attribute.String("source", string(doc.Source))),
+	)
+	chunks, err := p.chunker.Chunk(chunkCtx, doc)
+	p.metrics.recordPhase(ctx, string(doc.Source), "chunk", time.Since(phaseStart).Seconds(), err)
 	if err != nil {
+		chunkSpan.RecordError(err)
+		chunkSpan.SetStatus(codes.Error, err.Error())
+		chunkSpan.End()
 		return errors.Wrap(err, "chunk")
 	}
+	chunkSpan.SetAttributes(attribute.Int("chunks.total", len(chunks)))
+	chunkSpan.AddEvent("chunk.done", trace.WithAttributes(attribute.Int("chunks.total", len(chunks))))
+	chunkSpan.End()
 	for i := range chunks {
 		if chunks[i].TextHash == "" {
 			chunks[i].TextHash = index.Hash(chunks[i].Text)
@@ -216,6 +233,19 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 			staleIDs = append(staleIDs, ec.ID)
 		}
 	}
+	span.SetAttributes(
+		attribute.Bool("document.unchanged", false),
+		attribute.Int("chunks.total", len(chunks)),
+		attribute.Int("chunks.to_embed", len(toEmbed)),
+		attribute.Int("chunks.reused", len(chunks)-len(toEmbed)),
+		attribute.Int("chunks.stale", len(staleIDs)),
+	)
+	span.AddEvent("chunks.planned", trace.WithAttributes(
+		attribute.Int("chunks.total", len(chunks)),
+		attribute.Int("chunks.to_embed", len(toEmbed)),
+		attribute.Int("chunks.reused", len(chunks)-len(toEmbed)),
+		attribute.Int("chunks.stale", len(staleIDs)),
+	))
 
 	// Embed before touching Postgres: if embedding or the vector upsert fails,
 	// nothing is persisted, so a retry re-chunks and re-embeds instead of being
@@ -223,7 +253,7 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 	// forever.
 	if p.vectors != nil && p.embedder != nil && len(toEmbed) > 0 {
 		start := time.Now()
-		if err := p.embed(ctx, toEmbed); err != nil {
+		if err := p.embed(ctx, string(doc.Source), toEmbed); err != nil {
 			p.metrics.documents.Add(ctx, 1,
 				metric.WithAttributes(
 					attribute.String("source", string(doc.Source)),
@@ -238,7 +268,18 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 		}
 	}
 
-	if err := p.persist(ctx, doc, chunks, qdrantIDs); err != nil {
+	phaseStart = time.Now()
+	persistCtx, persistSpan := p.tracer.Start(ctx, "pipeline.persist",
+		trace.WithAttributes(
+			attribute.String("source", string(doc.Source)),
+			attribute.Int("chunks.total", len(chunks)),
+		),
+	)
+	if err := p.persist(persistCtx, doc, chunks, qdrantIDs); err != nil {
+		p.metrics.recordPhase(ctx, string(doc.Source), "persist", time.Since(phaseStart).Seconds(), err)
+		persistSpan.RecordError(err)
+		persistSpan.SetStatus(codes.Error, err.Error())
+		persistSpan.End()
 		p.metrics.documents.Add(ctx, 1,
 			metric.WithAttributes(
 				attribute.String("source", string(doc.Source)),
@@ -247,13 +288,31 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 		)
 		return errors.Wrap(err, "persist")
 	}
+	p.metrics.recordPhase(ctx, string(doc.Source), "persist", time.Since(phaseStart).Seconds(), nil)
+	persistSpan.AddEvent("persist.done")
+	persistSpan.End()
 
 	if p.vectors != nil && len(staleIDs) > 0 {
-		if err := p.vectors.Delete(ctx, staleIDs); err != nil {
+		phaseStart = time.Now()
+		deleteCtx, deleteSpan := p.tracer.Start(ctx, "pipeline.vector_delete",
+			trace.WithAttributes(
+				attribute.String("source", string(doc.Source)),
+				attribute.Int("chunks.stale", len(staleIDs)),
+			),
+		)
+		if err := p.vectors.Delete(deleteCtx, staleIDs); err != nil {
+			p.metrics.recordPhase(ctx, string(doc.Source), "vector_delete", time.Since(phaseStart).Seconds(), err)
+			deleteSpan.RecordError(err)
+			deleteSpan.SetStatus(codes.Error, err.Error())
+			deleteSpan.End()
 			zctx.From(ctx).Error("failed to delete stale vector points",
 				zap.Error(err),
 				zap.Int("count", len(staleIDs)),
 			)
+		} else {
+			p.metrics.recordPhase(ctx, string(doc.Source), "vector_delete", time.Since(phaseStart).Seconds(), nil)
+			deleteSpan.AddEvent("vector_delete.done")
+			deleteSpan.End()
 		}
 	}
 
@@ -277,7 +336,10 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 	zctx.From(ctx).Info("indexed document",
 		zap.String("source", string(doc.Source)),
 		zap.String("source_id", doc.SourceID),
-		zap.Int("chunks", len(chunks)))
+		zap.Int("chunks", len(chunks)),
+		zap.Int("embedded_chunks", len(toEmbed)),
+		zap.Int("reused_chunks", len(chunks)-len(toEmbed)),
+		zap.Int("stale_chunks", len(staleIDs)))
 	return nil
 }
 
@@ -332,18 +394,46 @@ func (p *Pipeline) persist(ctx context.Context, doc index.Document, chunks []ind
 // touch Postgres — the caller records the resulting qdrant_point_id (== chunk
 // ID) when it persists the chunks, so a failure here leaves no DB trace to
 // clean up on retry.
-func (p *Pipeline) embed(ctx context.Context, chunks []index.Chunk) error {
+func (p *Pipeline) embed(ctx context.Context, source string, chunks []index.Chunk) error {
 	texts := make([]string, len(chunks))
 	for i := range chunks {
 		texts[i] = chunks[i].Text
 	}
-	vectors, err := p.embedder.Embed(ctx, texts)
+	start := time.Now()
+	embedCtx, embedSpan := p.tracer.Start(ctx, "pipeline.embed",
+		trace.WithAttributes(
+			attribute.String("source", source),
+			attribute.Int("chunks.count", len(chunks)),
+		),
+	)
+	vectors, err := p.embedder.Embed(embedCtx, texts)
+	p.metrics.recordPhase(ctx, source, "embed", time.Since(start).Seconds(), err)
 	if err != nil {
+		embedSpan.RecordError(err)
+		embedSpan.SetStatus(codes.Error, err.Error())
+		embedSpan.End()
 		return errors.Wrap(err, "embed texts")
 	}
-	if err := p.vectors.Upsert(ctx, chunks, vectors); err != nil {
+	embedSpan.AddEvent("embed.done", trace.WithAttributes(attribute.Int("vectors.count", len(vectors))))
+	embedSpan.End()
+
+	start = time.Now()
+	upsertCtx, upsertSpan := p.tracer.Start(ctx, "pipeline.vector_upsert",
+		trace.WithAttributes(
+			attribute.String("source", source),
+			attribute.Int("chunks.count", len(chunks)),
+		),
+	)
+	if err := p.vectors.Upsert(upsertCtx, chunks, vectors); err != nil {
+		p.metrics.recordPhase(ctx, source, "vector_upsert", time.Since(start).Seconds(), err)
+		upsertSpan.RecordError(err)
+		upsertSpan.SetStatus(codes.Error, err.Error())
+		upsertSpan.End()
 		return errors.Wrap(err, "upsert vectors")
 	}
+	p.metrics.recordPhase(ctx, source, "vector_upsert", time.Since(start).Seconds(), nil)
+	upsertSpan.AddEvent("vector_upsert.done")
+	upsertSpan.End()
 	return nil
 }
 

@@ -195,7 +195,11 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 			svcs.Close()
 			return Components{}, errors.Wrap(err, "openrouter http client")
 		}
-		orClient := openrouter.New(cfg.OpenRouter.APIKey, openrouter.Options{HTTPClient: httpClient})
+		orClient := openrouter.New(cfg.OpenRouter.APIKey, openrouter.Options{
+			HTTPClient:     httpClient,
+			TracerProvider: opts.TracerProvider,
+			MeterProvider:  opts.MeterProvider,
+		})
 		answerer = openrouter.NewAnswerer(orClient, cfg.OpenRouter.Model, openrouter.AnswererOptions{})
 	} else {
 		lg.Warn("openrouter not configured, using stub answerer")

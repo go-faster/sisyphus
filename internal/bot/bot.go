@@ -6,6 +6,7 @@ import (
 	"context"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
@@ -13,6 +14,10 @@ import (
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/message"
 	"github.com/gotd/td/tg"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -38,11 +43,27 @@ type Bot struct {
 	retriever Retriever
 	answerer  index.Answerer
 	tp        trace.TracerProvider
+	tracer    trace.Tracer
+	m         *botMetrics
 }
 
 // New builds a Bot.
-func New(_ context.Context, cfg Config, r Retriever, a index.Answerer, tp trace.TracerProvider) *Bot {
-	return &Bot{cfg: cfg, retriever: r, answerer: a, tp: tp}
+func New(_ context.Context, cfg Config, r Retriever, a index.Answerer, tp trace.TracerProvider, mp metric.MeterProvider) *Bot {
+	if tp == nil {
+		tp = otel.GetTracerProvider()
+	}
+	if mp == nil {
+		mp = otel.GetMeterProvider()
+	}
+	m, _ := newBotMetrics(mp)
+	return &Bot{
+		cfg:       cfg,
+		retriever: r,
+		answerer:  a,
+		tp:        tp,
+		tracer:    tp.Tracer("github.com/go-faster/scpbot/bot"),
+		m:         m,
+	}
 }
 
 // Run connects, authenticates as a bot, and serves updates until ctx is done.
@@ -68,7 +89,7 @@ func (b *Bot) Run(ctx context.Context) error {
 		if !ok {
 			return nil
 		}
-		zctx.From(ctx).Info("context command", zap.String("query", query))
+		zctx.From(ctx).Info("context command", zap.Int("query_len", len(query)))
 
 		answer, err := b.handle(ctx, query)
 		if err != nil {
@@ -92,13 +113,36 @@ func (b *Bot) Run(ctx context.Context) error {
 }
 
 func (b *Bot) handle(ctx context.Context, query string) (string, error) {
+	start := time.Now()
+	ctx, span := b.tracer.Start(ctx, "bot.context",
+		trace.WithAttributes(attribute.Int("query.length", len(query))),
+	)
+	var (
+		resultCount int
+		rerr        error
+	)
+	defer func() {
+		if b.m != nil {
+			b.m.recordContext(ctx, time.Since(start).Seconds(), resultCount, rerr)
+		}
+		span.SetAttributes(attribute.Int("results.count", resultCount))
+		if rerr != nil {
+			span.RecordError(rerr)
+			span.SetStatus(codes.Error, rerr.Error())
+		}
+		span.End()
+	}()
+
 	results, err := b.retriever.Retrieve(ctx, index.Query{Text: query, Limit: 12})
 	if err != nil {
-		return "", errors.Wrap(err, "retrieve")
+		rerr = errors.Wrap(err, "retrieve")
+		return "", rerr
 	}
+	resultCount = len(results)
 	answer, err := b.answerer.Answer(ctx, query, results)
 	if err != nil {
-		return "", errors.Wrap(err, "answer")
+		rerr = errors.Wrap(err, "answer")
+		return "", rerr
 	}
 	return answer, nil
 }

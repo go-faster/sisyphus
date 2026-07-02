@@ -8,6 +8,9 @@ import (
 
 	"github.com/go-faster/errors"
 	"github.com/openai/openai-go/v3"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/go-faster/scpbot/internal/index"
 )
@@ -46,6 +49,14 @@ func NewAnswerer(client *Client, model string, opts AnswererOptions) *Answerer {
 
 // Answer constructs a grounded answer from retrieved context chunks.
 func (a *Answerer) Answer(ctx context.Context, question string, results []index.Result) (string, error) {
+	ctx, span := a.client.tracer.Start(ctx, "llm.Answer",
+		trace.WithAttributes(
+			attribute.String("model", a.model),
+			attribute.Int("results.count", len(results)),
+		),
+	)
+	defer span.End()
+
 	var sb strings.Builder
 	for i, r := range results {
 		fmt.Fprintf(&sb, "--- Source %d", i+1)
@@ -59,10 +70,13 @@ func (a *Answerer) Answer(ctx context.Context, question string, results []index.
 		openai.SystemMessage(a.prompt),
 		openai.UserMessage(fmt.Sprintf("Context:\n%s\nQuestion: %s", sb.String(), question)),
 	}
-	result, err := complete(ctx, a.client.oc, a.model, msgs)
+	result, err := a.client.complete(ctx, a.model, msgs)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return "", errors.Wrap(err, "answer")
 	}
+	span.SetAttributes(attribute.Int("answer.len", len(result)))
 	return result, nil
 }
 
