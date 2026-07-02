@@ -4,8 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"strconv"
-	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -13,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	chunkgit "github.com/go-faster/scpbot/internal/chunk/git"
 	chunkmd "github.com/go-faster/scpbot/internal/chunk/markdown"
@@ -38,6 +38,51 @@ var (
 	errNotConfigured = errors.New("source not configured")
 	errLimitReached  = errors.New("limit reached")
 )
+
+// indexConcurrency bounds how many documents pipeline.Index runs at once.
+// Each call is dominated by an embedding HTTP round-trip, so running several
+// in parallel meaningfully speeds up ingestion without overwhelming the
+// embedder or Postgres.
+const indexConcurrency = 8
+
+// indexBatch runs p.Index over docs with bounded concurrency. A single
+// document's failure is logged and does not stop the others, matching the
+// sequential loops it replaces; anyErr reports whether at least one failed.
+func indexBatch(ctx context.Context, lg *zap.Logger, p *pipeline.Pipeline, docs []index.Document, dry bool, label string) (processed int, anyErr bool) {
+	if dry {
+		for _, d := range docs {
+			lg.Info("dry-run would index "+label,
+				zap.String("source_id", d.SourceID),
+				zap.String("title", d.Title))
+		}
+		return len(docs), false
+	}
+
+	var (
+		mu       sync.Mutex
+		procN    int
+		errFound bool
+	)
+	g := new(errgroup.Group)
+	g.SetLimit(indexConcurrency)
+	for _, d := range docs {
+		g.Go(func() error {
+			if ierr := p.Index(ctx, d); ierr != nil {
+				lg.Error("index "+label+" failed", zap.Error(ierr), zap.String("source_id", d.SourceID))
+				mu.Lock()
+				errFound = true
+				mu.Unlock()
+				return nil
+			}
+			mu.Lock()
+			procN++
+			mu.Unlock()
+			return nil
+		})
+	}
+	_ = g.Wait()
+	return procN, errFound
+}
 
 type runner struct {
 	db       *ent.Client
@@ -96,25 +141,13 @@ func (r *runner) runGit(ctx context.Context, reset bool, limit int, dry, prune b
 			walkedIDs = append(walkedIDs, d.SourceID)
 		}
 
-		processed := 0
-		for _, d := range docs {
-			if limit > 0 && processed >= limit {
-				break
-			}
-			if dry {
-				lg.Info("dry-run would index git docs",
-					zap.String("source_id", d.SourceID),
-					zap.String("title", d.Title),
-					zap.String("repo", s.Repo))
-				processed++
-				continue
-			}
-			if ierr := docsPipe.Index(ctx, d); ierr != nil {
-				lg.Error("index git doc failed", zap.Error(ierr), zap.String("source_id", d.SourceID))
-				anyErr = true
-				continue
-			}
-			processed++
+		batch := docs
+		if limit > 0 && limit < len(batch) {
+			batch = batch[:limit]
+		}
+		processed, errFound := indexBatch(ctx, lg, docsPipe, batch, dry, "git docs")
+		if errFound {
+			anyErr = true
 		}
 
 		if !dry && prune && limit <= 0 {
@@ -150,25 +183,13 @@ func (r *runner) runGit(ctx context.Context, reset bool, limit int, dry, prune b
 				continue
 			}
 
-			processed := 0
-			for _, d := range res.Documents {
-				if limit > 0 && processed >= limit {
-					break
-				}
-				if dry {
-					lg.Info("dry-run would index git commits",
-						zap.String("source_id", d.SourceID),
-						zap.String("title", d.Title),
-						zap.String("repo", s.Repo))
-					processed++
-					continue
-				}
-				if ierr := commitsPipe.Index(ctx, d); ierr != nil {
-					lg.Error("index git commit failed", zap.Error(ierr), zap.String("source_id", d.SourceID))
-					anyErr = true
-					continue
-				}
-				processed++
+			commitBatch := res.Documents
+			if limit > 0 && limit < len(commitBatch) {
+				commitBatch = commitBatch[:limit]
+			}
+			processed, errFound := indexBatch(ctx, lg, commitsPipe, commitBatch, dry, "git commits")
+			if errFound {
+				anyErr = true
 			}
 
 			cursorJSON, _ := gitingest.MarshalCursor(res.NextCursor)
@@ -274,7 +295,8 @@ func (r *runner) runGitLabAPI(ctx context.Context, p *pipeline.Pipeline, since t
 	db := r.db
 	vectors := r.vectors
 
-	if cfg.GitLab.BaseURL == "" || cfg.GitLab.Token == "" || cfg.GitLab.Projects == "" {
+	projects := gitLabProjectRefs(cfg.GitLab.Projects)
+	if cfg.GitLab.BaseURL == "" || cfg.GitLab.Token == "" || len(projects) == 0 {
 		lg.Info("gitlab not configured")
 		return errNotConfigured
 	}
@@ -290,7 +312,7 @@ func (r *runner) runGitLabAPI(ctx context.Context, p *pipeline.Pipeline, since t
 	fetcher, err := gitlabingest.New(gitlabingest.Options{
 		BaseURL:    cfg.GitLab.BaseURL,
 		Token:      cfg.GitLab.Token,
-		Projects:   cfg.GitLab.Projects,
+		Projects:   projects,
 		HTTPClient: httpClient,
 	})
 	if err != nil {
@@ -337,24 +359,21 @@ func (r *runner) runGitLabAPI(ctx context.Context, p *pipeline.Pipeline, since t
 				break
 			}
 
-			for _, d := range res.Documents {
-				if limit > 0 && processed >= limit {
+			pageBatch := res.Documents
+			if limit > 0 {
+				remaining := limit - processed
+				if remaining <= 0 {
 					limReached = true
-					break
+					pageBatch = nil
+				} else if remaining < len(pageBatch) {
+					pageBatch = pageBatch[:remaining]
+					limReached = true
 				}
-				if dry {
-					lg.Info("dry-run would index gitlab "+resourceName,
-						zap.String("source_id", d.SourceID),
-						zap.String("title", d.Title))
-					processed++
-					continue
-				}
-				if ierr := p.Index(ctx, d); ierr != nil {
-					lg.Error("index gitlab "+resourceName+" failed", zap.Error(ierr), zap.String("source_id", d.SourceID))
-					anyErr = true
-					continue
-				}
-				processed++
+			}
+			n, errFound := indexBatch(ctx, lg, p, pageBatch, dry, "gitlab "+resourceName)
+			processed += n
+			if errFound {
+				anyErr = true
 			}
 
 			if res.NextCursor.UpdatedAfter > maxObserved {
@@ -446,7 +465,7 @@ func (r *runner) runJira(ctx context.Context, p *pipeline.Pipeline, since time.T
 	if err != nil {
 		return errors.Wrap(err, "jira new fetcher")
 	}
-	projects := splitCSV(jc.Projects)
+	projects := jiraProjectKeys(jc.Projects)
 	authStatus, err := fetcher.CheckAuth(ctx, projects)
 	if err != nil {
 		return errors.Wrap(err, "jira preflight")
@@ -477,21 +496,19 @@ func (r *runner) runJira(ctx context.Context, p *pipeline.Pipeline, since time.T
 		Projects: projects,
 		PageSize: 100,
 	}, cur, func(ctx context.Context, docs []index.Document, nextCur jiraingest.Cursor) error {
-		for _, d := range docs {
-			if limit > 0 && processed >= limit {
-				return errLimitReached
+		if limit > 0 && processed >= limit {
+			return errLimitReached
+		}
+		batch := docs
+		if limit > 0 {
+			if remaining := limit - processed; remaining < len(batch) {
+				batch = batch[:remaining]
 			}
-			if dry {
-				lg.Info("dry-run would index jira", zap.String("source_id", d.SourceID), zap.String("title", d.Title))
-				processed++
-				continue
-			}
-			if ierr := p.Index(ctx, d); ierr != nil {
-				lg.Error("index jira doc failed", zap.Error(ierr), zap.String("source_id", d.SourceID))
-				anyErr = true
-				continue
-			}
-			processed++
+		}
+		n, errFound := indexBatch(ctx, lg, p, batch, dry, "jira")
+		processed += n
+		if errFound {
+			anyErr = true
 		}
 		curStr, _ := json.Marshal(nextCur)
 		now := time.Now()
@@ -563,7 +580,7 @@ func (r *runner) runTelegram(ctx context.Context, p *pipeline.Pipeline, since ti
 			return errors.Wrap(err, "new backfiller")
 		}
 
-		chats := parseMonitorChats(tc.MonitorChats)
+		chats := telegramChats(tc.MonitorChats)
 		if len(chats) == 0 {
 			lg.Info("telegram: no monitor chats; nothing to do")
 			return nil
@@ -590,21 +607,7 @@ func (r *runner) runTelegram(ctx context.Context, p *pipeline.Pipeline, since ti
 		return errors.Wrap(runErr, "telegram client run")
 	}
 
-	processed := 0
-	anyErr := false
-	for _, d := range result.Documents {
-		if dry {
-			lg.Info("dry-run would index telegram", zap.String("source_id", d.SourceID))
-			processed++
-			continue
-		}
-		if err := p.Index(ctx, d); err != nil {
-			lg.Error("index telegram doc failed", zap.Error(err), zap.String("source_id", d.SourceID))
-			anyErr = true
-			continue
-		}
-		processed++
-	}
+	processed, anyErr := indexBatch(ctx, lg, p, result.Documents, dry, "telegram")
 
 	nextCurStr := ""
 	if result.NextCursor.PerChat != nil {
@@ -776,36 +779,37 @@ func loadTelegramCursor(ctx context.Context, db *ent.Client, src string) (telegr
 	return telegramingest.DecodeCursor(ss.LastCursor)
 }
 
-func parseMonitorChats(s string) []telegramingest.ChatSpec {
-	if s == "" {
-		return nil
-	}
-	var out []telegramingest.ChatSpec
-	for p := range strings.SplitSeq(s, ",") {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
+func gitLabProjectRefs(projects []config.GitLabProject) []string {
+	out := make([]string, 0, len(projects))
+	for _, project := range projects {
+		if project.Ref != "" {
+			out = append(out, project.Ref)
 		}
-		id, err := strconv.ParseInt(p, 10, 64)
-		if err != nil {
-			continue
-		}
-		out = append(out, telegramingest.ChatSpec{ID: id})
 	}
 	return out
 }
 
-func splitCSV(s string) []string {
-	if s == "" {
-		return nil
-	}
-	parts := strings.Split(s, ",")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
+func jiraProjectKeys(projects []config.JiraProject) []string {
+	out := make([]string, 0, len(projects))
+	for _, project := range projects {
+		if project.Key != "" {
+			out = append(out, project.Key)
 		}
+	}
+	return out
+}
+
+func telegramChats(chats []config.TelegramChat) []telegramingest.ChatSpec {
+	out := make([]telegramingest.ChatSpec, 0, len(chats))
+	for _, chat := range chats {
+		if chat.ID == 0 {
+			continue
+		}
+		out = append(out, telegramingest.ChatSpec{
+			ID:       chat.ID,
+			Username: chat.Username,
+			Limit:    chat.Limit,
+		})
 	}
 	return out
 }

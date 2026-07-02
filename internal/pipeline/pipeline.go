@@ -175,16 +175,10 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 		}
 	}
 
-	if err := p.persist(ctx, doc, chunks, qdrantIDs); err != nil {
-		p.metrics.documents.Add(ctx, 1,
-			metric.WithAttributes(
-				attribute.String("source", string(doc.Source)),
-				attribute.String("status", "error"),
-			),
-		)
-		return errors.Wrap(err, "persist")
-	}
-
+	// Embed before touching Postgres: if embedding or the vector upsert fails,
+	// nothing is persisted, so a retry re-chunks and re-embeds instead of being
+	// skipped by the "document exists" check above with un-embedded chunks stuck
+	// forever.
 	if p.vectors != nil && p.embedder != nil && len(toEmbed) > 0 {
 		start := time.Now()
 		if err := p.embed(ctx, toEmbed); err != nil {
@@ -197,6 +191,19 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 			return errors.Wrap(err, "embed")
 		}
 		p.metrics.embedDur.Record(ctx, time.Since(start).Seconds())
+		for i := range toEmbed {
+			qdrantIDs[toEmbed[i].ID] = toEmbed[i].ID
+		}
+	}
+
+	if err := p.persist(ctx, doc, chunks, qdrantIDs); err != nil {
+		p.metrics.documents.Add(ctx, 1,
+			metric.WithAttributes(
+				attribute.String("source", string(doc.Source)),
+				attribute.String("status", "error"),
+			),
+		)
+		return errors.Wrap(err, "persist")
 	}
 
 	if p.vectors != nil && len(staleIDs) > 0 {
@@ -279,6 +286,10 @@ func (p *Pipeline) persist(ctx context.Context, doc index.Document, chunks []ind
 	})
 }
 
+// embed produces vectors for chunks and upserts them into Qdrant. It does not
+// touch Postgres — the caller records the resulting qdrant_point_id (== chunk
+// ID) when it persists the chunks, so a failure here leaves no DB trace to
+// clean up on retry.
 func (p *Pipeline) embed(ctx context.Context, chunks []index.Chunk) error {
 	texts := make([]string, len(chunks))
 	for i := range chunks {
@@ -290,14 +301,6 @@ func (p *Pipeline) embed(ctx context.Context, chunks []index.Chunk) error {
 	}
 	if err := p.vectors.Upsert(ctx, chunks, vectors); err != nil {
 		return errors.Wrap(err, "upsert vectors")
-	}
-	for i := range chunks {
-		if err := p.db.Chunk.Update().
-			Where(chunk.ID(chunks[i].ID)).
-			SetQdrantPointID(chunks[i].ID).
-			Exec(ctx); err != nil {
-			return errors.Wrap(err, "set qdrant point id")
-		}
 	}
 	return nil
 }
