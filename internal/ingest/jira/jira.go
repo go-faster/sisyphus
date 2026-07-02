@@ -367,6 +367,20 @@ func (f *Fetcher) CheckAuth(ctx context.Context, projects []string) (AuthStatus,
 	return status, nil
 }
 
+func formatErrorBody(resp *http.Response, body []byte) string {
+	if resp.StatusCode == http.StatusUnauthorized {
+		return "unauthorized"
+	}
+	if strings.Contains(resp.Header.Get("Content-Type"), "text/html") {
+		return "html response hidden"
+	}
+	s := string(body)
+	if len(s) > 256 {
+		return s[:256] + "..."
+	}
+	return s
+}
+
 func (f *Fetcher) doPreflight(req *http.Request, op string) ([]byte, error) {
 	resp, err := f.httpClient.Do(req)
 	if err != nil {
@@ -379,7 +393,7 @@ func (f *Fetcher) doPreflight(req *http.Request, op string) ([]byte, error) {
 		return nil, errors.Wrap(err, "read "+op+" response")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, errors.Errorf("%s status %d: %s", op, resp.StatusCode, string(body))
+		return nil, errors.Errorf("%s status %d: %s", op, resp.StatusCode, formatErrorBody(resp, body))
 	}
 	return body, nil
 }
@@ -425,7 +439,7 @@ func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions, cursor Cursor) (
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return FetchResult{}, fmt.Errorf("jira search status %d: %s", resp.StatusCode, string(body))
+		return FetchResult{}, fmt.Errorf("jira search status %d: %s", resp.StatusCode, formatErrorBody(resp, body))
 	}
 
 	var searchResp jiraSearchResponse
