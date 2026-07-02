@@ -10,8 +10,9 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/go-faster/sisyphus/internal/ent/document"
 	"github.com/google/uuid"
+
+	"github.com/go-faster/sisyphus/internal/ent/document"
 )
 
 // Document is the model entity for the Document schema.

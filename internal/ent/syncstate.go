@@ -9,8 +9,9 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 	"github.com/google/uuid"
+
+	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 )
 
 // SyncState is the model entity for the SyncState schema.

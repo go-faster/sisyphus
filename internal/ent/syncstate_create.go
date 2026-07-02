@@ -12,8 +12,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 	"github.com/google/uuid"
+
+	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 )
 
 // SyncStateCreate is the builder for creating a SyncState entity.

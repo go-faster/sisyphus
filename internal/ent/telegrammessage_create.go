@@ -12,8 +12,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/go-faster/sisyphus/internal/ent/telegrammessage"
 	"github.com/google/uuid"
+
+	"github.com/go-faster/sisyphus/internal/ent/telegrammessage"
 )
 
 // TelegramMessageCreate is the builder for creating a TelegramMessage entity.
