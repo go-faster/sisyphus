@@ -17,10 +17,10 @@ type retrievalMetrics struct {
 }
 
 func newRetrievalMetrics(mp metric.MeterProvider) (*retrievalMetrics, error) {
-	meter := mp.Meter("github.com/go-faster/scpbot/retrieval")
+	meter := mp.Meter("github.com/go-faster/sisyphus/retrieval")
 
 	searches, err := meter.Int64Counter(
-		"scpbot.retrieval.searches",
+		"sisyphus.retrieval.searches",
 		metric.WithDescription("Count of searches per backend and status"),
 	)
 	if err != nil {
@@ -28,7 +28,7 @@ func newRetrievalMetrics(mp metric.MeterProvider) (*retrievalMetrics, error) {
 	}
 
 	searchDur, err := meter.Float64Histogram(
-		"scpbot.retrieval.search.duration",
+		"sisyphus.retrieval.search.duration",
 		metric.WithDescription("Duration of retrieval search"),
 		metric.WithUnit("s"),
 	)
@@ -36,7 +36,7 @@ func newRetrievalMetrics(mp metric.MeterProvider) (*retrievalMetrics, error) {
 		return nil, err
 	}
 	backendDur, err := meter.Float64Histogram(
-		"scpbot.retrieval.backend.duration",
+		"sisyphus.retrieval.backend.duration",
 		metric.WithDescription("Duration of retrieval backend searches"),
 		metric.WithUnit("s"),
 	)
@@ -44,21 +44,21 @@ func newRetrievalMetrics(mp metric.MeterProvider) (*retrievalMetrics, error) {
 		return nil, err
 	}
 	backendResults, err := meter.Int64Counter(
-		"scpbot.retrieval.backend.results",
+		"sisyphus.retrieval.backend.results",
 		metric.WithDescription("Count of retrieval results returned by backend"),
 	)
 	if err != nil {
 		return nil, err
 	}
 	results, err := meter.Int64Counter(
-		"scpbot.retrieval.results",
+		"sisyphus.retrieval.results",
 		metric.WithDescription("Count of final merged retrieval results"),
 	)
 	if err != nil {
 		return nil, err
 	}
 	emptyResults, err := meter.Int64Counter(
-		"scpbot.retrieval.empty_results",
+		"sisyphus.retrieval.empty_results",
 		metric.WithDescription("Count of retrieval calls that returned no results"),
 	)
 	if err != nil {

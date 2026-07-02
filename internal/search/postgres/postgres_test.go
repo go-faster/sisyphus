@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/go-faster/scpbot/internal/index"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 // TestBuildQuery tests the pure query-building function.
@@ -178,11 +178,11 @@ func TestBuildQuery(t *testing.T) {
 	}
 }
 
-// TestSearchSkipWithoutDB skips if SCPBOT_TEST_DSN is not set.
+// TestSearchSkipWithoutDB skips if SISYPHUS_TEST_DSN is not set.
 func TestSearchSkipWithoutDB(t *testing.T) {
-	dsn := os.Getenv("SCPBOT_TEST_DSN")
+	dsn := os.Getenv("SISYPHUS_TEST_DSN")
 	if dsn == "" {
-		t.Skip("set SCPBOT_TEST_DSN to run DB tests")
+		t.Skip("set SISYPHUS_TEST_DSN to run DB tests")
 	}
 
 	db, err := sql.Open("pgx", dsn)
@@ -217,9 +217,9 @@ func TestSearchSkipWithoutDB(t *testing.T) {
 
 // TestMigrate tests that migrations run without error.
 func TestMigrateSkipWithoutDB(t *testing.T) {
-	dsn := os.Getenv("SCPBOT_TEST_DSN")
+	dsn := os.Getenv("SISYPHUS_TEST_DSN")
 	if dsn == "" {
-		t.Skip("set SCPBOT_TEST_DSN to run DB tests")
+		t.Skip("set SISYPHUS_TEST_DSN to run DB tests")
 	}
 
 	db, err := sql.Open("pgx", dsn)

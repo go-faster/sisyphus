@@ -17,18 +17,18 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/scpbot/internal/config"
-	"github.com/go-faster/scpbot/internal/embed"
-	"github.com/go-faster/scpbot/internal/ent"
-	entmigrate "github.com/go-faster/scpbot/internal/ent/migrate"
-	"github.com/go-faster/scpbot/internal/index"
-	"github.com/go-faster/scpbot/internal/llm/openrouter"
-	"github.com/go-faster/scpbot/internal/llm/stub"
-	"github.com/go-faster/scpbot/internal/netclient"
-	"github.com/go-faster/scpbot/internal/pipeline"
-	"github.com/go-faster/scpbot/internal/retrieval"
-	pgsearch "github.com/go-faster/scpbot/internal/search/postgres"
-	"github.com/go-faster/scpbot/internal/search/qdrant"
+	"github.com/go-faster/sisyphus/internal/config"
+	"github.com/go-faster/sisyphus/internal/embed"
+	"github.com/go-faster/sisyphus/internal/ent"
+	entmigrate "github.com/go-faster/sisyphus/internal/ent/migrate"
+	"github.com/go-faster/sisyphus/internal/index"
+	"github.com/go-faster/sisyphus/internal/llm/openrouter"
+	"github.com/go-faster/sisyphus/internal/llm/stub"
+	"github.com/go-faster/sisyphus/internal/netclient"
+	"github.com/go-faster/sisyphus/internal/pipeline"
+	"github.com/go-faster/sisyphus/internal/retrieval"
+	pgsearch "github.com/go-faster/sisyphus/internal/search/postgres"
+	"github.com/go-faster/sisyphus/internal/search/qdrant"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // register pgx driver
 )
@@ -78,7 +78,7 @@ type NewOptions struct {
 	MeterProvider  metric.MeterProvider
 
 	// RunMigrations applies pending schema migrations on startup. Only one
-	// long-running service should set this — scpbot — so migrations run
+	// long-running service should set this — sisyphus — so migrations run
 	// exactly once per deploy instead of racing across every process/replica
 	// sharing the database.
 	RunMigrations bool
@@ -94,7 +94,7 @@ func (opts *NewOptions) setDefaults() {
 }
 
 // NewServices opens the database, optionally runs migrations, and wires the
-// embedder and optional vector store. runMigrations is false for scpingest:
+// embedder and optional vector store. runMigrations is false for ssingest:
 // it runs frequently (cron, concurrently per source) and must not race
 // schema migrations against itself or the long-running services.
 func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trace.TracerProvider, mp metric.MeterProvider, runMigrations bool) (*Services, error) {

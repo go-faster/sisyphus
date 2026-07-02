@@ -1,4 +1,4 @@
-# scpbot
+# sisyphus
 
 Internal support/dev assistant. Ingests knowledge sources (git repo docs and commits,
 GitLab REST API issues/MRs/releases, Jira issues, Telegram support threads) into a
@@ -26,9 +26,9 @@ Never store only embeddings — always keep Documents+Chunks in Postgres so we c
 ## Layout
 
 ```
-cmd/scpbot              main; wires everything via go-faster/sdk app.Run
-cmd/scpmcp              MCP server entrypoint (Streamable HTTP or stdio)
-cmd/scpingest           one-shot ingestion CLI: git|gitlab|jira|telegram|all subcommands,
+cmd/sisyphus              main; wires everything via go-faster/sdk app.Run
+cmd/ssmcp              MCP server entrypoint (Streamable HTTP or stdio)
+cmd/ssingest           one-shot ingestion CLI: git|gitlab|jira|telegram|all subcommands,
                         --reset <src|all> (--yes-i-mean-all for all), --since, --limit, --dry-run.
                         Wires its dependencies inline (does NOT reuse internal/wire).
 internal/index          SHARED CONTRACT: Document, Chunk, Chunker, Embedder, Searcher, constants. Do not add deps here.
@@ -53,7 +53,7 @@ internal/pipeline       Pipeline.Index: idempotent doc+chunk upsert (ent) + embe
 internal/bot            gotd bot, /context handler
 internal/ent            ent schema + generated code (Document, Chunk, SupportRequest,
                         TelegramMessage, SyncState)
-internal/wire           shared wiring for cmd/scpbot, cmd/scpmcp, and cmd/scpingest (Services + Components)
+internal/wire           shared wiring for cmd/sisyphus, cmd/ssmcp, and cmd/ssingest (Services + Components)
 internal/oas            ogen generated code
 api/openapi.yaml        OpenAPI spec (source for ogen)
 deploy/                 docker-compose + configs + .env.example
@@ -103,8 +103,8 @@ quality demands it.
 `internal/ent/schema` is the single source of truth for the DB schema. Versioned SQL
 migration files live in `internal/ent/migrate/migrations/` and are applied at runtime
 by the hand-written `Runner` in `internal/ent/migrate/runner.go` (tracked via a
-`schema_migrations` table). Only `scpbot` runs migrations
-(`wire.NewOptions.RunMigrations: true`); `scpmcp` and `scpingest` connect without
+`schema_migrations` table). Only `sisyphus` runs migrations
+(`wire.NewOptions.RunMigrations: true`); `ssmcp` and `ssingest` connect without
 migrating, so schema changes apply exactly once per deploy instead of racing across
 every process/replica sharing the database.
 
@@ -137,11 +137,11 @@ Down`-style comment will actually execute.
 - Format: `golangci-lint fmt ./...` (do not hand-format).
 - Lint: `golangci-lint run --fix ./...` (`--fix` can automatically fix some issues).
 - Test: `make test` (or `make test_fast` = `go test ./...`).
-- Tests must be hermetic, fast (no real sleeps), non-flaky, cross-platform. DB-backed tests use testcontainers or are skipped when no DB is available — convention: skip when `SCPBOT_TEST_DB` (postgres DSN) is unset.
+- Tests must be hermetic, fast (no real sleeps), non-flaky, cross-platform. DB-backed tests use testcontainers or are skipped when no DB is available — convention: skip when `SISYPHUS_TEST_DB` (postgres DSN) is unset.
 
 ## Ingestion
 
-`make ingest` (= `go run ./cmd/scpingest all`) runs incremental backfills for every
+`make ingest` (= `go run ./cmd/ssingest all`) runs incremental backfills for every
 configured source. Per-source: `make ingest-git`, `make ingest-gitlab`, `make ingest-jira`,
 `make ingest-telegram`.
 

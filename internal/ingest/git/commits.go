@@ -13,7 +13,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/scpbot/internal/index"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 // CommitCursor tracks incremental commit ingestion state.

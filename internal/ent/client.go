@@ -9,18 +9,18 @@ import (
 	"log"
 	"reflect"
 
-	"github.com/go-faster/scpbot/internal/ent/migrate"
+	"github.com/go-faster/sisyphus/internal/ent/migrate"
 	"github.com/google/uuid"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
-	"github.com/go-faster/scpbot/internal/ent/chunk"
-	"github.com/go-faster/scpbot/internal/ent/document"
-	"github.com/go-faster/scpbot/internal/ent/supportrequest"
-	"github.com/go-faster/scpbot/internal/ent/syncstate"
-	"github.com/go-faster/scpbot/internal/ent/telegrammessage"
+	"github.com/go-faster/sisyphus/internal/ent/chunk"
+	"github.com/go-faster/sisyphus/internal/ent/document"
+	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
+	"github.com/go-faster/sisyphus/internal/ent/syncstate"
+	"github.com/go-faster/sisyphus/internal/ent/telegrammessage"
 )
 
 // Client is the client that holds all ent builders.

@@ -18,7 +18,7 @@ import (
 	"github.com/go-faster/sdk/zctx"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/scpbot/internal/index"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 // docExtensions are the file types treated as docs.

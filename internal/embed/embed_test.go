@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/go-faster/scpbot/internal/config"
-	"github.com/go-faster/scpbot/internal/embed/ollama"
-	openrouterembed "github.com/go-faster/scpbot/internal/embed/openrouter"
+	"github.com/go-faster/sisyphus/internal/config"
+	"github.com/go-faster/sisyphus/internal/embed/ollama"
+	openrouterembed "github.com/go-faster/sisyphus/internal/embed/openrouter"
 )
 
 func TestNew_DefaultOllama(t *testing.T) {

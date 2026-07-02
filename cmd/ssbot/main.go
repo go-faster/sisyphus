@@ -1,4 +1,4 @@
-// Command scpbot runs the ingestion/index API and the Telegram /context bot.
+// Command sisyphus runs the ingestion/index API and the Telegram /context bot.
 package main
 
 import (
@@ -14,11 +14,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/scpbot/internal/api"
-	"github.com/go-faster/scpbot/internal/bot"
-	"github.com/go-faster/scpbot/internal/config"
-	"github.com/go-faster/scpbot/internal/oas"
-	"github.com/go-faster/scpbot/internal/wire"
+	"github.com/go-faster/sisyphus/internal/api"
+	"github.com/go-faster/sisyphus/internal/bot"
+	"github.com/go-faster/sisyphus/internal/config"
+	"github.com/go-faster/sisyphus/internal/oas"
+	"github.com/go-faster/sisyphus/internal/wire"
 )
 
 func main() {
@@ -26,7 +26,7 @@ func main() {
 		func(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
 			ctx = zctx.Base(ctx, lg)
 			cmd := &cobra.Command{
-				Use:   "scpbot",
+				Use:   "sisyphus",
 				Short: "runs the ingestion/index API and the Telegram /context bot",
 				RunE: func(cmd *cobra.Command, _ []string) error {
 					cfg, err := config.Load()
@@ -41,8 +41,8 @@ func main() {
 			cmd.SetContext(ctx)
 			return cmd.Execute()
 		},
-		app.WithServiceName("scpmcp"),
-		app.WithServiceNamespace("scpbot"),
+		app.WithServiceName("ssmcp"),
+		app.WithServiceNamespace("sisyphus"),
 	)
 }
 

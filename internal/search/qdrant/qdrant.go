@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
 
-	"github.com/go-faster/scpbot/internal/index"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 // Config holds Qdrant client configuration.

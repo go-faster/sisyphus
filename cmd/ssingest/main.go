@@ -16,7 +16,7 @@ func main() {
 			root.SetContext(ctx)
 			return root.Execute()
 		},
-		app.WithServiceName("scpingest"),
-		app.WithServiceNamespace("scpbot"),
+		app.WithServiceName("ssingest"),
+		app.WithServiceNamespace("sisyphus"),
 	)
 }

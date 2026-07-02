@@ -21,7 +21,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/scpbot/internal/index"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 // authorityWeight maps a source authority to a multiplicative boost (plan §11).
@@ -80,7 +80,7 @@ func New(lexical, vector index.Searcher, fetcher ChunkFetcher, opts ServiceOptio
 		lexical: lexical,
 		vector:  vector,
 		fetcher: fetcher,
-		tracer:  opts.TracerProvider.Tracer("github.com/go-faster/scpbot/retrieval"),
+		tracer:  opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/retrieval"),
 		m:       m,
 	}, nil
 }

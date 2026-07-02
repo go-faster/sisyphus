@@ -14,16 +14,16 @@ type botMetrics struct {
 }
 
 func newBotMetrics(mp metric.MeterProvider) (*botMetrics, error) {
-	meter := mp.Meter("github.com/go-faster/scpbot/bot")
+	meter := mp.Meter("github.com/go-faster/sisyphus/bot")
 	requests, err := meter.Int64Counter(
-		"scpbot.bot.context.requests",
+		"sisyphus.bot.context.requests",
 		metric.WithDescription("Count of Telegram context requests by status"),
 	)
 	if err != nil {
 		return nil, err
 	}
 	duration, err := meter.Float64Histogram(
-		"scpbot.bot.context.duration",
+		"sisyphus.bot.context.duration",
 		metric.WithDescription("Duration of Telegram context requests"),
 		metric.WithUnit("s"),
 	)
@@ -31,7 +31,7 @@ func newBotMetrics(mp metric.MeterProvider) (*botMetrics, error) {
 		return nil, err
 	}
 	results, err := meter.Int64Counter(
-		"scpbot.bot.context.results",
+		"sisyphus.bot.context.results",
 		metric.WithDescription("Count of retrieval results used by Telegram context requests"),
 	)
 	if err != nil {

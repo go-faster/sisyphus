@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: scpbot API
+  title: sisyphus API
   description: Hybrid-search internal support assistant.
   version: 0.1.0
 paths:

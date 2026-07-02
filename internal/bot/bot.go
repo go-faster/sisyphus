@@ -21,9 +21,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/scpbot/internal/index"
-	"github.com/go-faster/scpbot/internal/telemetry"
-	"github.com/go-faster/scpbot/internal/wire"
+	"github.com/go-faster/sisyphus/internal/index"
+	"github.com/go-faster/sisyphus/internal/telemetry"
+	"github.com/go-faster/sisyphus/internal/wire"
 )
 
 // Retriever is the retrieval interface (alias to wire.Retriever).
@@ -61,7 +61,7 @@ func New(_ context.Context, cfg Config, r Retriever, a index.Answerer, tp trace.
 		retriever: r,
 		answerer:  a,
 		tp:        tp,
-		tracer:    tp.Tracer("github.com/go-faster/scpbot/bot"),
+		tracer:    tp.Tracer("github.com/go-faster/sisyphus/bot"),
 		m:         m,
 	}
 }
@@ -148,7 +148,7 @@ func (b *Bot) handle(ctx context.Context, query string) (string, error) {
 }
 
 // parseContextCommand extracts the query from a "/context <query>" message.
-// It tolerates a bot mention suffix, e.g. "/context@scpbot foo".
+// It tolerates a bot mention suffix, e.g. "/context@sisyphus foo".
 func parseContextCommand(text string) (string, bool) {
 	text = strings.TrimSpace(text)
 	if !strings.HasPrefix(text, "/context") {

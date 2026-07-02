@@ -3,7 +3,7 @@ package stub
 import (
 	"testing"
 
-	"github.com/go-faster/scpbot/internal/index"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 // TestSummarizerBasic tests basic summarization without truncation.

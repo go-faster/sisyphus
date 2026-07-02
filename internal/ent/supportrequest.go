@@ -10,7 +10,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/go-faster/scpbot/internal/ent/supportrequest"
+	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
 	"github.com/google/uuid"
 )
 

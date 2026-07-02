@@ -5,12 +5,12 @@ package enttest
 import (
 	"context"
 
-	"github.com/go-faster/scpbot/internal/ent"
+	"github.com/go-faster/sisyphus/internal/ent"
 	// required by schema hooks.
-	_ "github.com/go-faster/scpbot/internal/ent/runtime"
+	_ "github.com/go-faster/sisyphus/internal/ent/runtime"
 
 	"entgo.io/ent/dialect/sql/schema"
-	"github.com/go-faster/scpbot/internal/ent/migrate"
+	"github.com/go-faster/sisyphus/internal/ent/migrate"
 )
 
 type (

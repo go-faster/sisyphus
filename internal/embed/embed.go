@@ -10,11 +10,11 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/go-faster/scpbot/internal/config"
-	"github.com/go-faster/scpbot/internal/embed/ollama"
-	openrouterembed "github.com/go-faster/scpbot/internal/embed/openrouter"
-	"github.com/go-faster/scpbot/internal/index"
-	"github.com/go-faster/scpbot/internal/netclient"
+	"github.com/go-faster/sisyphus/internal/config"
+	"github.com/go-faster/sisyphus/internal/embed/ollama"
+	openrouterembed "github.com/go-faster/sisyphus/internal/embed/openrouter"
+	"github.com/go-faster/sisyphus/internal/index"
+	"github.com/go-faster/sisyphus/internal/netclient"
 )
 
 // NewOptions configures the embedding provider factory.

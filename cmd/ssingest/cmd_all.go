@@ -9,11 +9,11 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
-	chunkgitlab "github.com/go-faster/scpbot/internal/chunk/gitlab"
-	chunkjira "github.com/go-faster/scpbot/internal/chunk/jira"
-	chunktg "github.com/go-faster/scpbot/internal/chunk/telegram"
-	"github.com/go-faster/scpbot/internal/index"
-	"github.com/go-faster/scpbot/internal/pipeline"
+	chunkgitlab "github.com/go-faster/sisyphus/internal/chunk/gitlab"
+	chunkjira "github.com/go-faster/sisyphus/internal/chunk/jira"
+	chunktg "github.com/go-faster/sisyphus/internal/chunk/telegram"
+	"github.com/go-faster/sisyphus/internal/index"
+	"github.com/go-faster/sisyphus/internal/pipeline"
 )
 
 func newAllCmd() *cobra.Command {

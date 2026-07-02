@@ -13,8 +13,8 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
-	"github.com/go-faster/scpbot/internal/ent"
-	entmigrate "github.com/go-faster/scpbot/internal/ent/migrate"
+	"github.com/go-faster/sisyphus/internal/ent"
+	entmigrate "github.com/go-faster/sisyphus/internal/ent/migrate"
 )
 
 func TestMigrationsE2E(t *testing.T) {
@@ -23,9 +23,9 @@ func TestMigrationsE2E(t *testing.T) {
 	ctx := t.Context()
 	container, err := tcpostgres.Run(ctx,
 		"postgres:17-alpine",
-		tcpostgres.WithDatabase("scpbot"),
-		tcpostgres.WithUsername("scpbot"),
-		tcpostgres.WithPassword("scpbot"),
+		tcpostgres.WithDatabase("sisyphus"),
+		tcpostgres.WithUsername("sisyphus"),
+		tcpostgres.WithPassword("sisyphus"),
 		tcpostgres.BasicWaitStrategies(),
 	)
 	require.NoError(t, err)

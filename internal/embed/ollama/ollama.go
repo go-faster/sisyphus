@@ -10,7 +10,7 @@ import (
 
 	"github.com/go-faster/errors"
 
-	"github.com/go-faster/scpbot/internal/index"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 // Embedder is an index.Embedder implementation backed by an Ollama server.

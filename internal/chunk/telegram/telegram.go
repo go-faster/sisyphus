@@ -7,7 +7,7 @@ import (
 	"context"
 	"maps"
 
-	"github.com/go-faster/scpbot/internal/index"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 // excerptRunes caps the raw excerpt so we never embed huge noisy chats (plan §4).

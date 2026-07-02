@@ -8,8 +8,8 @@ import (
 	"github.com/go-faster/errors"
 	"github.com/spf13/cobra"
 
-	chunkgitlab "github.com/go-faster/scpbot/internal/chunk/gitlab"
-	"github.com/go-faster/scpbot/internal/pipeline"
+	chunkgitlab "github.com/go-faster/sisyphus/internal/chunk/gitlab"
+	"github.com/go-faster/sisyphus/internal/pipeline"
 )
 
 func newGitLabCmd() *cobra.Command {

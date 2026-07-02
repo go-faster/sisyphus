@@ -22,7 +22,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
-	entmigrate "github.com/go-faster/scpbot/internal/ent/migrate"
+	entmigrate "github.com/go-faster/sisyphus/internal/ent/migrate"
 )
 
 func init() {
@@ -48,9 +48,9 @@ func run() error {
 	ctx := context.Background()
 	container, err := tcpostgres.Run(ctx,
 		"postgres:17-alpine",
-		tcpostgres.WithDatabase("scpbot_migrate_scratch"),
-		tcpostgres.WithUsername("scpbot"),
-		tcpostgres.WithPassword("scpbot"),
+		tcpostgres.WithDatabase("sisyphus_migrate_scratch"),
+		tcpostgres.WithUsername("sisyphus"),
+		tcpostgres.WithPassword("sisyphus"),
 		tcpostgres.BasicWaitStrategies(),
 	)
 	if err != nil {

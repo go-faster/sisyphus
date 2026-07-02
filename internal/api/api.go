@@ -7,9 +7,9 @@ import (
 
 	"github.com/go-faster/errors"
 
-	"github.com/go-faster/scpbot/internal/index"
-	"github.com/go-faster/scpbot/internal/oas"
-	"github.com/go-faster/scpbot/internal/wire"
+	"github.com/go-faster/sisyphus/internal/index"
+	"github.com/go-faster/sisyphus/internal/oas"
+	"github.com/go-faster/sisyphus/internal/wire"
 )
 
 // Retriever is the retrieval interface (alias to wire.Retriever).

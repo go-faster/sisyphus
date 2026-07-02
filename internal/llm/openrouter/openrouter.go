@@ -63,7 +63,7 @@ func New(apiKey string, opts Options) *Client {
 	m, _ := newLLMMetrics(opts.MeterProvider)
 	return &Client{
 		oc:     openai.NewClient(ropts...),
-		tracer: opts.TracerProvider.Tracer("github.com/go-faster/scpbot/llm/openrouter"),
+		tracer: opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/llm/openrouter"),
 		m:      m,
 	}
 }
@@ -75,16 +75,16 @@ type llmMetrics struct {
 }
 
 func newLLMMetrics(mp metric.MeterProvider) (*llmMetrics, error) {
-	meter := mp.Meter("github.com/go-faster/scpbot/llm/openrouter")
+	meter := mp.Meter("github.com/go-faster/sisyphus/llm/openrouter")
 	calls, err := meter.Int64Counter(
-		"scpbot.llm.calls",
+		"sisyphus.llm.calls",
 		metric.WithDescription("LLM calls per operation, model, and status"),
 	)
 	if err != nil {
 		return nil, err
 	}
 	dur, err := meter.Float64Histogram(
-		"scpbot.llm.duration",
+		"sisyphus.llm.duration",
 		metric.WithDescription("LLM call duration"),
 		metric.WithUnit("s"),
 	)
@@ -92,7 +92,7 @@ func newLLMMetrics(mp metric.MeterProvider) (*llmMetrics, error) {
 		return nil, err
 	}
 	tokens, err := meter.Int64Counter(
-		"scpbot.llm.tokens",
+		"sisyphus.llm.tokens",
 		metric.WithDescription("LLM token usage by operation and type"),
 	)
 	if err != nil {

@@ -8,8 +8,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/go-faster/scpbot/internal/ent/chunk"
-	"github.com/go-faster/scpbot/internal/ent/predicate"
+	"github.com/go-faster/sisyphus/internal/ent/chunk"
+	"github.com/go-faster/sisyphus/internal/ent/predicate"
 )
 
 // ChunkDelete is the builder for deleting a Chunk entity.

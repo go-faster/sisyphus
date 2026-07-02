@@ -1,4 +1,4 @@
-module github.com/go-faster/scpbot
+module github.com/go-faster/sisyphus
 
 go 1.26.4
 

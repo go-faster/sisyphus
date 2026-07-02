@@ -18,10 +18,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/scpbot/internal/ent"
-	"github.com/go-faster/scpbot/internal/ent/chunk"
-	"github.com/go-faster/scpbot/internal/ent/document"
-	"github.com/go-faster/scpbot/internal/index"
+	"github.com/go-faster/sisyphus/internal/ent"
+	"github.com/go-faster/sisyphus/internal/ent/chunk"
+	"github.com/go-faster/sisyphus/internal/ent/document"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 // VectorStore is the subset of the Qdrant store the pipeline needs.
@@ -68,7 +68,7 @@ func New(db *ent.Client, chunker index.Chunker, embedder index.Embedder, vectors
 		chunker:  chunker,
 		embedder: embedder,
 		vectors:  vectors,
-		tracer:   opts.TracerProvider.Tracer("github.com/go-faster/scpbot/pipeline"),
+		tracer:   opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/pipeline"),
 		metrics:  m,
 		docLocks: newKeyLocker(),
 	}, nil

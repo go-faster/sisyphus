@@ -16,10 +16,10 @@ type pipelineMetrics struct {
 }
 
 func newPipelineMetrics(mp metric.MeterProvider) (*pipelineMetrics, error) {
-	meter := mp.Meter("github.com/go-faster/scpbot/pipeline")
+	meter := mp.Meter("github.com/go-faster/sisyphus/pipeline")
 
 	documents, err := meter.Int64Counter(
-		"scpbot.pipeline.documents",
+		"sisyphus.pipeline.documents",
 		metric.WithDescription("Count of processed documents by source and status"),
 	)
 	if err != nil {
@@ -27,7 +27,7 @@ func newPipelineMetrics(mp metric.MeterProvider) (*pipelineMetrics, error) {
 	}
 
 	chunks, err := meter.Int64Counter(
-		"scpbot.pipeline.chunks",
+		"sisyphus.pipeline.chunks",
 		metric.WithDescription("Count of chunks by embedding status"),
 	)
 	if err != nil {
@@ -35,7 +35,7 @@ func newPipelineMetrics(mp metric.MeterProvider) (*pipelineMetrics, error) {
 	}
 
 	embedDur, err := meter.Float64Histogram(
-		"scpbot.pipeline.embed.duration",
+		"sisyphus.pipeline.embed.duration",
 		metric.WithDescription("Duration of embedding operation"),
 		metric.WithUnit("s"),
 	)
@@ -43,7 +43,7 @@ func newPipelineMetrics(mp metric.MeterProvider) (*pipelineMetrics, error) {
 		return nil, err
 	}
 	phaseDur, err := meter.Float64Histogram(
-		"scpbot.pipeline.phase.duration",
+		"sisyphus.pipeline.phase.duration",
 		metric.WithDescription("Duration of pipeline phases"),
 		metric.WithUnit("s"),
 	)
@@ -51,7 +51,7 @@ func newPipelineMetrics(mp metric.MeterProvider) (*pipelineMetrics, error) {
 		return nil, err
 	}
 	lockWait, err := meter.Float64Histogram(
-		"scpbot.pipeline.lock_wait.duration",
+		"sisyphus.pipeline.lock_wait.duration",
 		metric.WithDescription("Duration waiting for per-document pipeline lock"),
 		metric.WithUnit("s"),
 	)

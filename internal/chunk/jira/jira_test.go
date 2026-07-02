@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-faster/scpbot/internal/index"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 func TestDocumentFromIssue(t *testing.T) {

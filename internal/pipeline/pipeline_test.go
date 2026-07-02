@@ -10,8 +10,8 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
-	"github.com/go-faster/scpbot/internal/ent"
-	"github.com/go-faster/scpbot/internal/index"
+	"github.com/go-faster/sisyphus/internal/ent"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 // fakeVectorStore records Upsert and Delete calls in memory.
@@ -75,9 +75,9 @@ func (testChunker) Chunk(_ context.Context, doc index.Document) ([]index.Chunk, 
 
 func openTestDB(t *testing.T) *ent.Client {
 	t.Helper()
-	dsn := os.Getenv("SCPBOT_TEST_DB")
+	dsn := os.Getenv("SISYPHUS_TEST_DB")
 	if dsn == "" {
-		t.Skip("SCPBOT_TEST_DB not set")
+		t.Skip("SISYPHUS_TEST_DB not set")
 	}
 
 	client, err := ent.Open("pgx", dsn)

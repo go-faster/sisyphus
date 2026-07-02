@@ -19,8 +19,8 @@ import (
 	"github.com/go-faster/sdk/zctx"
 	"go.uber.org/zap"
 
-	chunkjira "github.com/go-faster/scpbot/internal/chunk/jira"
-	"github.com/go-faster/scpbot/internal/index"
+	chunkjira "github.com/go-faster/sisyphus/internal/chunk/jira"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 // Options configures a Jira Fetcher.
@@ -291,7 +291,7 @@ func (f *Fetcher) buildAPIRequest(ctx context.Context, path string) (*http.Reque
 		return nil, errors.Wrap(err, "create request")
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "scpbot/ingest")
+	req.Header.Set("User-Agent", "sisyphus/ingest")
 
 	switch {
 	case f.pat != "":

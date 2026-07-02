@@ -8,8 +8,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/go-faster/scpbot/internal/config"
-	"github.com/go-faster/scpbot/internal/wire"
+	"github.com/go-faster/sisyphus/internal/config"
+	"github.com/go-faster/sisyphus/internal/wire"
 )
 
 var (
@@ -24,7 +24,7 @@ func newRoot(t *app.Telemetry) *cobra.Command {
 	globalMP = t.MeterProvider()
 
 	root := &cobra.Command{
-		Use:           "scpingest",
+		Use:           "ssingest",
 		Short:         "ingest knowledge sources",
 		SilenceUsage:  true,
 		SilenceErrors: true,

@@ -1,4 +1,4 @@
-// Package config loads scpbot configuration from YAML.
+// Package config loads sisyphus configuration from YAML.
 package config
 
 import (
@@ -221,7 +221,7 @@ func (s *Secret) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-// Load reads configuration from YAML. Set SCPBOT_CONFIG to choose the config
+// Load reads configuration from YAML. Set SISYPHUS_CONFIG to choose the config
 // file path; otherwise ./config.yaml is used when it exists.
 func Load() (Config, error) {
 	fc := defaultConfig()
@@ -264,7 +264,7 @@ func defaultConfig() fileConfig {
 }
 
 func configPath() string {
-	if path := os.Getenv("SCPBOT_CONFIG"); path != "" {
+	if path := os.Getenv("SISYPHUS_CONFIG"); path != "" {
 		return path
 	}
 	if _, err := os.Stat("config.yaml"); err == nil {

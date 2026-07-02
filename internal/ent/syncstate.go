@@ -9,7 +9,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/go-faster/scpbot/internal/ent/syncstate"
+	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 	"github.com/google/uuid"
 )
 

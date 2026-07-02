@@ -7,8 +7,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/go-faster/scpbot/internal/index"
-	"github.com/go-faster/scpbot/internal/llm/stub"
+	"github.com/go-faster/sisyphus/internal/index"
+	"github.com/go-faster/sisyphus/internal/llm/stub"
 )
 
 type fakeRetriever struct {

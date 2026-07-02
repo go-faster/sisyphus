@@ -14,9 +14,9 @@ import (
 	"github.com/go-faster/errors"
 	"github.com/google/uuid"
 
-	"github.com/go-faster/scpbot/internal/ent"
-	"github.com/go-faster/scpbot/internal/ent/chunk"
-	"github.com/go-faster/scpbot/internal/index"
+	"github.com/go-faster/sisyphus/internal/ent"
+	"github.com/go-faster/sisyphus/internal/ent/chunk"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 //go:embed migrations.sql

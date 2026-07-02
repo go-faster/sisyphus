@@ -9,8 +9,8 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/go-faster/scpbot/internal/ent/chunk"
-	"github.com/go-faster/scpbot/internal/ent/document"
+	"github.com/go-faster/sisyphus/internal/ent/chunk"
+	"github.com/go-faster/sisyphus/internal/ent/document"
 	"github.com/google/uuid"
 )
 

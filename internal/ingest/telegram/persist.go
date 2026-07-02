@@ -6,8 +6,8 @@ import (
 
 	"github.com/go-faster/errors"
 
-	"github.com/go-faster/scpbot/internal/ent"
-	"github.com/go-faster/scpbot/internal/ent/telegrammessage"
+	"github.com/go-faster/sisyphus/internal/ent"
+	"github.com/go-faster/sisyphus/internal/ent/telegrammessage"
 )
 
 const persistBatchSize = 500

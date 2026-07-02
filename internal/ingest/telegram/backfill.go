@@ -11,8 +11,8 @@ import (
 
 	gotdtelegram "github.com/gotd/td/telegram"
 
-	"github.com/go-faster/scpbot/internal/ent"
-	"github.com/go-faster/scpbot/internal/index"
+	"github.com/go-faster/sisyphus/internal/ent"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 const defaultPageSize = 100

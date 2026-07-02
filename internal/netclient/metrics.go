@@ -14,23 +14,23 @@ type clientMetrics struct {
 }
 
 func newClientMetrics(meterProvider metric.MeterProvider) (*clientMetrics, error) {
-	meter := meterProvider.Meter("github.com/go-faster/scpbot/netclient")
+	meter := meterProvider.Meter("github.com/go-faster/sisyphus/netclient")
 	requests, err := meter.Int64Counter(
-		"scpbot.netclient.requests",
+		"sisyphus.netclient.requests",
 		metric.WithDescription("Count of outbound HTTP requests per client and status code"),
 	)
 	if err != nil {
 		return nil, err
 	}
 	errors, err := meter.Int64Counter(
-		"scpbot.netclient.errors",
+		"sisyphus.netclient.errors",
 		metric.WithDescription("Count of outbound HTTP transport errors per client and type"),
 	)
 	if err != nil {
 		return nil, err
 	}
 	duration, err := meter.Float64Histogram(
-		"scpbot.netclient.duration",
+		"sisyphus.netclient.duration",
 		metric.WithDescription("Duration of outbound HTTP requests"),
 		metric.WithUnit("s"),
 	)

@@ -12,14 +12,14 @@ func TestLoadYAML(t *testing.T) {
 	clearEnv(t)
 
 	path := writeConfig(t, `database_dsn:
-  value: postgres://user:pass@localhost/scpbot?sslmode=disable
+  value: postgres://user:pass@localhost/sisyphus?sslmode=disable
 http_addr: :9090
 qdrant_addr: qdrant:6334
 embed_dim: 512
 git:
   work_dir: /tmp/git
   token:
-    env: TEST_SCPBOT_GIT_TOKEN
+    env: TEST_SISYPHUS_GIT_TOKEN
   repos:
     - root: /tmp/docs
       url: https://gitlab.example.com/group/docs.git
@@ -32,7 +32,7 @@ git:
 gitlab:
   base_url: https://gitlab.example.com
   token:
-    env: TEST_SCPBOT_GITLAB_TOKEN
+    env: TEST_SISYPHUS_GITLAB_TOKEN
   projects:
     - ref: group/docs
     - ref: "42"
@@ -44,7 +44,7 @@ jira:
     - key: TEST
 proxies:
   git:
-    env: TEST_SCPBOT_GIT_PROXY
+    env: TEST_SISYPHUS_GIT_PROXY
   jira:
     value: http://127.0.0.1:8080
   ollama:
@@ -53,7 +53,7 @@ proxies:
     value: http://127.0.0.1:8082
 telegram:
   app_id: 123
-  session_dir: /tmp/scpbot-session
+  session_dir: /tmp/sisyphus-session
   monitor_chats:
     - id: -100123
       username: support-chat
@@ -61,19 +61,19 @@ telegram:
 openrouter:
   model: test-model
 `)
-	t.Setenv("SCPBOT_CONFIG", path)
-	t.Setenv("TEST_SCPBOT_GIT_TOKEN", "git-token")
-	t.Setenv("TEST_SCPBOT_GITLAB_TOKEN", "gitlab-token")
-	t.Setenv("TEST_SCPBOT_GIT_PROXY", "http://127.0.0.1:8083")
+	t.Setenv("SISYPHUS_CONFIG", path)
+	t.Setenv("TEST_SISYPHUS_GIT_TOKEN", "git-token")
+	t.Setenv("TEST_SISYPHUS_GITLAB_TOKEN", "gitlab-token")
+	t.Setenv("TEST_SISYPHUS_GIT_PROXY", "http://127.0.0.1:8083")
 
 	cfg, err := Load()
 	require.NoError(t, err)
-	require.Equal(t, "postgres://user:pass@localhost/scpbot?sslmode=disable", cfg.DatabaseDSN)
+	require.Equal(t, "postgres://user:pass@localhost/sisyphus?sslmode=disable", cfg.DatabaseDSN)
 	require.Equal(t, ":9090", cfg.HTTPAddr)
 	require.Equal(t, "qdrant:6334", cfg.QdrantAddr)
 	require.Equal(t, 512, cfg.EmbedDim)
 	require.Equal(t, 123, cfg.Telegram.AppID)
-	require.Equal(t, "/tmp/scpbot-session", cfg.Telegram.SessionDir)
+	require.Equal(t, "/tmp/sisyphus-session", cfg.Telegram.SessionDir)
 	require.Equal(t, "test-model", cfg.OpenRouter.Model)
 	require.Equal(t, "corp_chunks", cfg.QdrantCollection)
 
@@ -109,19 +109,19 @@ func TestLoadSecretEnv(t *testing.T) {
 	clearEnv(t)
 
 	path := writeConfig(t, `database_dsn:
-  env: TEST_SCPBOT_DATABASE_DSN
+  env: TEST_SISYPHUS_DATABASE_DSN
 openrouter:
   api_key:
-    env: TEST_SCPBOT_OPENROUTER_API_KEY
+    env: TEST_SISYPHUS_OPENROUTER_API_KEY
 jira:
   username: jira-user
   password:
-    env: TEST_SCPBOT_JIRA_PASSWORD
+    env: TEST_SISYPHUS_JIRA_PASSWORD
 `)
-	t.Setenv("SCPBOT_CONFIG", path)
-	t.Setenv("TEST_SCPBOT_DATABASE_DSN", "env-dsn")
-	t.Setenv("TEST_SCPBOT_OPENROUTER_API_KEY", "env-key")
-	t.Setenv("TEST_SCPBOT_JIRA_PASSWORD", "jira-password")
+	t.Setenv("SISYPHUS_CONFIG", path)
+	t.Setenv("TEST_SISYPHUS_DATABASE_DSN", "env-dsn")
+	t.Setenv("TEST_SISYPHUS_OPENROUTER_API_KEY", "env-key")
+	t.Setenv("TEST_SISYPHUS_JIRA_PASSWORD", "jira-password")
 
 	cfg, err := Load()
 	require.NoError(t, err)
@@ -141,7 +141,7 @@ func TestLoadSecretFile(t *testing.T) {
 	require.NoError(t, os.WriteFile(configPath, []byte(`database_dsn:
   file: database_dsn
 `), 0o600))
-	t.Setenv("SCPBOT_CONFIG", configPath)
+	t.Setenv("SISYPHUS_CONFIG", configPath)
 
 	cfg, err := Load()
 	require.NoError(t, err)
@@ -167,13 +167,13 @@ func clearEnv(t *testing.T) {
 	t.Helper()
 
 	for _, key := range []string{
-		"SCPBOT_CONFIG",
-		"TEST_SCPBOT_DATABASE_DSN",
-		"TEST_SCPBOT_GIT_TOKEN",
-		"TEST_SCPBOT_GIT_PROXY",
-		"TEST_SCPBOT_GITLAB_TOKEN",
-		"TEST_SCPBOT_OPENROUTER_API_KEY",
-		"TEST_SCPBOT_JIRA_PASSWORD",
+		"SISYPHUS_CONFIG",
+		"TEST_SISYPHUS_DATABASE_DSN",
+		"TEST_SISYPHUS_GIT_TOKEN",
+		"TEST_SISYPHUS_GIT_PROXY",
+		"TEST_SISYPHUS_GITLAB_TOKEN",
+		"TEST_SISYPHUS_OPENROUTER_API_KEY",
+		"TEST_SISYPHUS_JIRA_PASSWORD",
 	} {
 		t.Setenv(key, "")
 	}

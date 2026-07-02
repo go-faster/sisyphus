@@ -1,7 +1,7 @@
 http_addr: :8080
 mcp_addr: :8081
 database_dsn:
-  env: SCPBOT_DATABASE_DSN
+  env: SISYPHUS_DATABASE_DSN
 
 qdrant_addr: qdrant:6334
 qdrant_collection: corp_chunks
@@ -16,7 +16,7 @@ embed_dim: 1024
 git:
   work_dir: /data/git
   token:
-    env: SCPBOT_GIT_TOKEN
+    env: SISYPHUS_GIT_TOKEN
   repos:
     - url: https://gitlab.example.com/group/docs.git
       repo: docs
@@ -39,7 +39,7 @@ git:
 gitlab:
   base_url: https://gitlab.example.com
   token:
-    env: SCPBOT_GITLAB_TOKEN
+    env: SISYPHUS_GITLAB_TOKEN
   projects:
     - ref: group/docs # Project ID or path.
   issues: true
@@ -48,39 +48,39 @@ gitlab:
 
 proxies:
   git:
-    env: SCPBOT_GIT_PROXY
+    env: SISYPHUS_GIT_PROXY
   gitlab:
-    env: SCPBOT_GITLAB_PROXY
+    env: SISYPHUS_GITLAB_PROXY
   jira:
-    env: SCPBOT_JIRA_PROXY
+    env: SISYPHUS_JIRA_PROXY
   ollama:
-    env: SCPBOT_OLLAMA_PROXY
+    env: SISYPHUS_OLLAMA_PROXY
   openrouter:
-    env: SCPBOT_OPENROUTER_PROXY
+    env: SISYPHUS_OPENROUTER_PROXY
 
 jira:
   base_url: ""
   email: ""
   username: ""
   api_token:
-    env: SCPBOT_JIRA_APITOKEN
+    env: SISYPHUS_JIRA_APITOKEN
   password:
-    env: SCPBOT_JIRA_PASSWORD
+    env: SISYPHUS_JIRA_PASSWORD
   pat:
-    env: SCPBOT_JIRA_PAT
+    env: SISYPHUS_JIRA_PAT
   projects: ""
 
 openrouter:
   api_key:
-    env: SCPBOT_OPENROUTER_API_KEY
+    env: SISYPHUS_OPENROUTER_API_KEY
   model: openai/gpt-4o-mini
 
 telegram:
   app_id: 0
   app_hash:
-    env: SCPBOT_TELEGRAM_APP_HASH
+    env: SISYPHUS_TELEGRAM_APP_HASH
   bot_token:
-    env: SCPBOT_TELEGRAM_BOT_TOKEN
+    env: SISYPHUS_TELEGRAM_BOT_TOKEN
   session_dir: /data/scp/session
   monitor_chats: ""
   ingest_session: ""

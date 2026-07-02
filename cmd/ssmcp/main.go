@@ -1,4 +1,4 @@
-// Command scpmcp runs the MCP server exposing the knowledge base.
+// Command ssmcp runs the MCP server exposing the knowledge base.
 package main
 
 import (
@@ -13,9 +13,9 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
-	"github.com/go-faster/scpbot/internal/config"
-	"github.com/go-faster/scpbot/internal/mcpserver"
-	"github.com/go-faster/scpbot/internal/wire"
+	"github.com/go-faster/sisyphus/internal/config"
+	"github.com/go-faster/sisyphus/internal/mcpserver"
+	"github.com/go-faster/sisyphus/internal/wire"
 )
 
 func main() {
@@ -24,7 +24,7 @@ func main() {
 			ctx = zctx.Base(ctx, lg)
 			var stdio bool
 			cmd := &cobra.Command{
-				Use:   "scpmcp",
+				Use:   "ssmcp",
 				Short: "runs the MCP server exposing the knowledge base",
 				RunE: func(cmd *cobra.Command, _ []string) error {
 					cfg, err := config.Load()
@@ -40,8 +40,8 @@ func main() {
 			cmd.SetContext(ctx)
 			return cmd.Execute()
 		},
-		app.WithServiceName("scpmcp"),
-		app.WithServiceNamespace("scpbot"),
+		app.WithServiceName("ssmcp"),
+		app.WithServiceNamespace("sisyphus"),
 	)
 }
 

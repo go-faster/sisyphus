@@ -12,11 +12,11 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
-	"github.com/go-faster/scpbot/internal/ent/chunk"
-	"github.com/go-faster/scpbot/internal/ent/document"
-	"github.com/go-faster/scpbot/internal/ent/supportrequest"
-	"github.com/go-faster/scpbot/internal/ent/syncstate"
-	"github.com/go-faster/scpbot/internal/ent/telegrammessage"
+	"github.com/go-faster/sisyphus/internal/ent/chunk"
+	"github.com/go-faster/sisyphus/internal/ent/document"
+	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
+	"github.com/go-faster/sisyphus/internal/ent/syncstate"
+	"github.com/go-faster/sisyphus/internal/ent/telegrammessage"
 )
 
 // ent aliases to avoid import conflicts in user's code.

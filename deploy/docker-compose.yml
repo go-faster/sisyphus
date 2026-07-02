@@ -1,4 +1,4 @@
-name: scpbot
+name: sisyphus
 
 services:
   postgres:
@@ -10,15 +10,15 @@ services:
         max-file: "10"
         max-size: "2m"
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-scpbot}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-scpbot}
-      POSTGRES_DB: ${POSTGRES_DB:-scpbot}
+      POSTGRES_USER: ${POSTGRES_USER:-sisyphus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sisyphus}
+      POSTGRES_DB: ${POSTGRES_DB:-sisyphus}
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-scpbot}" ]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sisyphus}" ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -62,7 +62,7 @@ services:
     # Pull the embedding model on first run:
     #   docker compose exec ollama ollama pull bge-m3
 
-  scpmcp:
+  ssmcp:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
@@ -72,7 +72,7 @@ services:
       options:
         max-file: "10"
         max-size: "2m"
-    entrypoint: [ "/usr/local/bin/scpmcp" ]
+    entrypoint: [ "/usr/local/bin/ssmcp" ]
     depends_on:
       postgres:
         condition: service_healthy
@@ -81,10 +81,10 @@ services:
       ollama:
         condition: service_started
     environment:
-      SCPBOT_CONFIG: /data/scp/config.yaml
-      SCPBOT_GITLAB_TOKEN: ${SCPBOT_GITLAB_TOKEN:-}
-      SCPBOT_JIRA_PASSWORD: ${SCPBOT_JIRA_PASSWORD:-}
-      SCPBOT_OPENROUTER_API_KEY: ${SCPBOT_OPENROUTER_API_KEY:-}
+      SISYPHUS_CONFIG: /data/scp/config.yaml
+      SISYPHUS_GITLAB_TOKEN: ${SISYPHUS_GITLAB_TOKEN:-}
+      SISYPHUS_JIRA_PASSWORD: ${SISYPHUS_JIRA_PASSWORD:-}
+      SISYPHUS_OPENROUTER_API_KEY: ${SISYPHUS_OPENROUTER_API_KEY:-}
       OTEL_LOG_LEVEL: debug
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otelcol:4317
       OTEL_EXPORTER_OTLP_INSECURE: true
@@ -93,9 +93,9 @@ services:
       - "18081:8081"
     volumes:
       - ./config.yaml:/data/scp/config.yaml:ro
-      - scpmcp:/data/scp
+      - ssmcp:/data/scp
 
-  scpbot:
+  sisyphus:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
@@ -105,7 +105,7 @@ services:
       options:
         max-file: "10"
         max-size: "2m"
-    entrypoint: [ "/usr/local/bin/scpbot" ]
+    entrypoint: [ "/usr/local/bin/ssbot" ]
     depends_on:
       postgres:
         condition: service_healthy
@@ -114,10 +114,10 @@ services:
       ollama:
         condition: service_started
     environment:
-      SCPBOT_CONFIG: /data/scp/config.yaml
-      SCPBOT_GITLAB_TOKEN: ${SCPBOT_GITLAB_TOKEN:-}
-      SCPBOT_JIRA_PASSWORD: ${SCPBOT_JIRA_PASSWORD:-}
-      SCPBOT_OPENROUTER_API_KEY: ${SCPBOT_OPENROUTER_API_KEY:-}
+      SISYPHUS_CONFIG: /data/scp/config.yaml
+      SISYPHUS_GITLAB_TOKEN: ${SISYPHUS_GITLAB_TOKEN:-}
+      SISYPHUS_JIRA_PASSWORD: ${SISYPHUS_JIRA_PASSWORD:-}
+      SISYPHUS_OPENROUTER_API_KEY: ${SISYPHUS_OPENROUTER_API_KEY:-}
       OTEL_LOG_LEVEL: debug
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otelcol:4317
       OTEL_EXPORTER_OTLP_INSECURE: true
@@ -126,7 +126,7 @@ services:
       - "18080:8080"
     volumes:
       - ./config.yaml:/data/scp/config.yaml:ro
-      - scpbot:/data/scp
+      - ssbot:/data/scp
 
   otelcol:
     image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.150.1
@@ -148,9 +148,9 @@ services:
     environment:
       - OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=none
       - POSTGRESQL_ENDPOINT=${POSTGRESQL_ENDPOINT:-postgres:5432}
-      - POSTGRESQL_USERNAME=${POSTGRESQL_USERNAME:-scpbot}
-      - POSTGRESQL_PASSWORD=${POSTGRESQL_PASSWORD:-scpbot}
-      - POSTGRESQL_DATABASE=${POSTGRESQL_DATABASE:-scpbot}
+      - POSTGRESQL_USERNAME=${POSTGRESQL_USERNAME:-sisyphus}
+      - POSTGRESQL_PASSWORD=${POSTGRESQL_PASSWORD:-sisyphus}
+      - POSTGRESQL_DATABASE=${POSTGRESQL_DATABASE:-sisyphus}
       - QDRANT_METRICS_ENDPOINT=${QDRANT_METRICS_ENDPOINT:-qdrant:6333}
     command:
       - "--config"
@@ -160,6 +160,6 @@ volumes:
   pgdata:
   qdrant:
   ollama:
-  scpmcp:
-  scpbot:
+  ssmcp:
+  ssbot:
   otelcol:

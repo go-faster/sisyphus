@@ -28,21 +28,21 @@ migrate-diff:
 	go run ./internal/ent/migrate/gen $(NAME)
 
 run:
-	go run ./cmd/scpbot
+	go run ./cmd/sisyphus
 
 ingest:
-	go run ./cmd/scpingest all
+	go run ./cmd/ssingest all
 
 ingest-git:
-	go run ./cmd/scpingest git
+	go run ./cmd/ssingest git
 
 ingest-gitlab:
-	go run ./cmd/scpingest gitlab
+	go run ./cmd/ssingest gitlab
 
 ingest-jira:
-	go run ./cmd/scpingest jira
+	go run ./cmd/ssingest jira
 
 ingest-telegram:
-	go run ./cmd/scpingest telegram
+	go run ./cmd/ssingest telegram
 
 .PHONY: lint fmt codegen migrate-diff run ingest ingest-git ingest-gitlab ingest-jira ingest-telegram

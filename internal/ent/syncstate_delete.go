@@ -8,8 +8,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/go-faster/scpbot/internal/ent/predicate"
-	"github.com/go-faster/scpbot/internal/ent/syncstate"
+	"github.com/go-faster/sisyphus/internal/ent/predicate"
+	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 )
 
 // SyncStateDelete is the builder for deleting a SyncState entity.

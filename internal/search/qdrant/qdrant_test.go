@@ -9,7 +9,7 @@ import (
 	"github.com/qdrant/go-client/qdrant"
 	"google.golang.org/grpc"
 
-	"github.com/go-faster/scpbot/internal/index"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 // TestChunkToPayload tests conversion of Chunk to Qdrant payload.

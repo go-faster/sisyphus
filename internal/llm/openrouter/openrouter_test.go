@@ -9,7 +9,7 @@ import (
 
 	"github.com/openai/openai-go/v3"
 
-	"github.com/go-faster/scpbot/internal/index"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 // fakeCompletion replies with a fixed content string for any chat/completions request.

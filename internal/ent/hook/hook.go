@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/go-faster/scpbot/internal/ent"
+	"github.com/go-faster/sisyphus/internal/ent"
 )
 
 // The ChunkFunc type is an adapter to allow the use of ordinary

@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-faster/scpbot/internal/config"
+	"github.com/go-faster/sisyphus/internal/config"
 )
 
 func TestGitSources(t *testing.T) {

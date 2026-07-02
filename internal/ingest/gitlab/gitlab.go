@@ -17,8 +17,8 @@ import (
 	"github.com/go-faster/sdk/zctx"
 	"go.uber.org/zap"
 
-	chunkgitlab "github.com/go-faster/scpbot/internal/chunk/gitlab"
-	"github.com/go-faster/scpbot/internal/index"
+	chunkgitlab "github.com/go-faster/sisyphus/internal/chunk/gitlab"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 // Options configures a GitLab Fetcher.
@@ -184,7 +184,7 @@ func (f *Fetcher) buildRequest(ctx context.Context, path string, query url.Value
 
 	req.Header.Set("PRIVATE-TOKEN", f.token)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "scpbot/ingest")
+	req.Header.Set("User-Agent", "sisyphus/ingest")
 	return req, nil
 }
 

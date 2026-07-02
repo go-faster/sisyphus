@@ -1,8 +1,8 @@
-# scpbot
+# sisyphus
 
 Internal support/dev assistant that ingests knowledge sources into Postgres full-text search and Qdrant vectors, then answers questions through the Telegram bot or MCP server.
 
-Sources supported by `scpingest`:
+Sources supported by `ssingest`:
 
 - Git repository Markdown docs and optional commit messages.
 - GitLab REST API issues, merge requests, and releases.
@@ -11,13 +11,13 @@ Sources supported by `scpingest`:
 
 ## Configuration
 
-Copy `deploy/config.example.yaml` to `deploy/config.yaml` or provide your own config file with `SCPBOT_CONFIG`:
+Copy `deploy/config.example.yaml` to `deploy/config.yaml` or provide your own config file with `SISYPHUS_CONFIG`:
 
 ```bash
-export SCPBOT_CONFIG=deploy/config.yaml
+export SISYPHUS_CONFIG=deploy/config.yaml
 ```
 
-`database_dsn` is required. Secrets can be literal values, environment variable references, or file references. The example config uses environment variables such as `SCPBOT_DATABASE_DSN`, `SCPBOT_GITLAB_TOKEN`, `SCPBOT_JIRA_PASSWORD`, and `SCPBOT_TELEGRAM_BOT_TOKEN`.
+`database_dsn` is required. Secrets can be literal values, environment variable references, or file references. The example config uses environment variables such as `SISYPHUS_DATABASE_DSN`, `SISYPHUS_GITLAB_TOKEN`, `SISYPHUS_JIRA_PASSWORD`, and `SISYPHUS_TELEGRAM_BOT_TOKEN`.
 
 For local dependencies, start Docker Compose and pull the embedding model once:
 
@@ -33,7 +33,7 @@ Run all configured sources in sequence:
 ```bash
 make ingest
 # or
-go run ./cmd/scpingest all
+go run ./cmd/ssingest all
 ```
 
 Run one source at a time:
@@ -48,10 +48,10 @@ make ingest-telegram
 The same commands can be run directly:
 
 ```bash
-go run ./cmd/scpingest git
-go run ./cmd/scpingest gitlab
-go run ./cmd/scpingest jira
-go run ./cmd/scpingest telegram
+go run ./cmd/ssingest git
+go run ./cmd/ssingest gitlab
+go run ./cmd/ssingest jira
+go run ./cmd/ssingest telegram
 ```
 
 ## Ingest Examples
@@ -59,43 +59,43 @@ go run ./cmd/scpingest telegram
 Preview what would be fetched without indexing documents:
 
 ```bash
-go run ./cmd/scpingest all --dry-run
-go run ./cmd/scpingest gitlab --dry-run --limit 25
+go run ./cmd/ssingest all --dry-run
+go run ./cmd/ssingest gitlab --dry-run --limit 25
 ```
 
 Limit a run to a fixed number of documents per source:
 
 ```bash
-go run ./cmd/scpingest git --limit 100
-go run ./cmd/scpingest jira --limit 50
+go run ./cmd/ssingest git --limit 100
+go run ./cmd/ssingest jira --limit 50
 ```
 
 Override the saved incremental cursor for GitLab or Jira:
 
 ```bash
-go run ./cmd/scpingest gitlab --since 2026-01-01T00:00:00Z
-go run ./cmd/scpingest jira --since 2026-01-01T00:00:00Z
+go run ./cmd/ssingest gitlab --since 2026-01-01T00:00:00Z
+go run ./cmd/ssingest jira --since 2026-01-01T00:00:00Z
 ```
 
 Rebuild one source from scratch. This deletes that source's documents, chunks, sync state, and vector points before ingesting again:
 
 ```bash
-go run ./cmd/scpingest git --reset git
-go run ./cmd/scpingest gitlab --reset gitlab
-go run ./cmd/scpingest jira --reset jira
-go run ./cmd/scpingest telegram --reset telegram
+go run ./cmd/ssingest git --reset git
+go run ./cmd/ssingest gitlab --reset gitlab
+go run ./cmd/ssingest jira --reset jira
+go run ./cmd/ssingest telegram --reset telegram
 ```
 
 Rebuild every configured source from scratch:
 
 ```bash
-go run ./cmd/scpingest all --reset all --yes-i-mean-all
+go run ./cmd/ssingest all --reset all --yes-i-mean-all
 ```
 
 Skip git orphan cleanup for files removed from a repository:
 
 ```bash
-go run ./cmd/scpingest git --no-prune
+go run ./cmd/ssingest git --no-prune
 ```
 
 ## Git Ingestion
@@ -106,7 +106,7 @@ Configure repositories under `git.repos`:
 git:
   work_dir: /data/git
   token:
-    env: SCPBOT_GIT_TOKEN
+    env: SISYPHUS_GIT_TOKEN
   repos:
     - url: https://gitlab.example.com/group/docs.git
       repo: docs
@@ -129,7 +129,7 @@ Configure GitLab REST ingestion with project IDs or paths:
 gitlab:
   base_url: https://gitlab.example.com
   token:
-    env: SCPBOT_GITLAB_TOKEN
+    env: SISYPHUS_GITLAB_TOKEN
   projects:
     - ref: group/docs
     - ref: "42"
@@ -149,7 +149,7 @@ jira:
   base_url: https://jira.example.com
   email: bot@example.com
   api_token:
-    env: SCPBOT_JIRA_APITOKEN
+    env: SISYPHUS_JIRA_APITOKEN
   projects:
     - key: SUP
     - key: PLAT
@@ -165,9 +165,9 @@ Configure Telegram application credentials, bot token, session storage, and chat
 telegram:
   app_id: 12345
   app_hash:
-    env: SCPBOT_TELEGRAM_APP_HASH
+    env: SISYPHUS_TELEGRAM_APP_HASH
   bot_token:
-    env: SCPBOT_TELEGRAM_BOT_TOKEN
+    env: SISYPHUS_TELEGRAM_BOT_TOKEN
   session_dir: /data/scp/session
   monitor_chats:
     - id: -1001234567890
@@ -177,7 +177,7 @@ telegram:
   ingest_session: support-ingest
 ```
 
-Telegram ingestion requires an existing user ingest session. If the session is missing, `scpingest telegram` exits with `telegram not configured or ingest session missing`.
+Telegram ingestion requires an existing user ingest session. If the session is missing, `ssingest telegram` exits with `telegram not configured or ingest session missing`.
 
 ## Development
 

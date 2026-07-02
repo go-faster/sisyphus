@@ -6,7 +6,7 @@ import (
 	"maps"
 	"strings"
 
-	"github.com/go-faster/scpbot/internal/index"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 // Chunker implements index.Chunker for git commit documents.

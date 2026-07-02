@@ -17,9 +17,9 @@
 secret.yml
 secret.yaml
 
-/scpbot
-/scpmcp
-/scpingest
+/ssbot
+/ssmcp
+/ssingest
 /_ref
 
 # goreleaser

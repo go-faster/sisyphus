@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	chunkjira "github.com/go-faster/scpbot/internal/chunk/jira"
-	"github.com/go-faster/scpbot/internal/index"
+	chunkjira "github.com/go-faster/sisyphus/internal/chunk/jira"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 func TestNew(t *testing.T) {
@@ -862,8 +862,8 @@ func TestUserAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if gotUA != "scpbot/ingest" {
-		t.Errorf("User-Agent: expected %q, got %q", "scpbot/ingest", gotUA)
+	if gotUA != "sisyphus/ingest" {
+		t.Errorf("User-Agent: expected %q, got %q", "sisyphus/ingest", gotUA)
 	}
 }
 

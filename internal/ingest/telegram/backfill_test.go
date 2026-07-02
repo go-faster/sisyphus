@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-faster/scpbot/internal/ent"
-	"github.com/go-faster/scpbot/internal/index"
+	"github.com/go-faster/sisyphus/internal/ent"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 // fakeFetcher implements MessageFetcher with canned data for tests.
@@ -105,7 +105,7 @@ func TestRawMessageToMessage(t *testing.T) {
 func TestBackfill_SingleChatTwoPages(t *testing.T) {
 	db := testDB(t)
 	if db == nil {
-		t.Skip("set SCPBOT_TEST_DB to run ent-backed tests")
+		t.Skip("set SISYPHUS_TEST_DB to run ent-backed tests")
 	}
 
 	chatID := int64(-100123)
@@ -174,7 +174,7 @@ func TestBackfill_SingleChatTwoPages(t *testing.T) {
 func TestBackfill_MultiChat(t *testing.T) {
 	db := testDB(t)
 	if db == nil {
-		t.Skip("set SCPBOT_TEST_DB to run ent-backed tests")
+		t.Skip("set SISYPHUS_TEST_DB to run ent-backed tests")
 	}
 
 	fetcher := &fakeFetcher{
@@ -219,7 +219,7 @@ func TestBackfill_MultiChat(t *testing.T) {
 func TestBackfill_CursorResume(t *testing.T) {
 	db := testDB(t)
 	if db == nil {
-		t.Skip("set SCPBOT_TEST_DB to run ent-backed tests")
+		t.Skip("set SISYPHUS_TEST_DB to run ent-backed tests")
 	}
 
 	chatID := int64(-100123)
@@ -259,7 +259,7 @@ func (f *callTrackingFetcher) FetchHistory(ctx context.Context, chatID int64, be
 func TestBackfill_IdempotentPersist(t *testing.T) {
 	db := testDB(t)
 	if db == nil {
-		t.Skip("set SCPBOT_TEST_DB to run ent-backed tests")
+		t.Skip("set SISYPHUS_TEST_DB to run ent-backed tests")
 	}
 
 	chatID := int64(-100123)
@@ -309,10 +309,10 @@ func TestBackfill_IdempotentPersist(t *testing.T) {
 	_ = r2
 }
 
-// testDB opens a test database if SCPBOT_TEST_DB is set.
+// testDB opens a test database if SISYPHUS_TEST_DB is set.
 func testDB(t *testing.T) *ent.Client {
 	t.Helper()
-	dsn := os.Getenv("SCPBOT_TEST_DB")
+	dsn := os.Getenv("SISYPHUS_TEST_DB")
 	if dsn == "" {
 		return nil
 	}
