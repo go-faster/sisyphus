@@ -140,6 +140,38 @@ func TestChunker_Chunk(t *testing.T) {
 				require.NotEqual(t, uuid.UUID{}, chunks[0].DocumentID)
 			},
 		},
+		{
+			name: "git tag produces ChunkGitTag type",
+			doc: index.Document{
+				ID:       uuid.New(),
+				Source:   index.SourceGitTag("test/repo"),
+				SourceID: "test/repo@tag:v1.0.0",
+				Title:    "v1.0.0",
+				Body:     "Release version 1.0.0",
+				BodyHash: index.Hash("Release version 1.0.0"),
+				Metadata: map[string]any{
+					"source":     string(index.SourceGitTag("test/repo")),
+					"repo":       "test/repo",
+					"tag":        "v1.0.0",
+					"annotated":  true,
+					"authority":  string(index.AuthorityMedium),
+					"target_sha": "abc1234567890def",
+				},
+				CreatedAt: time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
+				UpdatedAt: time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
+			},
+			expectLen: 1,
+			checkFn: func(t *testing.T, chunks []index.Chunk) {
+				require.Len(t, chunks, 1)
+				chunk := chunks[0]
+				require.Equal(t, index.ChunkGitTag, chunk.Type)
+				require.Equal(t, "v1.0.0", chunk.Title)
+				require.Equal(t, "Release version 1.0.0", chunk.Text)
+				require.Equal(t, "test/repo", chunk.Metadata["repo"])
+				require.Equal(t, "v1.0.0", chunk.Metadata["tag"])
+				require.Equal(t, string(index.AuthorityMedium), chunk.Metadata["authority"])
+			},
+		},
 	}
 
 	for _, tt := range tests {

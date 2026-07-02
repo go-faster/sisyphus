@@ -31,6 +31,7 @@ const (
 const (
 	SourceGitDocsPrefix    = "git_docs:"
 	SourceGitCommitsPrefix = "git_commits:"
+	SourceGitTagsPrefix    = "git_tags:"
 )
 
 // SourceGitDocs returns the Source for git-walked content of the given repo.
@@ -38,6 +39,9 @@ func SourceGitDocs(repo string) Source { return Source(SourceGitDocsPrefix + rep
 
 // SourceGitCommit returns the Source for commit messages of the given repo.
 func SourceGitCommit(repo string) Source { return Source(SourceGitCommitsPrefix + repo) }
+
+// SourceGitTag returns the Source for git tags of the given repo.
+func SourceGitTag(repo string) Source { return Source(SourceGitTagsPrefix + repo) }
 
 // ChunkType classifies a Chunk so retrieval/ranking can treat them differently.
 type ChunkType string
@@ -54,6 +58,7 @@ const (
 	ChunkTelegramRawExcerpt     ChunkType = "telegram_raw_excerpt"
 
 	ChunkGitCommit ChunkType = "git_commit"
+	ChunkGitTag    ChunkType = "git_tag"
 
 	ChunkGitLabIssueSummary  ChunkType = "gitlab_issue_summary"
 	ChunkGitLabIssueComments ChunkType = "gitlab_issue_comment_group"

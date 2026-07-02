@@ -61,6 +61,8 @@ type Source struct {
 	Exclude []string
 	// Commits, if true, also ingest commit messages as Documents.
 	Commits bool
+	// Tags, if true, also ingest git tags as Documents.
+	Tags bool
 }
 
 // WalkOptions configures WalkAll.
