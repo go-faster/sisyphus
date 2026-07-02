@@ -19,6 +19,7 @@ import (
 
 	chunkgitlab "github.com/go-faster/sisyphus/internal/chunk/gitlab"
 	"github.com/go-faster/sisyphus/internal/index"
+	"github.com/go-faster/sisyphus/internal/netclient"
 )
 
 // Options configures a GitLab Fetcher.
@@ -189,9 +190,9 @@ func (f *Fetcher) buildRequest(ctx context.Context, path string, query url.Value
 }
 
 func (f *Fetcher) doRequest(req *http.Request, op string) ([]byte, error) {
-	resp, err := f.httpClient.Do(req)
+	resp, err := netclient.DoWithRetry(req.Context(), op, f.httpClient, req)
 	if err != nil {
-		return nil, errors.Wrap(err, op)
+		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 

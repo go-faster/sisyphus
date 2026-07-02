@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -21,6 +20,7 @@ import (
 
 	chunkjira "github.com/go-faster/sisyphus/internal/chunk/jira"
 	"github.com/go-faster/sisyphus/internal/index"
+	"github.com/go-faster/sisyphus/internal/netclient"
 )
 
 // Options configures a Jira Fetcher.
@@ -381,10 +381,10 @@ func formatErrorBody(resp *http.Response, body []byte) string {
 	return s
 }
 
-func (f *Fetcher) doPreflight(req *http.Request, op string) ([]byte, error) {
-	resp, err := f.httpClient.Do(req)
+func (f *Fetcher) doRequest(req *http.Request, op string) ([]byte, error) {
+	resp, err := netclient.DoWithRetry(req.Context(), op, f.httpClient, req)
 	if err != nil {
-		return nil, errors.Wrap(err, op)
+		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -392,10 +392,16 @@ func (f *Fetcher) doPreflight(req *http.Request, op string) ([]byte, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "read "+op+" response")
 	}
+
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, errors.Errorf("%s status %d: %s", op, resp.StatusCode, formatErrorBody(resp, body))
 	}
+
 	return body, nil
+}
+
+func (f *Fetcher) doPreflight(req *http.Request, op string) ([]byte, error) {
+	return f.doRequest(req, op)
 }
 
 // Fetch performs ONE page of Jira's /rest/api/2/search endpoint, returning
@@ -427,19 +433,9 @@ func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions, cursor Cursor) (
 		return FetchResult{}, errors.Wrap(err, "build request")
 	}
 
-	resp, err := f.httpClient.Do(req)
+	body, err := f.doRequest(req, "jira search")
 	if err != nil {
-		return FetchResult{}, errors.Wrap(err, "jira search")
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return FetchResult{}, errors.Wrap(err, "read response")
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return FetchResult{}, fmt.Errorf("jira search status %d: %s", resp.StatusCode, formatErrorBody(resp, body))
+		return FetchResult{}, err
 	}
 
 	var searchResp jiraSearchResponse

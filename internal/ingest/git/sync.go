@@ -26,27 +26,23 @@ type SyncOptions struct {
 	Proxy   string
 }
 
-// Prepare clones or updates configured repositories and returns walkable sources.
-func Prepare(ctx context.Context, sources []Source, opts SyncOptions) ([]Source, error) {
-	out := make([]Source, 0, len(sources))
-	for _, src := range sources {
-		if src.Repo == "" {
-			src.Repo = defaultRepoName(src)
-		}
-		if src.Root == "" && src.URL != "" {
-			if opts.WorkDir == "" {
-				return nil, errors.New("git: work_dir is required for cloned repos")
-			}
-			src.Root = filepath.Join(opts.WorkDir, safeDirName(src.Repo))
-		}
-		if src.URL != "" {
-			if err := syncRepo(ctx, src, opts); err != nil {
-				return nil, errors.Wrap(err, "sync git repo")
-			}
-		}
-		out = append(out, src)
+// Prepare clones or updates configured repositories and returns the walkable source.
+func Prepare(ctx context.Context, src Source, opts SyncOptions) (Source, error) {
+	if src.Repo == "" {
+		src.Repo = defaultRepoName(src)
 	}
-	return out, nil
+	if src.Root == "" && src.URL != "" {
+		if opts.WorkDir == "" {
+			return src, errors.New("git: work_dir is required for cloned repos")
+		}
+		src.Root = filepath.Join(opts.WorkDir, safeDirName(src.Repo))
+	}
+	if src.URL != "" {
+		if err := syncRepo(ctx, src, opts); err != nil {
+			return src, errors.Wrap(err, "sync git repo")
+		}
+	}
+	return src, nil
 }
 
 func syncRepo(ctx context.Context, src Source, opts SyncOptions) error {

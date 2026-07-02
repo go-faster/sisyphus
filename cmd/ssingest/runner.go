@@ -105,15 +105,6 @@ func (r *runner) runGit(ctx context.Context, reset bool, limit int, dry, prune b
 		return errNotConfigured
 	}
 
-	sources, err := gitingest.Prepare(ctx, sources, gitingest.SyncOptions{
-		WorkDir: cfg.Git.WorkDir,
-		Token:   cfg.Git.Token,
-		Proxy:   cfg.Proxies.Git,
-	})
-	if err != nil {
-		return errors.Wrap(err, "prepare git repos")
-	}
-
 	// Build two pipelines: one for docs, one for commits
 	docsPipe, err := r.buildPipeline(r.buildDocChunker())
 	if err != nil {
@@ -127,6 +118,17 @@ func (r *runner) runGit(ctx context.Context, reset bool, limit int, dry, prune b
 	anyErr := false
 
 	for _, s := range sources {
+		s, err = gitingest.Prepare(ctx, s, gitingest.SyncOptions{
+			WorkDir: cfg.Git.WorkDir,
+			Token:   cfg.Git.Token,
+			Proxy:   cfg.Proxies.Git,
+		})
+		if err != nil {
+			lg.Error("prepare git repo failed", zap.Error(err), zap.String("repo", s.Repo))
+			anyErr = true
+			continue
+		}
+
 		// Ingest docs content
 		docsSrc := index.SourceGitDocs(s.Repo)
 		if reset {
