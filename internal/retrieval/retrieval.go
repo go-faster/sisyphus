@@ -7,6 +7,7 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -133,24 +134,40 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) (_ []index.Result
 		}
 	}
 
+	var (
+		wg            sync.WaitGroup
+		lexicalResult []index.Result
+		vectorResult  []index.Result
+	)
 	if s.lexical != nil {
-		rs, err := s.lexical.Search(ctx, q)
-		s.m.recordSearch(ctx, "lexical", err)
-		if err != nil {
-			zctx.From(ctx).Warn("lexical search failed", zap.Error(err))
-		} else {
-			add(rs)
-		}
+		wg.Go(func() {
+			rs, err := s.lexical.Search(ctx, q)
+			s.m.recordSearch(ctx, "lexical", err)
+			if err != nil {
+				zctx.From(ctx).Warn("lexical search failed", zap.Error(err))
+				return
+			}
+			lexicalResult = rs
+		})
 	}
 	if s.vector != nil {
-		rs, err := s.vector.Search(ctx, q)
-		s.m.recordSearch(ctx, "vector", err)
-		if err != nil {
-			zctx.From(ctx).Warn("vector search failed", zap.Error(err))
-		} else {
+		wg.Go(func() {
+			rs, err := s.vector.Search(ctx, q)
+			s.m.recordSearch(ctx, "vector", err)
+			if err != nil {
+				zctx.From(ctx).Warn("vector search failed", zap.Error(err))
+				return
+			}
 			s.hydrate(ctx, rs)
-			add(rs)
-		}
+			vectorResult = rs
+		})
+	}
+	wg.Wait()
+	if lexicalResult != nil {
+		add(lexicalResult)
+	}
+	if vectorResult != nil {
+		add(vectorResult)
 	}
 	if len(merged) == 0 {
 		return nil, nil

@@ -3,6 +3,7 @@ package retrieval
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -22,6 +23,22 @@ func (f fakeSearcher) Search(_ context.Context, _ index.Query) ([]index.Result, 
 type fakeChunkFetcher struct {
 	chunks map[uuid.UUID]index.Chunk
 	err    error
+}
+
+type blockingSearcher struct {
+	id      uuid.UUID
+	started chan<- struct{}
+	release <-chan struct{}
+}
+
+func (b blockingSearcher) Search(ctx context.Context, _ index.Query) ([]index.Result, error) {
+	b.started <- struct{}{}
+	select {
+	case <-b.release:
+		return []index.Result{result(b.id, 1, false, nil)}, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func (f fakeChunkFetcher) FetchChunks(_ context.Context, _ []uuid.UUID) (map[uuid.UUID]index.Chunk, error) {
@@ -105,6 +122,42 @@ func TestRetrieveSurvivesBackendError(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Chunk.ID != ok {
 		t.Fatalf("expected vector result to survive lexical failure, got %+v", got)
+	}
+}
+
+func TestRetrieveRunsBackendsConcurrently(t *testing.T) {
+	started := make(chan struct{}, 2)
+	release := make(chan struct{})
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	svc, err := New(
+		blockingSearcher{id: uuid.New(), started: started, release: release},
+		blockingSearcher{id: uuid.New(), started: started, release: release},
+		nil,
+		ServiceOptions{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := svc.Retrieve(ctx, index.Query{Text: "q"})
+		done <- err
+	}()
+
+	for range 2 {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			cancel()
+			t.Fatal("search backends did not start concurrently")
+		}
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }
 
