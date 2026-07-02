@@ -97,6 +97,40 @@ quality demands it.
 - ogen: `go generate ./internal/oas/...`.
 - Commit generated code in a **separate commit** from the schema/spec that produced it.
 
+### Schema migrations
+
+`internal/ent/schema` is the single source of truth for the DB schema. Versioned SQL
+migration files live in `internal/ent/migrate/migrations/` and are applied at runtime
+by the hand-written `Runner` in `internal/ent/migrate/runner.go` (tracked via a
+`schema_migrations` table). Only `scpbot` runs migrations
+(`wire.NewOptions.RunMigrations: true`); `scpmcp` and `scpingest` connect without
+migrating, so schema changes apply exactly once per deploy instead of racing across
+every process/replica sharing the database.
+
+After changing `internal/ent/schema`, generate the next migration file by diffing the
+ent schema against a throwaway Postgres container (requires a local Docker daemon,
+nothing else running):
+
+```
+make migrate-diff NAME=add_foo_column
+```
+
+This uses ent's `sql/versioned-migration` feature (`internal/ent/migrate/gen`) — it
+spins up a scratch postgres via `testcontainers-go`, replays the existing migration
+files against it, diffs the result against the ent schema, writes a new file, updates
+`migrations/atlas.sum`, and tears the container down. Do not hand-edit `atlas.sum`.
+
+Some DDL can't be expressed in the ent schema (e.g. `00002_fts.sql`'s
+`GENERATED ALWAYS AS (...) STORED` tsvector column — ent only supports plain
+`DEFAULT`/`DefaultExpr`, which don't recompute on `UPDATE`). Those migrations are
+still hand-written directly in `migrations/`; run `make migrate-diff` afterward to
+refresh `atlas.sum` (it should produce no new file, since the extra column/index isn't
+declared in the ent schema).
+
+Migration files must not contain more than the forward migration: the runner execs the
+entire file as one blob with no down/rollback support, and stray SQL after a `-- +goose
+Down`-style comment will actually execute.
+
 ## Build / test
 
 - Format: `golangci-lint fmt ./...` (do not hand-format).
