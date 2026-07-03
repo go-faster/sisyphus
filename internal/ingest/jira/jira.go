@@ -266,6 +266,10 @@ func convertIssue(jiraIss jiraIssue) (chunkjira.Issue, error) {
 	return iss, nil
 }
 
+// jqlDateFormat is the only layout JQL date literals accept for the
+// "updated" field: "yyyy-MM-dd HH:mm" (no seconds, no timezone offset).
+const jqlDateFormat = "2006-01-02 15:04"
+
 func buildJQL(projects []string, cursor Cursor, opts FetchOptions) string {
 	quoted := make([]string, len(projects))
 	for i, p := range projects {
@@ -273,12 +277,16 @@ func buildJQL(projects []string, cursor Cursor, opts FetchOptions) string {
 	}
 	jql := "project IN (" + strings.Join(quoted, ", ") + ")"
 
-	updatedAfter := cursor.LastUpdated
-	if updatedAfter == "" && !opts.UpdatedAfter.IsZero() {
-		updatedAfter = opts.UpdatedAfter.Format(time.RFC3339)
+	var updatedAfter time.Time
+	if cursor.LastUpdated != "" {
+		if t, err := time.Parse(time.RFC3339, cursor.LastUpdated); err == nil {
+			updatedAfter = t
+		}
+	} else if !opts.UpdatedAfter.IsZero() {
+		updatedAfter = opts.UpdatedAfter
 	}
-	if updatedAfter != "" {
-		jql += ` AND updated >= "` + updatedAfter + `"`
+	if !updatedAfter.IsZero() {
+		jql += ` AND updated >= "` + updatedAfter.UTC().Format(jqlDateFormat) + `"`
 	}
 
 	jql += " ORDER BY updated ASC"
