@@ -12,6 +12,31 @@ func (s *ErrorStatusCode) Error() string {
 	return fmt.Sprintf("code %d: %+v", s.StatusCode, s.Response)
 }
 
+type BearerAuth struct {
+	Token string
+	Roles []string
+}
+
+// GetToken returns the value of Token.
+func (s *BearerAuth) GetToken() string {
+	return s.Token
+}
+
+// GetRoles returns the value of Roles.
+func (s *BearerAuth) GetRoles() []string {
+	return s.Roles
+}
+
+// SetToken sets the value of Token.
+func (s *BearerAuth) SetToken(val string) {
+	s.Token = val
+}
+
+// SetRoles sets the value of Roles.
+func (s *BearerAuth) SetRoles(val []string) {
+	s.Roles = val
+}
+
 // Ref: #/components/schemas/ContextRequest
 type ContextRequest struct {
 	Question string    `json:"question"`
