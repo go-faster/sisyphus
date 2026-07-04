@@ -3,11 +3,14 @@ info:
   title: sisyphus API
   description: Hybrid-search internal support assistant.
   version: 0.1.0
+security:
+  - bearerAuth: []
 paths:
   /health:
     get:
       operationId: getHealth
       summary: Liveness/readiness probe.
+      security: []
       responses:
         "200":
           description: Service health.
@@ -56,6 +59,10 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
   responses:
     Error:
       description: Error.
