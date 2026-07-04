@@ -6,11 +6,16 @@ package apiclient
 
 import (
 	"context"
+	"net/http"
+	"time"
 
 	"github.com/go-faster/errors"
 	ht "github.com/ogen-go/ogen/http"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
+	metricnoop "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/go-faster/sisyphus/internal/index"
@@ -25,56 +30,98 @@ type Options struct {
 }
 
 func (o *Options) setDefaults() {
+	if o.HTTPClient == nil {
+		o.HTTPClient = http.DefaultClient
+	}
 	if o.TracerProvider == nil {
 		o.TracerProvider = otel.GetTracerProvider()
 	}
 	if o.MeterProvider == nil {
-		o.MeterProvider = otel.GetMeterProvider()
+		o.MeterProvider = metricnoop.NewMeterProvider()
 	}
 }
 
 // Client wraps an oas.Client and implements Retrieve/Answer over HTTP.
 type Client struct {
-	inv *oas.Client
+	inv    *oas.Client
+	tracer trace.Tracer
+	m      *clientMetrics
 }
 
 // New builds a Client pointed at baseURL, authenticating with a static
 // bearer token.
 func New(baseURL, token string, opts Options) (*Client, error) {
 	opts.setDefaults()
+	m, err := newClientMetrics(opts.MeterProvider)
+	if err != nil {
+		return nil, errors.Wrap(err, "apiclient metrics")
+	}
 	clientOpts := []oas.ClientOption{
+		oas.WithClient(opts.HTTPClient),
 		oas.WithTracerProvider(opts.TracerProvider),
 		oas.WithMeterProvider(opts.MeterProvider),
-	}
-	if opts.HTTPClient != nil {
-		clientOpts = append(clientOpts, oas.WithClient(opts.HTTPClient))
 	}
 	c, err := oas.NewClient(baseURL, staticBearer{token: token}, clientOpts...)
 	if err != nil {
 		return nil, errors.Wrap(err, "oas client")
 	}
-	return &Client{inv: c}, nil
+	return &Client{
+		inv:    c,
+		tracer: opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/apiclient"),
+		m:      m,
+	}, nil
 }
 
 // Answer implements the Answerer interface.
-// The results parameter is intentionally unused because /context performs its
-// own independent server-side retrieval pass; this is an accepted phase-1
-// trade-off (two retrieval passes instead of one) since ContextRequest has no
-// field to carry pre-fetched results — flagged as a future improvement, not
-// fixed now.
-func (c *Client) Answer(ctx context.Context, question string, _ []index.Result) (string, error) {
+// The results are not sent over the wire; /context performs its own
+// server-side retrieval pass, so the caller's results only affect telemetry.
+func (c *Client) Answer(ctx context.Context, question string, results []index.Result) (answer string, rerr error) {
+	start := time.Now()
+	ctx, span := c.tracer.Start(ctx, "apiclient.Answer",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.Int("question.length", len(question)),
+			attribute.Int("results.count", len(results)),
+		),
+	)
+	defer func() {
+		c.m.record(ctx, "answer", time.Since(start).Seconds(), len(results), rerr)
+		if rerr != nil {
+			span.RecordError(rerr)
+			span.SetStatus(codes.Error, rerr.Error())
+		}
+		span.End()
+	}()
 	req := &oas.ContextRequest{
 		Question: question,
 	}
 	resp, err := c.inv.Context(ctx, req)
 	if err != nil {
-		return "", errors.Wrap(err, "context")
+		rerr = errors.Wrap(err, "get context")
+		return "", rerr
 	}
-	return resp.Answer, nil
+	answer = resp.Answer
+	span.SetAttributes(attribute.Int("answer.length", len(answer)))
+	return answer, nil
 }
 
 // Retrieve implements the Retriever interface.
-func (c *Client) Retrieve(ctx context.Context, q index.Query) ([]index.Result, error) {
+func (c *Client) Retrieve(ctx context.Context, q index.Query) (_ []index.Result, rerr error) {
+	start := time.Now()
+	ctx, span := c.tracer.Start(ctx, "apiclient.Retrieve",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.Int("query.length", len(q.Text)),
+			attribute.Int("query.limit", q.Limit),
+		),
+	)
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+			span.SetStatus(codes.Error, rerr.Error())
+		}
+		span.End()
+	}()
 	req := &oas.SearchRequest{
 		Query:   q.Text,
 		Service: oas.NewOptString(q.Service),
@@ -88,7 +135,9 @@ func (c *Client) Retrieve(ctx context.Context, q index.Query) ([]index.Result, e
 
 	resp, err := c.inv.Search(ctx, req)
 	if err != nil {
-		return nil, errors.Wrap(err, "search")
+		rerr = errors.Wrap(err, "search")
+		c.m.record(ctx, "retrieve", time.Since(start).Seconds(), 0, rerr)
+		return nil, rerr
 	}
 
 	results := make([]index.Result, 0, len(resp.Results))
@@ -116,6 +165,8 @@ func (c *Client) Retrieve(ctx context.Context, q index.Query) ([]index.Result, e
 		results = append(results, result)
 	}
 
+	c.m.record(ctx, "retrieve", time.Since(start).Seconds(), len(results), nil)
+	span.SetAttributes(attribute.Int("results.count", len(results)))
 	return results, nil
 }
 
