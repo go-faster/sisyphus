@@ -3,6 +3,11 @@ mcp_addr: :8081
 database_dsn:
   env: SISYPHUS_DATABASE_DSN
 
+api:
+  base_url: http://ssapi:8080
+  auth_token:
+    env: SISYPHUS_API_AUTH_TOKEN
+
 qdrant_addr: qdrant:6334
 qdrant_collection: corp_chunks
 

@@ -1,4 +1,4 @@
-// Command sisyphus runs the ingestion/index API and the Telegram /context bot.
+// Command ssapi owns the database and serves the hybrid-search HTTP API.
 package main
 
 import (
@@ -15,7 +15,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/go-faster/sisyphus/internal/api"
-	"github.com/go-faster/sisyphus/internal/bot"
 	"github.com/go-faster/sisyphus/internal/config"
 	"github.com/go-faster/sisyphus/internal/oas"
 	"github.com/go-faster/sisyphus/internal/wire"
@@ -26,8 +25,8 @@ func main() {
 		func(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
 			ctx = zctx.Base(ctx, lg)
 			cmd := &cobra.Command{
-				Use:   "sisyphus",
-				Short: "runs the ingestion/index API and the Telegram /context bot",
+				Use:   "ssapi",
+				Short: "runs the hybrid-search HTTP API (owns DB + migrations)",
 				RunE: func(cmd *cobra.Command, _ []string) error {
 					cfg, err := config.Load()
 					if err != nil {
@@ -41,7 +40,7 @@ func main() {
 			cmd.SetContext(ctx)
 			return cmd.Execute()
 		},
-		app.WithServiceName("ssmcp"),
+		app.WithServiceName("ssapi"),
 		app.WithServiceNamespace("sisyphus"),
 	)
 }
@@ -59,10 +58,16 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 	}
 	defer comp.Close()
 
+	if cfg.API.AuthToken == "" {
+		return errors.New("api.auth_token is required")
+	}
+
 	handler := api.New(comp.Retriever, comp.Answerer, "0.1.0")
-	srv, err := oas.NewServer(handler,
+	sec := api.NewSecurityHandler(cfg.API.AuthToken)
+	srv, err := oas.NewServer(handler, sec,
 		oas.WithTracerProvider(tp),
 		oas.WithMeterProvider(mp),
+		oas.WithErrorHandler(api.ErrorHandler),
 	)
 	if err != nil {
 		return errors.Wrap(err, "oas server")
@@ -73,29 +78,13 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	errc := make(chan error, 2)
+	errc := make(chan error, 1)
 	go func() {
 		lg.Info("http listening", zap.String("addr", cfg.HTTPAddr))
 		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errc <- errors.Wrap(err, "http serve")
 		}
 	}()
-
-	if cfg.Telegram.AppID != 0 && cfg.Telegram.BotToken != "" {
-		b := bot.New(ctx, bot.Config{
-			AppID:      cfg.Telegram.AppID,
-			AppHash:    cfg.Telegram.AppHash,
-			BotToken:   cfg.Telegram.BotToken,
-			SessionDir: cfg.Telegram.SessionDir,
-		}, comp.Retriever, comp.Answerer, tp, mp)
-		go func() {
-			if err := b.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-				errc <- errors.Wrap(err, "bot")
-			}
-		}()
-	} else {
-		lg.Warn("telegram credentials missing, bot disabled")
-	}
 
 	select {
 	case <-ctx.Done():

@@ -16,6 +16,10 @@ func TestLoadYAML(t *testing.T) {
 http_addr: :9090
 qdrant_addr: qdrant:6334
 embed_dim: 512
+api:
+  base_url: http://ssapi:8080
+  auth_token:
+    value: test-token
 git:
   work_dir: /tmp/git
   token:
@@ -76,6 +80,8 @@ openrouter:
 	require.Equal(t, "/tmp/sisyphus-session", cfg.Telegram.SessionDir)
 	require.Equal(t, "test-model", cfg.OpenRouter.Model)
 	require.Equal(t, "corp_chunks", cfg.QdrantCollection)
+	require.Equal(t, "http://ssapi:8080", cfg.API.BaseURL)
+	require.Equal(t, "test-token", cfg.API.AuthToken)
 
 	// git: repository content + commits
 	require.Equal(t, "/tmp/git", cfg.Git.WorkDir)

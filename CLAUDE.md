@@ -26,8 +26,10 @@ Never store only embeddings — always keep Documents+Chunks in Postgres so we c
 ## Layout
 
 ```
-cmd/sisyphus              main; wires everything via go-faster/sdk app.Run
-cmd/ssmcp              MCP server entrypoint (Streamable HTTP or stdio)
+cmd/ssapi              owns Postgres/ent + migrations; serves the HTTP API
+                        (bearer-token auth on /search, /context; /health public)
+cmd/ssbot              thin Telegram /context bot; talks to ssapi via internal/apiclient
+cmd/ssmcp              MCP server entrypoint (Streamable HTTP or stdio); calls ssapi via internal/apiclient
 cmd/ssingest           one-shot ingestion CLI: git|gitlab|jira|telegram|all subcommands,
                         --reset <src|all> (--yes-i-mean-all for all), --since, --limit, --dry-run.
                         Wires its dependencies inline (does NOT reuse internal/wire).
@@ -53,7 +55,9 @@ internal/pipeline       Pipeline.Index: idempotent doc+chunk upsert (ent) + embe
 internal/bot            gotd bot, /context handler
 internal/ent            ent schema + generated code (Document, Chunk, SupportRequest,
                         TelegramMessage, SyncState)
-internal/wire           shared wiring for cmd/sisyphus, cmd/ssmcp, and cmd/ssingest (Services + Components)
+internal/apiclient      oas.Client adapter satisfying bot/mcpserver's local Retriever
+                        interface + index.Answerer over HTTP with bearer auth
+internal/wire           shared wiring for cmd/ssapi and cmd/ssingest (Services + Components)
 internal/oas            ogen generated code
 api/openapi.yaml        OpenAPI spec (source for ogen)
 deploy/                 docker-compose + configs + .env.example
@@ -62,6 +66,13 @@ deploy/                 docker-compose + configs + .env.example
 Service routing is currently inert: retrieval's `service` boost falls back to
 1.0 when `metadata.service` is absent. Add real service routing only when query
 quality demands it.
+
+## API auth
+
+The HTTP API (`cmd/ssapi`) requires a shared static bearer token (`api.auth_token`
+config / `SISYPHUS_API_AUTH_TOKEN` env), enforced server-side via
+`internal/api.SecurityHandler` (an ogen-generated `SecurityHandler`), and attached
+client-side by `internal/apiclient`. `/health` is the only unauthenticated route.
 
 ## Conventions
 
@@ -103,9 +114,8 @@ quality demands it.
 `internal/ent/schema` is the single source of truth for the DB schema. Versioned SQL
 migration files live in `internal/ent/migrate/migrations/` and are applied at runtime
 by the hand-written `Runner` in `internal/ent/migrate/runner.go` (tracked via a
-`schema_migrations` table). Only `sisyphus` runs migrations
-(`wire.NewOptions.RunMigrations: true`); `ssmcp` and `ssingest` connect without
-migrating, so schema changes apply exactly once per deploy instead of racing across
+`schema_migrations` table). Only `ssapi` runs migrations
+(`wire.NewOptions.RunMigrations: true`); `ssingest` connects without migrating (still holds its own DB connection via `wire.NewServices`), and `ssbot`/`ssmcp` don't touch the schema at all — they hold no DB connection whatsoever, only an HTTP client to `ssapi`. This ensures schema changes apply exactly once per deploy instead of racing across
 every process/replica sharing the database.
 
 After changing `internal/ent/schema`, generate the next migration file by diffing the

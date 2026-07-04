@@ -28,7 +28,10 @@ migrate-diff:
 	go run ./internal/ent/migrate/gen $(NAME)
 
 run:
-	go run ./cmd/sisyphus
+	go run ./cmd/ssapi
+
+run-bot:
+	go run ./cmd/ssbot
 
 ingest:
 	go run ./cmd/ssingest all
@@ -45,4 +48,4 @@ ingest-jira:
 ingest-telegram:
 	go run ./cmd/ssingest telegram
 
-.PHONY: lint fmt codegen migrate-diff run ingest ingest-git ingest-gitlab ingest-jira ingest-telegram
+.PHONY: lint fmt codegen migrate-diff run run-bot ingest ingest-git ingest-gitlab ingest-jira ingest-telegram

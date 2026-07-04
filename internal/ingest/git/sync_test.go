@@ -13,11 +13,10 @@ import (
 )
 
 func TestPrepareLocalDefaultsRepoName(t *testing.T) {
-	sources, err := Prepare(context.Background(), []Source{{Root: "/tmp/docs"}}, SyncOptions{})
+	source, err := Prepare(context.Background(), Source{Root: "/tmp/docs"}, SyncOptions{})
 	require.NoError(t, err)
-	require.Len(t, sources, 1)
-	require.Equal(t, "docs", sources[0].Repo)
-	require.Equal(t, "/tmp/docs", sources[0].Root)
+	require.Equal(t, "docs", source.Repo)
+	require.Equal(t, "/tmp/docs", source.Root)
 }
 
 func TestDefaultRepoName(t *testing.T) {
@@ -29,15 +28,14 @@ func TestPrepareClonesLocalRepository(t *testing.T) {
 	remote := newTestRepo(t)
 	workDir := t.TempDir()
 
-	sources, err := Prepare(context.Background(), []Source{{
+	source, err := Prepare(context.Background(), Source{
 		URL:  remote,
 		Repo: "docs",
-	}}, SyncOptions{WorkDir: workDir})
+	}, SyncOptions{WorkDir: workDir})
 	require.NoError(t, err)
-	require.Len(t, sources, 1)
-	require.Equal(t, filepath.Join(workDir, "docs"), sources[0].Root)
+	require.Equal(t, filepath.Join(workDir, "docs"), source.Root)
 
-	_, err = os.Stat(filepath.Join(sources[0].Root, "README.md"))
+	_, err = os.Stat(filepath.Join(source.Root, "README.md"))
 	require.NoError(t, err)
 }
 

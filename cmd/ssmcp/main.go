@@ -13,9 +13,10 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
+	"github.com/go-faster/sisyphus/internal/apiclient"
 	"github.com/go-faster/sisyphus/internal/config"
 	"github.com/go-faster/sisyphus/internal/mcpserver"
-	"github.com/go-faster/sisyphus/internal/wire"
+	"github.com/go-faster/sisyphus/internal/netclient"
 )
 
 func main() {
@@ -47,16 +48,28 @@ func main() {
 
 func run(ctx context.Context, cfg config.Config, useStdio bool, t *app.Telemetry) error {
 	lg := zctx.From(ctx)
-	comp, err := wire.New(ctx, cfg, wire.NewOptions{
+	if cfg.API.BaseURL == "" || cfg.API.AuthToken == "" {
+		return errors.New("api.base_url and api.auth_token are required")
+	}
+
+	httpClient, err := netclient.HTTPClient(ctx, "ssapi", "", netclient.HTTPClientOptions{
 		TracerProvider: t.TracerProvider(),
 		MeterProvider:  t.MeterProvider(),
 	})
 	if err != nil {
-		return err
+		return errors.Wrap(err, "http client")
 	}
-	defer comp.Close()
 
-	srv := mcpserver.New(comp.Retriever, comp.Answerer)
+	api, err := apiclient.New(cfg.API.BaseURL, cfg.API.AuthToken, apiclient.Options{
+		HTTPClient:     httpClient,
+		TracerProvider: t.TracerProvider(),
+		MeterProvider:  t.MeterProvider(),
+	})
+	if err != nil {
+		return errors.Wrap(err, "api client")
+	}
+
+	srv := mcpserver.New(api, api)
 	if useStdio {
 		lg.Info("mcp stdio starting")
 		return srv.Run(ctx, &mcp.StdioTransport{})

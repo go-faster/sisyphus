@@ -4,16 +4,20 @@ package api
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
 
 	"github.com/go-faster/errors"
+	"github.com/ogen-go/ogen/ogenerrors"
 
 	"github.com/go-faster/sisyphus/internal/index"
 	"github.com/go-faster/sisyphus/internal/oas"
-	"github.com/go-faster/sisyphus/internal/wire"
 )
 
-// Retriever is the retrieval interface (alias to wire.Retriever).
-type Retriever = wire.Retriever
+// Retriever is the retrieval interface Handler needs.
+type Retriever interface {
+	Retrieve(ctx context.Context, q index.Query) ([]index.Result, error)
+}
 
 // Handler implements oas.Handler.
 type Handler struct {
@@ -77,10 +81,31 @@ func (h *Handler) Context(ctx context.Context, req *oas.ContextRequest) (*oas.Co
 
 // NewError maps a handler error to the default error response.
 func (h *Handler) NewError(_ context.Context, err error) *oas.ErrorStatusCode {
+	// Special case for security errors: return 401 instead of 500.
+	if _, ok := errors.Into[*ogenerrors.SecurityError](err); ok {
+		return &oas.ErrorStatusCode{
+			StatusCode: http.StatusUnauthorized,
+			Response:   oas.Error{ErrorMessage: "unauthorized"},
+		}
+	}
+
 	return &oas.ErrorStatusCode{
-		StatusCode: 500,
+		StatusCode: http.StatusInternalServerError,
 		Response:   oas.Error{ErrorMessage: err.Error()},
 	}
+}
+
+// ErrorHandler maps ogen security failures to 401; everything else falls
+// back to ogen's default handling.
+func ErrorHandler(ctx context.Context, w http.ResponseWriter, r *http.Request, err error) {
+	var secErr *ogenerrors.SecurityError
+	if errors.As(err, &secErr) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_ = json.NewEncoder(w).Encode(oas.Error{ErrorMessage: "unauthorized"})
+		return
+	}
+	ogenerrors.DefaultErrorHandler(ctx, w, r, err)
 }
 
 func toSearchResults(rs []index.Result) []oas.SearchResult {

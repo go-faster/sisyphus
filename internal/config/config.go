@@ -28,6 +28,7 @@ type Config struct {
 
 	Jira JiraConfig
 
+	API        APIConfig
 	OpenRouter OpenRouter
 	Telegram   Telegram
 	Proxies    ProxyConfig
@@ -49,6 +50,13 @@ type JiraConfig struct {
 // JiraProject describes one Jira project to ingest.
 type JiraProject struct {
 	Key string `yaml:"key"`
+}
+
+// APIConfig configures the HTTP API: the token ssapi enforces, and (for
+// ssbot/ssmcp) the base URL of the ssapi instance to call.
+type APIConfig struct {
+	BaseURL   string
+	AuthToken string
 }
 
 // OpenRouter holds configuration for the OpenRouter LLM API.
@@ -94,6 +102,7 @@ type fileConfig struct {
 
 	Jira fileJiraConfig `yaml:"jira"`
 
+	API        fileAPIConfig   `yaml:"api"`
 	OpenRouter fileOpenRouter  `yaml:"openrouter"`
 	Telegram   fileTelegram    `yaml:"telegram"`
 	Proxies    fileProxyConfig `yaml:"proxies"`
@@ -126,6 +135,11 @@ type fileJiraConfig struct {
 	Password Secret        `yaml:"password"`
 	PAT      Secret        `yaml:"pat"`
 	Projects []JiraProject `yaml:"projects"`
+}
+
+type fileAPIConfig struct {
+	BaseURL   string `yaml:"base_url"`
+	AuthToken Secret `yaml:"auth_token"`
 }
 
 // GitConfig configures git repository content + commit ingestion.
@@ -254,6 +268,9 @@ func defaultConfig() fileConfig {
 		EmbedModel:       "bge-m3",
 		EmbedDim:         1024,
 		MCPAddr:          ":8081",
+		API: fileAPIConfig{
+			BaseURL: "http://localhost:8080",
+		},
 		OpenRouter: fileOpenRouter{
 			Model: "openai/gpt-4o-mini",
 		},
@@ -288,6 +305,10 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 	dsn, err := c.DatabaseDSN.Resolve(baseDir)
 	if err != nil {
 		return Config{}, errors.Wrap(err, "database_dsn")
+	}
+	apiAuthToken, err := c.API.AuthToken.Resolve(baseDir)
+	if err != nil {
+		return Config{}, errors.Wrap(err, "api auth_token")
 	}
 	jiraToken, err := c.Jira.APIToken.Resolve(baseDir)
 	if err != nil {
@@ -356,6 +377,10 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			Password: jiraPassword,
 			PAT:      jiraPAT,
 			Projects: c.Jira.Projects,
+		},
+		API: APIConfig{
+			BaseURL:   c.API.BaseURL,
+			AuthToken: apiAuthToken,
 		},
 		OpenRouter: OpenRouter{
 			APIKey: openRouterKey,

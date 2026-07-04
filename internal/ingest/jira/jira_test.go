@@ -311,8 +311,9 @@ func testCursorResume(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Verify the JQL contains the expected updated clause
-	if !strings.Contains(gotJQL, `updated >= "2026-06-01T05:00:00Z"`) {
+	// Verify the JQL contains the expected updated clause (Jira JQL date
+	// literals use "yyyy-MM-dd HH:mm", not RFC3339).
+	if !strings.Contains(gotJQL, `updated >= "2026-06-01 05:00"`) {
 		t.Errorf("JQL missing updated clause: %s", gotJQL)
 	}
 	if !strings.Contains(gotJQL, "ORDER BY updated ASC") {
@@ -908,7 +909,7 @@ func TestJQLURLEncoding(t *testing.T) {
 	if !strings.Contains(jql, `project IN ("BILL")`) {
 		t.Errorf("unexpected JQL: %s", jql)
 	}
-	if !strings.Contains(jql, `updated >= "2026-06-01T00:00:00Z"`) {
+	if !strings.Contains(jql, `updated >= "2026-06-01 00:00"`) {
 		t.Errorf("missing updated clause in JQL: %s", jql)
 	}
 }

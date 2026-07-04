@@ -20,6 +20,7 @@ secret.yaml
 /ssbot
 /ssmcp
 /ssingest
+/ssapi
 /_ref
 
 # goreleaser

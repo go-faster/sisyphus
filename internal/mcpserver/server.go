@@ -3,14 +3,17 @@
 package mcpserver
 
 import (
+	"context"
+
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/go-faster/sisyphus/internal/index"
-	"github.com/go-faster/sisyphus/internal/wire"
 )
 
-// Retriever is the retrieval interface (alias to wire.Retriever).
-type Retriever = wire.Retriever
+// Retriever is the minimal retrieval interface mcpserver needs.
+type Retriever interface {
+	Retrieve(ctx context.Context, q index.Query) ([]index.Result, error)
+}
 
 // New constructs an MCP Server with knowledge tools wired to the provided
 // Retriever and Answerer. Uses official SDK patterns.

@@ -23,11 +23,12 @@ import (
 
 	"github.com/go-faster/sisyphus/internal/index"
 	"github.com/go-faster/sisyphus/internal/telemetry"
-	"github.com/go-faster/sisyphus/internal/wire"
 )
 
-// Retriever is the retrieval interface (alias to wire.Retriever).
-type Retriever = wire.Retriever
+// Retriever is the minimal retrieval interface Bot needs.
+type Retriever interface {
+	Retrieve(ctx context.Context, q index.Query) ([]index.Result, error)
+}
 
 // Config configures the bot.
 type Config struct {
