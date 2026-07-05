@@ -50,6 +50,9 @@ type Bot struct {
 	tracer  trace.Tracer
 	metrics *botMetrics
 	logger  *zap.Logger
+
+	allowedChats map[int64]struct{}
+	allowedUsers map[int64]struct{}
 }
 
 // BotOptions configures the bot.
@@ -60,6 +63,8 @@ type BotOptions struct {
 	TracerProvider trace.TracerProvider
 	MeterProvider  metric.MeterProvider
 	Logger         *zap.Logger
+	AllowedChats   []int64
+	AllowedUserIDs []int64
 }
 
 func (opts *BotOptions) setDefaults() {
@@ -80,16 +85,57 @@ func New(_ context.Context, r Retriever, a index.Answerer, cred BotCredentials, 
 	tp := opts.TracerProvider
 	mp := opts.MeterProvider
 	m, _ := newBotMetrics(mp)
-	return &Bot{
-		cred:      cred,
-		silent:    opts.Silent,
-		retriever: r,
-		answerer:  a,
-		tp:        tp,
-		tracer:    tp.Tracer("github.com/go-faster/sisyphus/bot"),
-		logger:    opts.Logger,
-		metrics:   m,
+
+	// Build allowlist maps
+	allowedChats := make(map[int64]struct{})
+	for _, chatID := range opts.AllowedChats {
+		allowedChats[chatID] = struct{}{}
 	}
+	allowedUsers := make(map[int64]struct{})
+	for _, userID := range opts.AllowedUserIDs {
+		allowedUsers[userID] = struct{}{}
+	}
+
+	if len(allowedChats) == 0 && len(allowedUsers) == 0 {
+		opts.Logger.Warn("telegram bot: no allowlist configured, will not respond to anyone")
+	}
+
+	return &Bot{
+		cred:         cred,
+		silent:       opts.Silent,
+		retriever:    r,
+		answerer:     a,
+		tp:           tp,
+		tracer:       tp.Tracer("github.com/go-faster/sisyphus/bot"),
+		logger:       opts.Logger,
+		metrics:      m,
+		allowedChats: allowedChats,
+		allowedUsers: allowedUsers,
+	}
+}
+
+// peerChatID extracts a chat ID from a tg.PeerClass.
+func peerChatID(p tg.PeerClass) int64 {
+	if p == nil {
+		return 0
+	}
+	switch peer := p.(type) {
+	case *tg.PeerUser:
+		return peer.UserID
+	case *tg.PeerChat:
+		return peer.ChatID
+	case *tg.PeerChannel:
+		return peer.ChannelID
+	default:
+		return 0
+	}
+}
+
+// isAllowed checks if a chat/user combination is in the allowlist.
+func (b *Bot) isAllowed(chatID, userID int64) bool {
+	_, isChat := b.allowedChats[chatID]
+	_, isUser := b.allowedUsers[userID]
+	return isChat || isUser
 }
 
 // Run connects, authenticates as a bot, and serves updates until ctx is done.
@@ -111,6 +157,16 @@ func (b *Bot) Run(ctx context.Context) error {
 		if !ok || msg.Out {
 			return nil
 		}
+
+		// Check allowlist before processing
+		chatID := peerChatID(msg.PeerID)
+		senderID := peerChatID(msg.FromID)
+		if !b.isAllowed(chatID, senderID) {
+			zctx.From(ctx).Debug("bot: ignoring message from non-allowlisted chat/user",
+				zap.Int64("chat_id", chatID), zap.Int64("sender_id", senderID))
+			return nil
+		}
+
 		lg := zctx.From(ctx)
 		query, ok := parseContextCommand(msg.Message)
 		if !ok {
