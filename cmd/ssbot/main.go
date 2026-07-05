@@ -68,11 +68,21 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 		return errors.Wrap(err, "api client")
 	}
 
-	b := bot.New(ctx, bot.Config{
-		AppID:      cfg.Telegram.AppID,
-		AppHash:    cfg.Telegram.AppHash,
-		BotToken:   cfg.Telegram.BotToken,
-		SessionDir: cfg.Telegram.SessionDir,
-	}, api, api, tp, mp)
+	b := bot.New(ctx,
+		api,
+		api,
+		bot.BotCredentials{
+			AppID:      cfg.Telegram.AppID,
+			AppHash:    cfg.Telegram.AppHash,
+			BotToken:   cfg.Telegram.BotToken,
+			SessionDir: cfg.Telegram.SessionDir,
+		},
+		bot.BotOptions{
+			Silent:         cfg.Telegram.Silent,
+			TracerProvider: tp,
+			MeterProvider:  mp,
+			Logger:         zctx.From(ctx),
+		},
+	)
 	return b.Run(ctx)
 }

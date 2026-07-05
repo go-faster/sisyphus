@@ -76,6 +76,7 @@ type Telegram struct {
 	SessionDir    string
 	MonitorChats  []TelegramChat
 	IngestSession string
+	Silent        bool
 }
 
 // TelegramChat describes one Telegram chat to monitor.

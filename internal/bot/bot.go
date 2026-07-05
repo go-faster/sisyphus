@@ -30,8 +30,8 @@ type Retriever interface {
 	Retrieve(ctx context.Context, q index.Query) ([]index.Result, error)
 }
 
-// Config configures the bot.
-type Config struct {
+// BotCredentials contains the credentials needed to run the bot.
+type BotCredentials struct {
 	AppID      int
 	AppHash    string
 	BotToken   string
@@ -40,41 +40,66 @@ type Config struct {
 
 // Bot serves /context over a Telegram bot session.
 type Bot struct {
-	cfg       Config
+	cred   BotCredentials
+	silent bool
+
 	retriever Retriever
 	answerer  index.Answerer
-	tp        trace.TracerProvider
-	tracer    trace.Tracer
-	m         *botMetrics
+
+	tp      trace.TracerProvider
+	tracer  trace.Tracer
+	metrics *botMetrics
+	logger  *zap.Logger
+}
+
+// BotOptions configures the bot.
+type BotOptions struct {
+	// Silent disables actual sending of messages, useful for testing.
+	Silent bool
+
+	TracerProvider trace.TracerProvider
+	MeterProvider  metric.MeterProvider
+	Logger         *zap.Logger
+}
+
+func (opts *BotOptions) setDefaults() {
+	if opts.TracerProvider == nil {
+		opts.TracerProvider = otel.GetTracerProvider()
+	}
+	if opts.MeterProvider == nil {
+		opts.MeterProvider = otel.GetMeterProvider()
+	}
+	if opts.Logger == nil {
+		opts.Logger = zap.L()
+	}
 }
 
 // New builds a Bot.
-func New(_ context.Context, cfg Config, r Retriever, a index.Answerer, tp trace.TracerProvider, mp metric.MeterProvider) *Bot {
-	if tp == nil {
-		tp = otel.GetTracerProvider()
-	}
-	if mp == nil {
-		mp = otel.GetMeterProvider()
-	}
+func New(_ context.Context, r Retriever, a index.Answerer, cred BotCredentials, opts BotOptions) *Bot {
+	opts.setDefaults()
+	tp := opts.TracerProvider
+	mp := opts.MeterProvider
 	m, _ := newBotMetrics(mp)
 	return &Bot{
-		cfg:       cfg,
+		cred:      cred,
+		silent:    opts.Silent,
 		retriever: r,
 		answerer:  a,
 		tp:        tp,
 		tracer:    tp.Tracer("github.com/go-faster/sisyphus/bot"),
-		m:         m,
+		logger:    opts.Logger,
+		metrics:   m,
 	}
 }
 
 // Run connects, authenticates as a bot, and serves updates until ctx is done.
 func (b *Bot) Run(ctx context.Context) error {
 	dispatcher := tg.NewUpdateDispatcher()
-	client := telegram.NewClient(b.cfg.AppID, b.cfg.AppHash, telegram.Options{
-		Logger:         logzap.New(zctx.From(ctx).Named("td")),
+	client := telegram.NewClient(b.cred.AppID, b.cred.AppHash, telegram.Options{
+		Logger:         logzap.New(b.logger.Named("td")),
 		UpdateHandler:  dispatcher,
 		TracerProvider: b.tp,
-		SessionStorage: &telegram.FileSessionStorage{Path: filepath.Join(b.cfg.SessionDir, "bot.json")},
+		SessionStorage: &telegram.FileSessionStorage{Path: filepath.Join(b.cred.SessionDir, "bot.json")},
 		Middlewares: []telegram.Middleware{
 			telemetry.TDTracingMiddleware(b.tp),
 		},
@@ -86,28 +111,33 @@ func (b *Bot) Run(ctx context.Context) error {
 		if !ok || msg.Out {
 			return nil
 		}
+		lg := zctx.From(ctx)
 		query, ok := parseContextCommand(msg.Message)
 		if !ok {
 			return nil
 		}
-		zctx.From(ctx).Info("context command", zap.Int("query_len", len(query)))
+		lg.Info("context command", zap.String("query", query))
 
 		answer, err := b.handle(ctx, query)
 		if err != nil {
-			zctx.From(ctx).Error("handle context", zap.Error(err))
+			lg.Error("handle context", zap.Error(err))
 			answer = "Sorry, something went wrong handling that request."
 		}
-		if _, err := sender.Reply(e, u).Text(ctx, answer); err != nil {
-			return errors.Wrap(err, "reply")
+
+		lg.Info("replying", zap.String("answer", answer))
+		if !b.silent {
+			if _, err := sender.Reply(e, u).Text(ctx, answer); err != nil {
+				return errors.Wrap(err, "reply")
+			}
 		}
 		return nil
 	})
 
 	return client.Run(ctx, func(ctx context.Context) error {
-		if _, err := client.Auth().Bot(ctx, b.cfg.BotToken); err != nil {
+		if _, err := client.Auth().Bot(ctx, b.cred.BotToken); err != nil {
 			return errors.Wrap(err, "bot auth")
 		}
-		zctx.From(ctx).Info("bot authenticated, serving /context")
+		b.logger.Info("bot authenticated, serving /context")
 		<-ctx.Done()
 		return ctx.Err()
 	})
@@ -123,8 +153,8 @@ func (b *Bot) handle(ctx context.Context, query string) (string, error) {
 		rerr        error
 	)
 	defer func() {
-		if b.m != nil {
-			b.m.recordContext(ctx, time.Since(start).Seconds(), resultCount, rerr)
+		if b.metrics != nil {
+			b.metrics.recordContext(ctx, time.Since(start).Seconds(), resultCount, rerr)
 		}
 		span.SetAttributes(attribute.Int("results.count", resultCount))
 		if rerr != nil {
