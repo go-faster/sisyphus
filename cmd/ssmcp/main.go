@@ -75,9 +75,13 @@ func run(ctx context.Context, cfg config.Config, useStdio bool, t *app.Telemetry
 		return srv.Run(ctx, &mcp.StdioTransport{})
 	}
 
+	if cfg.MCPAuthToken == "" {
+		return errors.New("mcp_auth_token is required for HTTP transport")
+	}
+
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, nil)
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", handler)
+	mux.Handle("/mcp", mcpserver.BearerAuthMiddleware(cfg.MCPAuthToken)(handler))
 
 	lg.Info("mcp http listening", zap.String("addr", cfg.MCPAddr))
 	s := &http.Server{

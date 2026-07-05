@@ -180,7 +180,37 @@ func clearEnv(t *testing.T) {
 		"TEST_SISYPHUS_GITLAB_TOKEN",
 		"TEST_SISYPHUS_OPENROUTER_API_KEY",
 		"TEST_SISYPHUS_JIRA_PASSWORD",
+		"TEST_SISYPHUS_MCP_AUTH_TOKEN",
 	} {
 		t.Setenv(key, "")
 	}
+}
+
+func TestMCPAuthToken(t *testing.T) {
+	clearEnv(t)
+
+	path := writeConfig(t, `database_dsn:
+  value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+mcp_auth_token:
+  env: TEST_SISYPHUS_MCP_AUTH_TOKEN
+`)
+	t.Setenv("SISYPHUS_CONFIG", path)
+	t.Setenv("TEST_SISYPHUS_MCP_AUTH_TOKEN", "mcp-test-token")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "mcp-test-token", cfg.MCPAuthToken)
+}
+
+func TestMCPAuthTokenEmptyWhenNotConfigured(t *testing.T) {
+	clearEnv(t)
+
+	path := writeConfig(t, `database_dsn:
+  value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+`)
+	t.Setenv("SISYPHUS_CONFIG", path)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "", cfg.MCPAuthToken)
 }

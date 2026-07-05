@@ -82,6 +82,8 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 			TracerProvider: tp,
 			MeterProvider:  mp,
 			Logger:         zctx.From(ctx),
+			AllowedChats:   cfg.Telegram.AllowedChats,
+			AllowedUserIDs: cfg.Telegram.AllowedUserIDs,
 		},
 	)
 	return b.Run(ctx)

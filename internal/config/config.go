@@ -33,7 +33,8 @@ type Config struct {
 	Telegram   Telegram
 	Proxies    ProxyConfig
 
-	MCPAddr string
+	MCPAddr      string
+	MCPAuthToken string
 }
 
 // JiraConfig holds Jira REST API configuration for ingestion.
@@ -70,13 +71,15 @@ func (o OpenRouter) Enabled() bool { return o.APIKey != "" }
 
 // Telegram holds gotd auth configuration (plan: user session + bot).
 type Telegram struct {
-	AppID         int
-	AppHash       string
-	BotToken      string
-	SessionDir    string
-	MonitorChats  []TelegramChat
-	IngestSession string
-	Silent        bool
+	AppID          int
+	AppHash        string
+	BotToken       string
+	SessionDir     string
+	MonitorChats   []TelegramChat
+	IngestSession  string
+	Silent         bool
+	AllowedChats   []int64
+	AllowedUserIDs []int64
 }
 
 // TelegramChat describes one Telegram chat to monitor.
@@ -108,7 +111,8 @@ type fileConfig struct {
 	Telegram   fileTelegram    `yaml:"telegram"`
 	Proxies    fileProxyConfig `yaml:"proxies"`
 
-	MCPAddr string `yaml:"mcp_addr"`
+	MCPAddr      string `yaml:"mcp_addr"`
+	MCPAuthToken Secret `yaml:"mcp_auth_token"`
 }
 
 // ProxyConfig configures per-client HTTP proxies.
@@ -203,12 +207,14 @@ type fileOpenRouter struct {
 }
 
 type fileTelegram struct {
-	AppID         int            `yaml:"app_id"`
-	AppHash       Secret         `yaml:"app_hash"`
-	BotToken      Secret         `yaml:"bot_token"`
-	SessionDir    string         `yaml:"session_dir"`
-	MonitorChats  []TelegramChat `yaml:"monitor_chats"`
-	IngestSession string         `yaml:"ingest_session"`
+	AppID          int            `yaml:"app_id"`
+	AppHash        Secret         `yaml:"app_hash"`
+	BotToken       Secret         `yaml:"bot_token"`
+	SessionDir     string         `yaml:"session_dir"`
+	MonitorChats   []TelegramChat `yaml:"monitor_chats"`
+	IngestSession  string         `yaml:"ingest_session"`
+	AllowedChats   []int64        `yaml:"allowed_chats"`
+	AllowedUserIDs []int64        `yaml:"allowed_user_ids"`
 }
 
 // Secret describes a secret loaded from a literal value, environment variable,
@@ -347,6 +353,10 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	mcpAuthToken, err := c.MCPAuthToken.Resolve(baseDir)
+	if err != nil {
+		return Config{}, errors.Wrap(err, "mcp auth_token")
+	}
 
 	return Config{
 		HTTPAddr:         c.HTTPAddr,
@@ -388,15 +398,18 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			Model:  c.OpenRouter.Model,
 		},
 		Telegram: Telegram{
-			AppID:         c.Telegram.AppID,
-			AppHash:       telegramAppHash,
-			BotToken:      telegramBotToken,
-			SessionDir:    c.Telegram.SessionDir,
-			MonitorChats:  c.Telegram.MonitorChats,
-			IngestSession: c.Telegram.IngestSession,
+			AppID:          c.Telegram.AppID,
+			AppHash:        telegramAppHash,
+			BotToken:       telegramBotToken,
+			SessionDir:     c.Telegram.SessionDir,
+			MonitorChats:   c.Telegram.MonitorChats,
+			IngestSession:  c.Telegram.IngestSession,
+			AllowedChats:   c.Telegram.AllowedChats,
+			AllowedUserIDs: c.Telegram.AllowedUserIDs,
 		},
-		Proxies: proxies,
-		MCPAddr: c.MCPAddr,
+		Proxies:      proxies,
+		MCPAddr:      c.MCPAddr,
+		MCPAuthToken: mcpAuthToken,
 	}, nil
 }
 
