@@ -16,7 +16,7 @@ type fakeFetcher struct {
 	call  int
 }
 
-func (f *fakeFetcher) FetchHistory(_ context.Context, chatID int64, beforeMsgID, limit int) ([]RawMessage, bool, error) {
+func (f *fakeFetcher) FetchHistory(_ context.Context, chatID int64, minID, offsetID, limit int) ([]RawMessage, bool, error) {
 	if f.call >= len(f.pages) {
 		return nil, false, nil
 	}
@@ -223,10 +223,10 @@ func TestBackfill_CursorResume(t *testing.T) {
 	}
 
 	chatID := int64(-100123)
-	calledWith := 0
+	calledWithMinID := 0
 	fetcher := &callTrackingFetcher{
-		fn: func(_ context.Context, chatID int64, beforeMsgID int, limit int) ([]RawMessage, bool, error) {
-			calledWith = beforeMsgID
+		fn: func(_ context.Context, chatID int64, minID int, offsetID int, limit int) ([]RawMessage, bool, error) {
+			calledWithMinID = minID
 			return nil, false, nil
 		},
 	}
@@ -243,17 +243,17 @@ func TestBackfill_CursorResume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calledWith != 42 {
-		t.Fatalf("want FetchHistory called with beforeMsgID=42, got %d", calledWith)
+	if calledWithMinID != 42 {
+		t.Fatalf("want FetchHistory called with minID=42, got %d", calledWithMinID)
 	}
 }
 
 type callTrackingFetcher struct {
-	fn func(ctx context.Context, chatID int64, beforeMsgID int, limit int) ([]RawMessage, bool, error)
+	fn func(ctx context.Context, chatID int64, minID int, offsetID int, limit int) ([]RawMessage, bool, error)
 }
 
-func (f *callTrackingFetcher) FetchHistory(ctx context.Context, chatID int64, beforeMsgID, limit int) ([]RawMessage, bool, error) {
-	return f.fn(ctx, chatID, beforeMsgID, limit)
+func (f *callTrackingFetcher) FetchHistory(ctx context.Context, chatID int64, minID, offsetID, limit int) ([]RawMessage, bool, error) {
+	return f.fn(ctx, chatID, minID, offsetID, limit)
 }
 
 func TestBackfill_IdempotentPersist(t *testing.T) {
@@ -307,6 +307,101 @@ func TestBackfill_IdempotentPersist(t *testing.T) {
 		t.Fatalf("want 2 total messages after idempotent backfill, got %d", count)
 	}
 	_ = r2
+}
+
+func TestBackfill_IncrementalNewMessagesOnly(t *testing.T) {
+	db := testDB(t)
+	if db == nil {
+		t.Skip("set SISYPHUS_TEST_DB to run ent-backed tests")
+	}
+
+	chatID := int64(-100123)
+
+	// First run: fetch messages with IDs 1-50 (descending order: 50, 49, ..., 1).
+	page1 := make([]RawMessage, 50)
+	for i := range 50 {
+		page1[i] = RawMessage{
+			ChatID:    chatID,
+			MessageID: 50 - i,
+			Date:      time.Date(2026, 6, 1, 10, 0, i, 0, time.UTC),
+			Text:      "msg",
+			SenderID:  1,
+		}
+	}
+
+	fetcher1 := &fakeFetcher{pages: [][]RawMessage{page1}}
+	b1, err := NewBackfiller(db, BackfillOptions{Fetcher: fetcher1})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result1, err := b1.Backfill(context.Background(), BackfillRequest{
+		Chats: []ChatSpec{{ID: chatID}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result1.TotalMessages != 50 {
+		t.Fatalf("first run: want 50 messages, got %d", result1.TotalMessages)
+	}
+	if result1.NextCursor.PerChat[chatID] != 50 {
+		t.Fatalf("first run: want cursor=50, got %d", result1.NextCursor.PerChat[chatID])
+	}
+
+	// Second run: simulate 3 new messages arriving (IDs 51, 52, 53).
+	// The fetcher should only return those new messages when called with minID=50.
+	// It should NOT re-fetch old messages (1-50).
+	returnedMessages := []RawMessage{
+		{ChatID: chatID, MessageID: 53, Date: time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC), Text: "new1", SenderID: 1},
+		{ChatID: chatID, MessageID: 52, Date: time.Date(2026, 6, 1, 11, 5, 0, 0, time.UTC), Text: "new2", SenderID: 1},
+		{ChatID: chatID, MessageID: 51, Date: time.Date(2026, 6, 1, 11, 10, 0, 0, time.UTC), Text: "new3", SenderID: 1},
+	}
+
+	// Track what parameters FetchHistory is called with.
+	callCount := 0
+	var seenMinID int
+	fetcher2 := &callTrackingFetcher{
+		fn: func(_ context.Context, chatID int64, minID int, offsetID int, limit int) ([]RawMessage, bool, error) {
+			callCount++
+			seenMinID = minID
+			// Only return messages if we're fetching with minID=50 (incremental).
+			// This ensures the bug (re-fetching old messages with OffsetID=50)
+			// would be caught.
+			if minID == 50 {
+				return returnedMessages, false, nil
+			}
+			// If someone incorrectly re-walks from OffsetID without checking minID,
+			// this would not be hit, so the test would fail.
+			return nil, false, nil
+		},
+	}
+
+	b2, err := NewBackfiller(db, BackfillOptions{Fetcher: fetcher2})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result2, err := b2.Backfill(context.Background(), BackfillRequest{
+		Chats:  []ChatSpec{{ID: chatID}},
+		Cursor: Cursor{PerChat: map[int64]int{chatID: 50}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if callCount == 0 {
+		t.Fatal("FetchHistory was not called")
+	}
+	if seenMinID != 50 {
+		t.Fatalf("second run: FetchHistory not called with minID=50 (was %d); bug not fixed", seenMinID)
+	}
+	if result2.TotalMessages != 3 {
+		t.Fatalf("second run: want 3 new messages, got %d", result2.TotalMessages)
+	}
+	if result2.NextCursor.PerChat[chatID] != 53 {
+		t.Fatalf("second run: want new cursor=53, got %d", result2.NextCursor.PerChat[chatID])
+	}
 }
 
 // testDB opens a test database if SISYPHUS_TEST_DB is set.

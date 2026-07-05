@@ -29,13 +29,18 @@ type RawMessage struct {
 // MessageFetcher is the abstraction over gotd MTProto fetch so the backfiller
 // is testable without real Telegram.
 type MessageFetcher interface {
-	// FetchHistory returns up to limit messages for chatID older than (exclusive)
-	// beforeMsgID. Messages are returned in DESCENDING message_id order (newest
-	// first), matching Telegram's messages.getHistory semantics. If beforeMsgID
-	// == 0, fetch newest first.
-	// Returns (messages, hasMore, error). hasMore indicates there are older
-	// messages still unfetched.
-	FetchHistory(ctx context.Context, chatID int64, beforeMsgID int, limit int) ([]RawMessage, bool, error)
+	// FetchHistory returns up to limit messages for chatID with message_id > minID
+	// (exclusive lower bound), paginating backward via offsetID. Messages are
+	// returned in DESCENDING message_id order (newest first), matching Telegram's
+	// messages.getHistory semantics.
+	// - minID: exclusive lower bound; only return messages with ID > minID.
+	//   Typically the cursor value from the previous run (or 0 for first run).
+	// - offsetID: pagination cursor within this run. Start with 0 for the first page;
+	//   after each page, update to the oldest message ID from that page to continue
+	//   walking backward.
+	// Returns (messages, hasMore, error). hasMore indicates there are more messages
+	// older than the oldest message in this result.
+	FetchHistory(ctx context.Context, chatID int64, minID int, offsetID int, limit int) ([]RawMessage, bool, error)
 }
 
 type gotdFetcher struct {
@@ -53,7 +58,7 @@ type peerBootstrapper interface {
 	bootstrapPeers(ctx context.Context, chatIDs []int64) error
 }
 
-func (f *gotdFetcher) FetchHistory(ctx context.Context, chatID int64, beforeMsgID, limit int) ([]RawMessage, bool, error) {
+func (f *gotdFetcher) FetchHistory(ctx context.Context, chatID int64, minID, offsetID, limit int) ([]RawMessage, bool, error) {
 	lg := zctx.From(ctx)
 	api := tg.NewClient(f.client)
 
@@ -61,7 +66,8 @@ func (f *gotdFetcher) FetchHistory(ctx context.Context, chatID int64, beforeMsgI
 
 	req := &tg.MessagesGetHistoryRequest{
 		Peer:     peer,
-		OffsetID: beforeMsgID,
+		MinID:    minID,
+		OffsetID: offsetID,
 		Limit:    limit,
 	}
 

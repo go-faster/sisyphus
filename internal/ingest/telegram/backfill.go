@@ -100,7 +100,7 @@ func (b *Backfiller) Backfill(ctx context.Context, req BackfillRequest) (Backfil
 			zap.Int64("chat_id", chat.ID),
 			zap.String("username", chat.Username))
 
-		beforeMsgID := req.Cursor.PerChat[chat.ID]
+		minID := req.Cursor.PerChat[chat.ID]
 		chatLimit := chat.Limit
 		if req.Limit > 0 {
 			remaining := req.Limit - totalFetched
@@ -113,6 +113,7 @@ func (b *Backfiller) Backfill(ctx context.Context, req BackfillRequest) (Backfil
 		}
 
 		var chatMsgs []RawMessage
+		offsetID := 0
 		for {
 			pageLimit := defaultPageSize
 			if chatLimit > 0 {
@@ -125,7 +126,7 @@ func (b *Backfiller) Backfill(ctx context.Context, req BackfillRequest) (Backfil
 				}
 			}
 
-			msgs, hasMore, err := b.fetcher.FetchHistory(ctx, chat.ID, beforeMsgID, pageLimit)
+			msgs, hasMore, err := b.fetcher.FetchHistory(ctx, chat.ID, minID, offsetID, pageLimit)
 			if err != nil {
 				return result, errors.Wrap(err, "telegram fetch")
 			}
@@ -139,7 +140,7 @@ func (b *Backfiller) Backfill(ctx context.Context, req BackfillRequest) (Backfil
 			}
 
 			chatMsgs = append(chatMsgs, msgs...)
-			beforeMsgID = msgs[len(msgs)-1].MessageID
+			offsetID = msgs[len(msgs)-1].MessageID
 
 			if !hasMore {
 				break
