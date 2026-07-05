@@ -5,23 +5,13 @@ import (
 	"github.com/go-faster/sdk/app"
 	"github.com/go-faster/sdk/zctx"
 	"github.com/spf13/cobra"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/go-faster/sisyphus/internal/config"
 	"github.com/go-faster/sisyphus/internal/wire"
 )
 
-var (
-	svc      *wire.Services
-	cfg      config.Config
-	globalTP trace.TracerProvider
-	globalMP metric.MeterProvider
-)
-
 func newRoot(t *app.Telemetry) *cobra.Command {
-	globalTP = t.TracerProvider()
-	globalMP = t.MeterProvider()
+	deps := newIngestDeps(t)
 
 	root := &cobra.Command{
 		Use:           "ssingest",
@@ -50,29 +40,30 @@ func newRoot(t *app.Telemetry) *cobra.Command {
 			return errors.Wrap(err, "config")
 		}
 
-		services, err := wire.NewServices(ctx, c, lg, globalTP, globalMP, false)
+		services, err := wire.NewServices(ctx, c, lg, deps.tp, deps.mp, false)
 		if err != nil {
 			return errors.Wrap(err, "setup services")
 		}
 
-		svc = services
-		cfg = c
+		deps.services = services
+		deps.cfg = c
 		return nil
 	}
 
 	root.PersistentPostRunE = func(_ *cobra.Command, _ []string) error {
-		if svc != nil {
-			svc.Close()
+		if deps.services != nil {
+			deps.services.Close()
+			deps.services = nil
 		}
 		return nil
 	}
 
 	root.AddCommand(
-		newGitCmd(),
-		newGitLabCmd(),
-		newJiraCmd(),
-		newTelegramCmd(),
-		newAllCmd(),
+		newGitCmd(deps),
+		newGitLabCmd(deps),
+		newJiraCmd(deps),
+		newTelegramCmd(deps),
+		newAllCmd(deps),
 	)
 
 	return root

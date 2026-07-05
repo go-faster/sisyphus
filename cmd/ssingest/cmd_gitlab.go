@@ -9,10 +9,9 @@ import (
 	"github.com/spf13/cobra"
 
 	chunkgitlab "github.com/go-faster/sisyphus/internal/chunk/gitlab"
-	"github.com/go-faster/sisyphus/internal/pipeline"
 )
 
-func newGitLabCmd() *cobra.Command {
+func newGitLabCmd(deps *ingestDeps) *cobra.Command {
 	var sinceStr string
 
 	cmd := &cobra.Command{
@@ -35,22 +34,12 @@ func newGitLabCmd() *cobra.Command {
 			}
 
 			ch := chunkgitlab.New()
-			pipe, err := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors, pipeline.PipelineOptions{
-				TracerProvider: globalTP,
-				MeterProvider:  globalMP,
-			})
+			pipe, err := deps.pipeline(ch)
 			if err != nil {
 				return errors.Wrap(err, "build pipeline")
 			}
 
-			r := runner{
-				db:       svc.DB,
-				vectors:  svc.Vectors,
-				cfg:      cfg,
-				tp:       globalTP,
-				mp:       globalMP,
-				embedder: svc.Embedder,
-			}
+			r := deps.runner()
 			if err := r.runGitLabAPI(ctx, pipe, since, doReset, limit, dryRun); err != nil {
 				if errors.Is(err, errNotConfigured) {
 					fmt.Fprintf(os.Stderr, "gitlab not configured\n")

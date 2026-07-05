@@ -9,10 +9,9 @@ import (
 	"github.com/spf13/cobra"
 
 	chunktg "github.com/go-faster/sisyphus/internal/chunk/telegram"
-	"github.com/go-faster/sisyphus/internal/pipeline"
 )
 
-func newTelegramCmd() *cobra.Command {
+func newTelegramCmd(deps *ingestDeps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "telegram",
 		Short: "backfill Telegram chats",
@@ -24,21 +23,12 @@ func newTelegramCmd() *cobra.Command {
 			doReset := resetFlag == "telegram" || resetFlag == "all"
 
 			ch := chunktg.New()
-			pipe, err := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors, pipeline.PipelineOptions{
-				TracerProvider: globalTP,
-				MeterProvider:  globalMP,
-			})
+			pipe, err := deps.pipeline(ch)
 			if err != nil {
 				return errors.Wrap(err, "build pipeline")
 			}
 
-			r := runner{
-				db:      svc.DB,
-				vectors: svc.Vectors,
-				cfg:     cfg,
-				tp:      globalTP,
-				mp:      globalMP,
-			}
+			r := deps.runner()
 			if err := r.runTelegram(ctx, pipe, time.Time{}, doReset, limit, dryRun); err != nil {
 				if errors.Is(err, errNotConfigured) {
 					fmt.Fprintf(os.Stderr, "telegram not configured or ingest session missing\n")

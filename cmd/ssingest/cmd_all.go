@@ -13,10 +13,9 @@ import (
 	chunkjira "github.com/go-faster/sisyphus/internal/chunk/jira"
 	chunktg "github.com/go-faster/sisyphus/internal/chunk/telegram"
 	"github.com/go-faster/sisyphus/internal/index"
-	"github.com/go-faster/sisyphus/internal/pipeline"
 )
 
-func newAllCmd() *cobra.Command {
+func newAllCmd(deps *ingestDeps) *cobra.Command {
 	return &cobra.Command{
 		Use:   "all",
 		Short: "run git then gitlab then jira then telegram in sequence",
@@ -27,23 +26,16 @@ func newAllCmd() *cobra.Command {
 			limit, _ := cmd.Flags().GetInt("limit")
 			resetFlag, _ := cmd.Flags().GetString("reset")
 
-			r := runner{
-				db:       svc.DB,
-				vectors:  svc.Vectors,
-				cfg:      cfg,
-				tp:       globalTP,
-				mp:       globalMP,
-				embedder: svc.Embedder,
-			}
+			r := deps.runner()
 
 			if resetFlag == "all" {
 				// Reset all git sources
-				for _, gitSrc := range cfg.Git.Repos {
-					if err := resetSource(ctx, svc.DB, svc.Vectors, index.SourceGitDocs(gitSrc.Repo)); err != nil {
+				for _, gitSrc := range deps.cfg.Git.Repos {
+					if err := resetSource(ctx, deps.services.DB, deps.services.Vectors, index.SourceGitDocs(gitSrc.Repo)); err != nil {
 						return err
 					}
 					if gitSrc.Commits {
-						if err := resetSource(ctx, svc.DB, svc.Vectors, index.SourceGitCommit(gitSrc.Repo)); err != nil {
+						if err := resetSource(ctx, deps.services.DB, deps.services.Vectors, index.SourceGitCommit(gitSrc.Repo)); err != nil {
 							return err
 						}
 					}
@@ -56,7 +48,7 @@ func newAllCmd() *cobra.Command {
 					index.SourceJira,
 					index.SourceTelegram,
 				} {
-					if err := resetSource(ctx, svc.DB, svc.Vectors, src); err != nil {
+					if err := resetSource(ctx, deps.services.DB, deps.services.Vectors, src); err != nil {
 						return err
 					}
 				}
@@ -80,10 +72,7 @@ func newAllCmd() *cobra.Command {
 			// gitlab REST
 			{
 				ch := chunkgitlab.New()
-				pipe, err := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors, pipeline.PipelineOptions{
-					TracerProvider: globalTP,
-					MeterProvider:  globalMP,
-				})
+				pipe, err := deps.pipeline(ch)
 				if err != nil {
 					return errors.Wrap(err, "build gitlab pipeline")
 				}
@@ -101,10 +90,7 @@ func newAllCmd() *cobra.Command {
 			// jira
 			{
 				ch := chunkjira.New()
-				pipe, err := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors, pipeline.PipelineOptions{
-					TracerProvider: globalTP,
-					MeterProvider:  globalMP,
-				})
+				pipe, err := deps.pipeline(ch)
 				if err != nil {
 					return errors.Wrap(err, "build jira pipeline")
 				}
@@ -122,10 +108,7 @@ func newAllCmd() *cobra.Command {
 			// telegram
 			{
 				ch := chunktg.New()
-				pipe, err := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors, pipeline.PipelineOptions{
-					TracerProvider: globalTP,
-					MeterProvider:  globalMP,
-				})
+				pipe, err := deps.pipeline(ch)
 				if err != nil {
 					return errors.Wrap(err, "build telegram pipeline")
 				}

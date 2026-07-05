@@ -9,10 +9,9 @@ import (
 	"github.com/spf13/cobra"
 
 	chunkjira "github.com/go-faster/sisyphus/internal/chunk/jira"
-	"github.com/go-faster/sisyphus/internal/pipeline"
 )
 
-func newJiraCmd() *cobra.Command {
+func newJiraCmd(deps *ingestDeps) *cobra.Command {
 	var sinceStr string
 
 	cmd := &cobra.Command{
@@ -35,21 +34,12 @@ func newJiraCmd() *cobra.Command {
 			}
 
 			ch := chunkjira.New()
-			pipe, err := pipeline.New(svc.DB, ch, svc.Embedder, svc.Vectors, pipeline.PipelineOptions{
-				TracerProvider: globalTP,
-				MeterProvider:  globalMP,
-			})
+			pipe, err := deps.pipeline(ch)
 			if err != nil {
 				return errors.Wrap(err, "build pipeline")
 			}
 
-			r := runner{
-				db:      svc.DB,
-				vectors: svc.Vectors,
-				cfg:     cfg,
-				tp:      globalTP,
-				mp:      globalMP,
-			}
+			r := deps.runner()
 			if err := r.runJira(ctx, pipe, since, doReset, limit, dryRun); err != nil {
 				if errors.Is(err, errNotConfigured) {
 					fmt.Fprintf(os.Stderr, "jira not configured\n")

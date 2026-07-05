@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newGitCmd() *cobra.Command {
+func newGitCmd(deps *ingestDeps) *cobra.Command {
 	var noPrune bool
 
 	cmd := &cobra.Command{
@@ -21,14 +21,7 @@ func newGitCmd() *cobra.Command {
 			resetFlag, _ := cmd.Flags().GetString("reset")
 			doReset := resetFlag == "git" || resetFlag == "all"
 
-			r := runner{
-				db:       svc.DB,
-				vectors:  svc.Vectors,
-				cfg:      cfg,
-				tp:       globalTP,
-				mp:       globalMP,
-				embedder: svc.Embedder,
-			}
+			r := deps.runner()
 			if err := r.runGit(ctx, doReset, limit, dryRun, !noPrune); err != nil {
 				if errors.Is(err, errNotConfigured) {
 					fmt.Fprintf(os.Stderr, "git not configured\n")
