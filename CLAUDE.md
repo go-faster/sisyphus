@@ -42,7 +42,8 @@ internal/embed/ollama   Ollama embedder (implements index.Embedder)
 internal/search/postgres FTS searcher over ent (implements index.Searcher)
 internal/search/qdrant  Qdrant client + searcher (implements index.Searcher)
                         Also implements pipeline.VectorStore (Upsert + Delete by point ID).
-internal/retrieval      merges + reranks Postgres+Qdrant results, authority/boost rules
+internal/retrieval      merges Postgres+Qdrant results via Reciprocal Rank Fusion (RRF,
+                        k=60), then applies authority/boost rules
 internal/ingest/git     git repo content (Markdown) + commits + tags walker; local or clone/pull via git
 internal/ingest/gitlab  GitLab REST API client (stdlib net/http) with pagination + cursor per resource
 internal/ingest/jira    incremental Jira REST client (stdlib net/http) with sliding-window cursor
@@ -55,8 +56,12 @@ internal/pipeline       Pipeline.Index: idempotent doc+chunk upsert (ent) + embe
 internal/bot            gotd bot, /context handler
 internal/ent            ent schema + generated code (Document, Chunk, SupportRequest,
                         TelegramMessage, SyncState)
+internal/llm/openrouter OpenRouter-backed LLM answerer (chat completions) used to
+                        answer /context questions from retrieved chunks.
 internal/apiclient      oas.Client adapter satisfying bot/mcpserver's local Retriever
                         interface + index.Answerer over HTTP with bearer auth
+internal/mcpserver      MCP server impl (search/answer tools) + BearerAuthMiddleware
+                        for ssmcp's optional /mcp bearer auth
 internal/wire           shared wiring for cmd/ssapi and cmd/ssingest (Services + Components)
 internal/oas            ogen generated code
 api/openapi.yaml        OpenAPI spec (source for ogen)
@@ -73,6 +78,16 @@ The HTTP API (`cmd/ssapi`) requires a shared static bearer token (`api.auth_toke
 config / `SISYPHUS_API_AUTH_TOKEN` env), enforced server-side via
 `internal/api.SecurityHandler` (an ogen-generated `SecurityHandler`), and attached
 client-side by `internal/apiclient`. `/health` is the only unauthenticated route.
+
+`cmd/ssmcp`'s `/mcp` endpoint has optional bearer auth (`mcp_auth_token` config /
+`SISYPHUS_MCP_AUTH_TOKEN` env), enforced by `internal/mcpserver.BearerAuthMiddleware`.
+Unlike `ssapi`, an empty token does **not** fail startup — it just logs a warning and
+serves `/mcp` unauthenticated. Set it in any deployment reachable from untrusted
+networks.
+
+`cmd/ssbot`'s Telegram bot is allowlist-gated and **fails closed**: `telegram.allowed_chats`
+/ `allowed_user_ids` (both empty by default) must list at least one chat or user, or the
+bot silently ignores every message (see `internal/bot.Bot.isAllowed`).
 
 ## Conventions
 
@@ -102,6 +117,9 @@ client-side by `internal/apiclient`. `/health` is the only unauthenticated route
 - Logging: `*zap.Logger` passed in; no global loggers, no `log` package.
 - Content hashing: `internal/index.Hash` (sha256 of normalized text). Skip re-embedding when hash is unchanged.
 - IDs: `github.com/google/uuid`.
+- Document identity: unique on `(source, source_id)` — not `body_hash`. Re-ingesting the
+  same `source_id` with changed content updates the existing row and its chunks in place
+  (see `internal/pipeline.Pipeline.Index`); it never creates a duplicate document.
 
 ## Codegen
 
