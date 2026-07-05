@@ -1,5 +1,7 @@
 http_addr: :8080
 mcp_addr: :8081
+mcp_auth_token:
+  env: SISYPHUS_MCP_AUTH_TOKEN
 database_dsn:
   env: SISYPHUS_DATABASE_DSN
 
@@ -89,3 +91,8 @@ telegram:
   session_dir: /data/scp/session
   monitor_chats: ""
   ingest_session: ""
+  # allowed_chats and allowed_user_ids: fail-closed allowlist for the bot.
+  # If both are empty, the bot will not respond to anyone and log a warning.
+  # List chat IDs (can be negative for groups/channels) and user IDs separately.
+  allowed_chats: []
+  allowed_user_ids: []
