@@ -1,0 +1,88 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+  postgresql:
+    endpoint: ${env:POSTGRESQL_ENDPOINT}
+    transport: tcp
+    username: ${env:POSTGRESQL_USERNAME}
+    password: ${env:POSTGRESQL_PASSWORD}
+    databases:
+      - ${env:POSTGRESQL_DATABASE}
+    collection_interval: 10s
+    tls:
+      insecure: true
+  prometheus/qdrant:
+    config:
+      scrape_configs:
+        - job_name: qdrant
+          scrape_interval: 10s
+          static_configs:
+            - targets:
+                - ${env:QDRANT_METRICS_ENDPOINT}
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_max_size: 150000
+    send_batch_size: 10000
+  resourcedetection:
+    detectors: [env, system]
+    timeout: 2s
+    override: false
+  resource/sisyphus:
+    attributes:
+      - key: service.namespace
+        value: sisyphus
+        action: insert
+
+exporters:
+  nop:
+  debug:
+    verbosity: basic
+
+extensions:
+  health_check:
+  pprof:
+  zpages:
+  file_storage:
+    directory: /var/lib/otelcol/storage
+    create_directory: true
+
+service:
+  extensions: [health_check, pprof, zpages, file_storage]
+  telemetry:
+    logs:
+      disable_stacktrace: true
+      encoding: json
+      level: info
+      processors:
+        - batch:
+            exporter:
+              otlp:
+                endpoint: http://localhost:4317
+                protocol: grpc
+    metrics:
+      level: detailed
+      readers:
+        - periodic:
+            interval: 5000
+            exporter:
+              otlp:
+                protocol: grpc
+                endpoint: http://localhost:4317
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [resource/sisyphus, batch]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp, postgresql, prometheus/qdrant]
+      processors: [resource/sisyphus, batch]
+      exporters: [debug]
+    logs:
+      receivers: [otlp]
+      processors: [resource/sisyphus, batch]
+      exporters: [debug]
