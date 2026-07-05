@@ -10,7 +10,6 @@ import (
 	_ "github.com/go-faster/sisyphus/internal/ent/runtime"
 
 	"entgo.io/ent/dialect/sql/schema"
-
 	"github.com/go-faster/sisyphus/internal/ent/migrate"
 )
 

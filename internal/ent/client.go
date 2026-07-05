@@ -9,15 +9,13 @@ import (
 	"log"
 	"reflect"
 
-	"github.com/google/uuid"
-
 	"github.com/go-faster/sisyphus/internal/ent/migrate"
+	"github.com/google/uuid"
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
-
 	"github.com/go-faster/sisyphus/internal/ent/chunk"
 	"github.com/go-faster/sisyphus/internal/ent/document"
 	"github.com/go-faster/sisyphus/internal/ent/supportrequest"

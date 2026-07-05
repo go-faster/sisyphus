@@ -11,10 +11,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/google/uuid"
-
 	"github.com/go-faster/sisyphus/internal/ent/predicate"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
+	"github.com/google/uuid"
 )
 
 // SyncStateQuery is the builder for querying SyncState entities.

@@ -5,14 +5,13 @@ package ent
 import (
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/go-faster/sisyphus/internal/ent/chunk"
 	"github.com/go-faster/sisyphus/internal/ent/document"
 	"github.com/go-faster/sisyphus/internal/ent/schema"
 	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 	"github.com/go-faster/sisyphus/internal/ent/telegrammessage"
+	"github.com/google/uuid"
 )
 
 // The init function reads all schema descriptors with runtime code

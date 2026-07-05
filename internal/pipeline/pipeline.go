@@ -143,28 +143,34 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 		span.End()
 	}()
 
-	// Skip if an identical document (same source/source_id/body_hash) exists.
-	exists, err := p.db.Document.Query().
+	// Look up existing document by identity (source, source_id).
+	existing, err := p.db.Document.Query().
 		Where(
 			document.Source(string(doc.Source)),
 			document.SourceID(doc.SourceID),
-			document.BodyHash(doc.BodyHash),
-		).Exist(ctx)
-	if err != nil {
+		).
+		Only(ctx)
+	switch {
+	case ent.IsNotFound(err):
+		// no existing document for this identity; doc.ID (set by the caller) is used as-is for a fresh insert
+	case err != nil:
 		return errors.Wrap(err, "query document")
-	}
-	if exists {
-		span.SetAttributes(attribute.Bool("document.unchanged", true))
-		span.AddEvent("document.unchanged")
-		zctx.From(ctx).Debug("document unchanged, skipping",
-			zap.String("source", string(doc.Source)), zap.String("source_id", doc.SourceID))
-		p.metrics.documents.Add(ctx, 1,
-			metric.WithAttributes(
-				attribute.String("source", string(doc.Source)),
-				attribute.String("status", "skipped"),
-			),
-		)
-		return nil
+	default:
+		doc.ID = existing.ID // reuse the existing row's identity so chunk queries below operate on the right document_id
+		if existing.BodyHash == doc.BodyHash {
+			// unchanged — keep the existing skip-fast-path behavior
+			span.SetAttributes(attribute.Bool("document.unchanged", true))
+			span.AddEvent("document.unchanged")
+			zctx.From(ctx).Debug("document unchanged, skipping",
+				zap.String("source", string(doc.Source)), zap.String("source_id", doc.SourceID))
+			p.metrics.documents.Add(ctx, 1,
+				metric.WithAttributes(
+					attribute.String("source", string(doc.Source)),
+					attribute.String("status", "skipped"),
+				),
+			)
+			return nil
+		}
 	}
 
 	phaseStart := time.Now()
@@ -275,7 +281,7 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 			attribute.Int("chunks.total", len(chunks)),
 		),
 	)
-	if err := p.persist(persistCtx, doc, chunks, qdrantIDs); err != nil {
+	if err := p.persist(persistCtx, doc, chunks, qdrantIDs, staleIDs); err != nil {
 		p.metrics.recordPhase(ctx, string(doc.Source), "persist", time.Since(phaseStart).Seconds(), err)
 		persistSpan.RecordError(err)
 		persistSpan.SetStatus(codes.Error, err.Error())
@@ -343,7 +349,7 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 	return nil
 }
 
-func (p *Pipeline) persist(ctx context.Context, doc index.Document, chunks []index.Chunk, qdrantIDs map[uuid.UUID]uuid.UUID) error {
+func (p *Pipeline) persist(ctx context.Context, doc index.Document, chunks []index.Chunk, qdrantIDs map[uuid.UUID]uuid.UUID, staleIDs []uuid.UUID) error {
 	return withTx(ctx, p.db, func(tx *ent.Tx) error {
 		err := tx.Document.Create().
 			SetID(doc.ID).
@@ -356,7 +362,7 @@ func (p *Pipeline) persist(ctx context.Context, doc index.Document, chunks []ind
 			SetMetadata(doc.Metadata).
 			SetCreatedAt(doc.CreatedAt).
 			SetUpdatedAt(doc.UpdatedAt).
-			OnConflictColumns("source", "source_id", "body_hash").
+			OnConflictColumns("source", "source_id").
 			UpdateNewValues().
 			Exec(ctx)
 		if err != nil {
@@ -386,6 +392,14 @@ func (p *Pipeline) persist(ctx context.Context, doc index.Document, chunks []ind
 				return errors.Wrapf(err, "upsert chunk %d", c.Index)
 			}
 		}
+
+		// Delete stale chunks (no longer present in the new chunk set)
+		if len(staleIDs) > 0 {
+			if _, err := tx.Chunk.Delete().Where(chunk.IDIn(staleIDs...)).Exec(ctx); err != nil {
+				return errors.Wrap(err, "delete stale chunks")
+			}
+		}
+
 		return nil
 	})
 }

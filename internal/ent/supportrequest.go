@@ -10,9 +10,8 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/google/uuid"
-
 	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
+	"github.com/google/uuid"
 )
 
 // SupportRequest is the model entity for the SupportRequest schema.

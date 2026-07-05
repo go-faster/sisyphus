@@ -24,6 +24,9 @@ import (
 	"github.com/go-faster/sisyphus/internal/index"
 )
 
+// rrfK is the constant used in Reciprocal Rank Fusion (RRF), following standard IR literature.
+const rrfK = 60.0
+
 // authorityWeight maps a source authority to a multiplicative boost (plan §11).
 var authorityWeight = map[index.Authority]float64{
 	index.AuthorityHigh:       1.4,
@@ -114,25 +117,6 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) (_ []index.Result
 		q.Limit = 30
 	}
 
-	merged := map[string]*index.Result{}
-	add := func(rs []index.Result) {
-		for i := range rs {
-			r := rs[i]
-			key := r.Chunk.ID.String()
-			if existing, ok := merged[key]; ok {
-				// Combine lexical+vector evidence: keep the larger base score and
-				// mark that it was found by both (a small co-occurrence boost).
-				if r.Score > existing.Score {
-					existing.Score = r.Score
-				}
-				existing.Score *= 1.1
-				continue
-			}
-			rc := r
-			merged[key] = &rc
-		}
-	}
-
 	var (
 		wg            sync.WaitGroup
 		lexicalResult []index.Result
@@ -156,12 +140,45 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) (_ []index.Result
 	wg.Wait()
 	span.AddEvent("lexical_search.done", trace.WithAttributes(attribute.Int("results.count", len(lexicalResult))))
 	span.AddEvent("vector_search.done", trace.WithAttributes(attribute.Int("results.count", len(vectorResult))))
+
+	// Merge lexical and vector results using Reciprocal Rank Fusion (RRF).
+	// RRF is scale-free and does not require normalizing scores across backends
+	// with different scoring ranges (unbounded ts_rank vs bounded cosine similarity).
+	merged := map[string]*index.Result{}
+	mergedRRFScore := map[string]float64{}
+
+	// Helper to apply RRF to a backend's result list.
+	// Results should already be sorted by score descending; we sort again defensively
+	// in case a future Searcher implementation doesn't guarantee sorted order.
+	applyRRF := func(rs []index.Result) {
+		// Sort by score descending (defensive).
+		slices.SortStableFunc(rs, func(a, b index.Result) int {
+			return cmp.Compare(b.Score, a.Score) // descending
+		})
+
+		// Accumulate RRF contributions for each chunk.
+		for rank, r := range rs {
+			key := r.Chunk.ID.String()
+			// RRF contribution: 1.0 / (k + rank+1), where rank is 0-indexed.
+			contribution := 1.0 / (rrfK + float64(rank+1))
+
+			// Store the result object once (for chunk metadata).
+			if _, ok := merged[key]; !ok {
+				rc := r
+				merged[key] = &rc
+			}
+			// Accumulate RRF score.
+			mergedRRFScore[key] += contribution
+		}
+	}
+
 	if lexicalResult != nil {
-		add(lexicalResult)
+		applyRRF(lexicalResult)
 	}
 	if vectorResult != nil {
-		add(vectorResult)
+		applyRRF(vectorResult)
 	}
+
 	if len(merged) == 0 {
 		s.m.recordResults(ctx, 0)
 		span.SetAttributes(attribute.Int("results.count", 0), attribute.Bool("results.empty", true))
@@ -169,7 +186,9 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) (_ []index.Result
 	}
 
 	out := make([]index.Result, 0, len(merged))
-	for _, r := range merged {
+	for key, r := range merged {
+		// Set the result's score to the RRF score, then apply authority/service/jira boosts.
+		r.Score = mergedRRFScore[key]
 		r.Score = boost(*r, q)
 		out = append(out, *r)
 	}

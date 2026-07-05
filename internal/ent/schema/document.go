@@ -41,7 +41,7 @@ func (Document) Edges() []ent.Edge {
 
 func (Document) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("source", "source_id", "body_hash").Unique(),
+		index.Fields("source", "source_id").Unique(),
 		index.Fields("metadata").Annotations(entsql.IndexType("GIN")),
 	}
 }

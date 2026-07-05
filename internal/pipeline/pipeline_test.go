@@ -2,15 +2,20 @@ package pipeline
 
 import (
 	"context"
+	stdsql "database/sql"
 	"os"
 	"strings"
 	"testing"
 
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
 	"github.com/google/uuid"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/go-faster/sisyphus/internal/ent"
+	"github.com/go-faster/sisyphus/internal/ent/chunk"
+	"github.com/go-faster/sisyphus/internal/ent/document"
 	"github.com/go-faster/sisyphus/internal/index"
 )
 
@@ -80,10 +85,11 @@ func openTestDB(t *testing.T) *ent.Client {
 		t.Skip("SISYPHUS_TEST_DB not set")
 	}
 
-	client, err := ent.Open("pgx", dsn)
+	db, err := stdsql.Open("pgx", dsn)
 	if err != nil {
-		t.Fatalf("ent open: %v", err)
+		t.Fatalf("sql open: %v", err)
 	}
+	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))
 	t.Cleanup(func() {
 		_ = client.Close()
 	})
@@ -298,5 +304,196 @@ func TestPipeline_VectorStoreNil(t *testing.T) {
 
 	if err := p.Index(ctx, doc); err != nil {
 		t.Fatalf("index: %v", err)
+	}
+}
+
+func TestPipeline_DocumentIdentityReuse(t *testing.T) {
+	client := openTestDB(t)
+	defer cleanDB(t, client)
+
+	store := &fakeVectorStore{}
+	p := newTestPipeline(t, client, store)
+
+	ctx := context.Background()
+
+	// First ingest: create a document with (source, source_id).
+	// Caller provides a fresh random ID each time.
+	doc1 := index.Document{
+		ID:       uuid.New(),
+		Source:   index.SourceGitDocs("test/identity"),
+		SourceID: "test/identity",
+		Title:    "Test",
+		Body:     "old content",
+	}
+
+	if err := p.Index(ctx, doc1); err != nil {
+		t.Fatalf("first index: %v", err)
+	}
+
+	// Verify exactly one document exists with this identity.
+	count, err := client.Document.Query().
+		Where(
+			document.Source(string(doc1.Source)),
+			document.SourceID(doc1.SourceID),
+		).
+		Count(ctx)
+	if err != nil {
+		t.Fatalf("count documents: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 document with identity, got %d", count)
+	}
+
+	// Record the first document's ID from the DB.
+	firstDocID, err := client.Document.Query().
+		Where(
+			document.Source(string(doc1.Source)),
+			document.SourceID(doc1.SourceID),
+		).
+		Only(ctx)
+	if err != nil {
+		t.Fatalf("get first document: %v", err)
+	}
+
+	// Clear recorded vector store calls.
+	store.upserted = nil
+	store.deleted = nil
+
+	// Second ingest: same identity, different body, with a DIFFERENT doc.ID.
+	// This simulates the real ingest flow where each call generates a fresh UUID.
+	doc2 := index.Document{
+		ID:       uuid.New(), // different from doc1.ID
+		Source:   index.SourceGitDocs("test/identity"),
+		SourceID: "test/identity",
+		Title:    "Test",
+		Body:     "new content",
+	}
+
+	if err := p.Index(ctx, doc2); err != nil {
+		t.Fatalf("second index: %v", err)
+	}
+
+	// Verify still exactly one document with this identity.
+	count, err = client.Document.Query().
+		Where(
+			document.Source(string(doc2.Source)),
+			document.SourceID(doc2.SourceID),
+		).
+		Count(ctx)
+	if err != nil {
+		t.Fatalf("count documents after second index: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 document after second index, got %d", count)
+	}
+
+	// Verify the document ID was reused (not a new one).
+	secondDocID, err := client.Document.Query().
+		Where(
+			document.Source(string(doc2.Source)),
+			document.SourceID(doc2.SourceID),
+		).
+		Only(ctx)
+	if err != nil {
+		t.Fatalf("get second document: %v", err)
+	}
+	if secondDocID.ID != firstDocID.ID {
+		t.Errorf("expected document ID to be reused (%v), but got %v", firstDocID.ID, secondDocID.ID)
+	}
+
+	// Both doc1 and doc2 produce exactly one chunk (no "\n===\n" separator in
+	// either body), so a raw count can't distinguish "old chunk replaced" from
+	// "old chunk left behind": both cases show count == firstChunkCount == 1.
+	// Assert on content instead: only the new chunk's text/hash should remain.
+	remainingChunks, err := client.Chunk.Query().
+		Where(chunk.DocumentID(firstDocID.ID)).
+		All(ctx)
+	if err != nil {
+		t.Fatalf("get remaining chunks: %v", err)
+	}
+	if len(remainingChunks) != 1 {
+		t.Fatalf("expected exactly 1 remaining chunk, got %d", len(remainingChunks))
+	}
+	if remainingChunks[0].Text != "new content" {
+		t.Errorf("expected remaining chunk text %q, got %q", "new content", remainingChunks[0].Text)
+	}
+	if remainingChunks[0].TextHash == index.Hash("old content") {
+		t.Errorf("stale chunk (old content hash) was not deleted")
+	}
+}
+
+func TestPipeline_StaleChunkDeletion(t *testing.T) {
+	client := openTestDB(t)
+	defer cleanDB(t, client)
+
+	store := &fakeVectorStore{}
+	p := newTestPipeline(t, client, store)
+
+	ctx := context.Background()
+
+	// First ingest: document with multiple chunks.
+	doc1 := index.Document{
+		ID:       uuid.New(),
+		Source:   index.SourceGitDocs("test/stale"),
+		SourceID: "test/stale",
+		Title:    "Test",
+		Body:     "chunk a\n===\nchunk b\n===\nchunk c",
+	}
+
+	if err := p.Index(ctx, doc1); err != nil {
+		t.Fatalf("first index: %v", err)
+	}
+
+	// Verify 3 chunks exist.
+	docID, _ := client.Document.Query().
+		Where(
+			document.Source(string(doc1.Source)),
+			document.SourceID(doc1.SourceID),
+		).
+		Only(ctx)
+
+	chunkCount, err := client.Chunk.Query().
+		Where(chunk.DocumentID(docID.ID)).
+		Count(ctx)
+	if err != nil {
+		t.Fatalf("count initial chunks: %v", err)
+	}
+	if chunkCount != 3 {
+		t.Errorf("expected 3 initial chunks, got %d", chunkCount)
+	}
+
+	store.deleted = nil
+
+	// Second ingest: same identity, drop "chunk c" entirely and modify "chunk b".
+	// testChunker splits on \n===\n, so this produces different (index, text_hash)
+	// keys for both "chunk b" (same index, new hash) and "chunk c" (gone) — both
+	// of the original chunk b/c rows become stale; only "chunk a" is reused as-is.
+	doc2 := index.Document{
+		ID:       uuid.New(),
+		Source:   index.SourceGitDocs("test/stale"),
+		SourceID: "test/stale",
+		Title:    "Test",
+		Body:     "chunk a\n===\nchunk b modified",
+	}
+
+	if err := p.Index(ctx, doc2); err != nil {
+		t.Fatalf("second index: %v", err)
+	}
+
+	// Verify 2 chunks now exist (one stable, one modified).
+	chunkCount, err = client.Chunk.Query().
+		Where(chunk.DocumentID(docID.ID)).
+		Count(ctx)
+	if err != nil {
+		t.Fatalf("count final chunks: %v", err)
+	}
+	if chunkCount != 2 {
+		t.Errorf("expected 2 final chunks, got %d", chunkCount)
+	}
+
+	// Verify both stale chunks (old "chunk b" and removed "chunk c") were
+	// deleted from Postgres (not just vectors).
+	if len(store.deleted) != 2 {
+		t.Errorf("expected 2 stale chunks deleted from vectors, got %d", len(store.deleted))
 	}
 }

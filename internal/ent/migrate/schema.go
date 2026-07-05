@@ -72,9 +72,9 @@ var (
 		PrimaryKey: []*schema.Column{DocumentsColumns[0]},
 		Indexes: []*schema.Index{
 			{
-				Name:    "document_source_source_id_body_hash",
+				Name:    "document_source_source_id",
 				Unique:  true,
-				Columns: []*schema.Column{DocumentsColumns[1], DocumentsColumns[2], DocumentsColumns[6]},
+				Columns: []*schema.Column{DocumentsColumns[1], DocumentsColumns[2]},
 			},
 			{
 				Name:    "document_metadata",
