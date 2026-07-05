@@ -8,7 +8,9 @@ import (
 	"net/http"
 
 	"github.com/go-faster/errors"
+	"github.com/go-faster/sdk/zctx"
 	"github.com/ogen-go/ogen/ogenerrors"
+	"go.uber.org/zap"
 
 	"github.com/go-faster/sisyphus/internal/index"
 	"github.com/go-faster/sisyphus/internal/oas"
@@ -80,7 +82,7 @@ func (h *Handler) Context(ctx context.Context, req *oas.ContextRequest) (*oas.Co
 }
 
 // NewError maps a handler error to the default error response.
-func (h *Handler) NewError(_ context.Context, err error) *oas.ErrorStatusCode {
+func (h *Handler) NewError(ctx context.Context, err error) *oas.ErrorStatusCode {
 	// Special case for security errors: return 401 instead of 500.
 	if _, ok := errors.Into[*ogenerrors.SecurityError](err); ok {
 		return &oas.ErrorStatusCode{
@@ -89,9 +91,12 @@ func (h *Handler) NewError(_ context.Context, err error) *oas.ErrorStatusCode {
 		}
 	}
 
+	// Log the real error server-side to avoid leaking internal details.
+	zctx.From(ctx).Error("api request failed", zap.Error(err))
+
 	return &oas.ErrorStatusCode{
 		StatusCode: http.StatusInternalServerError,
-		Response:   oas.Error{ErrorMessage: err.Error()},
+		Response:   oas.Error{ErrorMessage: "internal server error"},
 	}
 }
 

@@ -2,8 +2,11 @@ package api
 
 import (
 	"context"
+	"net/http"
 	"testing"
 
+	"github.com/go-faster/errors"
+	"github.com/ogen-go/ogen/ogenerrors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -118,4 +121,34 @@ func TestHandler_Context_Filters(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHandler_NewError_GenericError(t *testing.T) {
+	h := New(&captureRetriever{}, stubAnswerer{}, "test")
+	ctx := t.Context()
+
+	// Test that a generic error returns a generic message without leaking the raw error.
+	dbErr := errors.New("database connection failed")
+	errResp := h.NewError(ctx, dbErr)
+
+	require.NotNil(t, errResp)
+	assert.Equal(t, http.StatusInternalServerError, errResp.StatusCode)
+	assert.Equal(t, "internal server error", errResp.Response.ErrorMessage)
+	// Verify the raw error message is not in the response.
+	assert.NotEqual(t, "database connection failed", errResp.Response.ErrorMessage)
+}
+
+func TestHandler_NewError_SecurityError(t *testing.T) {
+	h := New(&captureRetriever{}, stubAnswerer{}, "test")
+	ctx := t.Context()
+
+	// Test that a security error still returns 401 "unauthorized".
+	secErr := &ogenerrors.SecurityError{
+		Err: errors.New("invalid token"),
+	}
+	errResp := h.NewError(ctx, secErr)
+
+	require.NotNil(t, errResp)
+	assert.Equal(t, http.StatusUnauthorized, errResp.StatusCode)
+	assert.Equal(t, "unauthorized", errResp.Response.ErrorMessage)
 }
