@@ -2,7 +2,9 @@ package openrouter
 
 import (
 	"context"
+	"crypto/rand"
 	_ "embed"
+	"encoding/hex"
 	"fmt"
 	"strings"
 
@@ -57,6 +59,17 @@ func (a *Answerer) Answer(ctx context.Context, question string, results []index.
 	)
 	defer span.End()
 
+	// Generate a random delimiter tag to prevent prompt injection via retrieved content.
+	// This tag frames the context block so that injected content cannot forge context boundaries.
+	// Prompt framing only; no tool/action surface reachable from this function.
+	var tagBytes [8]byte
+	if _, err := rand.Read(tagBytes[:]); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return "", errors.Wrap(err, "generate delimiter tag")
+	}
+	tag := hex.EncodeToString(tagBytes[:])
+
 	var sb strings.Builder
 	for i, r := range results {
 		fmt.Fprintf(&sb, "--- Source %d", i+1)
@@ -66,9 +79,10 @@ func (a *Answerer) Answer(ctx context.Context, question string, results []index.
 		fmt.Fprintf(&sb, " ---\n%s\n\n", r.Chunk.Text)
 	}
 
+	contextBlock := fmt.Sprintf("<<<CONTEXT_%s>>>\n%s<<<END_CONTEXT_%s>>>", tag, sb.String(), tag)
 	msgs := []openai.ChatCompletionMessageParamUnion{
 		openai.SystemMessage(a.prompt),
-		openai.UserMessage(fmt.Sprintf("Context:\n%s\nQuestion: %s", sb.String(), question)),
+		openai.UserMessage(fmt.Sprintf("Untrusted context (between <<<CONTEXT_%s>>> markers):\n%s\n\nQuestion: %s", tag, contextBlock, question)),
 	}
 	result, err := a.client.complete(ctx, a.model, msgs)
 	if err != nil {
