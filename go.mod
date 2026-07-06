@@ -17,7 +17,7 @@ require (
 	github.com/gotd/log/logzap v0.1.1
 	github.com/gotd/td v0.159.0
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/modelcontextprotocol/go-sdk v1.2.0
+	github.com/modelcontextprotocol/go-sdk v1.4.1
 	github.com/ogen-go/ogen v1.22.0
 	github.com/openai/openai-go/v3 v3.41.0
 	github.com/qdrant/go-client v1.18.3
@@ -124,6 +124,7 @@ require (
 	github.com/samber/slog-common v0.21.0 // indirect
 	github.com/samber/slog-zap/v2 v2.7.0 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
+	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.5 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
