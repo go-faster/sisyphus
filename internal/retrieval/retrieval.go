@@ -5,6 +5,7 @@ package retrieval
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -26,6 +27,12 @@ import (
 
 // rrfK is the constant used in Reciprocal Rank Fusion (RRF), following standard IR literature.
 const rrfK = 60.0
+
+// minScoreFraction drops results scoring below this fraction of the top
+// result's score after boosting. RRF scores are not calibrated absolute
+// relevance (they're reciprocal-rank sums), so a fixed threshold doesn't
+// mean anything across queries; a fraction of the top score does.
+const minScoreFraction = 0.2
 
 // authorityWeight maps a source authority to a multiplicative boost (plan §11).
 var authorityWeight = map[index.Authority]float64{
@@ -198,6 +205,17 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) (_ []index.Result
 		}
 		return cmp.Compare(a.Chunk.ID.String(), b.Chunk.ID.String())
 	})
+	if topScore := out[0].Score; topScore > 0 {
+		threshold := topScore * minScoreFraction
+		cut := len(out)
+		for i, r := range out {
+			if r.Score < threshold {
+				cut = i
+				break
+			}
+		}
+		out = out[:cut]
+	}
 	if len(out) > q.Limit {
 		out = out[:q.Limit]
 	}
@@ -291,11 +309,18 @@ func boost(r index.Result, q index.Query) float64 {
 		}
 	}
 
-	// Exact identifier in the query text: very strong (Jira key) / strong.
+	// Exact identifier in the query text: very strong (Jira key / GitLab MR number).
 	text := strings.ToLower(q.Text)
 	if key, ok := meta["jira_key"].(string); ok && key != "" {
 		if strings.Contains(text, strings.ToLower(key)) {
 			score *= 2.0
+		}
+	}
+	if _, ok := meta["gitlab_mr"]; ok {
+		if iid, ok := meta["iid"].(int); ok && iid > 0 {
+			if strings.Contains(text, fmt.Sprintf("!%d", iid)) {
+				score *= 2.0
+			}
 		}
 	}
 

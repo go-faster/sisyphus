@@ -62,6 +62,7 @@ func DocumentFromIssue(iss Issue) index.Document {
 			"components": iss.Components,
 			"labels":     iss.Labels,
 			"service":    nil,
+			"authority":  string(index.AuthorityMediumHigh),
 		},
 		CreatedAt: iss.Created,
 		UpdatedAt: iss.Updated,
