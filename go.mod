@@ -3,7 +3,7 @@ module github.com/go-faster/sisyphus
 go 1.26.4
 
 require (
-	ariga.io/atlas v0.36.2-0.20250730182955-2c6300d0a3e1
+	ariga.io/atlas v1.2.3
 	entgo.io/ent v0.14.6
 	github.com/XSAM/otelsql v0.42.0
 	github.com/bmatcuk/doublestar/v4 v4.10.0
