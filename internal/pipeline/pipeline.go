@@ -369,11 +369,30 @@ func (p *Pipeline) persist(ctx context.Context, doc index.Document, chunks []ind
 			return errors.Wrap(err, "upsert document")
 		}
 
+		// Re-resolve the document's actual ID within this transaction: doc.ID
+		// may be stale if a concurrent writer (e.g. an overlapping ssingest
+		// run — docLocks only guards against races within this process)
+		// created the row for this (source, source_id) after the pre-tx
+		// lookup in Index but before this upsert ran. UpdateNewValues()
+		// excludes the id column, so on conflict the existing row keeps its
+		// original id; inserting chunks against the stale doc.ID would
+		// violate the chunks->documents FK.
+		persisted, err := tx.Document.Query().
+			Where(
+				document.Source(string(doc.Source)),
+				document.SourceID(doc.SourceID),
+			).
+			Only(ctx)
+		if err != nil {
+			return errors.Wrap(err, "query persisted document")
+		}
+		docID := persisted.ID
+
 		for i := range chunks {
 			c := chunks[i]
 			create := tx.Chunk.Create().
 				SetID(c.ID).
-				SetDocumentID(doc.ID).
+				SetDocumentID(docID).
 				SetChunkIndex(c.Index).
 				SetChunkType(string(c.Type)).
 				SetTitle(c.Title).
