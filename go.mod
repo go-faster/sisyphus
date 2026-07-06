@@ -10,7 +10,7 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/go-faster/errors v0.7.1
 	github.com/go-faster/jx v1.2.0
-	github.com/go-faster/sdk v0.35.0
+	github.com/go-faster/sdk v0.37.0
 	github.com/go-faster/yaml v0.4.6
 	github.com/go-git/go-git/v5 v5.19.1
 	github.com/google/uuid v1.6.0
@@ -80,7 +80,7 @@ require (
 	github.com/gotd/ige v0.2.2 // indirect
 	github.com/gotd/log v0.1.0 // indirect
 	github.com/gotd/neo v0.1.5 // indirect
-	github.com/grafana/otel-profiling-go v0.5.3 // indirect
+	github.com/grafana/otel-profiling-go v0.6.0 // indirect
 	github.com/grafana/pyroscope-go v1.3.1 // indirect
 	github.com/grafana/pyroscope-go/godeltaprof v0.1.11 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
