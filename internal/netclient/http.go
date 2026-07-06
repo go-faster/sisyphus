@@ -144,6 +144,7 @@ func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	logger.Debug("HTTP response",
 		zap.Int("status", resp.StatusCode),
 		zap.Int("content_length", int(resp.ContentLength)),
+		zap.Duration("took", time.Since(start)),
 		ctField,
 	)
 	l.metrics.record(req.Context(), l.name, resp.StatusCode, time.Since(start).Seconds())
