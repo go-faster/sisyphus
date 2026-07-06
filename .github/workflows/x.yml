@@ -1,11 +1,9 @@
 name: x
-
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
-
 # Common Go workflows from go faster
 # See https://github.com/go-faster/x
 jobs:
@@ -14,11 +12,6 @@ jobs:
     with:
       enable-386: false
       enable-arm64: false
-      # submodules: true
-      go: stable
-  cover:
-    uses: go-faster/x/.github/workflows/cover.yml@main
-    with:
       # submodules: true
       go: stable
   lint:
