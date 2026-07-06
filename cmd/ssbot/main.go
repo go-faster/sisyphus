@@ -47,7 +47,7 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 	if cfg.API.BaseURL == "" || cfg.API.AuthToken == "" {
 		return errors.New("api.base_url and api.auth_token are required")
 	}
-	if cfg.Telegram.AppID == 0 || cfg.Telegram.BotToken == "" {
+	if cfg.Telegram.AppID == 0 || cfg.Telegram.AppHash == "" || cfg.Telegram.BotToken == "" {
 		return errors.New("telegram credentials missing")
 	}
 
