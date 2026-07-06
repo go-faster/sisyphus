@@ -175,6 +175,16 @@ type GitSource struct {
 	Commits bool `yaml:"commits"`
 	// Tags enables ingestion of git tags.
 	Tags bool `yaml:"tags"`
+	// Manifests enables ingestion of YAML manifests.
+	Manifests bool `yaml:"manifests"`
+	// Code enables ingestion of source code files (Go/TS/proto/SQL).
+	Code bool `yaml:"code"`
+	// ManifestExclude are additional excludes applied only when walking manifests.
+	ManifestExclude []string `yaml:"manifest_exclude,omitempty"`
+	// CodeInclude restricts code-walk to paths matching these globs.
+	CodeInclude []string `yaml:"code_include,omitempty"`
+	// CodeExclude skips code files matching these globs.
+	CodeExclude []string `yaml:"code_exclude,omitempty"`
 }
 
 // GitLabConfig configures GitLab REST API ingestion (issues, MRs, releases).

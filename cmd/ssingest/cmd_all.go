@@ -39,6 +39,16 @@ func newAllCmd(deps *ingestDeps) *cobra.Command {
 							return err
 						}
 					}
+					if gitSrc.Manifests {
+						if err := resetSource(ctx, deps.services.DB, deps.services.Vectors, index.SourceGitManifest(gitSrc.Repo)); err != nil {
+							return err
+						}
+					}
+					if gitSrc.Code {
+						if err := resetSource(ctx, deps.services.DB, deps.services.Vectors, index.SourceGitCode(gitSrc.Repo)); err != nil {
+							return err
+						}
+					}
 				}
 				// Reset all gitlab REST sources
 				for _, src := range []index.Source{

@@ -5,6 +5,7 @@
 package git
 
 import (
+	"bufio"
 	"context"
 	"io/fs"
 	"os"
@@ -21,13 +22,31 @@ import (
 	"github.com/go-faster/sisyphus/internal/index"
 )
 
+// fileKind classifies a file during walk.
+type fileKind int
+
+const (
+	kindDoc fileKind = iota
+	kindManifest
+	kindCode
+)
+
 // docExtensions are the file types treated as docs.
 var docExtensions = map[string]bool{".md": true, ".markdown": true}
 
-// skipDirs are never descended into (plan §3 skip list).
+// manifestExtensions are YAML file types.
+var manifestExtensions = map[string]bool{".yaml": true, ".yml": true}
+
+// codeExtensions are source code file types.
+var codeExtensions = map[string]bool{
+	".go": true, ".ts": true, ".tsx": true, ".proto": true, ".sql": true,
+}
+
+// skipDirs are never descended into.
 var skipDirs = map[string]bool{
 	"node_modules": true, "vendor": true, "dist": true, "build": true,
 	"coverage": true, ".git": true,
+	"_out": true, "_oas": true, "_hack": true,
 }
 
 // DefaultExclude are glob patterns (repo-relative slash paths) to skip by default.
@@ -40,6 +59,30 @@ var DefaultExclude = []string{
 	"LICENSE.*",
 	"**/LICENSE",
 	"**/LICENSE.*",
+	// Generated code bundles
+	"**/*.pb.go",
+	"**/*_gen.go",
+	"**/*.gen.go",
+	"**/zz_generated*.go",
+	"**/mock_*.go",
+	"**/*.gen.ts",
+	"**/routeTree.gen.ts",
+	// Known vendored/generated YAML bundles
+	"**/kafka-op.yml",
+	"**/cnpg.yaml",
+	"**/gotk-components.yaml",
+	"**/crd/**",
+	"**/*dashboards*.yml",
+}
+
+// MaxFileBytes is the maximum file body size to index (0 = default 256 KB).
+var MaxFileBytes int64
+
+func getMaxFileBytes() int64 {
+	if MaxFileBytes > 0 {
+		return MaxFileBytes
+	}
+	return 256 * 1024
 }
 
 // Source describes a docs tree to ingest.
@@ -63,10 +106,35 @@ type Source struct {
 	Commits bool
 	// Tags, if true, also ingest git tags as Documents.
 	Tags bool
+	// Manifests, if true, also walk YAML manifests.
+	Manifests bool
+	// Code, if true, also walk source code files (Go/TS/proto/SQL).
+	Code bool
+	// ManifestExclude are additional excludes applied only when walking manifests.
+	ManifestExclude []string
+	// CodeInclude restricts code-walk to paths matching these globs.
+	CodeInclude []string
+	// CodeExclude skips code files matching these globs.
+	CodeExclude []string
 }
 
 // WalkOptions configures WalkAll.
 type WalkOptions struct{}
+
+// classifyFile determines the file kind based on extension and enabled source toggles.
+func classifyFile(rel string, s Source) fileKind {
+	ext := strings.ToLower(filepath.Ext(rel))
+	if docExtensions[ext] {
+		return kindDoc
+	}
+	if s.Manifests && manifestExtensions[ext] {
+		return kindManifest
+	}
+	if s.Code && codeExtensions[ext] {
+		return kindCode
+	}
+	return -1 // unknown / not enabled
+}
 
 // keepFile determines whether a file at the given repo-relative slash path should be kept.
 func keepFile(s Source, rel string) bool {
@@ -94,16 +162,48 @@ func keepFile(s Source, rel string) bool {
 	return true
 }
 
+// keepCodeFile applies code-specific include/exclude globs.
+func keepCodeFile(s Source, rel string) bool {
+	for _, pattern := range s.CodeExclude {
+		if match, _ := doublestar.Match(pattern, rel); match {
+			return false
+		}
+	}
+	if len(s.CodeInclude) > 0 {
+		for _, pattern := range s.CodeInclude {
+			if match, _ := doublestar.Match(pattern, rel); match {
+				return true
+			}
+		}
+		return false
+	}
+	return true
+}
+
+// isGeneratedGo checks whether body begins with the standard Go generated header.
+func isGeneratedGo(body string) bool {
+	scanner := bufio.NewScanner(strings.NewReader(body))
+	scanner.Scan()
+	line := scanner.Text()
+	if strings.Contains(line, "Code generated") && strings.Contains(line, "DO NOT EDIT") {
+		return true
+	}
+	return false
+}
+
 // Walk is a convenience wrapper around WalkAll for a single source.
 func Walk(ctx context.Context, s Source) ([]index.Document, error) {
 	return WalkAll(ctx, []Source{s}, WalkOptions{})
 }
 
-// WalkAll walks every source and concatenates their documents.
+// WalkAll walks every source and concatenates their documents. It classifies
+// files by extension and produces Documents with the appropriate source prefix
+// (git_docs:, git_manifest:, or git_code:).
 // Missing or empty roots are logged as a warning but do not fail the walk.
 // Documents are returned in source order.
 func WalkAll(ctx context.Context, sources []Source, _ WalkOptions) ([]index.Document, error) {
 	lg := zctx.From(ctx)
+	maxBytes := getMaxFileBytes()
 
 	var docs []index.Document
 	for _, s := range sources {
@@ -122,16 +222,45 @@ func WalkAll(ctx context.Context, sources []Source, _ WalkOptions) ([]index.Docu
 				}
 				return nil
 			}
-			if !docExtensions[strings.ToLower(filepath.Ext(d.Name()))] {
-				return nil
-			}
 			rel, err := filepath.Rel(s.Root, p)
 			if err != nil {
 				return errors.Wrap(err, "rel path")
 			}
 			rel = filepath.ToSlash(rel)
 
+			kind := classifyFile(rel, s)
+			if kind < 0 {
+				return nil
+			}
+
 			if !keepFile(s, rel) {
+				return nil
+			}
+
+			// Kind-specific exclude/include
+			switch kind {
+			case kindManifest:
+				for _, pattern := range s.ManifestExclude {
+					if match, _ := doublestar.Match(pattern, rel); match {
+						return nil
+					}
+				}
+			case kindCode:
+				if !keepCodeFile(s, rel) {
+					return nil
+				}
+			}
+
+			// Check file size before reading
+			info, err := d.Info()
+			if err != nil {
+				return errors.Wrap(err, "stat")
+			}
+			if info.Size() > maxBytes {
+				lg.Debug("skipping file over byte cap",
+					zap.String("path", rel),
+					zap.Int64("size", info.Size()),
+					zap.Int64("max", maxBytes))
 				return nil
 			}
 
@@ -139,11 +268,14 @@ func WalkAll(ctx context.Context, sources []Source, _ WalkOptions) ([]index.Docu
 			if err != nil {
 				return errors.Wrap(err, "read file")
 			}
-			info, err := d.Info()
-			if err != nil {
-				return errors.Wrap(err, "stat")
+
+			// Generated-header sniff for code files
+			if kind == kindCode && isGeneratedGo(string(body)) {
+				lg.Debug("skipping generated Go file", zap.String("path", rel))
+				return nil
 			}
-			docs = append(docs, newDocument(s, rel, string(body), info.ModTime()))
+
+			docs = append(docs, newDocumentForKind(s, rel, string(body), info.ModTime(), kind))
 			return nil
 		})
 		if err != nil {
@@ -153,7 +285,18 @@ func WalkAll(ctx context.Context, sources []Source, _ WalkOptions) ([]index.Docu
 	return docs, nil
 }
 
-func newDocument(s Source, rel, body string, mod time.Time) index.Document {
+func newDocumentForKind(s Source, rel, body string, mod time.Time, kind fileKind) index.Document {
+	switch kind {
+	case kindManifest:
+		return newManifestDocument(s, rel, body, mod)
+	case kindCode:
+		return newCodeDocument(s, rel, body, mod)
+	default:
+		return newDocDocument(s, rel, body, mod)
+	}
+}
+
+func newDocDocument(s Source, rel, body string, mod time.Time) index.Document {
 	title := titleFromMarkdown(body)
 	if title == "" {
 		title = strings.TrimSuffix(path.Base(rel), path.Ext(rel))
@@ -168,7 +311,7 @@ func newDocument(s Source, rel, body string, mod time.Time) index.Document {
 		"repo":      s.Repo,
 		"path":      rel,
 		"branch":    s.Branch,
-		"authority": string(index.AuthorityHigh), // docs/runbooks are high authority
+		"authority": string(index.AuthorityHigh),
 	}
 	return index.Document{
 		ID:        index.NewID(),
@@ -180,6 +323,79 @@ func newDocument(s Source, rel, body string, mod time.Time) index.Document {
 		BodyHash:  index.Hash(body),
 		Metadata:  meta,
 		UpdatedAt: mod,
+	}
+}
+
+func newManifestDocument(s Source, rel, body string, mod time.Time) index.Document {
+	title := strings.TrimSuffix(path.Base(rel), path.Ext(rel))
+	url := ""
+	if s.BaseURL != "" {
+		url = strings.TrimRight(s.BaseURL, "/") + "/" + rel
+	}
+	source := index.SourceGitManifest(s.Repo)
+	meta := map[string]any{
+		"source":    string(source),
+		"repo":      s.Repo,
+		"path":      rel,
+		"branch":    s.Branch,
+		"lang":      "yaml",
+		"authority": string(index.AuthorityMedium),
+	}
+	return index.Document{
+		ID:        index.NewID(),
+		Source:    source,
+		SourceID:  s.Repo + ":" + rel,
+		URL:       url,
+		Title:     title,
+		Body:      body,
+		BodyHash:  index.Hash(body),
+		Metadata:  meta,
+		UpdatedAt: mod,
+	}
+}
+
+func newCodeDocument(s Source, rel, body string, mod time.Time) index.Document {
+	ext := strings.ToLower(filepath.Ext(rel))
+	lang := extToLang(ext)
+	title := strings.TrimSuffix(path.Base(rel), ext)
+	url := ""
+	if s.BaseURL != "" {
+		url = strings.TrimRight(s.BaseURL, "/") + "/" + rel
+	}
+	source := index.SourceGitCode(s.Repo)
+	meta := map[string]any{
+		"source":    string(source),
+		"repo":      s.Repo,
+		"path":      rel,
+		"branch":    s.Branch,
+		"lang":      lang,
+		"authority": string(index.AuthorityLowMedium),
+	}
+	return index.Document{
+		ID:        index.NewID(),
+		Source:    source,
+		SourceID:  s.Repo + ":" + rel,
+		URL:       url,
+		Title:     title,
+		Body:      body,
+		BodyHash:  index.Hash(body),
+		Metadata:  meta,
+		UpdatedAt: mod,
+	}
+}
+
+func extToLang(ext string) string {
+	switch ext {
+	case ".go":
+		return "go"
+	case ".ts", ".tsx":
+		return "typescript"
+	case ".proto":
+		return "proto"
+	case ".sql":
+		return "sql"
+	default:
+		return strings.TrimPrefix(ext, ".")
 	}
 }
 

@@ -29,9 +29,11 @@ const (
 // Per-repo git source prefixes. The repo name is appended to build the concrete
 // Source (so each repo gets its own SyncState row and can be reset independently).
 const (
-	SourceGitDocsPrefix    = "git_docs:"
-	SourceGitCommitsPrefix = "git_commits:"
-	SourceGitTagsPrefix    = "git_tags:"
+	SourceGitDocsPrefix     = "git_docs:"
+	SourceGitCommitsPrefix  = "git_commits:"
+	SourceGitTagsPrefix     = "git_tags:"
+	SourceGitManifestPrefix = "git_manifest:"
+	SourceGitCodePrefix     = "git_code:"
 )
 
 // SourceGitDocs returns the Source for git-walked content of the given repo.
@@ -42,6 +44,12 @@ func SourceGitCommit(repo string) Source { return Source(SourceGitCommitsPrefix 
 
 // SourceGitTag returns the Source for git tags of the given repo.
 func SourceGitTag(repo string) Source { return Source(SourceGitTagsPrefix + repo) }
+
+// SourceGitManifest returns the Source for YAML manifests of the given repo.
+func SourceGitManifest(repo string) Source { return Source(SourceGitManifestPrefix + repo) }
+
+// SourceGitCode returns the Source for source code files of the given repo.
+func SourceGitCode(repo string) Source { return Source(SourceGitCodePrefix + repo) }
 
 // ChunkType classifies a Chunk so retrieval/ranking can treat them differently.
 type ChunkType string
@@ -68,6 +76,7 @@ const (
 
 	ChunkCodeFile   ChunkType = "code_file"
 	ChunkCodeSymbol ChunkType = "code_symbol"
+	ChunkManifest   ChunkType = "manifest"
 )
 
 // Authority expresses how much to trust a source during ranking (plan §11).

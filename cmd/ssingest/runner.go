@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,8 +15,10 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
+	chunkcode "github.com/go-faster/sisyphus/internal/chunk/code"
 	chunkgit "github.com/go-faster/sisyphus/internal/chunk/git"
 	chunkmd "github.com/go-faster/sisyphus/internal/chunk/markdown"
+	chunkyaml "github.com/go-faster/sisyphus/internal/chunk/yaml"
 	"github.com/go-faster/sisyphus/internal/config"
 	"github.com/go-faster/sisyphus/internal/ent"
 	"github.com/go-faster/sisyphus/internal/ent/chunk"
@@ -105,10 +108,18 @@ func (r *runner) runGit(ctx context.Context, reset bool, limit int, dry, prune b
 		return errNotConfigured
 	}
 
-	// Build two pipelines: one for docs, one for commits
+	// Build pipelines for each content type
 	docsPipe, err := r.buildPipeline(r.buildDocChunker())
 	if err != nil {
 		return errors.Wrap(err, "build docs pipeline")
+	}
+	manifestPipe, err := r.buildPipeline(r.buildManifestChunker())
+	if err != nil {
+		return errors.Wrap(err, "build manifest pipeline")
+	}
+	codePipe, err := r.buildPipeline(r.buildCodeChunker())
+	if err != nil {
+		return errors.Wrap(err, "build code pipeline")
 	}
 	commitsPipe, err := r.buildPipeline(r.buildCommitChunker())
 	if err != nil {
@@ -129,19 +140,25 @@ func (r *runner) runGit(ctx context.Context, reset bool, limit int, dry, prune b
 			continue
 		}
 
-		// Ingest docs content
+		// Walk all enabled content types in one pass
+		allDocs, err := gitingest.WalkAll(ctx, []gitingest.Source{s}, gitingest.WalkOptions{})
+		if err != nil {
+			lg.Error("git walk failed", zap.Error(err), zap.String("repo", s.Repo))
+			anyErr = true
+			continue
+		}
+
+		// Split walked documents by source prefix
+		docs := filterDocsBySource(allDocs, index.SourceGitDocsPrefix)
+		manifests := filterDocsBySource(allDocs, index.SourceGitManifestPrefix)
+		codeDocs := filterDocsBySource(allDocs, index.SourceGitCodePrefix)
+
+		// --- Markdown docs ---
 		docsSrc := index.SourceGitDocs(s.Repo)
 		if reset {
 			if err := resetSource(ctx, db, vectors, docsSrc); err != nil {
 				return err
 			}
-		}
-
-		docs, err := gitingest.WalkAll(ctx, []gitingest.Source{s}, gitingest.WalkOptions{})
-		if err != nil {
-			lg.Error("git walk failed", zap.Error(err), zap.String("repo", s.Repo))
-			anyErr = true
-			continue
 		}
 
 		walkedIDs := make([]string, 0, len(docs))
@@ -173,7 +190,85 @@ func (r *runner) runGit(ctx context.Context, reset bool, limit int, dry, prune b
 			return errors.Wrap(err, "upsert syncstate")
 		}
 
-		// Ingest commits if enabled
+		// --- YAML manifests ---
+		if s.Manifests {
+			manifestSrc := index.SourceGitManifest(s.Repo)
+			if reset {
+				if err := resetSource(ctx, db, vectors, manifestSrc); err != nil {
+					return err
+				}
+			}
+
+			walkedManifestIDs := make([]string, 0, len(manifests))
+			for _, d := range manifests {
+				walkedManifestIDs = append(walkedManifestIDs, d.SourceID)
+			}
+
+			manifestBatch := manifests
+			if limit > 0 && limit < len(manifestBatch) {
+				manifestBatch = manifestBatch[:limit]
+			}
+			manifestProcessed, manifestErr := indexBatch(ctx, lg, manifestPipe, manifestBatch, dry, "git manifests")
+			if manifestErr {
+				anyErr = true
+			}
+
+			if !dry && prune && limit <= 0 {
+				if err := r.pruneOrphans(ctx, manifestSrc, walkedManifestIDs); err != nil {
+					lg.Error("prune git manifests orphans failed", zap.Error(err), zap.String("repo", s.Repo))
+					anyErr = true
+				}
+			}
+
+			mStatus := "ok"
+			if anyErr && !dry {
+				mStatus = "error"
+			}
+			if err := upsertSyncState(ctx, db, string(manifestSrc), time.Now(), "", mStatus, manifestProcessed); err != nil {
+				return errors.Wrap(err, "upsert syncstate")
+			}
+		}
+
+		// --- Source code ---
+		if s.Code {
+			codeSrc := index.SourceGitCode(s.Repo)
+			if reset {
+				if err := resetSource(ctx, db, vectors, codeSrc); err != nil {
+					return err
+				}
+			}
+
+			walkedCodeIDs := make([]string, 0, len(codeDocs))
+			for _, d := range codeDocs {
+				walkedCodeIDs = append(walkedCodeIDs, d.SourceID)
+			}
+
+			codeBatch := codeDocs
+			if limit > 0 && limit < len(codeBatch) {
+				codeBatch = codeBatch[:limit]
+			}
+			codeProcessed, codeErr := indexBatch(ctx, lg, codePipe, codeBatch, dry, "git code")
+			if codeErr {
+				anyErr = true
+			}
+
+			if !dry && prune && limit <= 0 {
+				if err := r.pruneOrphans(ctx, codeSrc, walkedCodeIDs); err != nil {
+					lg.Error("prune git code orphans failed", zap.Error(err), zap.String("repo", s.Repo))
+					anyErr = true
+				}
+			}
+
+			cStatus := "ok"
+			if anyErr && !dry {
+				cStatus = "error"
+			}
+			if err := upsertSyncState(ctx, db, string(codeSrc), time.Now(), "", cStatus, codeProcessed); err != nil {
+				return errors.Wrap(err, "upsert syncstate")
+			}
+		}
+
+		// --- Commits ---
 		if s.Commits {
 			commitsSrc := index.SourceGitCommit(s.Repo)
 			if reset {
@@ -210,7 +305,7 @@ func (r *runner) runGit(ctx context.Context, reset bool, limit int, dry, prune b
 			}
 		}
 
-		// Ingest tags if enabled
+		// --- Tags ---
 		if s.Tags {
 			tagsSrc := index.SourceGitTag(s.Repo)
 			if reset {
@@ -263,8 +358,27 @@ func (r *runner) runGit(ctx context.Context, reset bool, limit int, dry, prune b
 	return nil
 }
 
+// filterDocsBySource filters documents whose source has the given prefix.
+func filterDocsBySource(docs []index.Document, prefix string) []index.Document {
+	var out []index.Document
+	for _, d := range docs {
+		if strings.HasPrefix(string(d.Source), prefix) {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
 func (r *runner) buildDocChunker() index.Chunker {
 	return chunkmd.New(chunkmd.ChunkerOptions{})
+}
+
+func (r *runner) buildManifestChunker() index.Chunker {
+	return chunkyaml.New(chunkyaml.ChunkerOptions{})
+}
+
+func (r *runner) buildCodeChunker() index.Chunker {
+	return chunkcode.New(chunkcode.ChunkerOptions{})
 }
 
 func (r *runner) buildCommitChunker() index.Chunker {
@@ -759,15 +873,20 @@ func gitSources(sources []config.GitSource) []gitingest.Source {
 	out := make([]gitingest.Source, 0, len(sources))
 	for _, src := range sources {
 		out = append(out, gitingest.Source{
-			Root:    src.Root,
-			URL:     src.URL,
-			Repo:    src.Repo,
-			Branch:  src.Branch,
-			BaseURL: src.BaseURL,
-			Include: src.Include,
-			Exclude: src.Exclude,
-			Commits: src.Commits,
-			Tags:    src.Tags,
+			Root:            src.Root,
+			URL:             src.URL,
+			Repo:            src.Repo,
+			Branch:          src.Branch,
+			BaseURL:         src.BaseURL,
+			Include:         src.Include,
+			Exclude:         src.Exclude,
+			Commits:         src.Commits,
+			Tags:            src.Tags,
+			Manifests:       src.Manifests,
+			Code:            src.Code,
+			ManifestExclude: src.ManifestExclude,
+			CodeInclude:     src.CodeInclude,
+			CodeExclude:     src.CodeExclude,
 		})
 	}
 	return out
