@@ -24,9 +24,9 @@ func TestBuildQuery(t *testing.T) {
 			},
 			wantSQL: `
 		SELECT id, document_id, chunk_type, coalesce(title,''), text, metadata,
-		       ts_rank(search_vector, plainto_tsquery('simple', $1)) AS rank
+		       ts_rank(search_vector, replace(plainto_tsquery('simple', $1)::text, ' & ', ' | ')::tsquery) AS rank
 		FROM chunks
-		WHERE search_vector @@ plainto_tsquery('simple', $1)
+		WHERE search_vector @@ replace(plainto_tsquery('simple', $1)::text, ' & ', ' | ')::tsquery
 	 ORDER BY rank DESC LIMIT $2`,
 			wantLen: 2, // text, limit
 		},
@@ -38,9 +38,9 @@ func TestBuildQuery(t *testing.T) {
 			},
 			wantSQL: `
 		SELECT id, document_id, chunk_type, coalesce(title,''), text, metadata,
-		       ts_rank(search_vector, plainto_tsquery('simple', $1)) AS rank
+		       ts_rank(search_vector, replace(plainto_tsquery('simple', $1)::text, ' & ', ' | ')::tsquery) AS rank
 		FROM chunks
-		WHERE search_vector @@ plainto_tsquery('simple', $1)
+		WHERE search_vector @@ replace(plainto_tsquery('simple', $1)::text, ' & ', ' | ')::tsquery
 	 AND metadata @> jsonb_build_object($3::text, $4::text) ORDER BY rank DESC LIMIT $2`,
 			wantLen: 4, // text, limit, "service" key, "myservice" value
 		},
@@ -76,9 +76,9 @@ func TestBuildQuery(t *testing.T) {
 			},
 			wantSQL: `
 		SELECT id, document_id, chunk_type, coalesce(title,''), text, metadata,
-		       ts_rank(search_vector, plainto_tsquery('simple', $1)) AS rank
+		       ts_rank(search_vector, replace(plainto_tsquery('simple', $1)::text, ' & ', ' | ')::tsquery) AS rank
 		FROM chunks
-		WHERE search_vector @@ plainto_tsquery('simple', $1)
+		WHERE search_vector @@ replace(plainto_tsquery('simple', $1)::text, ' & ', ' | ')::tsquery
 	 AND metadata @> jsonb_build_object($3::text, $4::text) ORDER BY rank DESC LIMIT $2`,
 			wantLen: 4, // text, limit, "status", "In Review"
 		},
@@ -91,9 +91,9 @@ func TestBuildQuery(t *testing.T) {
 			},
 			wantSQL: `
 		SELECT id, document_id, chunk_type, coalesce(title,''), text, metadata,
-		       ts_rank(search_vector, plainto_tsquery('simple', $1)) AS rank
+		       ts_rank(search_vector, replace(plainto_tsquery('simple', $1)::text, ' & ', ' | ')::tsquery) AS rank
 		FROM chunks
-		WHERE search_vector @@ plainto_tsquery('simple', $1)
+		WHERE search_vector @@ replace(plainto_tsquery('simple', $1)::text, ' & ', ' | ')::tsquery
 	 AND metadata @> jsonb_build_object($3::text, $4::text) AND metadata @> jsonb_build_object($5::text, $6::text) ORDER BY rank DESC LIMIT $2`,
 			wantLen: 6, // text, limit, "service", "myservice", "status", "In Review"
 		},
@@ -108,9 +108,9 @@ func TestBuildQuery(t *testing.T) {
 			},
 			wantSQL: `
 		SELECT id, document_id, chunk_type, coalesce(title,''), text, metadata,
-		       ts_rank(search_vector, plainto_tsquery('simple', $1)) AS rank
+		       ts_rank(search_vector, replace(plainto_tsquery('simple', $1)::text, ' & ', ' | ')::tsquery) AS rank
 		FROM chunks
-		WHERE search_vector @@ plainto_tsquery('simple', $1)
+		WHERE search_vector @@ replace(plainto_tsquery('simple', $1)::text, ' & ', ' | ')::tsquery
 	 AND metadata @> jsonb_build_object($3::text, $4::text) AND metadata @> jsonb_build_object($5::text, $6::text) ORDER BY rank DESC LIMIT $2`,
 			wantLen: 6, // text, limit, "jira_key", "BILL-42", "status", "In Review"
 		},

@@ -6,6 +6,7 @@ package yaml
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"maps"
 	"strings"
 
@@ -103,6 +104,12 @@ func (c *Chunker) Chunk(_ context.Context, doc index.Document) ([]index.Chunk, e
 		}
 		if namespace != "" {
 			meta["namespace"] = namespace
+		}
+		if root.Line > 0 {
+			meta["start_line"] = root.Line
+			if u, ok := meta["source_url"].(string); ok && u != "" {
+				meta["source_url"] = fmt.Sprintf("%s#L%d", u, root.Line)
+			}
 		}
 
 		title := kind

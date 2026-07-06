@@ -102,7 +102,7 @@ func WalkCommits(ctx context.Context, s Source, cur CommitCursor, limit int) (Co
 			"author":       commit.Author.Name,
 			"author_email": commit.Author.Email,
 			"branch":       branchName,
-			"authority":    string(index.AuthorityLow),
+			"authority":    string(index.AuthorityLowMedium),
 		}
 
 		doc := index.Document{

@@ -193,6 +193,7 @@ func (c *Chunker) funcDeclChunk(doc index.Document, d *ast.FuncDecl, fset *token
 		recvType := exprString(d.Recv.List[0].Type)
 		meta["receiver"] = recvType
 	}
+	applyLineAnchor(meta, start.Line, end.Line)
 
 	title := d.Name.Name
 	if recv, _ := meta["receiver"].(string); recv != "" {
@@ -237,6 +238,7 @@ func (c *Chunker) genDeclChunk(doc index.Document, d *ast.GenDecl, spec ast.Spec
 
 	meta["symbol"] = symbol
 	meta["symbol_kind"] = kind
+	applyLineAnchor(meta, start.Line, end.Line)
 
 	return &index.Chunk{
 		ID:         index.NewID(),
@@ -247,6 +249,23 @@ func (c *Chunker) genDeclChunk(doc index.Document, d *ast.GenDecl, spec ast.Spec
 		Text:       body,
 		TextHash:   index.Hash(body),
 		Metadata:   meta,
+	}
+}
+
+// applyLineAnchor records 1-based line bounds and, when a source_url is present,
+// appends a GitLab line-range fragment (#L<start>-<end>) so results deep-link to
+// the exact lines of the symbol.
+func applyLineAnchor(meta map[string]any, startLine, endLine int) {
+	meta["start_line"] = startLine
+	meta["end_line"] = endLine
+	u, ok := meta["source_url"].(string)
+	if !ok || u == "" {
+		return
+	}
+	if endLine > startLine {
+		meta["source_url"] = fmt.Sprintf("%s#L%d-%d", u, startLine, endLine)
+	} else {
+		meta["source_url"] = fmt.Sprintf("%s#L%d", u, startLine)
 	}
 }
 

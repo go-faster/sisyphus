@@ -133,11 +133,16 @@ func buildQuery(q index.Query) (query string, args []any) {
 
 	args = []any{q.Text, limit}
 	var queryStr strings.Builder
+	// plainto_tsquery ANDs every term, so a multi-keyword query only matches
+	// chunks containing all terms — recall collapses to near-zero and lexical
+	// search stops contributing. Convert the AND (&) to OR (|) so any-term
+	// matches surface; ts_rank still orders by how many/how heavily terms match,
+	// and RRF fuses the result with vector search.
 	queryStr.WriteString(`
 		SELECT id, document_id, chunk_type, coalesce(title,''), text, metadata,
-		       ts_rank(search_vector, plainto_tsquery('simple', $1)) AS rank
+		       ts_rank(search_vector, replace(plainto_tsquery('simple', $1)::text, ' & ', ' | ')::tsquery) AS rank
 		FROM chunks
-		WHERE search_vector @@ plainto_tsquery('simple', $1)
+		WHERE search_vector @@ replace(plainto_tsquery('simple', $1)::text, ' & ', ' | ')::tsquery
 	`)
 
 	// Combine q.Service (back-compat) and q.Filters into one set of metadata filters.

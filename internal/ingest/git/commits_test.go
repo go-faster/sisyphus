@@ -117,7 +117,7 @@ func TestWalkCommits(t *testing.T) {
 		require.Equal(t, "alice", doc.Metadata["author"])
 		require.Equal(t, "alice@example.com", doc.Metadata["author_email"])
 		require.Equal(t, "develop", doc.Metadata["branch"])
-		require.Equal(t, string(index.AuthorityLow), doc.Metadata["authority"])
+		require.Equal(t, string(index.AuthorityLowMedium), doc.Metadata["authority"])
 		require.NotEmpty(t, doc.SourceID)                       // Should be "my-project@<short-sha>"
 		require.True(t, len(doc.SourceID) > len("my-project@")) // Has short SHA
 	})

@@ -313,6 +313,9 @@ func newDocDocument(s Source, rel, body string, mod time.Time) index.Document {
 		"branch":    s.Branch,
 		"authority": string(index.AuthorityHigh),
 	}
+	if url != "" {
+		meta["source_url"] = url
+	}
 	return index.Document{
 		ID:        index.NewID(),
 		Source:    source,
@@ -340,6 +343,9 @@ func newManifestDocument(s Source, rel, body string, mod time.Time) index.Docume
 		"branch":    s.Branch,
 		"lang":      "yaml",
 		"authority": string(index.AuthorityMedium),
+	}
+	if url != "" {
+		meta["source_url"] = url
 	}
 	return index.Document{
 		ID:        index.NewID(),
@@ -369,7 +375,10 @@ func newCodeDocument(s Source, rel, body string, mod time.Time) index.Document {
 		"path":      rel,
 		"branch":    s.Branch,
 		"lang":      lang,
-		"authority": string(index.AuthorityLowMedium),
+		"authority": string(index.AuthorityLow),
+	}
+	if url != "" {
+		meta["source_url"] = url
 	}
 	return index.Document{
 		ID:        index.NewID(),

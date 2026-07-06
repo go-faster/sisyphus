@@ -70,6 +70,44 @@ const defaultName = "world"
 		require.Contains(t, hello.Text, "func hello(name string) string")
 	})
 
+	t.Run("Go symbols carry line anchors in source_url", func(t *testing.T) {
+		body := `package main
+
+// hello greets the user.
+func hello(name string) string {
+	return "Hello, " + name
+}
+`
+		doc := index.Document{
+			ID:    index.NewID(),
+			Title: "main.go",
+			Body:  body,
+			Metadata: map[string]any{
+				"lang":       "go",
+				"repo":       "test/repo",
+				"source_url": "https://gitlab.example/test/repo/-/blob/main/main.go",
+			},
+		}
+
+		c := New(ChunkerOptions{})
+		chunks, err := c.Chunk(ctx, doc)
+		require.NoError(t, err)
+		require.Len(t, chunks, 2) // overview + hello
+
+		hello := chunks[1]
+		// Doc comment starts on line 3, closing brace on line 6.
+		require.Equal(t, 3, hello.Metadata["start_line"])
+		require.Equal(t, 6, hello.Metadata["end_line"])
+		require.Equal(t,
+			"https://gitlab.example/test/repo/-/blob/main/main.go#L3-6",
+			hello.Metadata["source_url"])
+
+		// The file overview keeps the bare file URL (no line anchor).
+		require.Equal(t,
+			"https://gitlab.example/test/repo/-/blob/main/main.go",
+			chunks[0].Metadata["source_url"])
+	})
+
 	t.Run("Go methods have receiver metadata", func(t *testing.T) {
 		body := `package service
 
