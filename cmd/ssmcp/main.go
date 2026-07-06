@@ -83,6 +83,7 @@ func run(ctx context.Context, cfg config.Config, useStdio bool, t *app.Telemetry
 	} else {
 		lg.Warn("mcp auth disabled")
 	}
+	mux.Handle("/health", mcpserver.HealthHandler("0.1.0"))
 	mux.Handle("/mcp", handler)
 
 	lg.Info("mcp http listening", zap.String("addr", cfg.MCPAddr))

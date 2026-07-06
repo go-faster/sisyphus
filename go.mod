@@ -7,6 +7,7 @@ require (
 	entgo.io/ent v0.14.6
 	github.com/XSAM/otelsql v0.42.0
 	github.com/bmatcuk/doublestar/v4 v4.10.0
+	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/go-faster/errors v0.7.1
 	github.com/go-faster/jx v1.2.0
 	github.com/go-faster/sdk v0.35.0
@@ -46,7 +47,6 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bmatcuk/doublestar v1.3.4 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
-	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/coder/websocket v1.8.15 // indirect

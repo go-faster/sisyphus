@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:1
+#
+# Release image for goreleaser's dockers_v2 pipeline: goreleaser cross-compiles
+# the binaries itself and places them under $TARGETPLATFORM/ in the build
+# context, so unlike deploy/Dockerfile this does not run `go build`.
+FROM ubuntu:26.04
+
+ARG TARGETPLATFORM
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY ${TARGETPLATFORM}/ssapi ${TARGETPLATFORM}/ssbot ${TARGETPLATFORM}/ssmcp ${TARGETPLATFORM}/ssingest /usr/local/bin/
+
+ENTRYPOINT ["/usr/local/bin/ssapi"]

@@ -1,0 +1,92 @@
+version: 2
+
+project_name: sisyphus
+
+builds:
+  - id: ssapi
+    main: ./cmd/ssapi
+    binary: ssapi
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos: [linux]
+    goarch: [amd64, arm64]
+  - id: ssbot
+    main: ./cmd/ssbot
+    binary: ssbot
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos: [linux]
+    goarch: [amd64, arm64]
+  - id: ssmcp
+    main: ./cmd/ssmcp
+    binary: ssmcp
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos: [linux]
+    goarch: [amd64, arm64]
+  - id: ssingest
+    main: ./cmd/ssingest
+    binary: ssingest
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos: [linux]
+    goarch: [amd64, arm64]
+
+archives:
+  - formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    builds_info:
+      group: root
+      owner: root
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^chore:"
+      - "^test:"
+
+# Single multi-binary image (matches deploy/docker-compose.yml, which builds
+# one image and overrides the entrypoint per service). `platforms` makes
+# dockers_v2 do one buildx invocation across all platforms, producing a single
+# OCI multi-platform manifest on push instead of separate per-arch images.
+dockers_v2:
+  - id: sisyphus
+    ids: [ssapi, ssbot, ssmcp, ssingest]
+    images:
+      - "ghcr.io/go-faster/sisyphus"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    tags:
+      - "{{ .Version }}"
+      - "latest"
+    dockerfile: deploy/Dockerfile.goreleaser
+
+release:
+  github:
+    owner: go-faster
+    name: sisyphus
+  mode: replace
+  draft: false
+  prerelease: auto
+  footer: |
+    ## Docker image
+
+    ```
+    ghcr.io/go-faster/sisyphus:{{ .Version }}
+    ```
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
