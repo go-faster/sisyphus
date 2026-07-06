@@ -62,6 +62,37 @@ func TestChunkToPayload(t *testing.T) {
 	}
 }
 
+func TestChunkToPayloadInvalidUTF8(t *testing.T) {
+	chunk := index.Chunk{
+		ID:         uuid.New(),
+		DocumentID: uuid.New(),
+		Type:       index.ChunkSection,
+		Title:      "title\xffsuffix",
+		Metadata: map[string]any{
+			"bad_string": "value\xffsuffix",
+			"nested": map[string]any{
+				"bad_key\xff": "nested\xffvalue",
+			},
+			"list": []any{"list\xffvalue"},
+		},
+	}
+
+	payload := chunkToPayload(chunk)
+
+	if got := payload["title"].GetStringValue(); got != "titlesuffix" {
+		t.Fatalf("title: got %q, want %q", got, "titlesuffix")
+	}
+	if got := payload["bad_string"].GetStringValue(); got != "valuesuffix" {
+		t.Fatalf("bad_string: got %q, want %q", got, "valuesuffix")
+	}
+	if got := payload["nested"].GetStructValue().Fields["bad_key"].GetStringValue(); got != "nestedvalue" {
+		t.Fatalf("nested: got %q, want %q", got, "nestedvalue")
+	}
+	if got := payload["list"].GetListValue().Values[0].GetStringValue(); got != "listvalue" {
+		t.Fatalf("list: got %q, want %q", got, "listvalue")
+	}
+}
+
 // TestPayloadToChunk tests conversion of Qdrant payload back to Chunk.
 func TestPayloadToChunk(t *testing.T) {
 	chunkID := uuid.New()

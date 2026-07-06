@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
@@ -383,8 +384,9 @@ func formatErrorBody(resp *http.Response, body []byte) string {
 		return "html response hidden"
 	}
 	s := string(body)
-	if len(s) > 256 {
-		return s[:256] + "..."
+	if utf8.RuneCountInString(s) > 256 {
+		runes := []rune(s)
+		return string(runes[:256]) + "..."
 	}
 	return s
 }

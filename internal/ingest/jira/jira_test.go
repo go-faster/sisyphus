@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	chunkjira "github.com/go-faster/sisyphus/internal/chunk/jira"
 	"github.com/go-faster/sisyphus/internal/index"
@@ -93,6 +94,21 @@ func makeSearchResponse(startAt, maxResults, total int, issues []map[string]any)
 		"maxResults": maxResults,
 		"total":      total,
 		"issues":     issues,
+	}
+}
+
+func TestFormatErrorBodyTruncatesUTF8ByRunes(t *testing.T) {
+	body := []byte(strings.Repeat("Ж", 300))
+	got := formatErrorBody(&http.Response{StatusCode: http.StatusBadRequest}, body)
+
+	if !utf8.ValidString(got) {
+		t.Fatalf("formatted body is invalid UTF-8: %q", got)
+	}
+	if utf8.RuneCountInString(got) != 259 {
+		t.Fatalf("formatted body runes: got %d, want 259", utf8.RuneCountInString(got))
+	}
+	if !strings.HasSuffix(got, "...") {
+		t.Fatalf("formatted body should end with ellipsis: %q", got)
 	}
 }
 

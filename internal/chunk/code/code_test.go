@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
 
@@ -162,6 +163,27 @@ interface Person {
 		chunks, err := c.Chunk(ctx, doc)
 		require.NoError(t, err)
 		require.Empty(t, chunks)
+	})
+
+	t.Run("generic title truncates by runes", func(t *testing.T) {
+		body := `/** Проверка на enabled, т.к. по дефолту скипаются 0 */
+export const apiCustomEnabledCheck = () => true;
+`
+		doc := index.Document{
+			ID:    index.NewID(),
+			Title: "query-options-mutator.ts",
+			Body:  body,
+			Metadata: map[string]any{
+				"lang": "typescript",
+			},
+		}
+
+		c := New(ChunkerOptions{})
+		chunks, err := c.Chunk(ctx, doc)
+		require.NoError(t, err)
+		require.Len(t, chunks, 1)
+		require.True(t, utf8.ValidString(chunks[0].Title))
+		require.Equal(t, "/** Проверка на enabled, т.к. по дефолту скипаются 0 */", chunks[0].Title)
 	})
 
 	t.Run("deterministic hashing", func(t *testing.T) {

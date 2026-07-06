@@ -12,6 +12,7 @@ import (
 	"maps"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/go-faster/sisyphus/internal/index"
 )
@@ -421,8 +422,9 @@ func extractTitle(block []string) string {
 	if first == "" && len(block) > 1 {
 		first = strings.TrimSpace(block[1])
 	}
-	if len(first) > 60 {
-		first = first[:60] + "..."
+	if utf8.RuneCountInString(first) > 60 {
+		runes := []rune(first)
+		first = string(runes[:60]) + "..."
 	}
 	return first
 }

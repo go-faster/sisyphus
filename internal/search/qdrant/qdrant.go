@@ -5,6 +5,7 @@ package qdrant
 
 import (
 	"context"
+	"strings"
 
 	"github.com/go-faster/errors"
 	"github.com/google/uuid"
@@ -200,25 +201,48 @@ func (s *Store) Close() error {
 // chunkToPayload converts a Chunk to a Qdrant payload map.
 // It extracts metadata fields into the top-level payload.
 func chunkToPayload(chunk index.Chunk) map[string]*qdrant.Value {
-	payload := qdrant.NewValueMap(map[string]any{
-		"chunk_id":    chunk.ID.String(),
-		"document_id": chunk.DocumentID.String(),
-		"chunk_type":  string(chunk.Type),
-		"title":       chunk.Title,
-	})
+	payload := make(map[string]*qdrant.Value, 4+len(chunk.Metadata))
+	addPayloadValue(payload, "chunk_id", chunk.ID.String())
+	addPayloadValue(payload, "document_id", chunk.DocumentID.String())
+	addPayloadValue(payload, "chunk_type", string(chunk.Type))
+	addPayloadValue(payload, "title", chunk.Title)
 
 	// If metadata exists, merge its fields into the payload
 	if chunk.Metadata != nil {
 		for k, v := range chunk.Metadata {
-			// Convert v to a Qdrant Value if it's not already
-			val, err := qdrant.NewValue(v)
-			if err == nil && val != nil {
-				payload[k] = val
-			}
+			addPayloadValue(payload, k, v)
 		}
 	}
 
 	return payload
+}
+
+func addPayloadValue(payload map[string]*qdrant.Value, key string, value any) {
+	val, err := qdrant.NewValue(sanitizePayloadValue(value))
+	if err == nil && val != nil {
+		payload[strings.ToValidUTF8(key, "")] = val
+	}
+}
+
+func sanitizePayloadValue(value any) any {
+	switch v := value.(type) {
+	case string:
+		return strings.ToValidUTF8(v, "")
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for k, value := range v {
+			out[strings.ToValidUTF8(k, "")] = sanitizePayloadValue(value)
+		}
+		return out
+	case []any:
+		out := make([]any, len(v))
+		for i, value := range v {
+			out[i] = sanitizePayloadValue(value)
+		}
+		return out
+	default:
+		return value
+	}
 }
 
 // payloadToChunk reconstructs a Chunk from a Qdrant payload.
