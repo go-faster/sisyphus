@@ -6,7 +6,6 @@ package apiclient
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -29,24 +28,6 @@ type Options struct {
 	HTTPClient     ht.Client
 	TracerProvider trace.TracerProvider
 	MeterProvider  metric.MeterProvider
-}
-
-// CheckHealth verifies that the upstream API is ready to serve traffic.
-func (c *Client) CheckHealth(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(c.baseURL, "/")+"/readyz", http.NoBody)
-	if err != nil {
-		return errors.Wrap(err, "create ready request")
-	}
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return errors.Wrap(err, "get ready")
-	}
-	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return errors.New("upstream not ready")
-	}
-	return nil
 }
 
 func (o *Options) setDefaults() {
@@ -94,6 +75,23 @@ func New(baseURL, token string, opts Options) (*Client, error) {
 		tracer:     opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/apiclient"),
 		m:          m,
 	}, nil
+}
+
+// CheckHealth verifies that the upstream API is ready to serve traffic.
+func (c *Client) CheckHealth(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(c.baseURL, "/")+"/readyz", http.NoBody)
+	if err != nil {
+		return errors.Wrap(err, "create ready request")
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return errors.Wrap(err, "get ready")
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return errors.New("upstream not ready")
+	}
+	return nil
 }
 
 // Answer implements the Answerer interface.

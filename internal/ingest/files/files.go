@@ -62,7 +62,7 @@ func Walk(ctx context.Context, sources []Source) ([]index.Document, error) {
 				return nil
 			}
 
-			bodyBytes, err := os.ReadFile(filePath)
+			bodyBytes, err := os.ReadFile(filePath) //nolint:gosec // path from fs walk, not user input
 			if err != nil {
 				return errors.Wrap(err, "read context file")
 			}

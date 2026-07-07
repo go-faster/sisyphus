@@ -70,7 +70,7 @@ func authenticatedHTTPCache(service string, authParts ...string) (*diskcache.Cac
 	if err := os.MkdirAll(cachePath, 0o700); err != nil {
 		return nil, errors.Wrap(err, "create cache dir")
 	}
-	if err := os.Chmod(cachePath, 0o700); err != nil {
+	if err := os.Chmod(cachePath, 0o700); err != nil { //nolint:gosec // directory needs execute to traverse
 		return nil, errors.Wrap(err, "chmod cache dir")
 	}
 
