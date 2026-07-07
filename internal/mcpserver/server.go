@@ -22,12 +22,12 @@ func New(retr Retriever, answerer index.Answerer) *mcp.Server {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "search_knowledge",
-		Description: "Hybrid lexical+vector search over ingested GitLab docs, Jira issues and Telegram support threads. Returns scored chunks with source URLs.",
+		Description: "Hybrid lexical+vector search over ingested knowledge. Use source_tier=curated by default; opt into code, history, all, or source_prefixes when needed. Returns scored chunks with source URLs.",
 	}, searchHandler(retr))
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "answer_question",
-		Description: "Retrieve relevant context and produce a grounded answer with citations.",
+		Description: "Retrieve relevant context and produce a grounded answer with citations. Use source_tier=code/history/all or source_prefixes when curated sources are not enough.",
 	}, answerHandler(retr, answerer))
 
 	return s

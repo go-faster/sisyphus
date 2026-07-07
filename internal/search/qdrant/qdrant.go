@@ -162,7 +162,11 @@ func (s *Store) Search(ctx context.Context, q index.Query) ([]index.Result, erro
 
 	// Perform the query
 	query := qdrant.NewQueryDense(queryVec)
-	limit := uint64(q.Limit)
+	queryLimit := q.Limit
+	if len(q.SourcePrefixes) > 0 {
+		queryLimit *= 5
+	}
+	limit := uint64(queryLimit)
 	req := &qdrant.QueryPoints{
 		CollectionName: s.collection,
 		Query:          query,
@@ -176,14 +180,20 @@ func (s *Store) Search(ctx context.Context, q index.Query) ([]index.Result, erro
 		return nil, errors.Wrap(err, "query qdrant")
 	}
 
-	// Convert scored points to Results
-	results := make([]index.Result, len(scoredPoints))
-	for i, sp := range scoredPoints {
+	// Convert scored points to Results.
+	results := make([]index.Result, 0, len(scoredPoints))
+	for _, sp := range scoredPoints {
 		chunk := payloadToChunk(sp.Id, sp.Payload)
-		results[i] = index.Result{
+		if !index.SourceMatchesPrefix(metaString(chunk.Metadata, "source"), q.SourcePrefixes) {
+			continue
+		}
+		results = append(results, index.Result{
 			Chunk:  chunk,
 			Score:  float64(sp.Score),
 			Vector: true,
+		})
+		if len(results) >= q.Limit {
+			break
 		}
 	}
 
@@ -311,6 +321,16 @@ func valueToAny(v *qdrant.Value) any {
 	default:
 		return nil
 	}
+}
+
+func metaString(m map[string]any, key string) string {
+	if m == nil {
+		return ""
+	}
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return ""
 }
 
 // buildFilter constructs a Qdrant Filter from Query.Service and Query.Filters.

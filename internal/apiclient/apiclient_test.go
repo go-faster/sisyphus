@@ -161,19 +161,50 @@ func TestClientRetrieveWithFilters(t *testing.T) {
 	require.NoError(t, err)
 
 	query := index.Query{
-		Text: "test",
+		Text:       "test",
+		SourceTier: "code",
 		Filters: map[string]string{
 			"status": "open",
 			"repo":   "myrepo",
 		},
-		Limit: 20,
+		SourcePrefixes: []string{index.SourceGitCodePrefix},
+		Limit:          20,
 	}
 	_, _ = client.Retrieve(context.Background(), query)
 
 	// Verify the query was passed correctly.
 	assert.Equal(t, query.Text, captureRetriever.lastQuery.Text)
 	assert.Equal(t, query.Filters, captureRetriever.lastQuery.Filters)
+	assert.Equal(t, query.SourceTier, captureRetriever.lastQuery.SourceTier)
+	assert.Equal(t, query.SourcePrefixes, captureRetriever.lastQuery.SourcePrefixes)
 	assert.Equal(t, query.Limit, captureRetriever.lastQuery.Limit)
+}
+
+func TestClientAnswerQuerySourceControls(t *testing.T) {
+	captureRetriever := &captureQueryRetriever{}
+
+	handler := api.New(captureRetriever, &fakeAnswerer{}, "v1.0.0")
+	secHandler := api.NewSecurityHandler("secret-token")
+	server, err := oas.NewServer(handler, secHandler, oas.WithErrorHandler(api.ErrorHandler))
+	require.NoError(t, err)
+
+	httpServer := httptest.NewServer(server)
+	defer httpServer.Close()
+
+	client, err := New(httpServer.URL, "secret-token", Options{})
+	require.NoError(t, err)
+
+	query := index.Query{
+		Text:           "test?",
+		SourceTier:     "history",
+		SourcePrefixes: []string{index.SourceGitCommitsPrefix},
+	}
+	_, err = client.AnswerQuery(context.Background(), query, nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, query.Text, captureRetriever.lastQuery.Text)
+	assert.Equal(t, query.SourceTier, captureRetriever.lastQuery.SourceTier)
+	assert.Equal(t, query.SourcePrefixes, captureRetriever.lastQuery.SourcePrefixes)
 }
 
 type captureQueryRetriever struct {

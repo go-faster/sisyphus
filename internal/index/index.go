@@ -51,6 +51,27 @@ func SourceGitManifest(repo string) Source { return Source(SourceGitManifestPref
 // SourceGitCode returns the Source for source code files of the given repo.
 func SourceGitCode(repo string) Source { return Source(SourceGitCodePrefix + repo) }
 
+// SourceMatchesPrefix reports whether a concrete source belongs to one of the
+// requested source prefixes. Prefixes ending in ':' match per-repo sources;
+// other prefixes match exact source names.
+func SourceMatchesPrefix(source string, prefixes []string) bool {
+	if len(prefixes) == 0 {
+		return true
+	}
+	for _, prefix := range prefixes {
+		if strings.HasSuffix(prefix, ":") {
+			if strings.HasPrefix(source, prefix) {
+				return true
+			}
+			continue
+		}
+		if source == prefix {
+			return true
+		}
+	}
+	return false
+}
+
 // ChunkType classifies a Chunk so retrieval/ranking can treat them differently.
 type ChunkType string
 
@@ -132,10 +153,12 @@ type Embedder interface {
 
 // Query is a retrieval request (plan §10).
 type Query struct {
-	Text    string
-	Service string            // optional service filter/boost
-	Filters map[string]string // optional payload filters (source, repo, jira_key, ...)
-	Limit   int
+	Text           string
+	Service        string            // optional service filter/boost
+	Filters        map[string]string // optional payload filters (source, repo, jira_key, ...)
+	SourceTier     string            // optional source policy name (curated, code, history, all)
+	SourcePrefixes []string          // optional source prefixes to include
+	Limit          int
 }
 
 // Result is a scored chunk returned by a Searcher.

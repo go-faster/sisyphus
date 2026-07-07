@@ -21,9 +21,11 @@ func (f *captureRetriever) Retrieve(ctx context.Context, q index.Query) ([]index
 
 func TestSearchHandler_Filters(t *testing.T) {
 	tests := []struct {
-		name   string
-		args   SearchArgs
-		expect map[string]string
+		name           string
+		args           SearchArgs
+		expect         map[string]string
+		expectTier     string
+		expectPrefixes []string
 	}{
 		{
 			name:   "no filters",
@@ -40,6 +42,13 @@ func TestSearchHandler_Filters(t *testing.T) {
 			args:   SearchArgs{Query: "test", Filters: map[string]string{"jira_key": "BILL-42", "status": "In Review"}, Limit: 5},
 			expect: map[string]string{"jira_key": "BILL-42", "status": "In Review"},
 		},
+		{
+			name:           "source controls",
+			args:           SearchArgs{Query: "test", SourceTier: "code", SourcePrefixes: []string{index.SourceGitCodePrefix}, Limit: 5},
+			expect:         nil,
+			expectTier:     "code",
+			expectPrefixes: []string{index.SourceGitCodePrefix},
+		},
 	}
 
 	for _, tt := range tests {
@@ -54,15 +63,19 @@ func TestSearchHandler_Filters(t *testing.T) {
 			} else {
 				assert.Equal(t, tt.expect, retr.got.Filters)
 			}
+			assert.Equal(t, tt.expectTier, retr.got.SourceTier)
+			assert.Equal(t, tt.expectPrefixes, retr.got.SourcePrefixes)
 		})
 	}
 }
 
 func TestAnswerHandler_Filters(t *testing.T) {
 	tests := []struct {
-		name   string
-		args   AnswerArgs
-		expect map[string]string
+		name           string
+		args           AnswerArgs
+		expect         map[string]string
+		expectTier     string
+		expectPrefixes []string
 	}{
 		{
 			name:   "no filters",
@@ -79,6 +92,13 @@ func TestAnswerHandler_Filters(t *testing.T) {
 			args:   AnswerArgs{Question: "test", Filters: map[string]string{"jira_key": "BILL-42", "status": "In Review"}},
 			expect: map[string]string{"jira_key": "BILL-42", "status": "In Review"},
 		},
+		{
+			name:           "source controls",
+			args:           AnswerArgs{Question: "test", SourceTier: "history", SourcePrefixes: []string{index.SourceGitCommitsPrefix}},
+			expect:         nil,
+			expectTier:     "history",
+			expectPrefixes: []string{index.SourceGitCommitsPrefix},
+		},
 	}
 
 	for _, tt := range tests {
@@ -93,12 +113,43 @@ func TestAnswerHandler_Filters(t *testing.T) {
 			} else {
 				assert.Equal(t, tt.expect, retr.got.Filters)
 			}
+			assert.Equal(t, tt.expectTier, retr.got.SourceTier)
+			assert.Equal(t, tt.expectPrefixes, retr.got.SourcePrefixes)
 		})
 	}
+}
+
+func TestAnswerHandler_QueryAnswerer(t *testing.T) {
+	retr := &captureRetriever{}
+	answerer := &captureQueryAnswerer{}
+	handler := answerHandler(retr, answerer)
+	args := AnswerArgs{
+		Question:       "test",
+		SourceTier:     "code",
+		SourcePrefixes: []string{index.SourceGitCodePrefix},
+	}
+
+	_, _, err := handler(t.Context(), nil, args)
+	require.NoError(t, err)
+	assert.Equal(t, "code", answerer.got.SourceTier)
+	assert.Equal(t, []string{index.SourceGitCodePrefix}, answerer.got.SourcePrefixes)
 }
 
 type answerNever struct{}
 
 func (answerNever) Answer(_ context.Context, _ string, _ []index.Result) (string, error) {
+	return "stub", nil
+}
+
+type captureQueryAnswerer struct {
+	got index.Query
+}
+
+func (a *captureQueryAnswerer) Answer(_ context.Context, _ string, _ []index.Result) (string, error) {
+	return "fallback", nil
+}
+
+func (a *captureQueryAnswerer) AnswerQuery(_ context.Context, q index.Query, _ []index.Result) (string, error) {
+	a.got = q
 	return "stub", nil
 }

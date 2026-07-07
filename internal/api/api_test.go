@@ -31,9 +31,10 @@ func (stubAnswerer) Answer(_ context.Context, _ string, _ []index.Result) (strin
 
 func TestHandler_Search_Filters(t *testing.T) {
 	tests := []struct {
-		name   string
-		req    *oas.SearchRequest
-		expect map[string]string
+		name           string
+		req            *oas.SearchRequest
+		expect         map[string]string
+		expectPrefixes []string
 	}{
 		{
 			name: "no filters",
@@ -42,7 +43,8 @@ func TestHandler_Search_Filters(t *testing.T) {
 				Service: oas.NewOptString(""),
 				Limit:   oas.NewOptInt32(5),
 			},
-			expect: nil,
+			expect:         nil,
+			expectPrefixes: sourceTierPrefixes[sourceTierCurated],
 		},
 		{
 			name: "single filter",
@@ -52,7 +54,8 @@ func TestHandler_Search_Filters(t *testing.T) {
 				Limit:   oas.NewOptInt32(5),
 				Filters: oas.NewOptSearchRequestFilters(oas.SearchRequestFilters{"status": "In Review"}),
 			},
-			expect: map[string]string{"status": "In Review"},
+			expect:         map[string]string{"status": "In Review"},
+			expectPrefixes: sourceTierPrefixes[sourceTierCurated],
 		},
 		{
 			name: "multiple filters",
@@ -62,7 +65,27 @@ func TestHandler_Search_Filters(t *testing.T) {
 				Limit:   oas.NewOptInt32(5),
 				Filters: oas.NewOptSearchRequestFilters(oas.SearchRequestFilters{"jira_key": "BILL-42", "status": "In Review"}),
 			},
-			expect: map[string]string{"jira_key": "BILL-42", "status": "In Review"},
+			expect:         map[string]string{"jira_key": "BILL-42", "status": "In Review"},
+			expectPrefixes: sourceTierPrefixes[sourceTierCurated],
+		},
+		{
+			name: "code tier",
+			req: &oas.SearchRequest{
+				Query:      "test",
+				SourceTier: oas.NewOptString(sourceTierCode),
+			},
+			expect:         nil,
+			expectPrefixes: sourceTierPrefixes[sourceTierCode],
+		},
+		{
+			name: "explicit source filter disables tier",
+			req: &oas.SearchRequest{
+				Query:      "test",
+				Filters:    oas.NewOptSearchRequestFilters(oas.SearchRequestFilters{"source": "git_code:repo"}),
+				SourceTier: oas.NewOptString(sourceTierCode),
+			},
+			expect:         map[string]string{"source": "git_code:repo"},
+			expectPrefixes: nil,
 		},
 	}
 
@@ -78,15 +101,17 @@ func TestHandler_Search_Filters(t *testing.T) {
 			} else {
 				assert.Equal(t, tt.expect, retr.got.Filters)
 			}
+			assert.Equal(t, tt.expectPrefixes, retr.got.SourcePrefixes)
 		})
 	}
 }
 
 func TestHandler_Context_Filters(t *testing.T) {
 	tests := []struct {
-		name   string
-		req    *oas.ContextRequest
-		expect map[string]string
+		name           string
+		req            *oas.ContextRequest
+		expect         map[string]string
+		expectPrefixes []string
 	}{
 		{
 			name: "no filters",
@@ -94,7 +119,8 @@ func TestHandler_Context_Filters(t *testing.T) {
 				Question: "test",
 				Service:  oas.NewOptString(""),
 			},
-			expect: nil,
+			expect:         nil,
+			expectPrefixes: sourceTierPrefixes[sourceTierCurated],
 		},
 		{
 			name: "single filter",
@@ -103,7 +129,17 @@ func TestHandler_Context_Filters(t *testing.T) {
 				Service:  oas.NewOptString(""),
 				Filters:  oas.NewOptContextRequestFilters(oas.ContextRequestFilters{"status": "In Review"}),
 			},
-			expect: map[string]string{"status": "In Review"},
+			expect:         map[string]string{"status": "In Review"},
+			expectPrefixes: sourceTierPrefixes[sourceTierCurated],
+		},
+		{
+			name: "explicit prefixes",
+			req: &oas.ContextRequest{
+				Question:       "test",
+				SourcePrefixes: []string{index.SourceGitCodePrefix},
+			},
+			expect:         nil,
+			expectPrefixes: []string{index.SourceGitCodePrefix},
 		},
 	}
 
@@ -119,6 +155,7 @@ func TestHandler_Context_Filters(t *testing.T) {
 			} else {
 				assert.Equal(t, tt.expect, retr.got.Filters)
 			}
+			assert.Equal(t, tt.expectPrefixes, retr.got.SourcePrefixes)
 		})
 	}
 }

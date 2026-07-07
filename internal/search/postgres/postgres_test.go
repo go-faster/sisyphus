@@ -114,6 +114,35 @@ func TestBuildQuery(t *testing.T) {
 	 AND metadata @> jsonb_build_object($3::text, $4::text) AND metadata @> jsonb_build_object($5::text, $6::text) ORDER BY rank DESC LIMIT $2`,
 			wantLen: 6, // text, limit, "jira_key", "BILL-42", "status", "In Review"
 		},
+		{
+			name: "query with source prefixes",
+			q: index.Query{
+				Text:           "search",
+				SourcePrefixes: []string{index.SourceGitDocsPrefix, string(index.SourceJira)},
+			},
+			wantSQL: `
+		SELECT id, document_id, chunk_type, coalesce(title,''), text, metadata,
+		       ts_rank(search_vector, replace(plainto_tsquery('simple', $1)::text, ' & ', ' | ')::tsquery) AS rank
+		FROM chunks
+		WHERE search_vector @@ replace(plainto_tsquery('simple', $1)::text, ' & ', ' | ')::tsquery
+	 AND (metadata->>'source' LIKE $3::text OR metadata->>'source' = $4::text) ORDER BY rank DESC LIMIT $2`,
+			wantLen: 4,
+		},
+		{
+			name: "query with filters and source prefixes",
+			q: index.Query{
+				Text:           "search",
+				Filters:        map[string]string{"status": "In Review"},
+				SourcePrefixes: []string{index.SourceGitCodePrefix},
+			},
+			wantSQL: `
+		SELECT id, document_id, chunk_type, coalesce(title,''), text, metadata,
+		       ts_rank(search_vector, replace(plainto_tsquery('simple', $1)::text, ' & ', ' | ')::tsquery) AS rank
+		FROM chunks
+		WHERE search_vector @@ replace(plainto_tsquery('simple', $1)::text, ' & ', ' | ')::tsquery
+	 AND metadata @> jsonb_build_object($3::text, $4::text) AND (metadata->>'source' LIKE $5::text) ORDER BY rank DESC LIMIT $2`,
+			wantLen: 5,
+		},
 	}
 
 	for _, tt := range tests {

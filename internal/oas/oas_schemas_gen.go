@@ -42,8 +42,16 @@ type ContextRequest struct {
 	Question string    `json:"question"`
 	Service  OptString `json:"service"`
 	// Metadata filters applied as exact-match against chunk metadata. Well-known keys: status, source,
-	// jira_project, jira_component, jira_key, authority, repo. Values are always strings.
+	// jira_project, jira_component, jira_key, authority, repo. Values are always strings. When source is
+	// set here, source_tier/source_prefixes are ignored.
 	Filters OptContextRequestFilters `json:"filters"`
+	// Source policy applied when filters.source is absent. Defaults to curated. Values: curated (docs,
+	// Jira, GitLab issues/MRs/releases, manifests), code (code and manifests), history (commits, tags,
+	// GitLab MRs/issues, Telegram), all (no source restriction).
+	SourceTier OptString `json:"source_tier"`
+	// Explicit source prefixes to search when filters.source is absent. Overrides source_tier. Prefixes
+	// match concrete per-repo sources such as git_docs:, git_code:, and git_commits:.
+	SourcePrefixes []string `json:"source_prefixes"`
 }
 
 // GetQuestion returns the value of Question.
@@ -61,6 +69,16 @@ func (s *ContextRequest) GetFilters() OptContextRequestFilters {
 	return s.Filters
 }
 
+// GetSourceTier returns the value of SourceTier.
+func (s *ContextRequest) GetSourceTier() OptString {
+	return s.SourceTier
+}
+
+// GetSourcePrefixes returns the value of SourcePrefixes.
+func (s *ContextRequest) GetSourcePrefixes() []string {
+	return s.SourcePrefixes
+}
+
 // SetQuestion sets the value of Question.
 func (s *ContextRequest) SetQuestion(val string) {
 	s.Question = val
@@ -76,8 +94,19 @@ func (s *ContextRequest) SetFilters(val OptContextRequestFilters) {
 	s.Filters = val
 }
 
+// SetSourceTier sets the value of SourceTier.
+func (s *ContextRequest) SetSourceTier(val OptString) {
+	s.SourceTier = val
+}
+
+// SetSourcePrefixes sets the value of SourcePrefixes.
+func (s *ContextRequest) SetSourcePrefixes(val []string) {
+	s.SourcePrefixes = val
+}
+
 // Metadata filters applied as exact-match against chunk metadata. Well-known keys: status, source,
-// jira_project, jira_component, jira_key, authority, repo. Values are always strings.
+// jira_project, jira_component, jira_key, authority, repo. Values are always strings. When source is
+// set here, source_tier/source_prefixes are ignored.
 type ContextRequestFilters map[string]string
 
 func (s *ContextRequestFilters) init() ContextRequestFilters {
@@ -428,9 +457,17 @@ type SearchRequest struct {
 	Query   string    `json:"query"`
 	Service OptString `json:"service"`
 	// Metadata filters applied as exact-match against chunk metadata. Well-known keys: status, source,
-	// jira_project, jira_component, jira_key, authority, repo. Values are always strings.
+	// jira_project, jira_component, jira_key, authority, repo. Values are always strings. When source is
+	// set here, source_tier/source_prefixes are ignored.
 	Filters OptSearchRequestFilters `json:"filters"`
-	Limit   OptInt32                `json:"limit"`
+	// Source policy applied when filters.source is absent. Defaults to curated. Values: curated (docs,
+	// Jira, GitLab issues/MRs/releases, manifests), code (code and manifests), history (commits, tags,
+	// GitLab MRs/issues, Telegram), all (no source restriction).
+	SourceTier OptString `json:"source_tier"`
+	// Explicit source prefixes to search when filters.source is absent. Overrides source_tier. Prefixes
+	// match concrete per-repo sources such as git_docs:, git_code:, and git_commits:.
+	SourcePrefixes []string `json:"source_prefixes"`
+	Limit          OptInt32 `json:"limit"`
 }
 
 // GetQuery returns the value of Query.
@@ -446,6 +483,16 @@ func (s *SearchRequest) GetService() OptString {
 // GetFilters returns the value of Filters.
 func (s *SearchRequest) GetFilters() OptSearchRequestFilters {
 	return s.Filters
+}
+
+// GetSourceTier returns the value of SourceTier.
+func (s *SearchRequest) GetSourceTier() OptString {
+	return s.SourceTier
+}
+
+// GetSourcePrefixes returns the value of SourcePrefixes.
+func (s *SearchRequest) GetSourcePrefixes() []string {
+	return s.SourcePrefixes
 }
 
 // GetLimit returns the value of Limit.
@@ -468,13 +515,24 @@ func (s *SearchRequest) SetFilters(val OptSearchRequestFilters) {
 	s.Filters = val
 }
 
+// SetSourceTier sets the value of SourceTier.
+func (s *SearchRequest) SetSourceTier(val OptString) {
+	s.SourceTier = val
+}
+
+// SetSourcePrefixes sets the value of SourcePrefixes.
+func (s *SearchRequest) SetSourcePrefixes(val []string) {
+	s.SourcePrefixes = val
+}
+
 // SetLimit sets the value of Limit.
 func (s *SearchRequest) SetLimit(val OptInt32) {
 	s.Limit = val
 }
 
 // Metadata filters applied as exact-match against chunk metadata. Well-known keys: status, source,
-// jira_project, jira_component, jira_key, authority, repo. Values are always strings.
+// jira_project, jira_component, jira_key, authority, repo. Values are always strings. When source is
+// set here, source_tier/source_prefixes are ignored.
 type SearchRequestFilters map[string]string
 
 func (s *SearchRequestFilters) init() SearchRequestFilters {

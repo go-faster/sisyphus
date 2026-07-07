@@ -46,10 +46,12 @@ func (h *Handler) GetHealth(_ context.Context) (*oas.Health, error) {
 // Search runs hybrid retrieval.
 func (h *Handler) Search(ctx context.Context, req *oas.SearchRequest) (*oas.SearchResponse, error) {
 	q := index.Query{
-		Text:    req.Query,
-		Service: req.Service.Or(""),
-		Filters: req.Filters.Or(nil),
-		Limit:   int(req.Limit.Or(30)),
+		Text:           req.Query,
+		Service:        req.Service.Or(""),
+		Filters:        req.Filters.Or(nil),
+		SourceTier:     req.SourceTier.Or(""),
+		SourcePrefixes: sourcePrefixes(req.Filters.Or(nil), req.SourceTier.Or(""), req.SourcePrefixes),
+		Limit:          int(req.Limit.Or(30)),
 	}
 	results, err := h.retriever.Retrieve(ctx, q)
 	if err != nil {
@@ -61,10 +63,12 @@ func (h *Handler) Search(ctx context.Context, req *oas.SearchRequest) (*oas.Sear
 // Context answers a question from retrieved context (plan §14).
 func (h *Handler) Context(ctx context.Context, req *oas.ContextRequest) (*oas.ContextResponse, error) {
 	q := index.Query{
-		Text:    req.Question,
-		Service: req.Service.Or(""),
-		Filters: req.Filters.Or(nil),
-		Limit:   12,
+		Text:           req.Question,
+		Service:        req.Service.Or(""),
+		Filters:        req.Filters.Or(nil),
+		SourceTier:     req.SourceTier.Or(""),
+		SourcePrefixes: sourcePrefixes(req.Filters.Or(nil), req.SourceTier.Or(""), req.SourcePrefixes),
+		Limit:          12,
 	}
 	results, err := h.retriever.Retrieve(ctx, q)
 	if err != nil {

@@ -37,12 +37,30 @@ func (s *ContextRequest) encodeFields(e *jx.Encoder) {
 			s.Filters.Encode(e)
 		}
 	}
+	{
+		if s.SourceTier.Set {
+			e.FieldStart("source_tier")
+			s.SourceTier.Encode(e)
+		}
+	}
+	{
+		if s.SourcePrefixes != nil {
+			e.FieldStart("source_prefixes")
+			e.ArrStart()
+			for _, elem := range s.SourcePrefixes {
+				e.Str(elem)
+			}
+			e.ArrEnd()
+		}
+	}
 }
 
-var jsonFieldsNameOfContextRequest = [3]string{
+var jsonFieldsNameOfContextRequest = [5]string{
 	0: "question",
 	1: "service",
 	2: "filters",
+	3: "source_tier",
+	4: "source_prefixes",
 }
 
 // Decode decodes ContextRequest from json.
@@ -85,6 +103,35 @@ func (s *ContextRequest) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"filters\"")
+			}
+		case "source_tier":
+			if err := func() error {
+				s.SourceTier.Reset()
+				if err := s.SourceTier.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"source_tier\"")
+			}
+		case "source_prefixes":
+			if err := func() error {
+				s.SourcePrefixes = make([]string, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem string
+					v, err := d.Str()
+					elem = string(v)
+					if err != nil {
+						return err
+					}
+					s.SourcePrefixes = append(s.SourcePrefixes, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"source_prefixes\"")
 			}
 		default:
 			return d.Skip()
@@ -746,6 +793,22 @@ func (s *SearchRequest) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.SourceTier.Set {
+			e.FieldStart("source_tier")
+			s.SourceTier.Encode(e)
+		}
+	}
+	{
+		if s.SourcePrefixes != nil {
+			e.FieldStart("source_prefixes")
+			e.ArrStart()
+			for _, elem := range s.SourcePrefixes {
+				e.Str(elem)
+			}
+			e.ArrEnd()
+		}
+	}
+	{
 		if s.Limit.Set {
 			e.FieldStart("limit")
 			s.Limit.Encode(e)
@@ -753,11 +816,13 @@ func (s *SearchRequest) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfSearchRequest = [4]string{
+var jsonFieldsNameOfSearchRequest = [6]string{
 	0: "query",
 	1: "service",
 	2: "filters",
-	3: "limit",
+	3: "source_tier",
+	4: "source_prefixes",
+	5: "limit",
 }
 
 // Decode decodes SearchRequest from json.
@@ -801,6 +866,35 @@ func (s *SearchRequest) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"filters\"")
+			}
+		case "source_tier":
+			if err := func() error {
+				s.SourceTier.Reset()
+				if err := s.SourceTier.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"source_tier\"")
+			}
+		case "source_prefixes":
+			if err := func() error {
+				s.SourcePrefixes = make([]string, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem string
+					v, err := d.Str()
+					elem = string(v)
+					if err != nil {
+						return err
+					}
+					s.SourcePrefixes = append(s.SourcePrefixes, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"source_prefixes\"")
 			}
 		case "limit":
 			if err := func() error {

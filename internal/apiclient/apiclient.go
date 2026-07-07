@@ -76,11 +76,16 @@ func New(baseURL, token string, opts Options) (*Client, error) {
 // The results are not sent over the wire; /context performs its own
 // server-side retrieval pass, so the caller's results only affect telemetry.
 func (c *Client) Answer(ctx context.Context, question string, results []index.Result) (answer string, rerr error) {
+	return c.AnswerQuery(ctx, index.Query{Text: question}, results)
+}
+
+// AnswerQuery answers using /context with the same query controls as retrieval.
+func (c *Client) AnswerQuery(ctx context.Context, q index.Query, results []index.Result) (answer string, rerr error) {
 	start := time.Now()
 	ctx, span := c.tracer.Start(ctx, "apiclient.Answer",
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
-			attribute.Int("question.length", len(question)),
+			attribute.Int("question.length", len(q.Text)),
 			attribute.Int("results.count", len(results)),
 		),
 	)
@@ -93,7 +98,15 @@ func (c *Client) Answer(ctx context.Context, question string, results []index.Re
 		span.End()
 	}()
 	req := &oas.ContextRequest{
-		Question: question,
+		Question:   q.Text,
+		Service:    oas.NewOptString(q.Service),
+		SourceTier: oas.NewOptString(q.SourceTier),
+	}
+	if q.Filters != nil {
+		req.Filters = oas.NewOptContextRequestFilters(oas.ContextRequestFilters(q.Filters))
+	}
+	if q.SourcePrefixes != nil {
+		req.SourcePrefixes = q.SourcePrefixes
 	}
 	resp, err := c.inv.Context(ctx, req)
 	if err != nil {
@@ -123,11 +136,15 @@ func (c *Client) Retrieve(ctx context.Context, q index.Query) (_ []index.Result,
 		span.End()
 	}()
 	req := &oas.SearchRequest{
-		Query:   q.Text,
-		Service: oas.NewOptString(q.Service),
+		Query:      q.Text,
+		Service:    oas.NewOptString(q.Service),
+		SourceTier: oas.NewOptString(q.SourceTier),
 	}
 	if q.Filters != nil {
 		req.Filters = oas.NewOptSearchRequestFilters(oas.SearchRequestFilters(q.Filters))
+	}
+	if q.SourcePrefixes != nil {
+		req.SourcePrefixes = q.SourcePrefixes
 	}
 	if q.Limit > 0 {
 		req.Limit = oas.NewOptInt32(int32(q.Limit))

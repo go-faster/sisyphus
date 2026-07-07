@@ -176,6 +176,25 @@ func buildQuery(q index.Query) (query string, args []any) {
 		}
 	}
 
+	if len(q.SourcePrefixes) > 0 {
+		queryStr.WriteString(" AND (")
+		nextArgIdx := len(args) + 1
+		for i, prefix := range q.SourcePrefixes {
+			if i > 0 {
+				queryStr.WriteString(" OR ")
+			}
+			if strings.HasSuffix(prefix, ":") {
+				fmt.Fprintf(&queryStr, "metadata->>'source' LIKE $%d::text", nextArgIdx)
+				args = append(args, prefix+"%")
+			} else {
+				fmt.Fprintf(&queryStr, "metadata->>'source' = $%d::text", nextArgIdx)
+				args = append(args, prefix)
+			}
+			nextArgIdx++
+		}
+		queryStr.WriteString(")")
+	}
+
 	queryStr.WriteString(` ORDER BY rank DESC LIMIT $2`)
 
 	query = queryStr.String()
