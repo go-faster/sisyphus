@@ -99,7 +99,23 @@ components:
             Metadata filters applied as exact-match against chunk metadata.
             Well-known keys: status, source, jira_project, jira_component,
             jira_key, authority, repo. Values are always strings.
+            When source is set here, source_tier/source_prefixes are ignored.
           additionalProperties:
+            type: string
+        source_tier:
+          type: string
+          description: |
+            Source policy applied when filters.source is absent. Defaults to
+            curated. Values: curated (docs, Jira, GitLab issues/MRs/releases,
+            manifests), code (code and manifests), history (commits, tags,
+            GitLab MRs/issues, Telegram), all (no source restriction).
+        source_prefixes:
+          type: array
+          description: |
+            Explicit source prefixes to search when filters.source is absent.
+            Overrides source_tier. Prefixes match concrete per-repo sources such
+            as git_docs:<repo>, git_code:<repo>, and git_commits:<repo>.
+          items:
             type: string
         limit:
           type: integer
@@ -152,7 +168,23 @@ components:
             Metadata filters applied as exact-match against chunk metadata.
             Well-known keys: status, source, jira_project, jira_component,
             jira_key, authority, repo. Values are always strings.
+            When source is set here, source_tier/source_prefixes are ignored.
           additionalProperties:
+            type: string
+        source_tier:
+          type: string
+          description: |
+            Source policy applied when filters.source is absent. Defaults to
+            curated. Values: curated (docs, Jira, GitLab issues/MRs/releases,
+            manifests), code (code and manifests), history (commits, tags,
+            GitLab MRs/issues, Telegram), all (no source restriction).
+        source_prefixes:
+          type: array
+          description: |
+            Explicit source prefixes to search when filters.source is absent.
+            Overrides source_tier. Prefixes match concrete per-repo sources such
+            as git_docs:<repo>, git_code:<repo>, and git_commits:<repo>.
+          items:
             type: string
     ContextResponse:
       type: object
