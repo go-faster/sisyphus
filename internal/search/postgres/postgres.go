@@ -10,6 +10,8 @@ import (
 	"maps"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-faster/errors"
 	"github.com/google/uuid"
@@ -26,11 +28,17 @@ var migrationsSQL string
 type Searcher struct {
 	db     *sql.DB
 	client *ent.Client
+
+	// statsMu guards the cached corpus counts used for IDF-weighted reranking.
+	statsMu sync.Mutex
+	dfCache map[string]dfEntry
+	totalN  int
+	totalAt time.Time
 }
 
 // New creates a new Postgres searcher.
 func New(db *sql.DB, client *ent.Client) *Searcher {
-	return &Searcher{db: db, client: client}
+	return &Searcher{db: db, client: client, dfCache: make(map[string]dfEntry)}
 }
 
 // Migrate applies schema migrations to add FTS columns and indexes.

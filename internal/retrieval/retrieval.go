@@ -63,6 +63,7 @@ type Service struct {
 	lexical index.Searcher
 	vector  index.Searcher
 	fetcher ChunkFetcher
+	stats   TermStater
 	tracer  trace.Tracer
 	m       *retrievalMetrics
 }
@@ -86,13 +87,20 @@ func New(lexical, vector index.Searcher, fetcher ChunkFetcher, opts ServiceOptio
 		return nil, errors.Wrap(err, "retrieval metrics")
 	}
 
-	return &Service{
+	svc := &Service{
 		lexical: lexical,
 		vector:  vector,
 		fetcher: fetcher,
 		tracer:  opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/retrieval"),
 		m:       m,
-	}, nil
+	}
+	// The lexical backend (Postgres FTS) can report corpus document frequencies,
+	// which enable IDF-weighted specificity reranking. Optional: if the backend
+	// doesn't expose stats, reranking is skipped.
+	if ts, ok := lexical.(TermStater); ok {
+		svc.stats = ts
+	}
+	return svc, nil
 }
 
 // Retrieve runs both backends, merges by chunk ID, applies boosts, and returns
@@ -192,11 +200,19 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) (_ []index.Result
 		return nil, nil
 	}
 
+	// Specificity rerank: reintroduce the term-rarity signal that rank-based RRF
+	// fusion discards, so a rare anchor term (e.g. "dropshield") dominates a
+	// broad one (e.g. "env"). nil for single-token queries / no stats.
+	spec := s.specificityBoost(ctx, q)
+
 	out := make([]index.Result, 0, len(merged))
 	for key, r := range merged {
 		// Set the result's score to the RRF score, then apply authority/service/jira boosts.
 		r.Score = mergedRRFScore[key]
 		r.Score = boost(*r, q)
+		if spec != nil {
+			r.Score *= spec(*r)
+		}
 		out = append(out, *r)
 	}
 	slices.SortStableFunc(out, func(a, b index.Result) int {
