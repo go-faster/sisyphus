@@ -60,6 +60,7 @@ func newRoot(t *app.Telemetry) *cobra.Command {
 
 	root.AddCommand(
 		newGitCmd(deps),
+		newFilesCmd(deps),
 		newGitLabCmd(deps),
 		newJiraCmd(deps),
 		newTelegramCmd(deps),

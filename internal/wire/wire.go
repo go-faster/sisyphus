@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	chunkmd "github.com/go-faster/sisyphus/internal/chunk/markdown"
 	"github.com/go-faster/sisyphus/internal/config"
 	"github.com/go-faster/sisyphus/internal/embed"
 	"github.com/go-faster/sisyphus/internal/ent"
@@ -66,6 +67,7 @@ func (s *Services) Close() {
 type Components struct {
 	Retriever Retriever
 	Answerer  index.Answerer
+	Answers   *pipeline.Pipeline
 	Health    HealthChecker
 
 	closeDB func()
@@ -220,10 +222,19 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		lg.Warn("openrouter not configured, using stub answerer")
 		answerer = stub.NewAnswerer()
 	}
+	answerPipe, err := pipeline.New(svcs.DB, chunkmd.New(chunkmd.ChunkerOptions{}), svcs.Embedder, svcs.Vectors, pipeline.PipelineOptions{
+		TracerProvider: opts.TracerProvider,
+		MeterProvider:  opts.MeterProvider,
+	})
+	if err != nil {
+		svcs.Close()
+		return Components{}, errors.Wrap(err, "answer pipeline")
+	}
 
 	return Components{
 		Retriever: retr,
 		Answerer:  answerer,
+		Answers:   answerPipe,
 		Health:    &healthChecker{db: svcs.SQLDB, vectors: svcs.VectorHealth},
 		closeDB:   svcs.closeDB,
 	}, nil

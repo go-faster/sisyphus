@@ -29,6 +29,15 @@ func (stubAnswerer) Answer(_ context.Context, _ string, _ []index.Result) (strin
 	return "stub", nil
 }
 
+type captureAnswerIndexer struct {
+	doc index.Document
+}
+
+func (c *captureAnswerIndexer) Index(_ context.Context, doc index.Document) error {
+	c.doc = doc
+	return nil
+}
+
 func TestHandler_GetHealth(t *testing.T) {
 	h := New(&captureRetriever{}, stubAnswerer{}, "test")
 
@@ -167,6 +176,21 @@ func TestHandler_Context_Filters(t *testing.T) {
 			assert.Equal(t, tt.expectPrefixes, retr.got.SourcePrefixes)
 		})
 	}
+}
+
+func TestHandler_Context_IndexesAnsweredQuestion(t *testing.T) {
+	idx := &captureAnswerIndexer{}
+	h := New(&captureRetriever{}, stubAnswerer{}, "test", WithAnswerIndexer(idx))
+
+	_, err := h.Context(t.Context(), &oas.ContextRequest{Question: "How to deploy?"})
+	require.NoError(t, err)
+	require.Equal(t, index.SourceAnswer, idx.doc.Source)
+	require.Equal(t, index.Hash("How to deploy?"), idx.doc.SourceID)
+	require.Equal(t, "How to deploy?", idx.doc.Title)
+	require.Contains(t, idx.doc.Body, "# How to deploy?")
+	require.Contains(t, idx.doc.Body, "## Answer")
+	require.Equal(t, string(index.SourceAnswer), idx.doc.Metadata["source"])
+	require.Equal(t, string(index.AuthorityLow), idx.doc.Metadata["authority"])
 }
 
 func TestHandler_NewError_GenericError(t *testing.T) {

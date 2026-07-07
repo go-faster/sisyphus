@@ -24,16 +24,18 @@ const (
 
 	SourceJira     Source = "jira"
 	SourceTelegram Source = "telegram"
+	SourceAnswer   Source = "answered_question"
 )
 
 // Per-repo git source prefixes. The repo name is appended to build the concrete
 // Source (so each repo gets its own SyncState row and can be reset independently).
 const (
-	SourceGitDocsPrefix     = "git_docs:"
-	SourceGitCommitsPrefix  = "git_commits:"
-	SourceGitTagsPrefix     = "git_tags:"
-	SourceGitManifestPrefix = "git_manifest:"
-	SourceGitCodePrefix     = "git_code:"
+	SourceGitDocsPrefix      = "git_docs:"
+	SourceGitCommitsPrefix   = "git_commits:"
+	SourceGitTagsPrefix      = "git_tags:"
+	SourceGitManifestPrefix  = "git_manifest:"
+	SourceGitCodePrefix      = "git_code:"
+	SourceContextFilesPrefix = "context_files:"
 )
 
 // SourceGitDocs returns the Source for git-walked content of the given repo.
@@ -50,6 +52,9 @@ func SourceGitManifest(repo string) Source { return Source(SourceGitManifestPref
 
 // SourceGitCode returns the Source for source code files of the given repo.
 func SourceGitCode(repo string) Source { return Source(SourceGitCodePrefix + repo) }
+
+// SourceContextFiles returns the Source for an additional file set.
+func SourceContextFiles(name string) Source { return Source(SourceContextFilesPrefix + name) }
 
 // SourceMatchesPrefix reports whether a concrete source belongs to one of the
 // requested source prefixes. Prefixes ending in ':' match per-repo sources;

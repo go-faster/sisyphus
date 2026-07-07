@@ -63,7 +63,7 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 		return errors.New("api.auth_token is required")
 	}
 
-	handler := api.New(comp.Retriever, comp.Answerer, "0.1.0")
+	handler := api.New(comp.Retriever, comp.Answerer, "0.1.0", api.WithAnswerIndexer(comp.Answers))
 	sec := api.NewSecurityHandler(cfg.API.AuthToken)
 	oasSrv, err := oas.NewServer(handler, sec,
 		oas.WithTracerProvider(tp),

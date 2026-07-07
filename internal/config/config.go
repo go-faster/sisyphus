@@ -23,8 +23,9 @@ type Config struct {
 	EmbedModel    string
 	EmbedDim      int
 
-	Git    GitConfig    // git repository content + commits
-	GitLab GitLabConfig // GitLab REST API: issues, MRs, releases
+	Git          GitConfig    // git repository content + commits
+	GitLab       GitLabConfig // GitLab REST API: issues, MRs, releases
+	ContextFiles []ContextFileSource
 
 	Jira JiraConfig
 
@@ -101,8 +102,9 @@ type fileConfig struct {
 	EmbedModel    string `yaml:"embed_model"`
 	EmbedDim      int    `yaml:"embed_dim"`
 
-	Git    fileGitConfig    `yaml:"git"`
-	GitLab fileGitLabConfig `yaml:"gitlab"`
+	Git          fileGitConfig       `yaml:"git"`
+	GitLab       fileGitLabConfig    `yaml:"gitlab"`
+	ContextFiles []ContextFileSource `yaml:"context_files"`
 
 	Jira fileJiraConfig `yaml:"jira"`
 
@@ -158,6 +160,16 @@ type fileGitConfig struct {
 	WorkDir string      `yaml:"work_dir"`
 	Token   Secret      `yaml:"token"`
 	Repos   []GitSource `yaml:"repos"`
+}
+
+// ContextFileSource describes a named set of local files to index as extra context.
+type ContextFileSource struct {
+	Name      string   `yaml:"name"`
+	Root      string   `yaml:"root"`
+	BaseURL   string   `yaml:"base_url"`
+	Include   []string `yaml:"include"`
+	Exclude   []string `yaml:"exclude"`
+	Authority string   `yaml:"authority"`
 }
 
 // GitSource describes a git repository to ingest (content + optional commits).
@@ -382,6 +394,7 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			Token:   gitToken,
 			Repos:   c.Git.Repos,
 		},
+		ContextFiles: c.ContextFiles,
 		GitLab: GitLabConfig{
 			BaseURL:       c.GitLab.BaseURL,
 			Token:         gitlabToken,

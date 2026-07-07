@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
@@ -21,18 +23,38 @@ type Retriever interface {
 	Retrieve(ctx context.Context, q index.Query) ([]index.Result, error)
 }
 
+// AnswerIndexer persists answered questions back into the shared index.
+type AnswerIndexer interface {
+	Index(ctx context.Context, doc index.Document) error
+}
+
+// Option customizes Handler.
+type Option func(*Handler)
+
 // Handler implements oas.Handler.
 type Handler struct {
 	retriever Retriever
 	answerer  index.Answerer
+	answers   AnswerIndexer
 	version   string
 }
 
 var _ oas.Handler = (*Handler)(nil)
 
 // New builds an API handler.
-func New(r Retriever, a index.Answerer, version string) *Handler {
-	return &Handler{retriever: r, answerer: a, version: version}
+func New(r Retriever, a index.Answerer, version string, opts ...Option) *Handler {
+	h := &Handler{retriever: r, answerer: a, version: version}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
+}
+
+// WithAnswerIndexer enables saving answered questions as indexed documents.
+func WithAnswerIndexer(p AnswerIndexer) Option {
+	return func(h *Handler) {
+		h.answers = p
+	}
 }
 
 // GetHealth implements the liveness probe.
@@ -78,11 +100,40 @@ func (h *Handler) Context(ctx context.Context, req *oas.ContextRequest) (*oas.Co
 	if err != nil {
 		return nil, errors.Wrap(err, "answer")
 	}
+	if h.answers != nil {
+		if err := h.answers.Index(ctx, answeredQuestionDocument(req.Question, answer)); err != nil {
+			zctx.From(ctx).Warn("index answered question failed", zap.Error(err))
+		}
+	}
 	return &oas.ContextResponse{
 		Answer:     answer,
 		Confidence: oas.NewOptString("low"),
 		Results:    toSearchResults(results),
 	}, nil
+}
+
+func answeredQuestionDocument(question, answer string) index.Document {
+	now := time.Now()
+	question = strings.TrimSpace(question)
+	body := "# " + question + "\n\n## Answer\n\n" + strings.TrimSpace(answer) + "\n"
+	title := question
+	if runes := []rune(title); len(runes) > 120 {
+		title = string(runes[:120])
+	}
+	return index.Document{
+		ID:       index.NewID(),
+		Source:   index.SourceAnswer,
+		SourceID: index.Hash(question),
+		Title:    title,
+		Body:     body,
+		BodyHash: index.Hash(body),
+		Metadata: map[string]any{
+			"source":    string(index.SourceAnswer),
+			"authority": string(index.AuthorityLow),
+		},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
 }
 
 // NewError maps a handler error to the default error response.

@@ -29,6 +29,12 @@ func newAllCmd(deps *ingestDeps) *cobra.Command {
 			r := deps.runner()
 
 			if resetFlag == "all" {
+				// Reset all configured local context file sources.
+				for _, fileSrc := range deps.cfg.ContextFiles {
+					if err := resetSource(ctx, deps.services.DB, deps.services.Vectors, index.SourceContextFiles(fileSrc.Name)); err != nil {
+						return err
+					}
+				}
 				// Reset all git sources
 				for _, gitSrc := range deps.cfg.Git.Repos {
 					if err := resetSource(ctx, deps.services.DB, deps.services.Vectors, index.SourceGitDocs(gitSrc.Repo)); err != nil {
@@ -75,6 +81,19 @@ func newAllCmd(deps *ingestDeps) *cobra.Command {
 					} else {
 						lg.Error("git failed", zap.Error(err))
 						failed = append(failed, "git")
+					}
+				}
+			}
+
+			// local context files
+			{
+				doReset := resetFlag == "all" || resetFlag == "files" || resetFlag == "context_files"
+				if err := r.runFiles(ctx, doReset, limit, dryRun); err != nil {
+					if errors.Is(err, errNotConfigured) {
+						lg.Info("skipping files (not configured)")
+					} else {
+						lg.Error("files failed", zap.Error(err))
+						failed = append(failed, "files")
 					}
 				}
 			}

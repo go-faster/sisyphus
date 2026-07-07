@@ -30,6 +30,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/document"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 	"github.com/go-faster/sisyphus/internal/index"
+	filesingest "github.com/go-faster/sisyphus/internal/ingest/files"
 	gitingest "github.com/go-faster/sisyphus/internal/ingest/git"
 	gitlabingest "github.com/go-faster/sisyphus/internal/ingest/gitlab"
 	jiraingest "github.com/go-faster/sisyphus/internal/ingest/jira"
@@ -400,6 +401,71 @@ func filterDocsBySource(docs []index.Document, prefix string) []index.Document {
 		}
 	}
 	return out
+}
+
+func (r *runner) runFiles(ctx context.Context, reset bool, limit int, dry bool) error {
+	lg := zctx.From(ctx).Named("files")
+	sources := fileSources(r.cfg.ContextFiles)
+	if len(sources) == 0 {
+		lg.Info("context files not configured, zero sources")
+		return errNotConfigured
+	}
+
+	pipe, err := r.buildPipeline(r.buildDocChunker())
+	if err != nil {
+		return errors.Wrap(err, "build files pipeline")
+	}
+
+	anyErr := false
+	for _, src := range sources {
+		docs, err := filesingest.Walk(ctx, []filesingest.Source{src})
+		if err != nil {
+			lg.Error("walk context files failed", zap.Error(err), zap.String("source", src.Name))
+			anyErr = true
+			continue
+		}
+
+		indexSource := index.SourceContextFiles(src.Name)
+		if reset {
+			if err := resetSource(ctx, r.db, r.vectors, indexSource); err != nil {
+				return err
+			}
+		}
+
+		walkedIDs := make([]string, 0, len(docs))
+		for _, d := range docs {
+			walkedIDs = append(walkedIDs, d.SourceID)
+		}
+
+		batch := docs
+		if limit > 0 && limit < len(batch) {
+			batch = batch[:limit]
+		}
+		processed, errFound := indexBatch(ctx, lg, pipe, batch, dry, "context files")
+		if errFound {
+			anyErr = true
+		}
+
+		if !dry && limit <= 0 {
+			if err := r.pruneOrphans(ctx, indexSource, walkedIDs); err != nil {
+				lg.Error("prune context files orphans failed", zap.Error(err), zap.String("source", src.Name))
+				anyErr = true
+			}
+		}
+
+		status := "ok"
+		if anyErr && !dry {
+			status = "error"
+		}
+		if err := upsertSyncState(ctx, r.db, string(indexSource), time.Now(), "", status, processed); err != nil {
+			return errors.Wrap(err, "upsert syncstate")
+		}
+	}
+
+	if anyErr {
+		return errors.New("one or more context files failed to index")
+	}
+	return nil
 }
 
 func (r *runner) buildDocChunker() index.Chunker {
@@ -932,6 +998,21 @@ func gitSources(sources []config.GitSource) []gitingest.Source {
 			ManifestExclude: src.ManifestExclude,
 			CodeInclude:     src.CodeInclude,
 			CodeExclude:     src.CodeExclude,
+		})
+	}
+	return out
+}
+
+func fileSources(sources []config.ContextFileSource) []filesingest.Source {
+	out := make([]filesingest.Source, 0, len(sources))
+	for _, src := range sources {
+		out = append(out, filesingest.Source{
+			Name:      src.Name,
+			Root:      src.Root,
+			BaseURL:   src.BaseURL,
+			Include:   src.Include,
+			Exclude:   src.Exclude,
+			Authority: src.Authority,
 		})
 	}
 	return out
