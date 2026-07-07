@@ -137,7 +137,7 @@ type fileProxyConfig struct {
 type fileJiraConfig struct {
 	BaseURL  string        `yaml:"base_url"`
 	Email    string        `yaml:"email"`
-	Username string        `yaml:"username"`
+	Username Secret        `yaml:"username"`
 	APIToken Secret        `yaml:"api_token"`
 	Password Secret        `yaml:"password"`
 	PAT      Secret        `yaml:"pat"`
@@ -339,6 +339,10 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 	if err != nil {
 		return Config{}, errors.Wrap(err, "api auth_token")
 	}
+	jiraUsername, err := c.Jira.Username.Resolve(baseDir)
+	if err != nil {
+		return Config{}, errors.Wrap(err, "jira username")
+	}
 	jiraToken, err := c.Jira.APIToken.Resolve(baseDir)
 	if err != nil {
 		return Config{}, errors.Wrap(err, "jira api_token")
@@ -406,7 +410,7 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 		Jira: JiraConfig{
 			BaseURL:  c.Jira.BaseURL,
 			Email:    c.Jira.Email,
-			Username: c.Jira.Username,
+			Username: jiraUsername,
 			APIToken: jiraToken,
 			Password: jiraPassword,
 			PAT:      jiraPAT,

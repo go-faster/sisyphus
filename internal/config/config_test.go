@@ -120,13 +120,15 @@ openrouter:
   api_key:
     env: TEST_SISYPHUS_OPENROUTER_API_KEY
 jira:
-  username: jira-user
+  username:
+    env: TEST_SISYPHUS_JIRA_USERNAME
   password:
     env: TEST_SISYPHUS_JIRA_PASSWORD
 `)
 	t.Setenv("SISYPHUS_CONFIG", path)
 	t.Setenv("TEST_SISYPHUS_DATABASE_DSN", "env-dsn")
 	t.Setenv("TEST_SISYPHUS_OPENROUTER_API_KEY", "env-key")
+	t.Setenv("TEST_SISYPHUS_JIRA_USERNAME", "jira-user")
 	t.Setenv("TEST_SISYPHUS_JIRA_PASSWORD", "jira-password")
 
 	cfg, err := Load()
