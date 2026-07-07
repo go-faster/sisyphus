@@ -2,14 +2,19 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
+	"github.com/gregjones/httpcache/diskcache"
+	"github.com/peterbourgon/diskv"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -47,6 +52,34 @@ var (
 // in parallel meaningfully speeds up ingestion without overwhelming the
 // embedder or Postgres.
 const indexConcurrency = 8
+
+func authenticatedHTTPCache(service string, authParts ...string) (*diskcache.Cache, error) {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return nil, errors.Wrap(err, "get user cache dir")
+	}
+
+	h := sha256.New()
+	for _, part := range authParts {
+		_, _ = h.Write([]byte(part))
+		_, _ = h.Write([]byte{0})
+	}
+	namespace := hex.EncodeToString(h.Sum(nil))
+	cachePath := filepath.Join(cacheDir, "sisyphus", "httpcache", service, namespace)
+	if err := os.MkdirAll(cachePath, 0o700); err != nil {
+		return nil, errors.Wrap(err, "create cache dir")
+	}
+	if err := os.Chmod(cachePath, 0o700); err != nil {
+		return nil, errors.Wrap(err, "chmod cache dir")
+	}
+
+	return diskcache.NewWithDiskv(diskv.New(diskv.Options{
+		BasePath:     cachePath,
+		CacheSizeMax: 100 * 1024 * 1024,
+		PathPerm:     0o700,
+		FilePerm:     0o600,
+	})), nil
+}
 
 // indexBatch runs p.Index over docs with bounded concurrency. A single
 // document's failure is logged and does not stop the others, matching the
@@ -469,9 +502,15 @@ func (r *runner) runGitLabAPI(ctx context.Context, p *pipeline.Pipeline, since t
 		return errNotConfigured
 	}
 
+	cache, err := authenticatedHTTPCache("gitlab", cfg.GitLab.BaseURL, cfg.GitLab.Token)
+	if err != nil {
+		return errors.Wrap(err, "gitlab http cache")
+	}
+
 	httpClient, err := netclient.HTTPClient(ctx, "gitlab", cfg.Proxies.GitLab, netclient.HTTPClientOptions{
 		TracerProvider: r.tp,
 		MeterProvider:  r.mp,
+		Cache:          cache,
 	})
 	if err != nil {
 		return errors.Wrap(err, "gitlab http client")
@@ -617,10 +656,16 @@ func (r *runner) runJira(ctx context.Context, p *pipeline.Pipeline, since time.T
 		return errNotConfigured
 	}
 
+	cache, err := authenticatedHTTPCache("jira", jc.BaseURL, jc.Email, jc.Username, jc.APIToken, jc.Password, jc.PAT)
+	if err != nil {
+		return errors.Wrap(err, "jira http cache")
+	}
+
 	src := index.SourceJira
 	httpClient, err := netclient.HTTPClient(ctx, "jira", cfg.Proxies.Jira, netclient.HTTPClientOptions{
 		TracerProvider: r.tp,
 		MeterProvider:  r.mp,
+		Cache:          cache,
 	})
 	if err != nil {
 		return errors.Wrap(err, "jira http client")

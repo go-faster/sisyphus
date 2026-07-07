@@ -18,6 +18,7 @@ import (
 	"golang.org/x/net/proxy"
 
 	"github.com/go-faster/sdk/zctx"
+	"github.com/gregjones/httpcache"
 )
 
 // HTTPClientOptions contains options for HTTP client creation.
@@ -25,6 +26,7 @@ type HTTPClientOptions struct {
 	MeterProvider  metric.MeterProvider
 	TracerProvider trace.TracerProvider
 	Timeout        time.Duration
+	Cache          httpcache.Cache
 }
 
 func (opts *HTTPClientOptions) setDefaults() {
@@ -72,11 +74,17 @@ func HTTPClient(ctx context.Context, name, proxyURL string, opts HTTPClientOptio
 		otelhttp.WithTracerProvider(opts.TracerProvider),
 		otelhttp.WithMessageEvents(otelhttp.ReadEvents, otelhttp.WriteEvents),
 	)
+	if opts.Cache != nil {
+		cacheTransport := httpcache.NewTransport(opts.Cache)
+		cacheTransport.Transport = transport
+		transport = cacheTransport
+	}
 	transport = &loggingRoundTripper{
-		name:      name,
-		via:       via,
-		transport: transport,
-		metrics:   m,
+		name:         name,
+		via:          via,
+		transport:    transport,
+		metrics:      m,
+		cacheEnabled: opts.Cache != nil,
 	}
 	_ = ctx
 	return &http.Client{
@@ -111,10 +119,11 @@ func configureProxy(transport *http.Transport, u *url.URL) error {
 }
 
 type loggingRoundTripper struct {
-	name      string
-	via       string
-	transport http.RoundTripper
-	metrics   *clientMetrics
+	name         string
+	via          string
+	transport    http.RoundTripper
+	metrics      *clientMetrics
+	cacheEnabled bool
 }
 
 func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -148,6 +157,17 @@ func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 		ctField,
 	)
 	l.metrics.record(req.Context(), l.name, resp.StatusCode, time.Since(start).Seconds())
+
+	if l.cacheEnabled {
+		status := "miss"
+		if resp.Header.Get("X-From-Cache") == "1" {
+			status = "hit"
+		} else if req.Method != http.MethodGet && req.Method != http.MethodHead {
+			status = "bypass"
+		}
+		l.metrics.recordCache(req.Context(), l.name, status)
+	}
+
 	return resp, nil
 }
 

@@ -8,9 +8,10 @@ import (
 )
 
 type clientMetrics struct {
-	requests metric.Int64Counter
-	errors   metric.Int64Counter
-	duration metric.Float64Histogram
+	requests    metric.Int64Counter
+	errors      metric.Int64Counter
+	duration    metric.Float64Histogram
+	cacheStatus metric.Int64Counter
 }
 
 func newClientMetrics(meterProvider metric.MeterProvider) (*clientMetrics, error) {
@@ -37,10 +38,18 @@ func newClientMetrics(meterProvider metric.MeterProvider) (*clientMetrics, error
 	if err != nil {
 		return nil, err
 	}
+	cacheStatus, err := meter.Int64Counter(
+		"sisyphus.netclient.cache",
+		metric.WithDescription("Count of outbound HTTP cache status (hit, miss, bypass)"),
+	)
+	if err != nil {
+		return nil, err
+	}
 	return &clientMetrics{
-		requests: requests,
-		errors:   errors,
-		duration: duration,
+		requests:    requests,
+		errors:      errors,
+		duration:    duration,
+		cacheStatus: cacheStatus,
 	}, nil
 }
 
@@ -72,6 +81,17 @@ func (m *clientMetrics) recordError(ctx context.Context, clientName, errorType s
 			attribute.String("status_class", "error"),
 		),
 	)
+}
+
+func (m *clientMetrics) recordCache(ctx context.Context, clientName, status string) {
+	if m.cacheStatus != nil {
+		m.cacheStatus.Add(ctx, 1,
+			metric.WithAttributes(
+				attribute.String("client_name", clientName),
+				attribute.String("status", status),
+			),
+		)
+	}
 }
 
 func statusClass(statusCode int) string {
