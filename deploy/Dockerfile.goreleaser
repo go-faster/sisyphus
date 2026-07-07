@@ -8,7 +8,7 @@ FROM ubuntu:26.04
 ARG TARGETPLATFORM
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
+    ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY ${TARGETPLATFORM}/ssapi ${TARGETPLATFORM}/ssbot ${TARGETPLATFORM}/ssmcp ${TARGETPLATFORM}/ssingest /usr/local/bin/

@@ -15,7 +15,7 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
 
 FROM $RUNTIME_IMAGE
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
+    ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/ssapi /usr/local/bin/ssapi
 COPY --from=build /out/ssbot /usr/local/bin/ssbot
