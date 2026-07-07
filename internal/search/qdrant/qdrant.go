@@ -88,6 +88,18 @@ func (s *Store) EnsureCollection(ctx context.Context) error {
 	return nil
 }
 
+// CheckHealth verifies that Qdrant is reachable and the configured collection exists.
+func (s *Store) CheckHealth(ctx context.Context) error {
+	exists, err := s.client.CollectionExists(ctx, s.collection)
+	if err != nil {
+		return errors.Wrap(err, "check collection exists")
+	}
+	if !exists {
+		return errors.New("collection does not exist")
+	}
+	return nil
+}
+
 // Upsert uploads chunks and their embeddings to Qdrant.
 // vectors[i] corresponds to chunks[i].
 func (s *Store) Upsert(ctx context.Context, chunks []index.Chunk, vectors [][]float32) error {

@@ -3,8 +3,11 @@ package wire
 
 import (
 	"context"
+	"database/sql"
 	"net"
 	"strconv"
+	"sync"
+	"time"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -41,11 +44,13 @@ type Retriever interface {
 
 // Services holds low-level shared infrastructure: database, search, embedder, vectors.
 type Services struct {
-	DB       *ent.Client
-	PG       *pgsearch.Searcher
-	Embedder index.Embedder
-	Searcher index.Searcher       // for retrieval (nil if qdrant unavailable)
-	Vectors  pipeline.VectorStore // for indexing (nil if qdrant unavailable)
+	DB           *ent.Client
+	SQLDB        *sql.DB
+	PG           *pgsearch.Searcher
+	Embedder     index.Embedder
+	Searcher     index.Searcher       // for retrieval (nil if qdrant unavailable)
+	Vectors      pipeline.VectorStore // for indexing (nil if qdrant unavailable)
+	VectorHealth HealthChecker
 
 	closeDB func()
 }
@@ -61,8 +66,14 @@ func (s *Services) Close() {
 type Components struct {
 	Retriever Retriever
 	Answerer  index.Answerer
+	Health    HealthChecker
 
 	closeDB func()
+}
+
+// HealthChecker verifies dependencies required to serve traffic.
+type HealthChecker interface {
+	CheckHealth(ctx context.Context) error
 }
 
 // Close releases resources held by the components.
@@ -129,8 +140,9 @@ func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trac
 	}
 
 	var (
-		searcher index.Searcher
-		vectors  pipeline.VectorStore
+		searcher     index.Searcher
+		vectors      pipeline.VectorStore
+		vectorHealth HealthChecker
 	)
 	host, port, err := splitHostPort(cfg.QdrantAddr)
 	if err != nil {
@@ -151,15 +163,18 @@ func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trac
 	} else {
 		searcher = store
 		vectors = store
+		vectorHealth = store
 	}
 
 	return &Services{
-		DB:       client,
-		PG:       pg,
-		Embedder: embedder,
-		Searcher: searcher,
-		Vectors:  vectors,
-		closeDB:  cleanup,
+		DB:           client,
+		SQLDB:        db,
+		PG:           pg,
+		Embedder:     embedder,
+		Searcher:     searcher,
+		Vectors:      vectors,
+		VectorHealth: vectorHealth,
+		closeDB:      cleanup,
 	}, nil
 }
 
@@ -209,8 +224,51 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 	return Components{
 		Retriever: retr,
 		Answerer:  answerer,
+		Health:    &healthChecker{db: svcs.SQLDB, vectors: svcs.VectorHealth},
 		closeDB:   svcs.closeDB,
 	}, nil
+}
+
+type healthChecker struct {
+	db        *sql.DB
+	vectors   HealthChecker
+	mu        sync.Mutex
+	checkedAt time.Time
+	err       error
+}
+
+func (h *healthChecker) CheckHealth(ctx context.Context) error {
+	h.mu.Lock()
+	if time.Since(h.checkedAt) < 5*time.Second {
+		err := h.err
+		h.mu.Unlock()
+		return err
+	}
+	h.mu.Unlock()
+
+	checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	err := h.check(checkCtx)
+	h.mu.Lock()
+	h.checkedAt = time.Now()
+	h.err = err
+	h.mu.Unlock()
+	return err
+}
+
+func (h *healthChecker) check(ctx context.Context) error {
+	if h.db != nil {
+		if err := h.db.PingContext(ctx); err != nil {
+			return errors.Wrap(err, "postgres")
+		}
+	}
+	if h.vectors != nil {
+		if err := h.vectors.CheckHealth(ctx); err != nil {
+			return errors.Wrap(err, "qdrant")
+		}
+	}
+	return nil
 }
 
 func splitHostPort(addr string) (host string, port int, err error) {

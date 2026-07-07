@@ -6,7 +6,9 @@ package apiclient
 
 import (
 	"context"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -29,6 +31,24 @@ type Options struct {
 	MeterProvider  metric.MeterProvider
 }
 
+// CheckHealth verifies that the upstream API is ready to serve traffic.
+func (c *Client) CheckHealth(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(c.baseURL, "/")+"/readyz", http.NoBody)
+	if err != nil {
+		return errors.Wrap(err, "create ready request")
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return errors.Wrap(err, "get ready")
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return errors.New("upstream not ready")
+	}
+	return nil
+}
+
 func (o *Options) setDefaults() {
 	if o.HTTPClient == nil {
 		o.HTTPClient = http.DefaultClient
@@ -43,9 +63,11 @@ func (o *Options) setDefaults() {
 
 // Client wraps an oas.Client and implements Retrieve/Answer over HTTP.
 type Client struct {
-	inv    *oas.Client
-	tracer trace.Tracer
-	m      *clientMetrics
+	inv        *oas.Client
+	baseURL    string
+	httpClient ht.Client
+	tracer     trace.Tracer
+	m          *clientMetrics
 }
 
 // New builds a Client pointed at baseURL, authenticating with a static
@@ -66,9 +88,11 @@ func New(baseURL, token string, opts Options) (*Client, error) {
 		return nil, errors.Wrap(err, "oas client")
 	}
 	return &Client{
-		inv:    c,
-		tracer: opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/apiclient"),
-		m:      m,
+		inv:        c,
+		baseURL:    baseURL,
+		httpClient: opts.HTTPClient,
+		tracer:     opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/apiclient"),
+		m:          m,
 	}, nil
 }
 

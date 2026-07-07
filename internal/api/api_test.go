@@ -29,6 +29,15 @@ func (stubAnswerer) Answer(_ context.Context, _ string, _ []index.Result) (strin
 	return "stub", nil
 }
 
+func TestHandler_GetHealth(t *testing.T) {
+	h := New(&captureRetriever{}, stubAnswerer{}, "test")
+
+	resp, err := h.GetHealth(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, "ok", resp.Status)
+	require.Equal(t, "test", resp.Version.Value)
+}
+
 func TestHandler_Search_Filters(t *testing.T) {
 	tests := []struct {
 		name           string

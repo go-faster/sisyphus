@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-faster/sisyphus/internal/api"
 	"github.com/go-faster/sisyphus/internal/config"
+	"github.com/go-faster/sisyphus/internal/mcpserver"
 	"github.com/go-faster/sisyphus/internal/oas"
 	"github.com/go-faster/sisyphus/internal/wire"
 )
@@ -64,7 +65,7 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 
 	handler := api.New(comp.Retriever, comp.Answerer, "0.1.0")
 	sec := api.NewSecurityHandler(cfg.API.AuthToken)
-	srv, err := oas.NewServer(handler, sec,
+	oasSrv, err := oas.NewServer(handler, sec,
 		oas.WithTracerProvider(tp),
 		oas.WithMeterProvider(mp),
 		oas.WithErrorHandler(api.ErrorHandler),
@@ -72,9 +73,14 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 	if err != nil {
 		return errors.Wrap(err, "oas server")
 	}
+	mux := http.NewServeMux()
+	mux.Handle("/ready", mcpserver.ReadinessHandler(comp.Health))
+	mux.Handle("/readyz", mcpserver.ReadinessHandler(comp.Health))
+	mux.Handle("/healthz", mcpserver.HealthHandler("0.1.0"))
+	mux.Handle("/", oasSrv)
 	httpSrv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           srv,
+		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
