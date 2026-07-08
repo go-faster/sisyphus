@@ -233,6 +233,14 @@ func (b *Bot) Run(ctx context.Context) error {
 			}
 		case "investigate":
 			lg.Info("investigate command", zap.String("description", rest))
+			if b.investigator == nil {
+				if !b.silent {
+					if _, err := sender.Reply(e, u).Text(ctx, "Investigation capability is not configured."); err != nil {
+						return errors.Wrap(err, "reply")
+					}
+				}
+				return nil
+			}
 			if !b.silent {
 				if _, err := sender.Reply(e, u).Text(ctx, "Investigating, this may take a few minutes. I'll follow up here."); err != nil {
 					return errors.Wrap(err, "ack reply")
@@ -309,10 +317,6 @@ func (b *Bot) investigateAsync(ctx context.Context, sender *message.Sender, e tg
 }
 
 func (b *Bot) handleInvestigate(ctx context.Context, description string) (string, error) {
-	if b.investigator == nil {
-		return "Investigation capability is not configured.", nil
-	}
-
 	start := time.Now()
 	ctx, span := b.tracer.Start(ctx, "bot.investigate",
 		trace.WithAttributes(attribute.Int("description.length", len(description))),
