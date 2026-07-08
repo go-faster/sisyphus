@@ -34,9 +34,16 @@ const helpText = `Available commands:
 /investigate <description> — run an on-demand investigation
 /help — show this message`
 
+const defaultAnswerTimeout = time.Minute
+
 // Retriever is the minimal retrieval interface Bot needs.
 type Retriever interface {
 	Retrieve(ctx context.Context, q index.Query) ([]index.Result, error)
+}
+
+// QueryAnswerer answers a query while preserving query controls.
+type QueryAnswerer interface {
+	AnswerQuery(ctx context.Context, q index.Query, results []index.Result) (string, error)
 }
 
 // Investigator is the interface for running on-demand investigations.
@@ -57,14 +64,16 @@ type Bot struct {
 	cred   BotCredentials
 	silent bool
 
-	retriever    Retriever
-	answerer     index.Answerer
-	investigator Investigator
+	retriever     Retriever
+	answerer      index.Answerer
+	queryAnswerer QueryAnswerer
+	investigator  Investigator
 
-	tp      trace.TracerProvider
-	tracer  trace.Tracer
-	metrics *botMetrics
-	logger  *zap.Logger
+	tp            trace.TracerProvider
+	tracer        trace.Tracer
+	metrics       *botMetrics
+	logger        *zap.Logger
+	answerTimeout time.Duration
 
 	allowedChats map[int64]struct{}
 	allowedUsers map[int64]struct{}
@@ -81,6 +90,7 @@ type BotOptions struct {
 	AllowedChats   []int64
 	AllowedUserIDs []int64
 	Investigator   Investigator
+	AnswerTimeout  time.Duration
 }
 
 func (opts *BotOptions) setDefaults() {
@@ -92,6 +102,9 @@ func (opts *BotOptions) setDefaults() {
 	}
 	if opts.Logger == nil {
 		opts.Logger = zap.L()
+	}
+	if opts.AnswerTimeout == 0 {
+		opts.AnswerTimeout = defaultAnswerTimeout
 	}
 }
 
@@ -115,19 +128,25 @@ func New(_ context.Context, r Retriever, a index.Answerer, cred BotCredentials, 
 	if len(allowedChats) == 0 && len(allowedUsers) == 0 {
 		opts.Logger.Warn("telegram bot: no allowlist configured, will not respond to anyone")
 	}
+	var queryAnswerer QueryAnswerer
+	if qa, ok := a.(QueryAnswerer); ok {
+		queryAnswerer = qa
+	}
 
 	return &Bot{
-		cred:         cred,
-		silent:       opts.Silent,
-		retriever:    r,
-		answerer:     a,
-		investigator: opts.Investigator,
-		tp:           tp,
-		tracer:       tp.Tracer("github.com/go-faster/sisyphus/bot"),
-		logger:       opts.Logger,
-		metrics:      m,
-		allowedChats: allowedChats,
-		allowedUsers: allowedUsers,
+		cred:          cred,
+		silent:        opts.Silent,
+		retriever:     r,
+		answerer:      a,
+		queryAnswerer: queryAnswerer,
+		investigator:  opts.Investigator,
+		tp:            tp,
+		tracer:        tp.Tracer("github.com/go-faster/sisyphus/bot"),
+		logger:        opts.Logger,
+		metrics:       m,
+		allowedChats:  allowedChats,
+		allowedUsers:  allowedUsers,
+		answerTimeout: opts.AnswerTimeout,
 	}
 }
 
@@ -160,14 +179,15 @@ func (b *Bot) Run(ctx context.Context) error {
 	dispatcher := tg.NewUpdateDispatcher()
 	client := telegram.NewClient(b.cred.AppID, b.cred.AppHash, telegram.Options{
 		Logger:         logzap.New(b.logger.Named("td")),
-		UpdateHandler:  dispatcher,
+		UpdateHandler:  telemetry.LogUpdates(dispatcher, b.logger),
 		TracerProvider: b.tp,
 		SessionStorage: &telegram.FileSessionStorage{Path: filepath.Join(b.cred.SessionDir, "bot.json")},
 		Middlewares: []telegram.Middleware{
 			telemetry.TDTracingMiddleware(b.tp),
 		},
 	})
-	sender := message.NewSender(tg.NewClient(client))
+	raw := tg.NewClient(client)
+	sender := message.NewSender(raw)
 
 	// runCtx is the bot's process-lifetime context (canceled on shutdown), as
 	// opposed to the per-update ctx handed to the OnNewMessage callback below.
@@ -255,7 +275,6 @@ func (b *Bot) Run(ctx context.Context) error {
 		}
 		return nil
 	})
-
 	return client.Run(ctx, func(ctx context.Context) error {
 		if _, err := client.Auth().Bot(ctx, b.cred.BotToken); err != nil {
 			return errors.Wrap(err, "bot auth")
@@ -271,6 +290,11 @@ func (b *Bot) handle(ctx context.Context, query string) (string, error) {
 	ctx, span := b.tracer.Start(ctx, "bot.context",
 		trace.WithAttributes(attribute.Int("query.length", len(query))),
 	)
+	if b.answerTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, b.answerTimeout)
+		defer cancel()
+	}
 	var (
 		resultCount int
 		rerr        error
@@ -286,6 +310,18 @@ func (b *Bot) handle(ctx context.Context, query string) (string, error) {
 		}
 		span.End()
 	}()
+	if b.queryAnswerer != nil {
+		answer, err := b.queryAnswerer.AnswerQuery(ctx, index.Query{Text: query, Limit: 12}, nil)
+		if err != nil {
+			rerr = errors.Wrap(err, "answer query")
+			return "", rerr
+		}
+		return answer, nil
+	}
+	if b.retriever == nil || b.answerer == nil {
+		rerr = errors.New("bot answerer is not configured")
+		return "", rerr
+	}
 
 	results, err := b.retriever.Retrieve(ctx, index.Query{Text: query, Limit: 12})
 	if err != nil {

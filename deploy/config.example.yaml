@@ -108,7 +108,7 @@ telegram:
   bot_token:
     env: SISYPHUS_TELEGRAM_BOT_TOKEN
   session_dir: /data/scp/session
-  monitor_chats: ""
+  monitor_chats: []
   ingest_session: ""
   # allowed_chats and allowed_user_ids: fail-closed allowlist for the bot.
   # If both are empty, the bot will not respond to anyone and log a warning.

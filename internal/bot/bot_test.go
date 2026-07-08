@@ -3,12 +3,30 @@ package bot
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/gotd/td/tg"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
+
+	"github.com/go-faster/sisyphus/internal/index"
 )
+
+type captureQueryAnswerer struct {
+	query    index.Query
+	deadline time.Time
+}
+
+func (c *captureQueryAnswerer) Answer(_ context.Context, _ string, _ []index.Result) (string, error) {
+	return "fallback", nil
+}
+
+func (c *captureQueryAnswerer) AnswerQuery(ctx context.Context, q index.Query, _ []index.Result) (string, error) {
+	c.query = q
+	c.deadline, _ = ctx.Deadline()
+	return "direct answer", nil
+}
 
 func TestPeerChatID(t *testing.T) {
 	tests := []struct {
@@ -141,4 +159,22 @@ func TestNewWarning(t *testing.T) {
 	require.NotNil(t, b)
 	require.Empty(t, b.allowedChats)
 	require.Empty(t, b.allowedUsers)
+}
+
+func TestHandleUsesQueryAnswererWithDefaultTimeout(t *testing.T) {
+	a := &captureQueryAnswerer{}
+	b := New(context.Background(), nil, a, BotCredentials{}, BotOptions{
+		Silent:         true,
+		TracerProvider: otel.GetTracerProvider(),
+		Logger:         zap.NewNop(),
+		AllowedUserIDs: []int64{1},
+	})
+
+	answer, err := b.handle(context.Background(), "why is prod red?")
+	require.NoError(t, err)
+	require.Equal(t, "direct answer", answer)
+	require.Equal(t, index.Query{Text: "why is prod red?", Limit: 12}, a.query)
+	require.NotZero(t, a.deadline)
+	require.Positive(t, time.Until(a.deadline))
+	require.LessOrEqual(t, time.Until(a.deadline), defaultAnswerTimeout)
 }
