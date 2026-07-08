@@ -36,6 +36,19 @@ type Config struct {
 
 	MCPAddr      string
 	MCPAuthToken string
+
+	Agent AgentConfig
+}
+
+// AgentConfig holds configuration for the ssagent service.
+type AgentConfig struct {
+	Addr                  string
+	BaseURL               string
+	AuthToken             string
+	Model                 string
+	MaxToolIterations     int
+	RequestTimeoutSeconds int
+	GatewayURL            string
 }
 
 // JiraConfig holds Jira REST API configuration for ingestion.
@@ -115,6 +128,18 @@ type fileConfig struct {
 
 	MCPAddr      string `yaml:"mcp_addr"`
 	MCPAuthToken Secret `yaml:"mcp_auth_token"`
+
+	Agent fileAgentConfig `yaml:"agent"`
+}
+
+type fileAgentConfig struct {
+	Addr                  string `yaml:"addr"`
+	BaseURL               string `yaml:"base_url"`
+	AuthToken             Secret `yaml:"auth_token"`
+	Model                 string `yaml:"model"`
+	MaxToolIterations     int    `yaml:"max_tool_iterations"`
+	RequestTimeoutSeconds int    `yaml:"request_timeout_seconds"`
+	GatewayURL            string `yaml:"gateway_url"`
 }
 
 // ProxyConfig configures per-client HTTP proxies.
@@ -306,6 +331,11 @@ func defaultConfig() fileConfig {
 		Telegram: fileTelegram{
 			SessionDir: "./session",
 		},
+		Agent: fileAgentConfig{
+			Addr:                  ":8082",
+			MaxToolIterations:     8,
+			RequestTimeoutSeconds: 180,
+		},
 	}
 }
 
@@ -383,6 +413,10 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 	if err != nil {
 		return Config{}, errors.Wrap(err, "mcp auth_token")
 	}
+	agentAuthToken, err := c.Agent.AuthToken.Resolve(baseDir)
+	if err != nil {
+		return Config{}, errors.Wrap(err, "agent auth_token")
+	}
 
 	return Config{
 		HTTPAddr:         c.HTTPAddr,
@@ -437,6 +471,15 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 		Proxies:      proxies,
 		MCPAddr:      c.MCPAddr,
 		MCPAuthToken: mcpAuthToken,
+		Agent: AgentConfig{
+			Addr:                  c.Agent.Addr,
+			BaseURL:               c.Agent.BaseURL,
+			AuthToken:             agentAuthToken,
+			Model:                 c.Agent.Model,
+			MaxToolIterations:     c.Agent.MaxToolIterations,
+			RequestTimeoutSeconds: c.Agent.RequestTimeoutSeconds,
+			GatewayURL:            c.Agent.GatewayURL,
+		},
 	}, nil
 }
 

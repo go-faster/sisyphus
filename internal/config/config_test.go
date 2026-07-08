@@ -64,11 +64,21 @@ telegram:
       limit: 50
 openrouter:
   model: test-model
+agent:
+  addr: :8082
+  base_url: http://ssagent:8082
+  auth_token:
+    env: TEST_SISYPHUS_AGENT_AUTH_TOKEN
+  model: openai/gpt-4o
+  max_tool_iterations: 8
+  request_timeout_seconds: 180
+  gateway_url: http://mcpgateway:8090/mcp
 `)
 	t.Setenv("SISYPHUS_CONFIG", path)
 	t.Setenv("TEST_SISYPHUS_GIT_TOKEN", "git-token")
 	t.Setenv("TEST_SISYPHUS_GITLAB_TOKEN", "gitlab-token")
 	t.Setenv("TEST_SISYPHUS_GIT_PROXY", "http://127.0.0.1:8083")
+	t.Setenv("TEST_SISYPHUS_AGENT_AUTH_TOKEN", "agent-token")
 
 	cfg, err := Load()
 	require.NoError(t, err)
@@ -109,6 +119,14 @@ openrouter:
 	require.Equal(t, "http://127.0.0.1:8080", cfg.Proxies.Jira)
 	require.Equal(t, "http://127.0.0.1:8081", cfg.Proxies.Ollama)
 	require.Equal(t, "http://127.0.0.1:8082", cfg.Proxies.OpenRouter)
+
+	require.Equal(t, ":8082", cfg.Agent.Addr)
+	require.Equal(t, "http://ssagent:8082", cfg.Agent.BaseURL)
+	require.Equal(t, "agent-token", cfg.Agent.AuthToken)
+	require.Equal(t, "openai/gpt-4o", cfg.Agent.Model)
+	require.Equal(t, 8, cfg.Agent.MaxToolIterations)
+	require.Equal(t, 180, cfg.Agent.RequestTimeoutSeconds)
+	require.Equal(t, "http://mcpgateway:8090/mcp", cfg.Agent.GatewayURL)
 }
 
 func TestLoadSecretEnv(t *testing.T) {
@@ -183,6 +201,7 @@ func clearEnv(t *testing.T) {
 		"TEST_SISYPHUS_OPENROUTER_API_KEY",
 		"TEST_SISYPHUS_JIRA_PASSWORD",
 		"TEST_SISYPHUS_MCP_AUTH_TOKEN",
+		"TEST_SISYPHUS_AGENT_AUTH_TOKEN",
 	} {
 		t.Setenv(key, "")
 	}

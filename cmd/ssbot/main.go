@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/go-faster/sisyphus/internal/agentclient"
 	"github.com/go-faster/sisyphus/internal/apiclient"
 	"github.com/go-faster/sisyphus/internal/bot"
 	"github.com/go-faster/sisyphus/internal/config"
@@ -75,7 +76,20 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	healthMux := newHealthMux(api)
+	var investigator bot.Investigator
+	var checks []mcpserver.HealthChecker
+	checks = append(checks, api)
+
+	if cfg.Agent.BaseURL != "" {
+		ag := agentclient.New(agentclient.Options{
+			URL:   cfg.Agent.BaseURL,
+			Token: cfg.Agent.AuthToken,
+		})
+		investigator = ag
+		checks = append(checks, ag)
+	}
+
+	healthMux := newHealthMux(checks...)
 	healthSrv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           healthMux,
@@ -106,6 +120,7 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 			Logger:         zctx.From(ctx),
 			AllowedChats:   cfg.Telegram.AllowedChats,
 			AllowedUserIDs: cfg.Telegram.AllowedUserIDs,
+			Investigator:   investigator,
 		},
 	)
 

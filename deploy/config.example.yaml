@@ -106,3 +106,17 @@ telegram:
   # List chat IDs (can be negative for groups/channels) and user IDs separately.
   allowed_chats: []
   allowed_user_ids: []
+
+# agent: ssagent, the on-demand investigation service. base_url is read by
+# ssbot to reach ssagent for the /investigate command (leave empty to disable
+# /investigate in ssbot). gateway_url points at the mcpgateway instance that
+# fans out to Grafana/Alertmanager/Jira/GitLab/knowledge-base MCP servers.
+agent:
+  addr: :8082
+  base_url: http://ssagent:8082
+  auth_token:
+    env: SISYPHUS_AGENT_AUTH_TOKEN
+  model: openai/gpt-4o
+  max_tool_iterations: 8
+  request_timeout_seconds: 180
+  gateway_url: http://mcpgateway:8090/mcp

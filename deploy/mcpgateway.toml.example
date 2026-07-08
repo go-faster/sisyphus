@@ -1,0 +1,35 @@
+[server]
+name = "sisyphus-mcpgateway"
+
+# Listen transport/address are NOT set here - mcpgateway reads them from CLI
+# flags (-transport, -addr), not from this file. See deploy/docker-compose.yml's
+# mcpgateway service command.
+
+[[upstream]]
+name = "knowledge"
+kind = "http"
+url  = "http://ssmcp:8081/mcp"
+headers = { Authorization = "Bearer {secret:MCP_TOKEN}" }
+tools = { allow = ["search_knowledge", "answer_question"], prefix = "knowledge_" }
+
+[[upstream]]
+name = "alertmanager"
+kind = "stdio"
+command = ["alertmanager-mcp"]
+env = { ALERTMANAGER_URL = "http://alertmanager:9093" }
+tools = { allow = ["list_alerts", "list_alert_groups", "list_silences", "get_status", "validate_promql_query", "evaluate_promql_query"], deny = ["create_silence", "expire_silence"], prefix = "alertmanager_" }
+
+[[upstream]]
+name = "grafana"
+kind = "stdio"
+command = ["mcp-grafana"]
+env = { GRAFANA_URL = "https://grafana.example.com", GRAFANA_API_KEY = "{secret:GRAFANA_KEY}" }
+tools = { prefix = "grafana_" }
+
+[secret]
+name = "MCP_TOKEN"
+env  = "SISYPHUS_MCP_AUTH_TOKEN"
+
+[secret]
+name = "GRAFANA_KEY"
+env  = "SISYPHUS_AGENT_GRAFANA_API_KEY"

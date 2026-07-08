@@ -84,6 +84,7 @@ services:
       SISYPHUS_CONFIG: /data/scp/config.yaml
       SISYPHUS_GITLAB_TOKEN: ${SISYPHUS_GITLAB_TOKEN:-}
       SISYPHUS_JIRA_PASSWORD: ${SISYPHUS_JIRA_PASSWORD:-}
+      SISYPHUS_AGENT_AUTH_TOKEN: ${SISYPHUS_AGENT_AUTH_TOKEN:-}
       SISYPHUS_OPENROUTER_API_KEY: ${SISYPHUS_OPENROUTER_API_KEY:-}
       OTEL_LOG_LEVEL: debug
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otelcol:4317
@@ -128,6 +129,47 @@ services:
       - ./config.yaml:/data/scp/config.yaml:ro
       - ssbot:/data/scp
 
+  mcpgateway:
+    image: ghcr.io/go-faster/gooners/mcpgateway:latest
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+    volumes:
+      - ./mcpgateway.toml.example:/etc/mcpgateway/config.toml:ro
+    command: ["-config", "/etc/mcpgateway/config.toml", "-transport", "streamable-http", "-addr", ":8090"]
+    depends_on:
+      - ssmcp
+
+  ssagent:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+    entrypoint: [ "/usr/local/bin/ssagent" ]
+    depends_on:
+      - mcpgateway
+    environment:
+      SISYPHUS_CONFIG: /data/scp/config.yaml
+      SISYPHUS_AGENT_AUTH_TOKEN: ${SISYPHUS_AGENT_AUTH_TOKEN:-}
+      SISYPHUS_OPENROUTER_API_KEY: ${SISYPHUS_OPENROUTER_API_KEY:-}
+      OTEL_LOG_LEVEL: debug
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otelcol:4317
+      OTEL_EXPORTER_OTLP_INSECURE: true
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+    ports:
+      - "18082:8082"
+    volumes:
+      - ./config.yaml:/data/scp/config.yaml:ro
+      - ssagent:/data/scp
+
   otelcol:
     image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.150.1
     restart: unless-stopped
@@ -162,4 +204,5 @@ volumes:
   ollama:
   ssmcp:
   ssbot:
+  ssagent:
   otelcol:
