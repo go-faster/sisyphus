@@ -4,6 +4,7 @@ package bot
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"time"
 
@@ -23,6 +24,12 @@ import (
 	"github.com/go-faster/sisyphus/internal/index"
 	"github.com/go-faster/sisyphus/internal/telemetry"
 )
+
+// helpText is sent in reply to /start and /help.
+const helpText = `Available commands:
+/context <question> — search indexed knowledge and answer a question
+/investigate <description> — run an on-demand investigation
+/help — show this message`
 
 // Retriever is the minimal retrieval interface Bot needs.
 type Retriever interface {
@@ -188,11 +195,29 @@ func (b *Bot) Run(ctx context.Context) error {
 
 		lg := zctx.From(ctx)
 		cmd, rest, ok := parseCommand(msg.Message)
-		if !ok || rest == "" {
+		if !ok {
+			return nil
+		}
+		if rest == "" && cmd != "start" && cmd != "help" {
 			return nil
 		}
 
 		switch cmd {
+		case "start":
+			lg.Info("start command", zap.Int64("user_id", senderID))
+			if !b.silent {
+				answer := fmt.Sprintf("Your ID: %d\n\n%s", senderID, helpText)
+				if _, err := sender.Reply(e, u).Text(ctx, answer); err != nil {
+					return errors.Wrap(err, "reply")
+				}
+			}
+		case "help":
+			lg.Info("help command")
+			if !b.silent {
+				if _, err := sender.Reply(e, u).Text(ctx, helpText); err != nil {
+					return errors.Wrap(err, "reply")
+				}
+			}
 		case "context":
 			lg.Info("context command", zap.String("query", rest))
 			answer, err := b.handle(ctx, rest)
@@ -224,7 +249,7 @@ func (b *Bot) Run(ctx context.Context) error {
 		if _, err := client.Auth().Bot(ctx, b.cred.BotToken); err != nil {
 			return errors.Wrap(err, "bot auth")
 		}
-		b.logger.Info("bot authenticated, serving /context")
+		b.logger.Info("bot authenticated, serving /context, /investigate, /start, /help")
 		<-ctx.Done()
 		return ctx.Err()
 	})
