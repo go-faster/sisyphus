@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-faster/sisyphus/internal/api"
 	"github.com/go-faster/sisyphus/internal/config"
+	"github.com/go-faster/sisyphus/internal/httpmw"
 	"github.com/go-faster/sisyphus/internal/mcpserver"
 	"github.com/go-faster/sisyphus/internal/oas"
 	"github.com/go-faster/sisyphus/internal/wire"
@@ -80,29 +81,8 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 	mux.Handle("/", oasSrv)
 	httpSrv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           mux,
+		Handler:           httpmw.Wrap(lg, mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-
-	errc := make(chan error, 1)
-	go func() {
-		lg.Info("http listening", zap.String("addr", cfg.HTTPAddr))
-		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errc <- errors.Wrap(err, "http serve")
-		}
-	}()
-
-	select {
-	case <-ctx.Done():
-	case err := <-errc:
-		_ = shutdown(httpSrv)
-		return err
-	}
-	return shutdown(httpSrv)
-}
-
-func shutdown(srv *http.Server) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	return srv.Shutdown(ctx)
+	return httpmw.Serve(ctx, lg, "http", httpSrv)
 }

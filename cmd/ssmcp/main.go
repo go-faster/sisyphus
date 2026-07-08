@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-faster/sisyphus/internal/apiclient"
 	"github.com/go-faster/sisyphus/internal/config"
+	"github.com/go-faster/sisyphus/internal/httpmw"
 	"github.com/go-faster/sisyphus/internal/mcpserver"
 	"github.com/go-faster/sisyphus/internal/netclient"
 )
@@ -89,30 +90,10 @@ func run(ctx context.Context, cfg config.Config, useStdio bool, t *app.Telemetry
 	mux.Handle("/readyz", mcpserver.ReadinessHandler(api))
 	mux.Handle("/mcp", handler)
 
-	lg.Info("mcp http listening", zap.String("addr", cfg.MCPAddr))
 	s := &http.Server{
 		Addr:              cfg.MCPAddr,
-		Handler:           mux,
+		Handler:           httpmw.Wrap(lg, mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	errc := make(chan error, 1)
-	go func() {
-		if err := s.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errc <- errors.Wrap(err, "http serve")
-		}
-	}()
-
-	select {
-	case <-ctx.Done():
-	case e := <-errc:
-		_ = shutdown(s)
-		return e
-	}
-	return shutdown(s)
-}
-
-func shutdown(s *http.Server) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	return s.Shutdown(ctx)
+	return httpmw.Serve(ctx, lg, "mcp http", s)
 }

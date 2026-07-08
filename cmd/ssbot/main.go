@@ -18,6 +18,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/apiclient"
 	"github.com/go-faster/sisyphus/internal/bot"
 	"github.com/go-faster/sisyphus/internal/config"
+	"github.com/go-faster/sisyphus/internal/httpmw"
 	"github.com/go-faster/sisyphus/internal/mcpserver"
 	"github.com/go-faster/sisyphus/internal/netclient"
 )
@@ -92,14 +93,14 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 	healthMux := newHealthMux(checks...)
 	healthSrv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           healthMux,
+		Handler:           httpmw.Wrap(lg, healthMux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+	healthErrc := httpmw.ListenAndServe(lg, "health", healthSrv)
 	errCh := make(chan error, 1)
 	go func() {
-		lg.Info("health listening", zap.String("addr", cfg.HTTPAddr))
-		if err := healthSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- errors.Wrap(err, "health serve")
+		if err := <-healthErrc; err != nil {
+			errCh <- err
 			cancel()
 		}
 	}()
@@ -125,7 +126,7 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 	)
 
 	botErr := b.Run(ctx)
-	if err := shutdownHealth(healthSrv); err != nil {
+	if err := httpmw.Shutdown(healthSrv); err != nil {
 		return err
 	}
 	select {
@@ -136,15 +137,6 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 	default:
 	}
 	return botErr
-}
-
-func shutdownHealth(srv *http.Server) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
-	}
-	return nil
 }
 
 func newHealthMux(checks ...mcpserver.HealthChecker) *http.ServeMux {
