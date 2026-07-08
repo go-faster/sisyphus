@@ -7,13 +7,17 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/go-faster/sisyphus/internal/mcpserver"
 )
 
 func TestNewHealthMux(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/health", http.NoBody)
 	rec := httptest.NewRecorder()
 
-	newHealthMux().ServeHTTP(rec, req)
+	mux := http.NewServeMux()
+	mcpserver.InstallHealth(mux, "0.1.0")
+	mux.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "application/json", rec.Header().Get("Content-Type"))

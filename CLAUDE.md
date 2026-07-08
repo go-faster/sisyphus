@@ -79,11 +79,23 @@ config / `SISYPHUS_API_AUTH_TOKEN` env), enforced server-side via
 `internal/api.SecurityHandler` (an ogen-generated `SecurityHandler`), and attached
 client-side by `internal/apiclient`. `/health` is the only unauthenticated route.
 
-`cmd/ssmcp`'s `/mcp` endpoint has optional bearer auth (`mcp_auth_token` config /
+`cmd/ssmcp`'s `/mcp` endpoint has optional bearer auth (`mcp.auth_token` config /
 `SISYPHUS_MCP_AUTH_TOKEN` env), enforced by `internal/mcpserver.BearerAuthMiddleware`.
 Unlike `ssapi`, an empty token does **not** fail startup — it just logs a warning and
 serves `/mcp` unauthenticated. Set it in any deployment reachable from untrusted
 networks.
+
+## Config layout
+
+Each service's own settings live in a per-service YAML section rather than as
+flat top-level keys: `api.http_addr` (ssapi's server), `mcp.addr`/`mcp.auth_token`
+(ssmcp), `telegram.addr` (ssbot's standalone health server — it has no other
+HTTP API to attach health checks to), `agent.addr` (ssagent). The old flat
+`http_addr`, `mcp_addr`, and `mcp_auth_token` top-level keys still parse for
+backwards compatibility but are deprecated: using one logs a warning
+(`Config.Warnings`, surfaced via `Config.LogWarnings`), and setting both the
+old and new field for the same value is a hard error at `config.Load()` time.
+See `internal/config/config.go`'s `resolveDeprecatedAddr`/`resolveDeprecatedSecret`.
 
 `cmd/ssbot`'s Telegram bot is allowlist-gated and **fails closed**: `telegram.allowed_chats`
 / `allowed_user_ids` (both empty by default) must list at least one chat or user, or the

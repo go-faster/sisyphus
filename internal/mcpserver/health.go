@@ -32,6 +32,18 @@ func HealthHandler(version string) http.Handler {
 	})
 }
 
+// InstallHealth registers /health, /healthz, /ready and /readyz on mux. It's
+// shared by every service so health/readiness wiring is identical whether
+// it's mounted on a service's primary mux (ssapi, ssmcp, ssagent) or a
+// dedicated standalone one (ssbot, which has no other HTTP API to attach it
+// to).
+func InstallHealth(mux *http.ServeMux, version string, checks ...HealthChecker) {
+	mux.Handle("/health", HealthHandler(version))
+	mux.Handle("/healthz", HealthHandler(version))
+	mux.Handle("/ready", ReadinessHandler(checks...))
+	mux.Handle("/readyz", ReadinessHandler(checks...))
+}
+
 // ReadinessHandler returns a readiness endpoint that verifies external dependencies.
 func ReadinessHandler(checks ...HealthChecker) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

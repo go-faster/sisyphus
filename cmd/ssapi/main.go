@@ -34,6 +34,7 @@ func main() {
 					if err != nil {
 						return errors.Wrap(err, "config")
 					}
+					cfg.LogWarnings(lg)
 					return run(cmd.Context(), cfg, t.TracerProvider(), t.MeterProvider())
 				},
 				SilenceUsage:  true,
@@ -75,12 +76,10 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 		return errors.Wrap(err, "oas server")
 	}
 	mux := http.NewServeMux()
-	mux.Handle("/ready", mcpserver.ReadinessHandler(comp.Health))
-	mux.Handle("/readyz", mcpserver.ReadinessHandler(comp.Health))
-	mux.Handle("/healthz", mcpserver.HealthHandler("0.1.0"))
+	mcpserver.InstallHealth(mux, "0.1.0", comp.Health)
 	mux.Handle("/", oasSrv)
 	httpSrv := &http.Server{
-		Addr:              cfg.HTTPAddr,
+		Addr:              cfg.API.HTTPAddr,
 		Handler:           httpmw.Wrap(lg, mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}

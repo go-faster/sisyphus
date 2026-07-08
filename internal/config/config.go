@@ -8,11 +8,11 @@ import (
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/yaml"
+	"go.uber.org/zap"
 )
 
 // Config holds all runtime configuration.
 type Config struct {
-	HTTPAddr    string
 	DatabaseDSN string
 
 	QdrantAddr       string
@@ -30,14 +30,24 @@ type Config struct {
 	Jira JiraConfig
 
 	API        APIConfig
+	MCP        MCPConfig
 	OpenRouter OpenRouter
 	Telegram   Telegram
 	Proxies    ProxyConfig
 
-	MCPAddr      string
-	MCPAuthToken string
-
 	Agent AgentConfig
+
+	// Warnings holds deprecation warnings collected while resolving the
+	// config (e.g. use of a field superseded by a per-service section). The
+	// caller should log these.
+	Warnings []string
+}
+
+// MCPConfig configures the ssmcp service: the address its Streamable HTTP
+// server listens on, and the bearer token it optionally enforces on /mcp.
+type MCPConfig struct {
+	Addr      string
+	AuthToken string
 }
 
 // AgentConfig holds configuration for the ssagent service.
@@ -67,9 +77,11 @@ type JiraProject struct {
 	Key string `yaml:"key"`
 }
 
-// APIConfig configures the HTTP API: the token ssapi enforces, and (for
-// ssbot/ssmcp) the base URL of the ssapi instance to call.
+// APIConfig configures the HTTP API: the address ssapi's own server listens
+// on, the token it enforces, and (for ssbot/ssmcp/ssagent) the base URL of
+// the ssapi instance to call.
 type APIConfig struct {
+	HTTPAddr  string
 	BaseURL   string
 	AuthToken string
 }
@@ -85,6 +97,10 @@ func (o OpenRouter) Enabled() bool { return o.APIKey != "" }
 
 // Telegram holds gotd auth configuration (plan: user session + bot).
 type Telegram struct {
+	// Addr is the address ssbot's standalone health/ready HTTP server
+	// listens on. ssbot has no primary HTTP API of its own to attach health
+	// checks to (unlike ssapi/ssmcp/ssagent), so it needs its own address.
+	Addr           string
 	AppID          int
 	AppHash        string
 	BotToken       string
@@ -104,6 +120,7 @@ type TelegramChat struct {
 }
 
 type fileConfig struct {
+	// Deprecated: use api.http_addr.
 	HTTPAddr    string `yaml:"http_addr"`
 	DatabaseDSN Secret `yaml:"database_dsn"`
 
@@ -122,14 +139,22 @@ type fileConfig struct {
 	Jira fileJiraConfig `yaml:"jira"`
 
 	API        fileAPIConfig   `yaml:"api"`
+	MCP        fileMCPConfig   `yaml:"mcp"`
 	OpenRouter fileOpenRouter  `yaml:"openrouter"`
 	Telegram   fileTelegram    `yaml:"telegram"`
 	Proxies    fileProxyConfig `yaml:"proxies"`
 
-	MCPAddr      string `yaml:"mcp_addr"`
+	// Deprecated: use mcp.addr.
+	MCPAddr string `yaml:"mcp_addr"`
+	// Deprecated: use mcp.auth_token.
 	MCPAuthToken Secret `yaml:"mcp_auth_token"`
 
 	Agent fileAgentConfig `yaml:"agent"`
+}
+
+type fileMCPConfig struct {
+	Addr      string `yaml:"addr"`
+	AuthToken Secret `yaml:"auth_token"`
 }
 
 type fileAgentConfig struct {
@@ -170,6 +195,7 @@ type fileJiraConfig struct {
 }
 
 type fileAPIConfig struct {
+	HTTPAddr  string `yaml:"http_addr"`
 	BaseURL   string `yaml:"base_url"`
 	AuthToken Secret `yaml:"auth_token"`
 }
@@ -254,10 +280,12 @@ type fileOpenRouter struct {
 }
 
 type fileTelegram struct {
+	Addr           string         `yaml:"addr"`
 	AppID          int            `yaml:"app_id"`
 	AppHash        Secret         `yaml:"app_hash"`
 	BotToken       Secret         `yaml:"bot_token"`
 	SessionDir     string         `yaml:"session_dir"`
+	Silent         bool           `yaml:"silent"`
 	MonitorChats   []TelegramChat `yaml:"monitor_chats"`
 	IngestSession  string         `yaml:"ingest_session"`
 	AllowedChats   []int64        `yaml:"allowed_chats"`
@@ -289,6 +317,14 @@ func (s *Secret) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+// LogWarnings logs any deprecation warnings collected while resolving the
+// config. Call once after Load.
+func (c Config) LogWarnings(lg *zap.Logger) {
+	for _, w := range c.Warnings {
+		lg.Warn(w)
+	}
+}
+
 // Load reads configuration from YAML. Set SISYPHUS_CONFIG to choose the config
 // file path; otherwise ./config.yaml is used when it exists.
 func Load() (Config, error) {
@@ -312,23 +348,35 @@ func Load() (Config, error) {
 	return c, nil
 }
 
+// Default addresses for each service's own HTTP server. Kept as constants so
+// resolve() can tell a deprecated top-level field apart from a per-service
+// section the user actually configured.
+const (
+	defaultHTTPAddr = ":8080"
+	defaultMCPAddr  = ":8081"
+	defaultBotAddr  = ":8083"
+)
+
 func defaultConfig() fileConfig {
 	return fileConfig{
-		HTTPAddr:         ":8080",
 		QdrantAddr:       "localhost:6334",
 		QdrantCollection: "corp_chunks",
 		OllamaURL:        "http://localhost:11434",
 		EmbedProvider:    "ollama",
 		EmbedModel:       "bge-m3",
 		EmbedDim:         1024,
-		MCPAddr:          ":8081",
 		API: fileAPIConfig{
-			BaseURL: "http://localhost:8080",
+			HTTPAddr: defaultHTTPAddr,
+			BaseURL:  "http://localhost:8080",
+		},
+		MCP: fileMCPConfig{
+			Addr: defaultMCPAddr,
 		},
 		OpenRouter: fileOpenRouter{
 			Model: "openai/gpt-4o-mini",
 		},
 		Telegram: fileTelegram{
+			Addr:       defaultBotAddr,
 			SessionDir: "./session",
 		},
 		Agent: fileAgentConfig{
@@ -361,6 +409,21 @@ func loadFile(path string, c *fileConfig) error {
 }
 
 func (c fileConfig) resolve(baseDir string) (Config, error) {
+	var warnings []string
+
+	httpAddr, err := resolveDeprecatedAddr(&warnings, "http_addr", c.HTTPAddr, "api.http_addr", c.API.HTTPAddr, defaultHTTPAddr)
+	if err != nil {
+		return Config{}, err
+	}
+	mcpAddr, err := resolveDeprecatedAddr(&warnings, "mcp_addr", c.MCPAddr, "mcp.addr", c.MCP.Addr, defaultMCPAddr)
+	if err != nil {
+		return Config{}, err
+	}
+	mcpAuthTokenSecret, err := resolveDeprecatedSecret(&warnings, "mcp_auth_token", c.MCPAuthToken, "mcp.auth_token", c.MCP.AuthToken)
+	if err != nil {
+		return Config{}, err
+	}
+
 	dsn, err := c.DatabaseDSN.Resolve(baseDir)
 	if err != nil {
 		return Config{}, errors.Wrap(err, "database_dsn")
@@ -409,7 +472,7 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	mcpAuthToken, err := c.MCPAuthToken.Resolve(baseDir)
+	mcpAuthToken, err := mcpAuthTokenSecret.Resolve(baseDir)
 	if err != nil {
 		return Config{}, errors.Wrap(err, "mcp auth_token")
 	}
@@ -419,7 +482,6 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 	}
 
 	return Config{
-		HTTPAddr:         c.HTTPAddr,
 		DatabaseDSN:      dsn,
 		QdrantAddr:       c.QdrantAddr,
 		QdrantCollection: c.QdrantCollection,
@@ -451,26 +513,32 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			Projects: c.Jira.Projects,
 		},
 		API: APIConfig{
+			HTTPAddr:  httpAddr,
 			BaseURL:   c.API.BaseURL,
 			AuthToken: apiAuthToken,
+		},
+		MCP: MCPConfig{
+			Addr:      mcpAddr,
+			AuthToken: mcpAuthToken,
 		},
 		OpenRouter: OpenRouter{
 			APIKey: openRouterKey,
 			Model:  c.OpenRouter.Model,
 		},
 		Telegram: Telegram{
+			Addr:           c.Telegram.Addr,
 			AppID:          c.Telegram.AppID,
 			AppHash:        telegramAppHash,
 			BotToken:       telegramBotToken,
 			SessionDir:     c.Telegram.SessionDir,
+			Silent:         c.Telegram.Silent,
 			MonitorChats:   c.Telegram.MonitorChats,
 			IngestSession:  c.Telegram.IngestSession,
 			AllowedChats:   c.Telegram.AllowedChats,
 			AllowedUserIDs: c.Telegram.AllowedUserIDs,
 		},
-		Proxies:      proxies,
-		MCPAddr:      c.MCPAddr,
-		MCPAuthToken: mcpAuthToken,
+		Proxies:  proxies,
+		Warnings: warnings,
 		Agent: AgentConfig{
 			Addr:                  c.Agent.Addr,
 			BaseURL:               c.Agent.BaseURL,
@@ -481,6 +549,36 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			GatewayURL:            c.Agent.GatewayURL,
 		},
 	}, nil
+}
+
+// resolveDeprecatedAddr merges a deprecated top-level address field with its
+// new per-service home. The deprecated field wins if set, and is recorded as
+// a warning; if the new field was also explicitly changed from its default,
+// that's an ambiguous configuration (the caller can't tell which one was
+// meant) and is rejected.
+func resolveDeprecatedAddr(warnings *[]string, deprecatedKey, deprecatedValue, newKey, newValue, newDefault string) (string, error) {
+	if deprecatedValue == "" {
+		return newValue, nil
+	}
+	if newValue != newDefault {
+		return "", errors.Errorf("%s is deprecated in favor of %s; set only %s", deprecatedKey, newKey, newKey)
+	}
+	*warnings = append(*warnings, deprecatedKey+" is deprecated, use "+newKey+" instead")
+	return deprecatedValue, nil
+}
+
+// resolveDeprecatedSecret is resolveDeprecatedAddr for Secret fields, which
+// have no meaningful "default" to compare against: any explicit value in
+// both places is a conflict.
+func resolveDeprecatedSecret(warnings *[]string, deprecatedKey string, deprecated Secret, newKey string, current Secret) (Secret, error) {
+	if deprecated == (Secret{}) {
+		return current, nil
+	}
+	if current != (Secret{}) {
+		return Secret{}, errors.Errorf("%s is deprecated in favor of %s; set only %s", deprecatedKey, newKey, newKey)
+	}
+	*warnings = append(*warnings, deprecatedKey+" is deprecated, use "+newKey+" instead")
+	return deprecated, nil
 }
 
 func (c fileProxyConfig) resolve(baseDir string) (ProxyConfig, error) {

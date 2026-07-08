@@ -39,6 +39,7 @@ func newRoot(t *app.Telemetry) *cobra.Command {
 		if err != nil {
 			return errors.Wrap(err, "config")
 		}
+		c.LogWarnings(lg)
 
 		services, err := wire.NewServices(ctx, c, lg, deps.tp, deps.mp, false)
 		if err != nil {

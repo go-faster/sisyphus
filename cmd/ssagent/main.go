@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-faster/sisyphus/internal/agent"
 	"github.com/go-faster/sisyphus/internal/config"
+	"github.com/go-faster/sisyphus/internal/httpmw"
 	"github.com/go-faster/sisyphus/internal/llm/openrouter"
 	"github.com/go-faster/sisyphus/internal/mcpclient"
 	"github.com/go-faster/sisyphus/internal/mcpserver"
@@ -24,6 +25,7 @@ func run(ctx context.Context, lg *zap.Logger, _ *app.Telemetry) error {
 	if err != nil {
 		return errors.Wrap(err, "load config")
 	}
+	cfg.LogWarnings(lg)
 
 	if cfg.Agent.AuthToken == "" {
 		return errors.New("agent.auth_token is required")
@@ -52,10 +54,7 @@ func run(ctx context.Context, lg *zap.Logger, _ *app.Telemetry) error {
 	inv := agent.NewInvestigator(llm, mClient, model, cfg.Agent.MaxToolIterations, lg)
 
 	mux := http.NewServeMux()
-	mux.Handle("/health", mcpserver.HealthHandler("ssagent"))
-	mux.Handle("/healthz", mcpserver.HealthHandler("ssagent"))
-	mux.Handle("/ready", mcpserver.ReadinessHandler(mClient))
-	mux.Handle("/readyz", mcpserver.ReadinessHandler(mClient))
+	mcpserver.InstallHealth(mux, "ssagent", mClient)
 
 	timeout := time.Duration(cfg.Agent.RequestTimeoutSeconds) * time.Second
 	if timeout == 0 {
@@ -66,23 +65,10 @@ func run(ctx context.Context, lg *zap.Logger, _ *app.Telemetry) error {
 
 	srv := &http.Server{
 		Addr:              cfg.Agent.Addr,
-		Handler:           mux,
+		Handler:           httpmw.Wrap(lg, mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-
-	lg.Info("starting ssagent", zap.String("addr", cfg.Agent.Addr))
-
-	errc := make(chan error, 1)
-	go func() {
-		errc <- srv.ListenAndServe()
-	}()
-
-	select {
-	case <-ctx.Done():
-		return srv.Shutdown(context.Background())
-	case err := <-errc:
-		return err
-	}
+	return httpmw.Serve(ctx, lg, "ssagent", srv)
 }
 
 func main() {

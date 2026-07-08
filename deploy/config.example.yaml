@@ -1,14 +1,20 @@
-http_addr: :8080
-mcp_addr: :8081
-mcp_auth_token:
-  env: SISYPHUS_MCP_AUTH_TOKEN
 database_dsn:
   env: SISYPHUS_DATABASE_DSN
 
+# api: ssapi, the HTTP API server (owns Postgres + migrations). http_addr is
+# the address ssapi's own server listens on; base_url/auth_token are read by
+# ssbot/ssmcp/ssagent HTTP clients to reach it.
 api:
+  http_addr: :8080
   base_url: http://ssapi:8080
   auth_token:
     env: SISYPHUS_API_AUTH_TOKEN
+
+# mcp: ssmcp, the MCP server. auth_token is optional bearer auth for /mcp.
+mcp:
+  addr: :8081
+  auth_token:
+    env: SISYPHUS_MCP_AUTH_TOKEN
 
 qdrant_addr: qdrant:6334
 qdrant_collection: corp_chunks
@@ -92,7 +98,10 @@ openrouter:
     env: SISYPHUS_OPENROUTER_API_KEY
   model: openai/gpt-4o-mini
 
+# telegram: ssbot. addr is the address ssbot's standalone health/ready HTTP
+# server listens on (ssbot has no primary HTTP API of its own).
 telegram:
+  addr: :8083
   app_id: 0
   app_hash:
     env: SISYPHUS_TELEGRAM_APP_HASH

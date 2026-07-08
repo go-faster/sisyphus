@@ -35,6 +35,7 @@ func main() {
 					if err != nil {
 						return errors.Wrap(err, "config")
 					}
+					cfg.LogWarnings(lg)
 					return run(cmd.Context(), cfg, t.TracerProvider(), t.MeterProvider())
 				},
 				SilenceUsage:  true,
@@ -90,9 +91,10 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 		checks = append(checks, ag)
 	}
 
-	healthMux := newHealthMux(checks...)
+	healthMux := http.NewServeMux()
+	mcpserver.InstallHealth(healthMux, "0.1.0", checks...)
 	healthSrv := &http.Server{
-		Addr:              cfg.HTTPAddr,
+		Addr:              cfg.Telegram.Addr,
 		Handler:           httpmw.Wrap(lg, healthMux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
@@ -137,13 +139,4 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 	default:
 	}
 	return botErr
-}
-
-func newHealthMux(checks ...mcpserver.HealthChecker) *http.ServeMux {
-	mux := http.NewServeMux()
-	mux.Handle("/health", mcpserver.HealthHandler("0.1.0"))
-	mux.Handle("/healthz", mcpserver.HealthHandler("0.1.0"))
-	mux.Handle("/ready", mcpserver.ReadinessHandler(checks...))
-	mux.Handle("/readyz", mcpserver.ReadinessHandler(checks...))
-	return mux
 }

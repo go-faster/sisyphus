@@ -62,6 +62,46 @@ services:
     # Pull the embedding model on first run:
     #   docker compose exec ollama ollama pull bge-m3
 
+  ssapi:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+    entrypoint: [ "/usr/local/bin/ssapi" ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    environment:
+      SISYPHUS_CONFIG: /data/scp/config.yaml
+      SISYPHUS_DATABASE_DSN: ${SISYPHUS_DATABASE_DSN:-postgres://sisyphus:sisyphus@postgres:5432/sisyphus?sslmode=disable}
+      SISYPHUS_API_AUTH_TOKEN: ${SISYPHUS_API_AUTH_TOKEN:-}
+      SISYPHUS_GITLAB_TOKEN: ${SISYPHUS_GITLAB_TOKEN:-}
+      SISYPHUS_JIRA_PASSWORD: ${SISYPHUS_JIRA_PASSWORD:-}
+      SISYPHUS_OPENROUTER_API_KEY: ${SISYPHUS_OPENROUTER_API_KEY:-}
+      OTEL_LOG_LEVEL: debug
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otelcol:4317
+      OTEL_EXPORTER_OTLP_INSECURE: true
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+    ports:
+      - "18079:8080"
+    volumes:
+      - ./config.yaml:/data/scp/config.yaml:ro
+      - ssapi:/data/scp
+    healthcheck:
+      test: [ "CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/8080' || exit 1" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   ssmcp:
     build:
       context: ..
@@ -74,14 +114,11 @@ services:
         max-size: "2m"
     entrypoint: [ "/usr/local/bin/ssmcp" ]
     depends_on:
-      postgres:
+      ssapi:
         condition: service_healthy
-      qdrant:
-        condition: service_healthy
-      ollama:
-        condition: service_started
     environment:
       SISYPHUS_CONFIG: /data/scp/config.yaml
+      SISYPHUS_DATABASE_DSN: ${SISYPHUS_DATABASE_DSN:-postgres://sisyphus:sisyphus@postgres:5432/sisyphus?sslmode=disable}
       SISYPHUS_GITLAB_TOKEN: ${SISYPHUS_GITLAB_TOKEN:-}
       SISYPHUS_JIRA_PASSWORD: ${SISYPHUS_JIRA_PASSWORD:-}
       SISYPHUS_AGENT_AUTH_TOKEN: ${SISYPHUS_AGENT_AUTH_TOKEN:-}
@@ -108,14 +145,11 @@ services:
         max-size: "2m"
     entrypoint: [ "/usr/local/bin/ssbot" ]
     depends_on:
-      postgres:
+      ssapi:
         condition: service_healthy
-      qdrant:
-        condition: service_healthy
-      ollama:
-        condition: service_started
     environment:
       SISYPHUS_CONFIG: /data/scp/config.yaml
+      SISYPHUS_DATABASE_DSN: ${SISYPHUS_DATABASE_DSN:-postgres://sisyphus:sisyphus@postgres:5432/sisyphus?sslmode=disable}
       SISYPHUS_GITLAB_TOKEN: ${SISYPHUS_GITLAB_TOKEN:-}
       SISYPHUS_JIRA_PASSWORD: ${SISYPHUS_JIRA_PASSWORD:-}
       SISYPHUS_OPENROUTER_API_KEY: ${SISYPHUS_OPENROUTER_API_KEY:-}
@@ -124,7 +158,7 @@ services:
       OTEL_EXPORTER_OTLP_INSECURE: true
       OTEL_EXPORTER_OTLP_PROTOCOL: grpc
     ports:
-      - "18080:8080"
+      - "18080:8083"
     volumes:
       - ./config.yaml:/data/scp/config.yaml:ro
       - ssbot:/data/scp
@@ -158,6 +192,7 @@ services:
       - mcpgateway
     environment:
       SISYPHUS_CONFIG: /data/scp/config.yaml
+      SISYPHUS_DATABASE_DSN: ${SISYPHUS_DATABASE_DSN:-postgres://sisyphus:sisyphus@postgres:5432/sisyphus?sslmode=disable}
       SISYPHUS_AGENT_AUTH_TOKEN: ${SISYPHUS_AGENT_AUTH_TOKEN:-}
       SISYPHUS_OPENROUTER_API_KEY: ${SISYPHUS_OPENROUTER_API_KEY:-}
       OTEL_LOG_LEVEL: debug
@@ -202,6 +237,7 @@ volumes:
   pgdata:
   qdrant:
   ollama:
+  ssapi:
   ssmcp:
   ssbot:
   ssagent:

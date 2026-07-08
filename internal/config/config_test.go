@@ -13,13 +13,17 @@ func TestLoadYAML(t *testing.T) {
 
 	path := writeConfig(t, `database_dsn:
   value: postgres://user:pass@localhost/sisyphus?sslmode=disable
-http_addr: :9090
 qdrant_addr: qdrant:6334
 embed_dim: 512
 api:
+  http_addr: :9090
   base_url: http://ssapi:8080
   auth_token:
     value: test-token
+mcp:
+  addr: :9092
+  auth_token:
+    value: mcp-token
 git:
   work_dir: /tmp/git
   token:
@@ -56,6 +60,7 @@ proxies:
   openrouter:
     value: http://127.0.0.1:8082
 telegram:
+  addr: :9091
   app_id: 123
   session_dir: /tmp/sisyphus-session
   monitor_chats:
@@ -83,7 +88,10 @@ agent:
 	cfg, err := Load()
 	require.NoError(t, err)
 	require.Equal(t, "postgres://user:pass@localhost/sisyphus?sslmode=disable", cfg.DatabaseDSN)
-	require.Equal(t, ":9090", cfg.HTTPAddr)
+	require.Equal(t, ":9090", cfg.API.HTTPAddr)
+	require.Equal(t, ":9092", cfg.MCP.Addr)
+	require.Equal(t, "mcp-token", cfg.MCP.AuthToken)
+	require.Equal(t, ":9091", cfg.Telegram.Addr)
 	require.Equal(t, "qdrant:6334", cfg.QdrantAddr)
 	require.Equal(t, 512, cfg.EmbedDim)
 	require.Equal(t, 123, cfg.Telegram.AppID)
@@ -92,6 +100,7 @@ agent:
 	require.Equal(t, "corp_chunks", cfg.QdrantCollection)
 	require.Equal(t, "http://ssapi:8080", cfg.API.BaseURL)
 	require.Equal(t, "test-token", cfg.API.AuthToken)
+	require.Empty(t, cfg.Warnings)
 
 	// git: repository content + commits
 	require.Equal(t, "/tmp/git", cfg.Git.WorkDir)
@@ -212,15 +221,16 @@ func TestMCPAuthToken(t *testing.T) {
 
 	path := writeConfig(t, `database_dsn:
   value: postgres://user:pass@localhost/sisyphus?sslmode=disable
-mcp_auth_token:
-  env: TEST_SISYPHUS_MCP_AUTH_TOKEN
+mcp:
+  auth_token:
+    env: TEST_SISYPHUS_MCP_AUTH_TOKEN
 `)
 	t.Setenv("SISYPHUS_CONFIG", path)
 	t.Setenv("TEST_SISYPHUS_MCP_AUTH_TOKEN", "mcp-test-token")
 
 	cfg, err := Load()
 	require.NoError(t, err)
-	require.Equal(t, "mcp-test-token", cfg.MCPAuthToken)
+	require.Equal(t, "mcp-test-token", cfg.MCP.AuthToken)
 }
 
 func TestMCPAuthTokenEmptyWhenNotConfigured(t *testing.T) {
@@ -233,5 +243,82 @@ func TestMCPAuthTokenEmptyWhenNotConfigured(t *testing.T) {
 
 	cfg, err := Load()
 	require.NoError(t, err)
-	require.Equal(t, "", cfg.MCPAuthToken)
+	require.Equal(t, "", cfg.MCP.AuthToken)
+}
+
+func TestDeprecatedHTTPAddrWarns(t *testing.T) {
+	clearEnv(t)
+
+	path := writeConfig(t, `database_dsn:
+  value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+http_addr: :7070
+`)
+	t.Setenv("SISYPHUS_CONFIG", path)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, ":7070", cfg.API.HTTPAddr)
+	require.Contains(t, cfg.Warnings, "http_addr is deprecated, use api.http_addr instead")
+}
+
+func TestDeprecatedHTTPAddrConflictsWithNewField(t *testing.T) {
+	clearEnv(t)
+
+	path := writeConfig(t, `database_dsn:
+  value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+http_addr: :7070
+api:
+  http_addr: :7071
+`)
+	t.Setenv("SISYPHUS_CONFIG", path)
+
+	_, err := Load()
+	require.Error(t, err)
+}
+
+func TestDeprecatedMCPAddrWarns(t *testing.T) {
+	clearEnv(t)
+
+	path := writeConfig(t, `database_dsn:
+  value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+mcp_addr: :7072
+`)
+	t.Setenv("SISYPHUS_CONFIG", path)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, ":7072", cfg.MCP.Addr)
+	require.Contains(t, cfg.Warnings, "mcp_addr is deprecated, use mcp.addr instead")
+}
+
+func TestDeprecatedMCPAddrConflictsWithNewField(t *testing.T) {
+	clearEnv(t)
+
+	path := writeConfig(t, `database_dsn:
+  value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+mcp_addr: :7072
+mcp:
+  addr: :7073
+`)
+	t.Setenv("SISYPHUS_CONFIG", path)
+
+	_, err := Load()
+	require.Error(t, err)
+}
+
+func TestDeprecatedMCPAuthTokenConflictsWithNewField(t *testing.T) {
+	clearEnv(t)
+
+	path := writeConfig(t, `database_dsn:
+  value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+mcp_auth_token:
+  value: old-token
+mcp:
+  auth_token:
+    value: new-token
+`)
+	t.Setenv("SISYPHUS_CONFIG", path)
+
+	_, err := Load()
+	require.Error(t, err)
 }

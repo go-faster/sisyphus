@@ -33,6 +33,7 @@ func main() {
 					if err != nil {
 						return errors.Wrap(err, "config")
 					}
+					cfg.LogWarnings(lg)
 					return run(cmd.Context(), cfg, stdio, t)
 				},
 				SilenceUsage:  true,
@@ -78,20 +79,17 @@ func run(ctx context.Context, cfg config.Config, useStdio bool, t *app.Telemetry
 
 	var handler http.Handler = mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, nil)
 	mux := http.NewServeMux()
-	if tok := cfg.MCPAuthToken; tok != "" {
+	if tok := cfg.MCP.AuthToken; tok != "" {
 		lg.Info("mcp auth enabled")
 		handler = mcpserver.BearerAuthMiddleware(tok)(handler)
 	} else {
 		lg.Warn("mcp auth disabled")
 	}
-	mux.Handle("/health", mcpserver.HealthHandler("0.1.0"))
-	mux.Handle("/healthz", mcpserver.HealthHandler("0.1.0"))
-	mux.Handle("/ready", mcpserver.ReadinessHandler(api))
-	mux.Handle("/readyz", mcpserver.ReadinessHandler(api))
+	mcpserver.InstallHealth(mux, "0.1.0", api)
 	mux.Handle("/mcp", handler)
 
 	s := &http.Server{
-		Addr:              cfg.MCPAddr,
+		Addr:              cfg.MCP.Addr,
 		Handler:           httpmw.Wrap(lg, mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
