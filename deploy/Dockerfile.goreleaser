@@ -11,6 +11,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY ${TARGETPLATFORM}/ssapi ${TARGETPLATFORM}/ssbot ${TARGETPLATFORM}/ssmcp ${TARGETPLATFORM}/ssingest /usr/local/bin/
+COPY ${TARGETPLATFORM}/ssapi ${TARGETPLATFORM}/ssbot ${TARGETPLATFORM}/ssmcp ${TARGETPLATFORM}/ssingest ${TARGETPLATFORM}/ssagent /usr/local/bin/
 
 ENTRYPOINT ["/usr/local/bin/ssapi"]

@@ -33,6 +33,9 @@ run:
 run-bot:
 	go run ./cmd/ssbot
 
+run-agent:
+	go run ./cmd/ssagent
+
 ingest:
 	go run ./cmd/ssingest all
 
@@ -48,4 +51,4 @@ ingest-jira:
 ingest-telegram:
 	go run ./cmd/ssingest telegram
 
-.PHONY: lint fmt codegen migrate-diff run run-bot ingest ingest-git ingest-gitlab ingest-jira ingest-telegram
+.PHONY: lint fmt codegen migrate-diff run run-bot run-agent ingest ingest-git ingest-gitlab ingest-jira ingest-telegram

@@ -35,6 +35,14 @@ builds:
     mod_timestamp: "{{ .CommitTimestamp }}"
     goos: [linux]
     goarch: [amd64, arm64]
+  - id: ssagent
+    main: ./cmd/ssagent
+    binary: ssagent
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos: [linux]
+    goarch: [amd64, arm64]
 
 archives:
   - formats: [tar.gz]
@@ -58,6 +66,7 @@ nfpms:
       - ssbot
       - ssmcp
       - ssingest
+      - ssagent
     homepage: https://github.com/go-faster/sisyphus
     maintainer: tdakkota <sisyphus@tdakkota.dev>
     description: |
@@ -85,7 +94,7 @@ changelog:
 # OCI multi-platform manifest on push instead of separate per-arch images.
 dockers_v2:
   - id: sisyphus
-    ids: [ssapi, ssbot, ssmcp, ssingest]
+    ids: [ssapi, ssbot, ssmcp, ssingest, ssagent]
     images:
       - "ghcr.io/go-faster/sisyphus"
     platforms:

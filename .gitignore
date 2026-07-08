@@ -22,6 +22,7 @@ deploy/config.yaml
 /ssmcp
 /ssingest
 /ssapi
+/ssagent
 /_ref
 
 # goreleaser
