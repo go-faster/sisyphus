@@ -18,7 +18,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/mcpserver"
 )
 
-func run(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
+func run(ctx context.Context, lg *zap.Logger, _ *app.Telemetry) error {
 	ctx = zctx.Base(ctx, lg)
 	cfg, err := config.Load()
 	if err != nil {
@@ -38,7 +38,11 @@ func run(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
 	if err != nil {
 		return errors.Wrap(err, "mcp client new")
 	}
-	defer mClient.Close()
+	defer func() {
+		if err := mClient.Close(); err != nil {
+			lg.Error("close mcp client", zap.Error(err))
+		}
+	}()
 
 	model := cfg.Agent.Model
 	if model == "" {
@@ -61,8 +65,9 @@ func run(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
 	mux.Handle("/investigate", mcpserver.BearerAuthMiddleware(cfg.Agent.AuthToken)(handleInvestigate(inv, timeout, lg)))
 
 	srv := &http.Server{
-		Addr:    cfg.Agent.Addr,
-		Handler: mux,
+		Addr:              cfg.Agent.Addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	lg.Info("starting ssagent", zap.String("addr", cfg.Agent.Addr))

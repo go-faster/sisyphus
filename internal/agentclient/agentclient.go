@@ -1,3 +1,4 @@
+// Package agentclient is an HTTP client for cmd/ssagent's /investigate endpoint.
 package agentclient
 
 import (

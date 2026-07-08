@@ -31,11 +31,11 @@ func TestHandleInvestigate(t *testing.T) {
 	tests := []struct {
 		name         string
 		reqMethod    string
-		reqBody      interface{}
+		reqBody      any
 		authHeader   string
 		setupInv     func() *fakeInvestigator
 		expectedCode int
-		expectedBody interface{}
+		expectedBody any
 	}{
 		{
 			name:       "happy path",
@@ -48,7 +48,7 @@ func TestHandleInvestigate(t *testing.T) {
 				}
 			},
 			expectedCode: http.StatusOK,
-			expectedBody: map[string]interface{}{
+			expectedBody: map[string]any{
 				"report":     "all good",
 				"iterations": float64(2),
 				"tools_used": float64(1),
@@ -118,7 +118,7 @@ func TestHandleInvestigate(t *testing.T) {
 			require.Equal(t, tt.expectedCode, rec.Code)
 
 			if tt.expectedCode == http.StatusOK {
-				var got map[string]interface{}
+				var got map[string]any
 				require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 				require.Equal(t, tt.expectedBody, got)
 			}

@@ -1,3 +1,4 @@
+// Package mcpclient is an MCP client used to call tools exposed by cmd/ssmcp.
 package mcpclient
 
 import (

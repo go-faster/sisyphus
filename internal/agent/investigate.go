@@ -1,3 +1,4 @@
+// Package agent implements an LLM tool-calling investigation loop over MCP tools.
 package agent
 
 import (
