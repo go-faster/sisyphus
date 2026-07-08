@@ -7,12 +7,21 @@ import (
 
 	"github.com/go-faster/errors"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // Options configures a new MCP Client.
 type Options struct {
-	URL     string
-	Headers map[string]string
+	URL           string
+	Headers       map[string]string
+	MeterProvider metric.MeterProvider
+}
+
+func (opts *Options) setDefaults() {
+	if opts.MeterProvider == nil {
+		opts.MeterProvider = otel.GetMeterProvider()
+	}
 }
 
 // Client is a wrapper around an MCP client session that acts as a ToolSource.
@@ -23,6 +32,7 @@ type Client struct {
 
 // New creates and connects a new MCP Client to the gateway.
 func New(ctx context.Context, opts Options) (*Client, error) {
+	opts.setDefaults()
 	transport := http.DefaultTransport
 
 	if len(opts.Headers) > 0 {
@@ -49,7 +59,7 @@ func New(ctx context.Context, opts Options) (*Client, error) {
 		return nil, errors.Wrap(err, "connect to mcp")
 	}
 
-	m, _ := newMCPMetrics()
+	m, _ := newMCPMetrics(opts.MeterProvider)
 
 	return &Client{
 		session: session,

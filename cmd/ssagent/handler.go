@@ -40,20 +40,34 @@ func sendError(w http.ResponseWriter, statusCode int, err error) {
 	_ = json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 }
 
-func handleInvestigate(inv agent.Investigator, timeout time.Duration, tracer trace.Tracer, logger *zap.Logger) http.HandlerFunc {
+func handleInvestigate(inv agent.Investigator, timeout time.Duration, tracer trace.Tracer, metrics *agentMetrics, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		status := "ok"
+		verdict := ""
+		toolsUsed := 0
+		reportChars := 0
+		defer func() {
+			if metrics != nil {
+				metrics.record(r.Context(), status, verdict, time.Since(start).Seconds(), toolsUsed, reportChars)
+			}
+		}()
+
 		if r.Method != http.MethodPost {
+			status = "method_not_allowed"
 			sendError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
 			return
 		}
 
 		var req InvestigateRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			status = "bad_request"
 			sendError(w, http.StatusBadRequest, errors.Wrap(err, "decode body"))
 			return
 		}
 
 		if req.Description == "" {
+			status = "bad_request"
 			sendError(w, http.StatusBadRequest, errors.New("description is required"))
 			return
 		}
@@ -68,6 +82,7 @@ func handleInvestigate(inv agent.Investigator, timeout time.Duration, tracer tra
 
 		res, err := inv.Investigate(ctx, req.Description)
 		if err != nil {
+			status = "error"
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 			logger.Error("investigation failed", zap.Error(err))
@@ -80,6 +95,9 @@ func handleInvestigate(inv agent.Investigator, timeout time.Duration, tracer tra
 			attribute.Int("tools_used", res.ToolsUsed),
 			attribute.Int("report.chars", res.Report.CharLen()),
 		)
+		verdict = string(res.Report.Verdict)
+		toolsUsed = res.ToolsUsed
+		reportChars = res.Report.CharLen()
 
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(InvestigateResponse{

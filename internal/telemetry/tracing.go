@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-faster/sdk/zctx"
 	"github.com/gotd/td/bin"
@@ -11,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
@@ -18,26 +20,78 @@ import (
 // TDTracingMiddleware returns a telegram.Middleware that wraps MTProto API
 // calls with OpenTelemetry spans.
 func TDTracingMiddleware(tp trace.TracerProvider) telegram.Middleware {
+	return TDMiddleware(tp, otel.GetMeterProvider())
+}
+
+// TDMiddleware returns a telegram.Middleware that wraps MTProto API calls with
+// OpenTelemetry spans and metrics.
+func TDMiddleware(tp trace.TracerProvider, mp metric.MeterProvider) telegram.Middleware {
 	if tp == nil {
 		tp = otel.GetTracerProvider()
 	}
+	if mp == nil {
+		mp = otel.GetMeterProvider()
+	}
 	tracer := tp.Tracer("gotd/mtproto")
+	metrics, _ := newTDMetrics(mp)
 	return telegram.MiddlewareFunc(func(next tg.Invoker) telegram.InvokeFunc {
 		return func(ctx context.Context, input bin.Encoder, output bin.Decoder) error {
 			op := fmt.Sprintf("%T", input)
+			start := time.Now()
+			status := "ok"
 			ctx, span := tracer.Start(ctx, op,
 				trace.WithAttributes(attribute.String("rpc.method", op)),
 				trace.WithSpanKind(trace.SpanKindClient),
 			)
-			defer span.End()
+			defer func() {
+				if metrics != nil {
+					metrics.record(ctx, op, status, time.Since(start).Seconds())
+				}
+				span.End()
+			}()
 			err := next.Invoke(ctx, input, output)
 			if err != nil {
+				status = "error"
 				span.RecordError(err)
 				span.SetStatus(codes.Error, err.Error())
 			}
 			return err
 		}
 	})
+}
+
+type tdMetrics struct {
+	requests metric.Int64Counter
+	duration metric.Float64Histogram
+}
+
+func newTDMetrics(mp metric.MeterProvider) (*tdMetrics, error) {
+	meter := mp.Meter("github.com/go-faster/sisyphus/telegram")
+	requests, err := meter.Int64Counter(
+		"sisyphus.telegram.requests",
+		metric.WithDescription("Count of Telegram MTProto API requests by method and status"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	duration, err := meter.Float64Histogram(
+		"sisyphus.telegram.duration",
+		metric.WithDescription("Duration of Telegram MTProto API requests"),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &tdMetrics{requests: requests, duration: duration}, nil
+}
+
+func (m *tdMetrics) record(ctx context.Context, method, status string, durSeconds float64) {
+	attrs := metric.WithAttributes(
+		attribute.String("rpc.method", method),
+		attribute.String("status", status),
+	)
+	m.requests.Add(ctx, 1, attrs)
+	m.duration.Record(ctx, durSeconds, attrs)
 }
 
 // LogUpdates wraps a Telegram update handler and logs every incoming update at
@@ -94,8 +148,7 @@ func logUpdate(lg *zap.Logger, update tg.UpdateClass) {
 		zap.String("update_type", update.TypeName()),
 		zap.Uint32("update_type_id", update.TypeID()),
 	}
-	switch u := update.(type) {
-	case *tg.UpdateNewMessage:
+	if u, ok := update.(*tg.UpdateNewMessage); ok {
 		if msg, ok := u.Message.(*tg.Message); ok {
 			fields = append(fields,
 				zap.Int64("chat_id", peerID(msg.PeerID)),

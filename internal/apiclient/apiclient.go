@@ -16,7 +16,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
-	metricnoop "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/go-faster/sisyphus/internal/index"
@@ -38,7 +37,7 @@ func (o *Options) setDefaults() {
 		o.TracerProvider = otel.GetTracerProvider()
 	}
 	if o.MeterProvider == nil {
-		o.MeterProvider = metricnoop.NewMeterProvider()
+		o.MeterProvider = otel.GetMeterProvider()
 	}
 }
 

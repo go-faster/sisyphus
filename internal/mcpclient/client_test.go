@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
 
 	"github.com/go-faster/sisyphus/internal/index"
 	"github.com/go-faster/sisyphus/internal/llm/stub"
@@ -53,7 +54,7 @@ func TestClient(t *testing.T) {
 	require.NoError(t, err)
 	defer clientSession.Close()
 
-	metrics, _ := newMCPMetrics()
+	metrics, _ := newMCPMetrics(noop.NewMeterProvider())
 	c := &Client{
 		session: clientSession,
 		m:       metrics,

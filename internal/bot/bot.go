@@ -70,6 +70,7 @@ type Bot struct {
 	investigator  Investigator
 
 	tp            trace.TracerProvider
+	mp            metric.MeterProvider
 	tracer        trace.Tracer
 	metrics       *botMetrics
 	logger        *zap.Logger
@@ -141,6 +142,7 @@ func New(_ context.Context, r Retriever, a index.Answerer, cred BotCredentials, 
 		queryAnswerer: queryAnswerer,
 		investigator:  opts.Investigator,
 		tp:            tp,
+		mp:            mp,
 		tracer:        tp.Tracer("github.com/go-faster/sisyphus/bot"),
 		logger:        opts.Logger,
 		metrics:       m,
@@ -183,7 +185,7 @@ func (b *Bot) Run(ctx context.Context) error {
 		TracerProvider: b.tp,
 		SessionStorage: &telegram.FileSessionStorage{Path: filepath.Join(b.cred.SessionDir, "bot.json")},
 		Middlewares: []telegram.Middleware{
-			telemetry.TDTracingMiddleware(b.tp),
+			telemetry.TDMiddleware(b.tp, b.mp),
 		},
 	})
 	raw := tg.NewClient(client)

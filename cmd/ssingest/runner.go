@@ -849,7 +849,7 @@ func (r *runner) runTelegram(ctx context.Context, p *pipeline.Pipeline, since ti
 		Logger:         logzap.New(lg.Named("td").Named("ingest")),
 		SessionStorage: &gotdtelegram.FileSessionStorage{Path: tc.IngestSession},
 		TracerProvider: r.tp,
-		Middlewares:    []gotdtelegram.Middleware{telemetry.TDTracingMiddleware(r.tp)},
+		Middlewares:    []gotdtelegram.Middleware{telemetry.TDMiddleware(r.tp, r.mp)},
 	})
 
 	var result telegramingest.BackfillResult

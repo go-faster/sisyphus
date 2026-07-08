@@ -3,7 +3,6 @@ package mcpclient
 import (
 	"context"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
@@ -13,8 +12,8 @@ type mcpMetrics struct {
 	dur   metric.Float64Histogram
 }
 
-func newMCPMetrics() (*mcpMetrics, error) {
-	meter := otel.GetMeterProvider().Meter("github.com/go-faster/sisyphus/mcpclient")
+func newMCPMetrics(mp metric.MeterProvider) (*mcpMetrics, error) {
+	meter := mp.Meter("github.com/go-faster/sisyphus/mcpclient")
 	calls, err := meter.Int64Counter(
 		"sisyphus.mcpclient.calls",
 		metric.WithDescription("MCP tool calls"),

@@ -17,6 +17,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/llm/openrouter"
 	"github.com/go-faster/sisyphus/internal/mcpclient"
 	"github.com/go-faster/sisyphus/internal/mcpserver"
+	"github.com/go-faster/sisyphus/internal/netclient"
 )
 
 func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry) error {
@@ -31,10 +32,22 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry) error {
 		return errors.New("agent.auth_token is required")
 	}
 
-	llm := openrouter.New(cfg.OpenRouter.APIKey, openrouter.Options{})
+	httpClient, err := netclient.HTTPClient(ctx, "openrouter", cfg.Proxies.OpenRouter, netclient.HTTPClientOptions{
+		TracerProvider: telemetry.TracerProvider(),
+		MeterProvider:  telemetry.MeterProvider(),
+	})
+	if err != nil {
+		return errors.Wrap(err, "openrouter http client")
+	}
+	llm := openrouter.New(cfg.OpenRouter.APIKey, openrouter.Options{
+		HTTPClient:     httpClient,
+		TracerProvider: telemetry.TracerProvider(),
+		MeterProvider:  telemetry.MeterProvider(),
+	})
 
 	mcpOpts := mcpclient.Options{
-		URL: cfg.Agent.GatewayURL,
+		URL:           cfg.Agent.GatewayURL,
+		MeterProvider: telemetry.MeterProvider(),
 	}
 	mClient, err := mcpclient.New(ctx, mcpOpts)
 	if err != nil {
@@ -62,7 +75,11 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry) error {
 	}
 
 	tracer := telemetry.TracerProvider().Tracer("github.com/go-faster/sisyphus/ssagent")
-	mux.Handle("/investigate", mcpserver.BearerAuthMiddleware(cfg.Agent.AuthToken)(handleInvestigate(inv, timeout, tracer, lg)))
+	metrics, err := newAgentMetrics(telemetry.MeterProvider())
+	if err != nil {
+		return errors.Wrap(err, "agent metrics")
+	}
+	mux.Handle("/investigate", mcpserver.BearerAuthMiddleware(cfg.Agent.AuthToken)(handleInvestigate(inv, timeout, tracer, metrics, lg)))
 
 	srv := &http.Server{
 		Addr:              cfg.Agent.Addr,

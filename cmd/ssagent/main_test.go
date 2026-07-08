@@ -106,7 +106,7 @@ func TestHandleInvestigate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			inv := tt.setupInv()
-			handler := mcpserver.BearerAuthMiddleware("secret")(handleInvestigate(inv, 5*time.Second, noop.NewTracerProvider().Tracer(""), logger))
+			handler := mcpserver.BearerAuthMiddleware("secret")(handleInvestigate(inv, 5*time.Second, noop.NewTracerProvider().Tracer(""), nil, logger))
 
 			var body []byte
 			if tt.reqBody != nil {
