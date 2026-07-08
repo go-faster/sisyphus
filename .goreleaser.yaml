@@ -50,6 +50,28 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+nfpms:
+  - id: sisyphus
+    package_name: sisyphus
+    ids:
+      - ssapi
+      - ssbot
+      - ssmcp
+      - ssingest
+    homepage: https://github.com/go-faster/sisyphus
+    maintainer: tdakkota <sisyphus@tdakkota.dev>
+    description: |
+      Internal support/dev assistant. Ingests knowledge sources and answers
+      questions via a Telegram bot.
+    license: Apache 2.0
+    formats:
+      - deb
+      - rpm
+    deb:
+      lintian_overrides:
+        - statically-linked-binary
+        - changelog-file-missing-in-native-package
+
 changelog:
   sort: asc
   filters:
