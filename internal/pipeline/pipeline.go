@@ -4,6 +4,7 @@ package pipeline
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -440,6 +441,9 @@ func (p *Pipeline) embed(ctx context.Context, source string, chunks []index.Chun
 		),
 	)
 	vectors, err := p.embedder.Embed(embedCtx, texts)
+	if err != nil && shouldRetryEmbeddingsIndividually(err, chunks) {
+		vectors, err = p.embedIndividually(embedCtx, chunks)
+	}
 	p.metrics.recordPhase(ctx, source, "embed", time.Since(start).Seconds(), err)
 	if err != nil {
 		embedSpan.RecordError(err)
@@ -468,6 +472,34 @@ func (p *Pipeline) embed(ctx context.Context, source string, chunks []index.Chun
 	upsertSpan.AddEvent("vector_upsert.done")
 	upsertSpan.End()
 	return nil
+}
+
+func shouldRetryEmbeddingsIndividually(err error, chunks []index.Chunk) bool {
+	if len(chunks) < 2 {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "unsupported value: NaN") ||
+		strings.Contains(msg, "unsupported value: +Inf") ||
+		strings.Contains(msg, "unsupported value: -Inf")
+}
+
+func (p *Pipeline) embedIndividually(ctx context.Context, chunks []index.Chunk) ([][]float32, error) {
+	vectors := make([][]float32, len(chunks))
+	for i, c := range chunks {
+		vecs, err := p.embedder.Embed(ctx, []string{c.Text})
+		if err != nil {
+			return nil, errors.Wrapf(err,
+				"embed chunk index=%d id=%s title=%q text_hash=%s text_len=%d",
+				c.Index, c.ID, c.Title, c.TextHash, len(c.Text),
+			)
+		}
+		if len(vecs) != 1 {
+			return nil, errors.Errorf("embed chunk index=%d id=%s returned %d vectors", c.Index, c.ID, len(vecs))
+		}
+		vectors[i] = vecs[0]
+	}
+	return vectors, nil
 }
 
 func withTx(ctx context.Context, db *ent.Client, fn func(tx *ent.Tx) error) error {

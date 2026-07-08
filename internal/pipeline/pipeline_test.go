@@ -13,6 +13,8 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"github.com/go-faster/errors"
+
 	"github.com/go-faster/sisyphus/internal/ent"
 	"github.com/go-faster/sisyphus/internal/ent/chunk"
 	"github.com/go-faster/sisyphus/internal/ent/document"
@@ -51,6 +53,28 @@ func (f *fakeEmbedder) Embed(_ context.Context, texts []string) ([][]float32, er
 }
 
 func (f *fakeEmbedder) Dim() int { return 4 }
+
+type nonFiniteBatchEmbedder struct {
+	badText string
+	calls   [][]string
+}
+
+func (f *nonFiniteBatchEmbedder) Embed(_ context.Context, texts []string) ([][]float32, error) {
+	f.calls = append(f.calls, append([]string(nil), texts...))
+	if len(texts) > 1 {
+		return nil, errors.New(`ollama returned status 500: {"error":"failed to encode response: json: unsupported value: NaN"}`)
+	}
+	if len(texts) == 1 && texts[0] == f.badText {
+		return nil, errors.New(`ollama returned status 500: {"error":"failed to encode response: json: unsupported value: NaN"}`)
+	}
+	vectors := make([][]float32, len(texts))
+	for i, text := range texts {
+		vectors[i] = []float32{float32(len(text))}
+	}
+	return vectors, nil
+}
+
+func (f *nonFiniteBatchEmbedder) Dim() int { return 1 }
 
 // testChunker splits a Body on "\n===\n" markers. It produces fresh random UUIDs
 // each call (like real chunkers) and is deterministic in content.
@@ -115,6 +139,88 @@ func newTestPipeline(t *testing.T, client *ent.Client, store *fakeVectorStore) *
 		t.Fatalf("new pipeline: %v", err)
 	}
 	return p
+}
+
+func TestPipeline_EmbedRetriesNonFiniteBatchIndividually(t *testing.T) {
+	store := &fakeVectorStore{}
+	embedder := &nonFiniteBatchEmbedder{}
+	p, err := New(nil, testChunker{}, embedder, store, PipelineOptions{})
+	if err != nil {
+		t.Fatalf("new pipeline: %v", err)
+	}
+
+	chunks := []index.Chunk{
+		{
+			ID:       uuid.New(),
+			Index:    0,
+			Title:    "first",
+			Text:     "alpha",
+			TextHash: index.Hash("alpha"),
+		},
+		{
+			ID:       uuid.New(),
+			Index:    1,
+			Title:    "second",
+			Text:     "beta",
+			TextHash: index.Hash("beta"),
+		},
+	}
+
+	if err := p.embed(context.Background(), "test", chunks); err != nil {
+		t.Fatalf("embed: %v", err)
+	}
+	if len(store.upserted) != len(chunks) {
+		t.Fatalf("expected %d upserted chunks, got %d", len(chunks), len(store.upserted))
+	}
+	if len(embedder.calls) != 3 {
+		t.Fatalf("expected batch call plus two individual retries, got %d calls", len(embedder.calls))
+	}
+}
+
+func TestPipeline_EmbedNonFiniteSingleErrorIncludesChunk(t *testing.T) {
+	store := &fakeVectorStore{}
+	embedder := &nonFiniteBatchEmbedder{badText: "bad"}
+	p, err := New(nil, testChunker{}, embedder, store, PipelineOptions{})
+	if err != nil {
+		t.Fatalf("new pipeline: %v", err)
+	}
+
+	badHash := index.Hash("bad")
+	chunks := []index.Chunk{
+		{
+			ID:       uuid.New(),
+			Index:    0,
+			Title:    "first",
+			Text:     "alpha",
+			TextHash: index.Hash("alpha"),
+		},
+		{
+			ID:       uuid.New(),
+			Index:    1,
+			Title:    "bad chunk",
+			Text:     "bad",
+			TextHash: badHash,
+		},
+	}
+
+	err = p.embed(context.Background(), "test", chunks)
+	if err == nil {
+		t.Fatal("expected embed error")
+	}
+	for _, want := range []string{
+		"embed chunk index=1",
+		"title=\"bad chunk\"",
+		"text_hash=" + badHash,
+		"text_len=3",
+		"unsupported value: NaN",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("expected error to contain %q, got %s", want, err.Error())
+		}
+	}
+	if len(store.upserted) != 0 {
+		t.Fatalf("expected no upserted chunks on embed error, got %d", len(store.upserted))
+	}
 }
 
 func TestPipeline_UnchangedDoc(t *testing.T) {
