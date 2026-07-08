@@ -59,6 +59,7 @@ type AgentConfig struct {
 	MaxToolIterations     int
 	RequestTimeoutSeconds int
 	GatewayURL            string
+	MaxReportChars        int
 }
 
 // JiraConfig holds Jira REST API configuration for ingestion.
@@ -165,6 +166,7 @@ type fileAgentConfig struct {
 	MaxToolIterations     int    `yaml:"max_tool_iterations"`
 	RequestTimeoutSeconds int    `yaml:"request_timeout_seconds"`
 	GatewayURL            string `yaml:"gateway_url"`
+	MaxReportChars        int    `yaml:"max_report_chars"`
 }
 
 // ProxyConfig configures per-client HTTP proxies.
@@ -383,6 +385,7 @@ func defaultConfig() fileConfig {
 			Addr:                  ":8082",
 			MaxToolIterations:     8,
 			RequestTimeoutSeconds: 180,
+			MaxReportChars:        1500,
 		},
 	}
 }
@@ -547,6 +550,7 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			MaxToolIterations:     c.Agent.MaxToolIterations,
 			RequestTimeoutSeconds: c.Agent.RequestTimeoutSeconds,
 			GatewayURL:            c.Agent.GatewayURL,
+			MaxReportChars:        c.Agent.MaxReportChars,
 		},
 	}, nil
 }

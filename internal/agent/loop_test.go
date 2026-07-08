@@ -43,24 +43,36 @@ func (f *fakeToolSource) Call(ctx context.Context, name string, argsJSON json.Ra
 	return "tool success", nil
 }
 
+func toolCall(id, name, args string) openai.ChatCompletionMessageToolCallUnion {
+	return openai.ChatCompletionMessageToolCallUnion{
+		ID:   id,
+		Type: "function",
+		Function: openai.ChatCompletionMessageFunctionToolCallFunction{
+			Name:      name,
+			Arguments: args,
+		},
+	}
+}
+
+func submitReportCall(id string, r Report) openai.ChatCompletionMessageToolCallUnion {
+	args, err := json.Marshal(r)
+	if err != nil {
+		panic(err)
+	}
+	return toolCall(id, submitReportToolName, string(args))
+}
+
 func TestLoop_Run_HappyPath(t *testing.T) {
 	llm := &fakeLLM{
 		responses: []openai.ChatCompletionMessage{
 			{
-				Content: "Let me check.",
-				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{
-					{
-						ID:   "call_1",
-						Type: "function",
-						Function: openai.ChatCompletionMessageFunctionToolCallFunction{
-							Name:      "test_tool",
-							Arguments: `{"foo":"bar"}`,
-						},
-					},
-				},
+				Content:   "Let me check.",
+				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{toolCall("call_1", "test_tool", `{"foo":"bar"}`)},
 			},
 			{
-				Content: "The result is test_tool_result.",
+				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{
+					submitReportCall("call_2", Report{Problem: "test problem", Verdict: VerdictSolved, Findings: "the result is test_tool_result"}),
+				},
 			},
 		},
 	}
@@ -79,7 +91,7 @@ func TestLoop_Run_HappyPath(t *testing.T) {
 	loop := NewLoop(llm, ts, "test-model", 5, zaptest.NewLogger(t))
 	res, err := loop.Run(context.Background(), "system", "user")
 	require.NoError(t, err)
-	require.Equal(t, "The result is test_tool_result.", res.Report)
+	require.Equal(t, Report{Problem: "test problem", Verdict: VerdictSolved, Findings: "the result is test_tool_result"}, res.Report)
 	require.Equal(t, 2, res.Iterations)
 	require.Equal(t, 1, res.ToolsUsed)
 	require.Equal(t, []string{"test_tool"}, ts.calls)
@@ -89,30 +101,12 @@ func TestLoop_Run_MaxIterations(t *testing.T) {
 	llm := &fakeLLM{
 		responses: []openai.ChatCompletionMessage{
 			{
-				Content: "I'll try one.",
-				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{
-					{
-						ID:   "call_err",
-						Type: "function",
-						Function: openai.ChatCompletionMessageFunctionToolCallFunction{
-							Name:      "error_tool",
-							Arguments: "{}",
-						},
-					},
-				},
+				Content:   "I'll try one.",
+				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{toolCall("call_err", "error_tool", "{}")},
 			},
 			{
-				Content: "I'll try again.",
-				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{
-					{
-						ID:   "call_err2",
-						Type: "function",
-						Function: openai.ChatCompletionMessageFunctionToolCallFunction{
-							Name:      "error_tool",
-							Arguments: "{}",
-						},
-					},
-				},
+				Content:   "I'll try again.",
+				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{toolCall("call_err2", "error_tool", "{}")},
 			},
 		},
 	}
@@ -127,20 +121,13 @@ func TestLoop_Run_ToolError(t *testing.T) {
 	llm := &fakeLLM{
 		responses: []openai.ChatCompletionMessage{
 			{
-				Content: "Let me check.",
-				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{
-					{
-						ID:   "call_1",
-						Type: "function",
-						Function: openai.ChatCompletionMessageFunctionToolCallFunction{
-							Name:      "error_tool",
-							Arguments: `{}`,
-						},
-					},
-				},
+				Content:   "Let me check.",
+				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{toolCall("call_1", "error_tool", `{}`)},
 			},
 			{
-				Content: "The tool failed, moving on.",
+				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{
+					submitReportCall("call_2", Report{Problem: "p", Verdict: VerdictNeedsInvestigation, Findings: "the tool failed, moving on"}),
+				},
 			},
 		},
 	}
@@ -149,17 +136,40 @@ func TestLoop_Run_ToolError(t *testing.T) {
 	loop := NewLoop(llm, ts, "test-model", 5, zaptest.NewLogger(t))
 	res, err := loop.Run(context.Background(), "system", "user")
 	require.NoError(t, err)
-	require.Equal(t, "The tool failed, moving on.", res.Report)
+	require.Equal(t, "the tool failed, moving on", res.Report.Findings)
 	require.Equal(t, 2, res.Iterations)
 	require.Equal(t, 1, res.ToolsUsed)
 	require.Equal(t, []string{"error_tool"}, ts.calls)
 }
 
-func TestLoop_Run_ZeroTools(t *testing.T) {
+func TestLoop_Run_NoToolCalls(t *testing.T) {
+	llm := &fakeLLM{
+		responses: []openai.ChatCompletionMessage{
+			{Content: "I already know the answer."},
+		},
+	}
+	ts := &fakeToolSource{}
+
+	loop := NewLoop(llm, ts, "test-model", 5, zaptest.NewLogger(t))
+	res, err := loop.Run(context.Background(), "system", "user")
+	require.NoError(t, err)
+	require.Equal(t, "I already know the answer.", res.Report.Findings)
+	require.Equal(t, VerdictNeedsInvestigation, res.Report.Verdict)
+	require.Equal(t, 1, res.Iterations)
+	require.Equal(t, 0, res.ToolsUsed)
+	require.Empty(t, ts.calls)
+}
+
+func TestLoop_Run_ActionsStrippedWhenOutOfScope(t *testing.T) {
 	llm := &fakeLLM{
 		responses: []openai.ChatCompletionMessage{
 			{
-				Content: "I already know the answer.",
+				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{
+					submitReportCall("call_1", Report{
+						Problem: "not ours", Verdict: VerdictOutOfScope,
+						Actions: []string{"page the other team"},
+					}),
+				},
 			},
 		},
 	}
@@ -168,8 +178,32 @@ func TestLoop_Run_ZeroTools(t *testing.T) {
 	loop := NewLoop(llm, ts, "test-model", 5, zaptest.NewLogger(t))
 	res, err := loop.Run(context.Background(), "system", "user")
 	require.NoError(t, err)
-	require.Equal(t, "I already know the answer.", res.Report)
-	require.Equal(t, 1, res.Iterations)
-	require.Equal(t, 0, res.ToolsUsed)
-	require.Empty(t, ts.calls)
+	require.Equal(t, VerdictOutOfScope, res.Report.Verdict)
+	require.Empty(t, res.Report.Actions)
+}
+
+func TestLoop_Shorten(t *testing.T) {
+	llm := &fakeLLM{
+		responses: []openai.ChatCompletionMessage{
+			{
+				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{
+					submitReportCall("call_1", Report{Problem: "p", Verdict: VerdictSolved, Findings: "a very long finding indeed"}),
+				},
+			},
+			{
+				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{
+					submitReportCall("call_2", Report{Problem: "p", Verdict: VerdictSolved, Findings: "short"}),
+				},
+			},
+		},
+	}
+	ts := &fakeToolSource{}
+
+	loop := NewLoop(llm, ts, "test-model", 5, zaptest.NewLogger(t))
+	res, err := loop.Run(context.Background(), "system", "user")
+	require.NoError(t, err)
+
+	shortened, err := loop.Shorten(context.Background(), res, 10)
+	require.NoError(t, err)
+	require.Equal(t, "short", shortened.Report.Findings)
 }

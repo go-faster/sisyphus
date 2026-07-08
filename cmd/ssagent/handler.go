@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/go-faster/errors"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/go-faster/sisyphus/internal/agent"
@@ -17,9 +20,14 @@ type InvestigateRequest struct {
 }
 
 type InvestigateResponse struct {
-	Report     string `json:"report"`
-	Iterations int    `json:"iterations"`
-	ToolsUsed  int    `json:"tools_used"`
+	Problem    string        `json:"problem"`
+	Steps      []string      `json:"steps,omitempty"`
+	Verdict    agent.Verdict `json:"verdict"`
+	Findings   string        `json:"findings,omitempty"`
+	Sources    []string      `json:"sources,omitempty"`
+	Actions    []string      `json:"actions,omitempty"`
+	Iterations int           `json:"iterations"`
+	ToolsUsed  int           `json:"tools_used"`
 }
 
 type ErrorResponse struct {
@@ -32,7 +40,7 @@ func sendError(w http.ResponseWriter, statusCode int, err error) {
 	_ = json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 }
 
-func handleInvestigate(inv agent.Investigator, timeout time.Duration, logger *zap.Logger) http.HandlerFunc {
+func handleInvestigate(inv agent.Investigator, timeout time.Duration, tracer trace.Tracer, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			sendError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
@@ -53,16 +61,34 @@ func handleInvestigate(inv agent.Investigator, timeout time.Duration, logger *za
 		ctx, cancel := context.WithTimeout(r.Context(), timeout)
 		defer cancel()
 
+		ctx, span := tracer.Start(ctx, "ssagent.investigate",
+			trace.WithAttributes(attribute.Int("description.length", len(req.Description))),
+		)
+		defer span.End()
+
 		res, err := inv.Investigate(ctx, req.Description)
 		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
 			logger.Error("investigation failed", zap.Error(err))
 			sendError(w, http.StatusInternalServerError, errors.Wrap(err, "investigate"))
 			return
 		}
+		span.SetAttributes(
+			attribute.String("verdict", string(res.Report.Verdict)),
+			attribute.Int("iterations", res.Iterations),
+			attribute.Int("tools_used", res.ToolsUsed),
+			attribute.Int("report.chars", res.Report.CharLen()),
+		)
 
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(InvestigateResponse{
-			Report:     res.Report,
+			Problem:    res.Report.Problem,
+			Steps:      res.Report.Steps,
+			Verdict:    res.Report.Verdict,
+			Findings:   res.Report.Findings,
+			Sources:    res.Report.Sources,
+			Actions:    res.Report.Actions,
 			Iterations: res.Iterations,
 			ToolsUsed:  res.ToolsUsed,
 		}); err != nil {

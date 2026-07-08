@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-faster/errors"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap/zaptest"
 
 	"github.com/go-faster/sisyphus/internal/agent"
@@ -44,12 +45,17 @@ func TestHandleInvestigate(t *testing.T) {
 			authHeader: "Bearer secret",
 			setupInv: func() *fakeInvestigator {
 				return &fakeInvestigator{
-					res: agent.Result{Report: "all good", Iterations: 2, ToolsUsed: 1},
+					res: agent.Result{
+						Report:     agent.Report{Problem: "all good", Verdict: agent.VerdictSolved},
+						Iterations: 2,
+						ToolsUsed:  1,
+					},
 				}
 			},
 			expectedCode: http.StatusOK,
 			expectedBody: map[string]any{
-				"report":     "all good",
+				"problem":    "all good",
+				"verdict":    "solved",
 				"iterations": float64(2),
 				"tools_used": float64(1),
 			},
@@ -100,7 +106,7 @@ func TestHandleInvestigate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			inv := tt.setupInv()
-			handler := mcpserver.BearerAuthMiddleware("secret")(handleInvestigate(inv, 5*time.Second, logger))
+			handler := mcpserver.BearerAuthMiddleware("secret")(handleInvestigate(inv, 5*time.Second, noop.NewTracerProvider().Tracer(""), logger))
 
 			var body []byte
 			if tt.reqBody != nil {

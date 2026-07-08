@@ -19,7 +19,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/mcpserver"
 )
 
-func run(ctx context.Context, lg *zap.Logger, _ *app.Telemetry) error {
+func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry) error {
 	ctx = zctx.Base(ctx, lg)
 	cfg, err := config.Load()
 	if err != nil {
@@ -51,7 +51,7 @@ func run(ctx context.Context, lg *zap.Logger, _ *app.Telemetry) error {
 		model = cfg.OpenRouter.Model
 	}
 
-	inv := agent.NewInvestigator(llm, mClient, model, cfg.Agent.MaxToolIterations, lg)
+	inv := agent.NewInvestigator(llm, mClient, model, cfg.Agent.MaxToolIterations, cfg.Agent.MaxReportChars, lg)
 
 	mux := http.NewServeMux()
 	mcpserver.InstallHealth(mux, "ssagent", mClient)
@@ -61,7 +61,8 @@ func run(ctx context.Context, lg *zap.Logger, _ *app.Telemetry) error {
 		timeout = 3 * time.Minute
 	}
 
-	mux.Handle("/investigate", mcpserver.BearerAuthMiddleware(cfg.Agent.AuthToken)(handleInvestigate(inv, timeout, lg)))
+	tracer := telemetry.TracerProvider().Tracer("github.com/go-faster/sisyphus/ssagent")
+	mux.Handle("/investigate", mcpserver.BearerAuthMiddleware(cfg.Agent.AuthToken)(handleInvestigate(inv, timeout, tracer, lg)))
 
 	srv := &http.Server{
 		Addr:              cfg.Agent.Addr,

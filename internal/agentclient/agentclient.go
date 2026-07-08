@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/go-faster/errors"
+
+	"github.com/go-faster/sisyphus/internal/agent"
 )
 
 // Client wraps HTTP requests to ssagent.
@@ -35,15 +37,15 @@ func New(opts Options) *Client {
 }
 
 // Investigate calls the ssagent /investigate endpoint.
-func (c *Client) Investigate(ctx context.Context, description string) (string, error) {
+func (c *Client) Investigate(ctx context.Context, description string) (agent.Report, error) {
 	reqBody, err := json.Marshal(map[string]string{"description": description})
 	if err != nil {
-		return "", errors.Wrap(err, "marshal request")
+		return agent.Report{}, errors.Wrap(err, "marshal request")
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url+"/investigate", bytes.NewReader(reqBody))
 	if err != nil {
-		return "", errors.Wrap(err, "new request")
+		return agent.Report{}, errors.Wrap(err, "new request")
 	}
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
@@ -51,23 +53,21 @@ func (c *Client) Investigate(ctx context.Context, description string) (string, e
 
 	res, err := c.http.Do(req)
 	if err != nil {
-		return "", errors.Wrap(err, "do request")
+		return agent.Report{}, errors.Wrap(err, "do request")
 	}
 	defer func() { _ = res.Body.Close() }()
 
 	if res.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(res.Body)
-		return "", errors.Errorf("unexpected status %d: %s", res.StatusCode, string(body))
+		return agent.Report{}, errors.Errorf("unexpected status %d: %s", res.StatusCode, string(body))
 	}
 
-	var resp struct {
-		Report string `json:"report"`
-	}
+	var resp agent.Report
 	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
-		return "", errors.Wrap(err, "decode response")
+		return agent.Report{}, errors.Wrap(err, "decode response")
 	}
 
-	return resp.Report, nil
+	return resp, nil
 }
 
 // CheckHealth checks the ssagent health endpoint.

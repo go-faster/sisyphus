@@ -77,12 +77,12 @@ func (m *botMetrics) recordContext(ctx context.Context, durSeconds float64, resu
 	}
 }
 
-func (m *botMetrics) recordInvestigate(ctx context.Context, durSeconds float64, err error) {
+func (m *botMetrics) recordInvestigate(ctx context.Context, durSeconds float64, verdict string, err error) {
 	status := "ok"
 	if err != nil {
 		status = "error"
 	}
-	attrs := metric.WithAttributes(attribute.String("status", status))
+	attrs := metric.WithAttributes(attribute.String("status", status), attribute.String("verdict", verdict))
 	m.investigateReqs.Add(ctx, 1, attrs)
 	m.investigateDur.Record(ctx, durSeconds, attrs)
 }

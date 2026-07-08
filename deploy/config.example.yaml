@@ -129,3 +129,6 @@ agent:
   max_tool_iterations: 8
   request_timeout_seconds: 180
   gateway_url: http://mcpgateway:8090/mcp
+  # Character budget for the assembled report; if the model's first
+  # submit_report exceeds this, it's asked once to resubmit a shorter one.
+  max_report_chars: 1500

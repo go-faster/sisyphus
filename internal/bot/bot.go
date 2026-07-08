@@ -13,6 +13,8 @@ import (
 	"github.com/gotd/log/logzap"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/message"
+	"github.com/gotd/td/telegram/message/entity"
+	"github.com/gotd/td/telegram/message/styling"
 	"github.com/gotd/td/tg"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -21,6 +23,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/go-faster/sisyphus/internal/agent"
 	"github.com/go-faster/sisyphus/internal/index"
 	"github.com/go-faster/sisyphus/internal/telemetry"
 )
@@ -38,7 +41,7 @@ type Retriever interface {
 
 // Investigator is the interface for running on-demand investigations.
 type Investigator interface {
-	Investigate(ctx context.Context, description string) (string, error)
+	Investigate(ctx context.Context, description string) (agent.Report, error)
 }
 
 // BotCredentials contains the credentials needed to run the bot.
@@ -299,33 +302,51 @@ func (b *Bot) handle(ctx context.Context, query string) (string, error) {
 }
 
 // investigateAsync runs an investigation in the background and delivers the
-// report as a follow-up reply, so the caller (the OnNewMessage dispatch loop)
-// never blocks on it.
+// report as one or more follow-up replies (Telegram caps a single message at
+// telegramMessageLimit characters), so the caller (the OnNewMessage dispatch
+// loop) never blocks on it.
 func (b *Bot) investigateAsync(ctx context.Context, sender *message.Sender, e tg.Entities, u *tg.UpdateNewMessage, description string) {
-	answer, err := b.handleInvestigate(ctx, description)
+	report, err := b.handleInvestigate(ctx, description)
 	if err != nil {
 		b.logger.Error("handle investigate", zap.Error(err))
-		answer = "Sorry, investigation failed."
+		if !b.silent {
+			if _, err := sender.Reply(e, u).Text(ctx, "Sorry, investigation failed."); err != nil {
+				b.logger.Error("investigate follow-up reply failed", zap.Error(err))
+			}
+		}
+		return
 	}
-	b.logger.Info("investigate reply", zap.String("answer", answer))
+	b.logger.Info("investigate reply", zap.String("verdict", string(report.Verdict)))
 	if b.silent {
 		return
 	}
-	if _, err := sender.Reply(e, u).Text(ctx, answer); err != nil {
-		b.logger.Error("investigate follow-up reply failed", zap.Error(err))
+
+	chunks := splitMarkdown(reportMarkdown(report), telegramMessageLimit)
+	for _, chunk := range chunks {
+		md := chunk
+		if _, err := sender.Reply(e, u).StyledText(ctx, styling.Custom(func(eb *entity.Builder) error {
+			return renderMarkdown(eb, md)
+		})); err != nil {
+			b.logger.Error("investigate follow-up reply failed", zap.Error(err))
+			return
+		}
 	}
 }
 
-func (b *Bot) handleInvestigate(ctx context.Context, description string) (string, error) {
+func (b *Bot) handleInvestigate(ctx context.Context, description string) (agent.Report, error) {
 	start := time.Now()
 	ctx, span := b.tracer.Start(ctx, "bot.investigate",
 		trace.WithAttributes(attribute.Int("description.length", len(description))),
 	)
-	var rerr error
+	var (
+		report agent.Report
+		rerr   error
+	)
 	defer func() {
 		if b.metrics != nil {
-			b.metrics.recordInvestigate(ctx, time.Since(start).Seconds(), rerr)
+			b.metrics.recordInvestigate(ctx, time.Since(start).Seconds(), string(report.Verdict), rerr)
 		}
+		span.SetAttributes(attribute.String("verdict", string(report.Verdict)))
 		if rerr != nil {
 			span.RecordError(rerr)
 			span.SetStatus(codes.Error, rerr.Error())
@@ -336,7 +357,7 @@ func (b *Bot) handleInvestigate(ctx context.Context, description string) (string
 	report, err := b.investigator.Investigate(ctx, description)
 	if err != nil {
 		rerr = errors.Wrap(err, "investigate")
-		return "", rerr
+		return agent.Report{}, rerr
 	}
 	return report, nil
 }
