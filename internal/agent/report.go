@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"unicode/utf8"
 
 	"github.com/go-faster/errors"
 	"github.com/openai/openai-go/v3"
@@ -60,18 +61,20 @@ func (r Report) normalize() Report {
 	return r
 }
 
-// CharLen returns the total character count across all fields, used to
-// decide whether a report needs to be asked to shorten itself.
+// CharLen returns the total character (rune) count across all fields, used
+// to decide whether a report needs to be asked to shorten itself. Counting
+// runes rather than bytes matters for non-ASCII text (e.g. Cyrillic), where
+// len() would count roughly double the actual character count.
 func (r Report) CharLen() int {
-	n := len(r.Problem) + len(r.Findings)
+	n := utf8.RuneCountInString(r.Problem) + utf8.RuneCountInString(r.Findings)
 	for _, s := range r.Steps {
-		n += len(s)
+		n += utf8.RuneCountInString(s)
 	}
 	for _, s := range r.Sources {
-		n += len(s)
+		n += utf8.RuneCountInString(s)
 	}
 	for _, s := range r.Actions {
-		n += len(s)
+		n += utf8.RuneCountInString(s)
 	}
 	return n
 }
