@@ -2,6 +2,8 @@
 
 Internal support/dev assistant that ingests knowledge sources into Postgres full-text search and Qdrant vectors, then answers questions through the Telegram bot or MCP server.
 
+Detailed setup docs live in [`docs/setup.md`](docs/setup.md). Webhook setup lives in [`docs/webhooks.md`](docs/webhooks.md).
+
 Sources supported by `ssingest`:
 
 - Git repository Markdown docs and optional commit messages.

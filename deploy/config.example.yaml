@@ -58,6 +58,10 @@ gitlab:
   issues: true
   merge_requests: true
   releases: true
+  webhook:
+    enabled: false
+    secret:
+      env: SISYPHUS_GITLAB_WEBHOOK_SECRET
 
 # context_files: additional local file sets to index as curated context.
 # Include/exclude are doublestar globs over paths relative to root.
@@ -91,7 +95,11 @@ jira:
     env: SISYPHUS_JIRA_PASSWORD
   pat:
     env: SISYPHUS_JIRA_PAT
-  projects: ""
+  projects: []
+  webhook:
+    enabled: false
+    secret:
+      env: SISYPHUS_JIRA_WEBHOOK_SECRET
 
 openrouter:
   api_key:
