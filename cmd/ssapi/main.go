@@ -19,6 +19,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/httpmw"
 	"github.com/go-faster/sisyphus/internal/mcpserver"
 	"github.com/go-faster/sisyphus/internal/oas"
+	"github.com/go-faster/sisyphus/internal/webhook"
 	"github.com/go-faster/sisyphus/internal/wire"
 )
 
@@ -75,13 +76,48 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 	if err != nil {
 		return errors.Wrap(err, "oas server")
 	}
+
+	trigger := webhook.NewTrigger(ctx, webhook.TriggerOptions{
+		Logger: lg,
+	})
+
+	if comp.DB != nil {
+		worker := webhook.NewWorker(comp.DB, comp.Vectors, comp.Embedder, cfg, webhook.WorkerOptions{
+			Logger:         lg,
+			TracerProvider: tp,
+			MeterProvider:  mp,
+		})
+		trigger.Register("gitlab", worker.RunGitLab)
+		trigger.Register("jira", worker.RunJira)
+	}
+
 	mux := http.NewServeMux()
 	mcpserver.InstallHealth(mux, "0.1.0", comp.Health)
+
+	if cfg.GitLab.WebhookEnabled && cfg.GitLab.WebhookSecret != "" {
+		mux.Handle("POST /webhooks/gitlab", webhook.NewGitLabHandler(cfg.GitLab.WebhookSecret, trigger))
+		lg.Info("gitlab webhook enabled", zap.String("path", "/webhooks/gitlab"))
+	} else {
+		lg.Warn("gitlab webhook disabled", zap.Bool("enabled", cfg.GitLab.WebhookEnabled), zap.Bool("has_secret", cfg.GitLab.WebhookSecret != ""))
+	}
+	if cfg.Jira.WebhookEnabled && cfg.Jira.WebhookSecret != "" {
+		mux.Handle("POST /webhooks/jira", webhook.NewJiraHandler(cfg.Jira.WebhookSecret, trigger))
+		lg.Info("jira webhook enabled", zap.String("path", "/webhooks/jira"))
+	} else {
+		lg.Warn("jira webhook disabled", zap.Bool("enabled", cfg.Jira.WebhookEnabled), zap.Bool("has_secret", cfg.Jira.WebhookSecret != ""))
+	}
+
 	mux.Handle("/", oasSrv)
 	httpSrv := &http.Server{
 		Addr:              cfg.API.HTTPAddr,
 		Handler:           httpmw.Wrap(lg, mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	return httpmw.Serve(ctx, lg, "http", httpSrv)
+
+	err = httpmw.Serve(ctx, lg, "http", httpSrv)
+
+	lg.Info("waiting for in-flight webhook jobs to drain")
+	trigger.Wait()
+
+	return err
 }

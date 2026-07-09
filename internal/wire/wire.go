@@ -65,6 +65,10 @@ func (s *Services) Close() {
 
 // Components holds the wired services for retrieval and answering.
 type Components struct {
+	DB       *ent.Client
+	Embedder index.Embedder
+	Vectors  pipeline.VectorStore
+
 	Retriever Retriever
 	Answerer  index.Answerer
 	Answers   *pipeline.Pipeline
@@ -232,6 +236,9 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 	}
 
 	return Components{
+		DB:        svcs.DB,
+		Embedder:  svcs.Embedder,
+		Vectors:   svcs.Vectors,
 		Retriever: retr,
 		Answerer:  answerer,
 		Answers:   answerPipe,

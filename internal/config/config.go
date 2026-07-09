@@ -71,6 +71,9 @@ type JiraConfig struct {
 	Password string
 	PAT      string
 	Projects []JiraProject
+
+	WebhookSecret  string
+	WebhookEnabled bool
 }
 
 // JiraProject describes one Jira project to ingest.
@@ -194,6 +197,11 @@ type fileJiraConfig struct {
 	Password Secret        `yaml:"password"`
 	PAT      Secret        `yaml:"pat"`
 	Projects []JiraProject `yaml:"projects"`
+
+	Webhook struct {
+		Enabled bool   `yaml:"enabled"`
+		Secret  Secret `yaml:"secret"`
+	} `yaml:"webhook"`
 }
 
 type fileAPIConfig struct {
@@ -260,6 +268,9 @@ type GitLabConfig struct {
 	Issues        bool
 	MergeRequests bool
 	Releases      bool
+
+	WebhookSecret  string
+	WebhookEnabled bool
 }
 
 // GitLabProject describes one GitLab project to ingest by numeric ID or path.
@@ -274,6 +285,11 @@ type fileGitLabConfig struct {
 	Issues        bool            `yaml:"issues"`
 	MergeRequests bool            `yaml:"merge_requests"`
 	Releases      bool            `yaml:"releases"`
+
+	Webhook struct {
+		Enabled bool   `yaml:"enabled"`
+		Secret  Secret `yaml:"secret"`
+	} `yaml:"webhook"`
 }
 
 type fileOpenRouter struct {
@@ -451,6 +467,10 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 	if err != nil {
 		return Config{}, errors.Wrap(err, "jira pat")
 	}
+	jiraWebhookSecret, err := c.Jira.Webhook.Secret.Resolve(baseDir)
+	if err != nil {
+		return Config{}, errors.Wrap(err, "jira webhook secret")
+	}
 	gitToken, err := c.Git.Token.Resolve(baseDir)
 	if err != nil {
 		return Config{}, errors.Wrap(err, "git token")
@@ -458,6 +478,10 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 	gitlabToken, err := c.GitLab.Token.Resolve(baseDir)
 	if err != nil {
 		return Config{}, errors.Wrap(err, "gitlab token")
+	}
+	gitlabWebhookSecret, err := c.GitLab.Webhook.Secret.Resolve(baseDir)
+	if err != nil {
+		return Config{}, errors.Wrap(err, "gitlab webhook secret")
 	}
 	openRouterKey, err := c.OpenRouter.APIKey.Resolve(baseDir)
 	if err != nil {
@@ -499,21 +523,25 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 		},
 		ContextFiles: c.ContextFiles,
 		GitLab: GitLabConfig{
-			BaseURL:       c.GitLab.BaseURL,
-			Token:         gitlabToken,
-			Projects:      c.GitLab.Projects,
-			Issues:        c.GitLab.Issues,
-			MergeRequests: c.GitLab.MergeRequests,
-			Releases:      c.GitLab.Releases,
+			BaseURL:        c.GitLab.BaseURL,
+			Token:          gitlabToken,
+			Projects:       c.GitLab.Projects,
+			Issues:         c.GitLab.Issues,
+			MergeRequests:  c.GitLab.MergeRequests,
+			Releases:       c.GitLab.Releases,
+			WebhookSecret:  gitlabWebhookSecret,
+			WebhookEnabled: c.GitLab.Webhook.Enabled,
 		},
 		Jira: JiraConfig{
-			BaseURL:  c.Jira.BaseURL,
-			Email:    c.Jira.Email,
-			Username: jiraUsername,
-			APIToken: jiraToken,
-			Password: jiraPassword,
-			PAT:      jiraPAT,
-			Projects: c.Jira.Projects,
+			BaseURL:        c.Jira.BaseURL,
+			Email:          c.Jira.Email,
+			Username:       jiraUsername,
+			APIToken:       jiraToken,
+			Password:       jiraPassword,
+			PAT:            jiraPAT,
+			Projects:       c.Jira.Projects,
+			WebhookSecret:  jiraWebhookSecret,
+			WebhookEnabled: c.Jira.Webhook.Enabled,
 		},
 		API: APIConfig{
 			HTTPAddr:  httpAddr,
