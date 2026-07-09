@@ -19,10 +19,12 @@ func NewGitLabHandler(secret string, trigger *Trigger) http.Handler {
 		if secret != "" {
 			token := r.Header.Get(gitlabHeader)
 			if subtle.ConstantTimeCompare([]byte(token), []byte(secret)) != 1 {
+				trigger.metrics.recordRequest(r.Context(), "gitlab", "unauthorized")
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
 		}
+		trigger.metrics.recordRequest(r.Context(), "gitlab", "accepted")
 		trigger.Fire("gitlab")
 		w.WriteHeader(http.StatusAccepted)
 	})
@@ -36,10 +38,12 @@ func NewJiraHandler(secret string, trigger *Trigger) http.Handler {
 		if secret != "" {
 			token := r.Header.Get(jiraHeader)
 			if subtle.ConstantTimeCompare([]byte(token), []byte(secret)) != 1 {
+				trigger.metrics.recordRequest(r.Context(), "jira", "unauthorized")
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
 		}
+		trigger.metrics.recordRequest(r.Context(), "jira", "accepted")
 		trigger.Fire("jira")
 		w.WriteHeader(http.StatusAccepted)
 	})

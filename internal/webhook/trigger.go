@@ -6,15 +6,18 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
 // entry tracks the debounce state for a single trigger key.
 type entry struct {
-	key string
-	fn  func(context.Context) error
-	lg  *zap.Logger
-	ctx context.Context
+	key     string
+	fn      func(context.Context) error
+	lg      *zap.Logger
+	ctx     context.Context
+	metrics *metrics
 
 	mu      sync.Mutex
 	cond    *sync.Cond
@@ -27,8 +30,9 @@ type entry struct {
 
 // TriggerOptions configures the debounce trigger.
 type TriggerOptions struct {
-	Logger *zap.Logger
-	Window time.Duration
+	Logger        *zap.Logger
+	Window        time.Duration
+	MeterProvider metric.MeterProvider
 }
 
 func (opts *TriggerOptions) setDefaults() {
@@ -38,30 +42,42 @@ func (opts *TriggerOptions) setDefaults() {
 	if opts.Window == 0 {
 		opts.Window = 10 * time.Second
 	}
+	if opts.MeterProvider == nil {
+		opts.MeterProvider = otel.GetMeterProvider()
+	}
 }
 
 // Trigger manages debounced execution of named functions. Fire(key) coalesces
 // multiple calls into a single execution after Window; if Fire is called while
 // the function is still running, it marks dirty and runs once more after completion.
 type Trigger struct {
-	mu     sync.Mutex
-	byKey  map[string]*entry
-	window time.Duration
-	lg     *zap.Logger
-	ctx    context.Context
+	mu      sync.Mutex
+	byKey   map[string]*entry
+	window  time.Duration
+	lg      *zap.Logger
+	ctx     context.Context
+	metrics *metrics
 }
 
-// NewTrigger creates a new debounce Trigger.
+// NewTrigger creates a new debounce Trigger. Falls back to a no-op Trigger
+// (metrics disabled) if instrument creation fails, since a metrics setup
+// error should not block ingestion triggers from working.
 func NewTrigger(ctx context.Context, opts TriggerOptions) *Trigger {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	opts.setDefaults()
+	m, err := newMetrics(opts.MeterProvider)
+	if err != nil {
+		opts.Logger.Warn("webhook metrics setup failed, metrics disabled", zap.Error(err))
+		m = nil
+	}
 	return &Trigger{
-		byKey:  make(map[string]*entry),
-		window: opts.Window,
-		lg:     opts.Logger,
-		ctx:    ctx,
+		byKey:   make(map[string]*entry),
+		window:  opts.Window,
+		lg:      opts.Logger,
+		ctx:     ctx,
+		metrics: m,
 	}
 }
 
@@ -70,10 +86,11 @@ func (t *Trigger) Register(key string, fn func(context.Context) error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	e := &entry{
-		key: key,
-		fn:  fn,
-		lg:  t.lg.With(zap.String("trigger", key)),
-		ctx: t.ctx,
+		key:     key,
+		fn:      fn,
+		lg:      t.lg.With(zap.String("trigger", key)),
+		ctx:     t.ctx,
+		metrics: t.metrics,
 	}
 	e.cond = sync.NewCond(&e.mu)
 	t.byKey[key] = e
@@ -91,6 +108,7 @@ func (t *Trigger) Fire(key string) {
 	}
 
 	e.lg.Debug("fire received")
+	t.metrics.recordFire(t.ctx, key)
 
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -133,7 +151,10 @@ func (e *entry) doRun() {
 	for {
 		e.lg.Info("trigger fired, running ingestion")
 
-		if err := e.fn(e.ctx); err != nil {
+		start := time.Now()
+		err := e.fn(e.ctx)
+		e.metrics.recordRun(e.ctx, e.key, time.Since(start).Seconds(), err)
+		if err != nil {
 			e.lg.Error("trigger execution failed", zap.Error(err))
 		}
 

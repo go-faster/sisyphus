@@ -100,11 +100,11 @@ curl -sS http://localhost:18079/search \
   -d '{"query":"deployment runbook","limit":5}'
 ```
 
-## Webhooks
+## Webhooks and Polling
 
-Webhooks are optional and live on `ssapi`. They trigger regular incremental ingestion with debounce; they do not store webhook events.
+Webhooks and polling are optional and live on `ssapi`. Both trigger regular incremental ingestion through the same debounced trigger; webhooks are event-driven, polling is timer-driven, and neither stores webhook events.
 
-See [webhooks.md](webhooks.md) for provider setup and endpoint details.
+See [webhooks.md](webhooks.md) for provider setup, polling config, and endpoint details.
 
 ## Development Checks
 

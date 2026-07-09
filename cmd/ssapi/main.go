@@ -78,9 +78,11 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 	}
 
 	trigger := webhook.NewTrigger(ctx, webhook.TriggerOptions{
-		Logger: lg,
+		Logger:        lg,
+		MeterProvider: mp,
 	})
 
+	poller := webhook.NewPoller(trigger, lg)
 	if comp.DB != nil {
 		worker := webhook.NewWorker(comp.DB, comp.Vectors, comp.Embedder, cfg, webhook.WorkerOptions{
 			Logger:         lg,
@@ -89,6 +91,9 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 		})
 		trigger.Register("gitlab", worker.RunGitLab)
 		trigger.Register("jira", worker.RunJira)
+
+		poller.Start(ctx, "gitlab", time.Duration(cfg.GitLab.PollIntervalSeconds)*time.Second)
+		poller.Start(ctx, "jira", time.Duration(cfg.Jira.PollIntervalSeconds)*time.Second)
 	}
 
 	mux := http.NewServeMux()
@@ -116,7 +121,8 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 
 	err = httpmw.Serve(ctx, lg, "http", httpSrv)
 
-	lg.Info("waiting for in-flight webhook jobs to drain")
+	lg.Info("waiting for in-flight ingestion jobs to drain")
+	poller.Wait()
 	trigger.Wait()
 
 	return err

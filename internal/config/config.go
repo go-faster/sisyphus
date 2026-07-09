@@ -74,6 +74,10 @@ type JiraConfig struct {
 
 	WebhookSecret  string
 	WebhookEnabled bool
+
+	// PollIntervalSeconds, if > 0, runs incremental Jira ingestion on a timer
+	// in addition to (or instead of) webhooks. 0 disables polling.
+	PollIntervalSeconds int
 }
 
 // JiraProject describes one Jira project to ingest.
@@ -202,6 +206,12 @@ type fileJiraConfig struct {
 		Enabled bool   `yaml:"enabled"`
 		Secret  Secret `yaml:"secret"`
 	} `yaml:"webhook"`
+
+	// Poll runs incremental ingestion on a timer, as a supplement or
+	// fallback to webhooks. IntervalSeconds <= 0 disables polling.
+	Poll struct {
+		IntervalSeconds int `yaml:"interval_seconds"`
+	} `yaml:"poll"`
 }
 
 type fileAPIConfig struct {
@@ -271,6 +281,10 @@ type GitLabConfig struct {
 
 	WebhookSecret  string
 	WebhookEnabled bool
+
+	// PollIntervalSeconds, if > 0, runs incremental GitLab ingestion on a
+	// timer in addition to (or instead of) webhooks. 0 disables polling.
+	PollIntervalSeconds int
 }
 
 // GitLabProject describes one GitLab project to ingest by numeric ID or path.
@@ -290,6 +304,13 @@ type fileGitLabConfig struct {
 		Enabled bool   `yaml:"enabled"`
 		Secret  Secret `yaml:"secret"`
 	} `yaml:"webhook"`
+
+	// Poll runs incremental ingestion on a timer, as a supplement or
+	// fallback to webhooks (e.g. GitLab instance can't reach us, or webhooks
+	// aren't configured). IntervalSeconds <= 0 disables polling.
+	Poll struct {
+		IntervalSeconds int `yaml:"interval_seconds"`
+	} `yaml:"poll"`
 }
 
 type fileOpenRouter struct {
@@ -523,25 +544,27 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 		},
 		ContextFiles: c.ContextFiles,
 		GitLab: GitLabConfig{
-			BaseURL:        c.GitLab.BaseURL,
-			Token:          gitlabToken,
-			Projects:       c.GitLab.Projects,
-			Issues:         c.GitLab.Issues,
-			MergeRequests:  c.GitLab.MergeRequests,
-			Releases:       c.GitLab.Releases,
-			WebhookSecret:  gitlabWebhookSecret,
-			WebhookEnabled: c.GitLab.Webhook.Enabled,
+			BaseURL:             c.GitLab.BaseURL,
+			Token:               gitlabToken,
+			Projects:            c.GitLab.Projects,
+			Issues:              c.GitLab.Issues,
+			MergeRequests:       c.GitLab.MergeRequests,
+			Releases:            c.GitLab.Releases,
+			WebhookSecret:       gitlabWebhookSecret,
+			WebhookEnabled:      c.GitLab.Webhook.Enabled,
+			PollIntervalSeconds: c.GitLab.Poll.IntervalSeconds,
 		},
 		Jira: JiraConfig{
-			BaseURL:        c.Jira.BaseURL,
-			Email:          c.Jira.Email,
-			Username:       jiraUsername,
-			APIToken:       jiraToken,
-			Password:       jiraPassword,
-			PAT:            jiraPAT,
-			Projects:       c.Jira.Projects,
-			WebhookSecret:  jiraWebhookSecret,
-			WebhookEnabled: c.Jira.Webhook.Enabled,
+			BaseURL:             c.Jira.BaseURL,
+			Email:               c.Jira.Email,
+			Username:            jiraUsername,
+			APIToken:            jiraToken,
+			Password:            jiraPassword,
+			PAT:                 jiraPAT,
+			Projects:            c.Jira.Projects,
+			WebhookSecret:       jiraWebhookSecret,
+			WebhookEnabled:      c.Jira.Webhook.Enabled,
+			PollIntervalSeconds: c.Jira.Poll.IntervalSeconds,
 		},
 		API: APIConfig{
 			HTTPAddr:  httpAddr,

@@ -62,6 +62,10 @@ gitlab:
     enabled: false
     secret:
       env: SISYPHUS_GITLAB_WEBHOOK_SECRET
+  # poll: incremental ingestion on a timer, as a supplement or fallback to
+  # webhooks (e.g. GitLab instance can't reach us). 0 disables polling.
+  poll:
+    interval_seconds: 300
 
 # context_files: additional local file sets to index as curated context.
 # Include/exclude are doublestar globs over paths relative to root.
@@ -100,6 +104,10 @@ jira:
     enabled: false
     secret:
       env: SISYPHUS_JIRA_WEBHOOK_SECRET
+  # poll: incremental ingestion on a timer, as a supplement or fallback to
+  # webhooks. 0 disables polling.
+  poll:
+    interval_seconds: 300
 
 openrouter:
   api_key:
