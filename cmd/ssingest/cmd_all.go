@@ -142,7 +142,7 @@ func newAllCmd(deps *ingestDeps) *cobra.Command {
 					return errors.Wrap(err, "build telegram pipeline")
 				}
 				doReset := resetFlag == "all" || resetFlag == "telegram"
-				if err := r.runTelegram(ctx, pipe, time.Time{}, doReset, limit, dryRun); err != nil {
+				if err := r.runTelegram(ctx, pipe, time.Time{}, doReset, limit, dryRun, nil); err != nil {
 					if errors.Is(err, errNotConfigured) {
 						lg.Info("skipping telegram (not configured)")
 					} else {

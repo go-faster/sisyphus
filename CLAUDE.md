@@ -217,6 +217,18 @@ in ent: `source`, `last_synced_at`, `last_cursor` (opaque JSON), `status`, `erro
 
 **Telegram** (`make ingest-telegram`):
 - Single source `telegram`; cursor `{per_chat}` tracks per-chat state.
+- `ssingest telegram [dump.json ...]` additionally ingests Telegram Desktop /
+  GDPR chat export JSON files passed as positional args (one file per chat:
+  top-level `id`/`name`/`type`/`messages`, `internal/ingest/telegram/dump.go`'s
+  `Dump` type). Runs independently of the live gotd session — passing only
+  dump file args (with no `app_id`/`app_hash`/`ingest_session` configured) is
+  enough to ingest dumps with no Telegram API credentials. Dumps are one-shot
+  exports with no pagination cursor: each run re-walks the given file(s) and
+  relies on the `telegram_messages`/`support_requests` upserts and pipeline
+  body-hash skip to stay idempotent. Service messages (joins/pins/...) and
+  entries with no extractable text are skipped. `ssingest all` does not take
+  dump file args, so dump ingestion must be run via the `telegram` subcommand
+  directly.
 
 `--reset <src|all>` wipes the source end-to-end: in one ent Tx it deletes
 `documents`, `chunks`, and `SyncState` for that source (chunk IDs are captured

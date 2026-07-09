@@ -509,18 +509,17 @@ func (r *runner) sharedRunner() ingestrun.Runner {
 	}
 }
 
-func (r *runner) runTelegram(ctx context.Context, p *pipeline.Pipeline, since time.Time, reset bool, limit int, dry bool) error {
+func (r *runner) runTelegram(ctx context.Context, p *pipeline.Pipeline, since time.Time, reset bool, limit int, dry bool, dumpPaths []string) error {
 	tc := r.cfg.Telegram
 	lg := zctx.From(ctx).Named("telegram")
 	db := r.db
 	vectors := r.vectors
 
-	if tc.AppID == 0 || tc.AppHash == "" || tc.IngestSession == "" {
+	liveConfigured := tc.AppID != 0 && tc.AppHash != "" && tc.IngestSession != ""
+	dumpConfigured := len(dumpPaths) > 0
+	if !liveConfigured && !dumpConfigured {
 		lg.Info("telegram not configured")
 		return errNotConfigured
-	}
-	if _, err := os.Stat(tc.IngestSession); err != nil {
-		return errors.Wrap(err, "telegram ingest session file not found")
 	}
 
 	src := index.SourceTelegram
@@ -530,65 +529,96 @@ func (r *runner) runTelegram(ctx context.Context, p *pipeline.Pipeline, since ti
 		}
 	}
 
-	tgClient := gotdtelegram.NewClient(tc.AppID, tc.AppHash, gotdtelegram.Options{
-		Logger:         logzap.New(lg.Named("td").Named("ingest")),
-		SessionStorage: &gotdtelegram.FileSessionStorage{Path: tc.IngestSession},
-		TracerProvider: r.tp,
-		Middlewares:    []gotdtelegram.Middleware{telemetry.TDMiddleware(r.tp, r.mp)},
-	})
-
-	var result telegramingest.BackfillResult
-	var backfillErr error
-
-	runErr := tgClient.Run(ctx, func(ctx context.Context) error {
-		bf, err := telegramingest.NewBackfiller(db, telegramingest.BackfillOptions{
-			Session: tgClient,
-		})
-		if err != nil {
-			return errors.Wrap(err, "new backfiller")
-		}
-
-		chats := telegramChats(tc.MonitorChats)
-		if len(chats) == 0 {
-			lg.Info("telegram: no monitor chats; nothing to do")
-			return nil
-		}
-
-		cur, _ := loadTelegramCursor(ctx, db, string(src))
-		if !since.IsZero() {
-			lg.Info("since ignored for telegram")
-			cur = telegramingest.Cursor{}
-		}
-
-		req := telegramingest.BackfillRequest{
-			Chats:  chats,
-			Cursor: cur,
-			Limit:  limit,
-		}
-		result, backfillErr = bf.Backfill(ctx, req)
-		if backfillErr != nil {
-			return errors.Wrap(backfillErr, "backfill")
-		}
-		return nil
-	})
-	if runErr != nil {
-		return errors.Wrap(runErr, "telegram client run")
-	}
-
-	processed, anyErr := indexBatch(ctx, lg, p, result.Documents, dry, "telegram")
-
+	var docs []index.Document
+	anyErr := false
 	nextCurStr := ""
-	if result.NextCursor.PerChat != nil {
-		if s, err := result.NextCursor.Encode(); err == nil {
-			nextCurStr = s
+
+	if dumpConfigured {
+		dumpResult, err := telegramingest.IngestDump(ctx, db, dumpPaths)
+		if err != nil {
+			lg.Error("telegram dump ingest failed", zap.Error(err))
+			anyErr = true
+		} else {
+			docs = append(docs, dumpResult.Documents...)
+			lg.Info("telegram dump ingest complete",
+				zap.Int("messages", dumpResult.TotalMessages),
+				zap.Int("conversations", dumpResult.TotalConvos))
 		}
 	}
+
+	if liveConfigured {
+		if _, err := os.Stat(tc.IngestSession); err != nil {
+			return errors.Wrap(err, "telegram ingest session file not found")
+		}
+
+		tgClient := gotdtelegram.NewClient(tc.AppID, tc.AppHash, gotdtelegram.Options{
+			Logger:         logzap.New(lg.Named("td").Named("ingest")),
+			SessionStorage: &gotdtelegram.FileSessionStorage{Path: tc.IngestSession},
+			TracerProvider: r.tp,
+			Middlewares:    []gotdtelegram.Middleware{telemetry.TDMiddleware(r.tp, r.mp)},
+		})
+
+		var result telegramingest.BackfillResult
+		var backfillErr error
+
+		runErr := tgClient.Run(ctx, func(ctx context.Context) error {
+			bf, err := telegramingest.NewBackfiller(db, telegramingest.BackfillOptions{
+				Session: tgClient,
+			})
+			if err != nil {
+				return errors.Wrap(err, "new backfiller")
+			}
+
+			chats := telegramChats(tc.MonitorChats)
+			if len(chats) == 0 {
+				lg.Info("telegram: no monitor chats; nothing to do")
+				return nil
+			}
+
+			cur, _ := loadTelegramCursor(ctx, db, string(src))
+			if !since.IsZero() {
+				lg.Info("since ignored for telegram")
+				cur = telegramingest.Cursor{}
+			}
+
+			req := telegramingest.BackfillRequest{
+				Chats:  chats,
+				Cursor: cur,
+				Limit:  limit,
+			}
+			result, backfillErr = bf.Backfill(ctx, req)
+			if backfillErr != nil {
+				return errors.Wrap(backfillErr, "backfill")
+			}
+			return nil
+		})
+		if runErr != nil {
+			return errors.Wrap(runErr, "telegram client run")
+		}
+
+		docs = append(docs, result.Documents...)
+		if result.NextCursor.PerChat != nil {
+			if s, err := result.NextCursor.Encode(); err == nil {
+				nextCurStr = s
+			}
+		}
+	}
+
+	batch := docs
+	if limit > 0 && limit < len(batch) {
+		batch = batch[:limit]
+	}
+	processed, idxErr := indexBatch(ctx, lg, p, batch, dry, "telegram")
+	if idxErr {
+		anyErr = true
+	}
+
 	now := time.Now()
 	st := "ok"
 	if anyErr && !dry {
 		st = "error"
 	}
-	count := len(result.Documents)
+	count := len(batch)
 	if count == 0 {
 		count = processed
 	}
