@@ -193,6 +193,37 @@ func TestHandler_Context_IndexesAnsweredQuestion(t *testing.T) {
 	require.Equal(t, string(index.AuthorityLow), idx.doc.Metadata["authority"])
 }
 
+type richAnswerer struct{}
+
+func (richAnswerer) Answer(_ context.Context, _ string, _ []index.Result) (string, error) {
+	return "text", nil
+}
+
+func (richAnswerer) AnswerRich(_ context.Context, _ string, _ []index.Result) (index.Answer, error) {
+	return index.Answer{
+		Text:  "text",
+		Links: []index.Link{{Text: "Dashboard", URL: "https://grafana/d/1"}},
+	}, nil
+}
+
+func TestHandler_Context_RichAnswererButtons(t *testing.T) {
+	h := New(&captureRetriever{}, richAnswerer{}, "test")
+
+	resp, err := h.Context(t.Context(), &oas.ContextRequest{Question: "why red?"})
+	require.NoError(t, err)
+	require.Equal(t, "text", resp.Answer)
+	require.Equal(t, []oas.Link{{Text: "Dashboard", URL: "https://grafana/d/1"}}, resp.Buttons)
+}
+
+func TestHandler_Context_PlainAnswererNoButtons(t *testing.T) {
+	h := New(&captureRetriever{}, stubAnswerer{}, "test")
+
+	resp, err := h.Context(t.Context(), &oas.ContextRequest{Question: "why red?"})
+	require.NoError(t, err)
+	require.Equal(t, "stub", resp.Answer)
+	require.Empty(t, resp.Buttons)
+}
+
 func TestHandler_NewError_GenericError(t *testing.T) {
 	h := New(&captureRetriever{}, stubAnswerer{}, "test")
 	ctx := t.Context()

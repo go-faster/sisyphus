@@ -1,11 +1,60 @@
 package agent
 
 import (
+	"encoding/json"
 	"testing"
 	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/go-faster/sisyphus/internal/index"
 )
+
+func TestParseReport_Links(t *testing.T) {
+	t.Run("filters invalid and dedups", func(t *testing.T) {
+		args := mustJSON(t, map[string]any{
+			"problem": "p",
+			"verdict": string(VerdictSolved),
+			"links": []map[string]string{
+				{"text": "Dashboard", "url": "https://grafana/d/1"},
+				{"text": "no scheme", "url": "grafana/d/1"},
+				{"text": "ftp", "url": "ftp://host/x"},
+				{"text": "", "url": "https://grafana/d/2"},
+				{"text": "dup", "url": "https://grafana/d/1"},
+				{"text": "Ticket", "url": "https://jira/IDP-1"},
+			},
+		})
+		r, err := parseReport(args)
+		require.NoError(t, err)
+		require.Equal(t, []index.Link{
+			{Text: "Dashboard", URL: "https://grafana/d/1"},
+			{Text: "Ticket", URL: "https://jira/IDP-1"},
+		}, r.Links)
+	})
+
+	t.Run("caps at maxReportLinks", func(t *testing.T) {
+		links := make([]map[string]string, 0, maxReportLinks+3)
+		for i := range maxReportLinks + 3 {
+			links = append(links, map[string]string{
+				"text": "l",
+				"url":  "https://host/" + string(rune('a'+i)),
+			})
+		}
+		args := mustJSON(t, map[string]any{
+			"problem": "p", "verdict": string(VerdictSolved), "links": links,
+		})
+		r, err := parseReport(args)
+		require.NoError(t, err)
+		require.Len(t, r.Links, maxReportLinks)
+	})
+}
+
+func mustJSON(t *testing.T, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	require.NoError(t, err)
+	return string(b)
+}
 
 func TestReport_CharLen(t *testing.T) {
 	tests := []struct {

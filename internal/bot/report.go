@@ -4,8 +4,11 @@ import (
 	"strings"
 
 	"github.com/gotd/td/telegram/message/entity"
+	"github.com/gotd/td/telegram/message/markup"
+	"github.com/gotd/td/tg"
 
 	"github.com/go-faster/sisyphus/internal/agent"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 // telegramMessageLimit is Telegram's max message length, in UTF-16 code
@@ -76,6 +79,20 @@ func reportMarkdown(r agent.Report) string {
 	}
 
 	return strings.TrimSpace(sb.String())
+}
+
+// linksMarkup builds a vertical inline keyboard of URL buttons, one per link,
+// or nil when there are no links. Links are assumed pre-validated (see
+// index.Link.Valid / agent report normalization).
+func linksMarkup(links []index.Link) tg.ReplyMarkupClass {
+	if len(links) == 0 {
+		return nil
+	}
+	rows := make([]tg.KeyboardButtonRow, 0, len(links))
+	for _, l := range links {
+		rows = append(rows, markup.Row(markup.URL(l.Text, l.URL)))
+	}
+	return markup.InlineKeyboard(rows...)
 }
 
 // splitMarkdown splits md into chunks that each render under limit UTF-16

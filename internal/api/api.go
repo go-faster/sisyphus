@@ -96,20 +96,44 @@ func (h *Handler) Context(ctx context.Context, req *oas.ContextRequest) (*oas.Co
 	if err != nil {
 		return nil, errors.Wrap(err, "retrieve")
 	}
-	answer, err := h.answerer.Answer(ctx, req.Question, results)
+
+	// Prefer the richer structured answer (prose + source-link buttons) when the
+	// answerer supports it; otherwise fall back to plain text.
+	var answer index.Answer
+	if ra, ok := h.answerer.(index.RichAnswerer); ok {
+		answer, err = ra.AnswerRich(ctx, req.Question, results)
+	} else {
+		var text string
+		text, err = h.answerer.Answer(ctx, req.Question, results)
+		answer.Text = text
+	}
 	if err != nil {
 		return nil, errors.Wrap(err, "answer")
 	}
+
 	if h.answers != nil {
-		if err := h.answers.Index(ctx, answeredQuestionDocument(req.Question, answer)); err != nil {
+		if err := h.answers.Index(ctx, answeredQuestionDocument(req.Question, answer.Text)); err != nil {
 			zctx.From(ctx).Warn("index answered question failed", zap.Error(err))
 		}
 	}
 	return &oas.ContextResponse{
-		Answer:     answer,
+		Answer:     answer.Text,
 		Confidence: oas.NewOptString("low"),
+		Buttons:    toLinks(answer.Links),
 		Results:    toSearchResults(results),
 	}, nil
+}
+
+// toLinks maps index links to their oas representation.
+func toLinks(links []index.Link) []oas.Link {
+	if len(links) == 0 {
+		return nil
+	}
+	out := make([]oas.Link, 0, len(links))
+	for _, l := range links {
+		out = append(out, oas.Link{Text: l.Text, URL: l.URL})
+	}
+	return out
 }
 
 func answeredQuestionDocument(question, answer string) index.Document {

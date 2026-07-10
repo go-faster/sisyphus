@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"net/url"
 	"strings"
 	"time"
 
@@ -191,6 +192,44 @@ type Summarizer interface {
 // stubbed for now.
 type Answerer interface {
 	Answer(ctx context.Context, question string, results []Result) (string, error)
+}
+
+// Link is a labeled URL surfaced as an actionable link (e.g. a Telegram inline
+// button, or a cited source). Text is the human-readable label; URL must be an
+// absolute http(s) URL.
+type Link struct {
+	Text string `json:"text"`
+	URL  string `json:"url"`
+}
+
+// Valid reports whether the link has a non-empty label and an absolute http(s)
+// URL. Anything else (relative paths, other schemes, unparsable URLs, missing
+// label) is rejected so that model-produced links can be filtered before they
+// reach a user-facing surface.
+func (l Link) Valid() bool {
+	if strings.TrimSpace(l.Text) == "" {
+		return false
+	}
+	u, err := url.Parse(strings.TrimSpace(l.URL))
+	if err != nil || u.Host == "" {
+		return false
+	}
+	return u.Scheme == "http" || u.Scheme == "https"
+}
+
+// Answer is a structured answer: prose plus optional actionable links. The
+// plain Answerer.Answer returns only Text; a RichAnswerer additionally returns
+// Links so callers can render them (e.g. as Telegram inline buttons).
+type Answer struct {
+	Text  string
+	Links []Link
+}
+
+// RichAnswerer optionally produces a structured Answer (prose plus actionable
+// links) instead of plain text. It is an opt-in extension of Answerer detected
+// via type assertion; callers fall back to Answerer.Answer when it is absent.
+type RichAnswerer interface {
+	AnswerRich(ctx context.Context, question string, results []Result) (Answer, error)
 }
 
 // Hash returns the hex sha256 of normalized text. Normalization trims surrounding
