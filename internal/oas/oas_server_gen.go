@@ -14,6 +14,12 @@ type Handler interface {
 	//
 	// POST /context
 	Context(ctx context.Context, req *ContextRequest) (*ContextResponse, error)
+	// GetFile implements getFile operation.
+	//
+	// Retrieve actual file content from a source repository.
+	//
+	// POST /file
+	GetFile(ctx context.Context, req *FileRequest) (*FileResponse, error)
 	// GetHealth implements getHealth operation.
 	//
 	// Liveness/readiness probe.

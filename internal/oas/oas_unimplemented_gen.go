@@ -22,6 +22,15 @@ func (UnimplementedHandler) Context(ctx context.Context, req *ContextRequest) (r
 	return r, ht.ErrNotImplemented
 }
 
+// GetFile implements getFile operation.
+//
+// Retrieve actual file content from a source repository.
+//
+// POST /file
+func (UnimplementedHandler) GetFile(ctx context.Context, req *FileRequest) (r *FileResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // GetHealth implements getHealth operation.
 //
 // Liveness/readiness probe.

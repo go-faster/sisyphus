@@ -209,6 +209,108 @@ func (s *ErrorStatusCode) SetResponse(val Error) {
 	s.Response = val
 }
 
+// Ref: #/components/schemas/FileRequest
+type FileRequest struct {
+	// Repository name as recorded in chunk metadata.
+	Repo string `json:"repo"`
+	// Repo-relative file path as recorded in chunk metadata.
+	Path string `json:"path"`
+	// Optional branch (recorded in metadata but not used for lookup).
+	Branch OptString `json:"branch"`
+	// Optional 1-indexed start line (inclusive).
+	Start OptInt32 `json:"start"`
+	// Optional 1-indexed end line (inclusive).
+	End OptInt32 `json:"end"`
+}
+
+// GetRepo returns the value of Repo.
+func (s *FileRequest) GetRepo() string {
+	return s.Repo
+}
+
+// GetPath returns the value of Path.
+func (s *FileRequest) GetPath() string {
+	return s.Path
+}
+
+// GetBranch returns the value of Branch.
+func (s *FileRequest) GetBranch() OptString {
+	return s.Branch
+}
+
+// GetStart returns the value of Start.
+func (s *FileRequest) GetStart() OptInt32 {
+	return s.Start
+}
+
+// GetEnd returns the value of End.
+func (s *FileRequest) GetEnd() OptInt32 {
+	return s.End
+}
+
+// SetRepo sets the value of Repo.
+func (s *FileRequest) SetRepo(val string) {
+	s.Repo = val
+}
+
+// SetPath sets the value of Path.
+func (s *FileRequest) SetPath(val string) {
+	s.Path = val
+}
+
+// SetBranch sets the value of Branch.
+func (s *FileRequest) SetBranch(val OptString) {
+	s.Branch = val
+}
+
+// SetStart sets the value of Start.
+func (s *FileRequest) SetStart(val OptInt32) {
+	s.Start = val
+}
+
+// SetEnd sets the value of End.
+func (s *FileRequest) SetEnd(val OptInt32) {
+	s.End = val
+}
+
+// Ref: #/components/schemas/FileResponse
+type FileResponse struct {
+	Content string `json:"content"`
+	// Where the content came from ("local_clone" or "database").
+	Source OptString `json:"source"`
+	Found  bool      `json:"found"`
+}
+
+// GetContent returns the value of Content.
+func (s *FileResponse) GetContent() string {
+	return s.Content
+}
+
+// GetSource returns the value of Source.
+func (s *FileResponse) GetSource() OptString {
+	return s.Source
+}
+
+// GetFound returns the value of Found.
+func (s *FileResponse) GetFound() bool {
+	return s.Found
+}
+
+// SetContent sets the value of Content.
+func (s *FileResponse) SetContent(val string) {
+	s.Content = val
+}
+
+// SetSource sets the value of Source.
+func (s *FileResponse) SetSource(val OptString) {
+	s.Source = val
+}
+
+// SetFound sets the value of Found.
+func (s *FileResponse) SetFound(val bool) {
+	s.Found = val
+}
+
 // Ref: #/components/schemas/Health
 type Health struct {
 	Status  string    `json:"status"`

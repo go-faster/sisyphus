@@ -14,7 +14,10 @@ var (
 	rn1AllowedHeaders = map[string]string{
 		"POST": "Authorization,Content-Type",
 	}
-	rn4AllowedHeaders = map[string]string{
+	rn3AllowedHeaders = map[string]string{
+		"POST": "Authorization,Content-Type",
+	}
+	rn5AllowedHeaders = map[string]string{
 		"POST": "Authorization,Content-Type",
 	}
 )
@@ -94,6 +97,31 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 
+			case 'f': // Prefix: "file"
+
+				if l := len("file"); len(elem) >= l && elem[0:l] == "file" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					// Leaf node.
+					switch r.Method {
+					case "POST":
+						s.handleGetFileRequest([0]string{}, elemIsEscaped, w, r)
+					default:
+						s.notAllowed(w, r, notAllowedParams{
+							allowedMethods: "POST",
+							allowedHeaders: rn3AllowedHeaders,
+							acceptPost:     "application/json",
+							acceptPatch:    "",
+						})
+					}
+
+					return
+				}
+
 			case 'h': // Prefix: "health"
 
 				if l := len("health"); len(elem) >= l && elem[0:l] == "health" {
@@ -135,7 +163,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					default:
 						s.notAllowed(w, r, notAllowedParams{
 							allowedMethods: "POST",
-							allowedHeaders: rn4AllowedHeaders,
+							allowedHeaders: rn5AllowedHeaders,
 							acceptPost:     "application/json",
 							acceptPatch:    "",
 						})
@@ -261,6 +289,31 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 						r.operationID = "context"
 						r.operationGroup = ""
 						r.pathPattern = "/context"
+						r.args = args
+						r.count = 0
+						return r, true
+					default:
+						return
+					}
+				}
+
+			case 'f': // Prefix: "file"
+
+				if l := len("file"); len(elem) >= l && elem[0:l] == "file" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					// Leaf node.
+					switch method {
+					case "POST":
+						r.name = GetFileOperation
+						r.summary = "Retrieve actual file content from a source repository."
+						r.operationID = "getFile"
+						r.operationGroup = ""
+						r.pathPattern = "/file"
 						r.args = args
 						r.count = 0
 						return r, true
