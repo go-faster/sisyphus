@@ -242,3 +242,49 @@ type staticBearer struct{ token string }
 func (s staticBearer) BearerAuth(_ context.Context, _ oas.OperationName) (oas.BearerAuth, error) {
 	return oas.BearerAuth{Token: s.token}, nil
 }
+
+// ResolveContent implements the index.ContentResolver interface.
+func (c *Client) ResolveContent(ctx context.Context, req index.ContentRequest) (index.ContentResponse, error) {
+	start := time.Now()
+	ctx, span := c.tracer.Start(ctx, "apiclient.GetFile",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("repo", req.Repo),
+			attribute.String("path", req.Path),
+		),
+	)
+	var rerr error
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+			span.SetStatus(codes.Error, rerr.Error())
+		}
+		span.End()
+	}()
+
+	oasReq := &oas.FileRequest{
+		Repo:   req.Repo,
+		Path:   req.Path,
+		Branch: oas.NewOptString(req.Branch),
+	}
+	if req.Start > 0 {
+		oasReq.Start = oas.NewOptInt32(int32(req.Start))
+	}
+	if req.End > 0 {
+		oasReq.End = oas.NewOptInt32(int32(req.End))
+	}
+
+	resp, err := c.inv.GetFile(ctx, oasReq)
+	if err != nil {
+		rerr = errors.Wrap(err, "get file")
+		c.m.record(ctx, "get_file", time.Since(start).Seconds(), 0, rerr)
+		return index.ContentResponse{}, rerr
+	}
+
+	c.m.record(ctx, "get_file", time.Since(start).Seconds(), 1, nil)
+	return index.ContentResponse{
+		Content: resp.Content,
+		Source:  resp.Source.Or(""),
+		Found:   resp.Found,
+	}, nil
+}

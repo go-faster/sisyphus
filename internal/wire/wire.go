@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"net"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -22,10 +23,12 @@ import (
 
 	chunkmd "github.com/go-faster/sisyphus/internal/chunk/markdown"
 	"github.com/go-faster/sisyphus/internal/config"
+	"github.com/go-faster/sisyphus/internal/content"
 	"github.com/go-faster/sisyphus/internal/embed"
 	"github.com/go-faster/sisyphus/internal/ent"
 	entmigrate "github.com/go-faster/sisyphus/internal/ent/migrate"
 	"github.com/go-faster/sisyphus/internal/index"
+	"github.com/go-faster/sisyphus/internal/ingest/git"
 	"github.com/go-faster/sisyphus/internal/llm/openrouter"
 	"github.com/go-faster/sisyphus/internal/llm/stub"
 	"github.com/go-faster/sisyphus/internal/netclient"
@@ -69,10 +72,11 @@ type Components struct {
 	Embedder index.Embedder
 	Vectors  pipeline.VectorStore
 
-	Retriever Retriever
-	Answerer  index.Answerer
-	Answers   *pipeline.Pipeline
-	Health    HealthChecker
+	Retriever       Retriever
+	Answerer        index.Answerer
+	Answers         *pipeline.Pipeline
+	ContentResolver index.ContentResolver
+	Health          HealthChecker
 
 	closeDB func()
 }
@@ -235,15 +239,38 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		return Components{}, errors.Wrap(err, "answer pipeline")
 	}
 
+	repoMap := make(content.RepoResolverMap)
+	for _, src := range cfg.Git.Repos {
+		name := src.Repo
+		if name == "" {
+			name = git.DefaultRepoName(git.Source{
+				Root: src.Root,
+				URL:  src.URL,
+			})
+		}
+		root := src.Root
+		if root == "" && src.URL != "" && cfg.Git.WorkDir != "" {
+			root = filepath.Join(cfg.Git.WorkDir, git.SafeDirName(name))
+		}
+		if name != "" && root != "" {
+			repoMap[name] = root
+		}
+	}
+
+	localReader := content.NewLocalRepoReader(repoMap, lg)
+	dbReader := content.NewDatabaseReader(svcs.DB, lg)
+	contentResolver := content.NewChainResolver(lg, localReader, dbReader)
+
 	return Components{
-		DB:        svcs.DB,
-		Embedder:  svcs.Embedder,
-		Vectors:   svcs.Vectors,
-		Retriever: retr,
-		Answerer:  answerer,
-		Answers:   answerPipe,
-		Health:    &healthChecker{db: svcs.SQLDB, vectors: svcs.VectorHealth},
-		closeDB:   svcs.closeDB,
+		DB:              svcs.DB,
+		Embedder:        svcs.Embedder,
+		Vectors:         svcs.Vectors,
+		Retriever:       retr,
+		Answerer:        answerer,
+		Answers:         answerPipe,
+		ContentResolver: contentResolver,
+		Health:          &healthChecker{db: svcs.SQLDB, vectors: svcs.VectorHealth},
+		closeDB:         svcs.closeDB,
 	}, nil
 }
 

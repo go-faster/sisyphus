@@ -36,6 +36,7 @@ type Handler struct {
 	retriever Retriever
 	answerer  index.Answerer
 	answers   AnswerIndexer
+	content   index.ContentResolver
 	version   string
 }
 
@@ -57,11 +58,45 @@ func WithAnswerIndexer(p AnswerIndexer) Option {
 	}
 }
 
+// WithContentResolver sets the file content resolver.
+func WithContentResolver(c index.ContentResolver) Option {
+	return func(h *Handler) {
+		h.content = c
+	}
+}
+
 // GetHealth implements the liveness probe.
 func (h *Handler) GetHealth(_ context.Context) (*oas.Health, error) {
 	return &oas.Health{
 		Status:  "ok",
 		Version: oas.NewOptString(h.version),
+	}, nil
+}
+
+// GetFile retrieves actual file content.
+func (h *Handler) GetFile(ctx context.Context, req *oas.FileRequest) (*oas.FileResponse, error) {
+	if h.content == nil {
+		return &oas.FileResponse{Found: false}, nil
+	}
+
+	cr := index.ContentRequest{
+		Repo:   req.Repo,
+		Path:   req.Path,
+		Branch: req.Branch.Or(""),
+		Start:  int(req.Start.Or(0)),
+		End:    int(req.End.Or(0)),
+	}
+
+	resp, err := h.content.ResolveContent(ctx, cr)
+	if err != nil {
+		zctx.From(ctx).Error("failed to resolve file content", zap.Error(err))
+		return &oas.FileResponse{Found: false}, nil
+	}
+
+	return &oas.FileResponse{
+		Content: resp.Content,
+		Source:  oas.NewOptString(resp.Source),
+		Found:   resp.Found,
 	}, nil
 }
 

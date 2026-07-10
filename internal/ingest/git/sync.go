@@ -29,13 +29,13 @@ type SyncOptions struct {
 // Prepare clones or updates configured repositories and returns the walkable source.
 func Prepare(ctx context.Context, src Source, opts SyncOptions) (Source, error) {
 	if src.Repo == "" {
-		src.Repo = defaultRepoName(src)
+		src.Repo = DefaultRepoName(src)
 	}
 	if src.Root == "" && src.URL != "" {
 		if opts.WorkDir == "" {
 			return src, errors.New("git: work_dir is required for cloned repos")
 		}
-		src.Root = filepath.Join(opts.WorkDir, safeDirName(src.Repo))
+		src.Root = filepath.Join(opts.WorkDir, SafeDirName(src.Repo))
 	}
 	if src.URL != "" {
 		if err := syncRepo(ctx, src, opts); err != nil {
@@ -116,7 +116,7 @@ func gitAuth(token string) transport.AuthMethod {
 	}
 }
 
-func defaultRepoName(src Source) string {
+func DefaultRepoName(src Source) string {
 	if src.Root != "" {
 		return filepath.Base(src.Root)
 	}
@@ -130,7 +130,7 @@ func defaultRepoName(src Source) string {
 	return strings.TrimSuffix(filepath.Base(u.Path), ".git")
 }
 
-func safeDirName(s string) string {
+func SafeDirName(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return "repo"

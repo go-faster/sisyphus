@@ -243,3 +243,24 @@ func Hash(text string) string {
 
 // NewID returns a new random UUID. Centralized so tests can swap it if needed.
 func NewID() uuid.UUID { return uuid.New() }
+
+// ContentRequest identifies a file to retrieve.
+type ContentRequest struct {
+	Repo   string // repo name (matches metadata "repo")
+	Path   string // repo-relative path (matches metadata "path")
+	Branch string // optional branch ref (matches metadata "branch")
+	Start  int    // optional 1-indexed start line (inclusive)
+	End    int    // optional 1-indexed end line (inclusive)
+}
+
+// ContentResponse holds the retrieved file content.
+type ContentResponse struct {
+	Content string
+	Source  string // "local_clone" or "database"
+	Found   bool
+}
+
+// ContentResolver retrieves actual file content from source repositories.
+type ContentResolver interface {
+	ResolveContent(ctx context.Context, req ContentRequest) (ContentResponse, error)
+}

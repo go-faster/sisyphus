@@ -17,7 +17,7 @@ type Retriever interface {
 
 // New constructs an MCP Server with knowledge tools wired to the provided
 // Retriever and Answerer. Uses official SDK patterns.
-func New(retr Retriever, answerer index.Answerer) *mcp.Server {
+func New(retr Retriever, answerer index.Answerer, contentResolver index.ContentResolver) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{Name: "ssmcp", Version: "0.1.0"}, nil)
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -29,6 +29,11 @@ func New(retr Retriever, answerer index.Answerer) *mcp.Server {
 		Name:        "answer_question",
 		Description: "Retrieve relevant context and produce a grounded answer with citations. Use source_tier=code/history/all or source_prefixes when curated sources are not enough.",
 	}, answerHandler(retr, answerer))
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "get_file_content",
+		Description: "Retrieve actual file content from a source repository by repo + path. Use start/end for line ranges. Uses the local repo clone cache when available, falls back to the stored document body.",
+	}, fileHandler(contentResolver))
 
 	return s
 }

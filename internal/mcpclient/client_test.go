@@ -41,7 +41,7 @@ func TestClient(t *testing.T) {
 	}}}
 
 	answerer := stub.NewAnswerer()
-	srv := mcpserver.New(fake, answerer)
+	srv := mcpserver.New(fake, answerer, nil)
 
 	clientTr, serverTr := mcp.NewInMemoryTransports()
 

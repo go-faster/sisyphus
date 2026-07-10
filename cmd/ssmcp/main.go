@@ -71,7 +71,7 @@ func run(ctx context.Context, cfg config.Config, useStdio bool, t *app.Telemetry
 		return errors.Wrap(err, "api client")
 	}
 
-	srv := mcpserver.New(api, api)
+	srv := mcpserver.New(api, api, api)
 	if useStdio {
 		lg.Info("mcp stdio starting")
 		return srv.Run(ctx, &mcp.StdioTransport{})
