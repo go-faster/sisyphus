@@ -120,9 +120,12 @@ func (s *ContextRequestFilters) init() ContextRequestFilters {
 
 // Ref: #/components/schemas/ContextResponse
 type ContextResponse struct {
-	Answer     string         `json:"answer"`
-	Confidence OptString      `json:"confidence"`
-	Results    []SearchResult `json:"results"`
+	Answer     string    `json:"answer"`
+	Confidence OptString `json:"confidence"`
+	// Actionable links surfaced alongside the answer (e.g. the sources it relied on), suitable for
+	// rendering as buttons. URLs are always absolute http(s).
+	Buttons []Link         `json:"buttons"`
+	Results []SearchResult `json:"results"`
 }
 
 // GetAnswer returns the value of Answer.
@@ -133,6 +136,11 @@ func (s *ContextResponse) GetAnswer() string {
 // GetConfidence returns the value of Confidence.
 func (s *ContextResponse) GetConfidence() OptString {
 	return s.Confidence
+}
+
+// GetButtons returns the value of Buttons.
+func (s *ContextResponse) GetButtons() []Link {
+	return s.Buttons
 }
 
 // GetResults returns the value of Results.
@@ -148,6 +156,11 @@ func (s *ContextResponse) SetAnswer(val string) {
 // SetConfidence sets the value of Confidence.
 func (s *ContextResponse) SetConfidence(val OptString) {
 	s.Confidence = val
+}
+
+// SetButtons sets the value of Buttons.
+func (s *ContextResponse) SetButtons(val []Link) {
+	s.Buttons = val
 }
 
 // SetResults sets the value of Results.
@@ -220,6 +233,34 @@ func (s *Health) SetStatus(val string) {
 // SetVersion sets the value of Version.
 func (s *Health) SetVersion(val OptString) {
 	s.Version = val
+}
+
+// Ref: #/components/schemas/Link
+type Link struct {
+	// Human-readable button label.
+	Text string `json:"text"`
+	// Absolute http(s) URL.
+	URL string `json:"url"`
+}
+
+// GetText returns the value of Text.
+func (s *Link) GetText() string {
+	return s.Text
+}
+
+// GetURL returns the value of URL.
+func (s *Link) GetURL() string {
+	return s.URL
+}
+
+// SetText sets the value of Text.
+func (s *Link) SetText(val string) {
+	s.Text = val
+}
+
+// SetURL sets the value of URL.
+func (s *Link) SetURL(val string) {
+	s.URL = val
 }
 
 // NewOptBool returns new OptBool with value set to v.
