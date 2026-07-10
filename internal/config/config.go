@@ -2,9 +2,11 @@
 package config
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/yaml"
@@ -34,6 +36,7 @@ type Config struct {
 	OpenRouter OpenRouter
 	Telegram   Telegram
 	Proxies    ProxyConfig
+	Fetch      FetchConfig
 
 	Agent AgentConfig
 
@@ -151,6 +154,7 @@ type fileConfig struct {
 	OpenRouter fileOpenRouter  `yaml:"openrouter"`
 	Telegram   fileTelegram    `yaml:"telegram"`
 	Proxies    fileProxyConfig `yaml:"proxies"`
+	Fetch      fileFetchConfig `yaml:"fetch"`
 
 	// Deprecated: use mcp.addr.
 	MCPAddr string `yaml:"mcp_addr"`
@@ -174,6 +178,38 @@ type fileAgentConfig struct {
 	RequestTimeoutSeconds int    `yaml:"request_timeout_seconds"`
 	GatewayURL            string `yaml:"gateway_url"`
 	MaxReportChars        int    `yaml:"max_report_chars"`
+}
+
+// FetchConfig configures the URL fetcher allowlist.
+type FetchConfig struct {
+	Sites []FetchSite `yaml:"sites"`
+}
+
+// FetchSite defines one whitelisted site the agent may fetch URLs from.
+type FetchSite struct {
+	Name        string           `yaml:"name"`
+	URLPatterns []string         `yaml:"url_patterns"`
+	Methods     []string         `yaml:"methods"`
+	Proxy       string           `yaml:"proxy"`
+	Credentials FetchCredentials `yaml:"credentials"`
+	MaxBytes    int64            `yaml:"max_bytes"`
+	Timeout     time.Duration    `yaml:"timeout"`
+}
+
+// FetchCredentials specifies how to authenticate to a whitelisted site.
+type FetchCredentials struct {
+	Type        string `yaml:"type"`
+	TokenEnv    string `yaml:"token_env"`
+	Header      string `yaml:"header"`
+	Username    string `yaml:"username"`
+	PasswordEnv string `yaml:"password_env"`
+
+	Token    string `yaml:"-"`
+	Password string `yaml:"-"`
+}
+
+type fileFetchConfig struct {
+	Sites []FetchSite `yaml:"sites"`
 }
 
 // ProxyConfig configures per-client HTTP proxies.
@@ -520,6 +556,10 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	fetchConfig, err := c.Fetch.resolve(proxies, &warnings)
+	if err != nil {
+		return Config{}, err
+	}
 	mcpAuthToken, err := mcpAuthTokenSecret.Resolve(baseDir)
 	if err != nil {
 		return Config{}, errors.Wrap(err, "mcp auth_token")
@@ -592,6 +632,7 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			AllowedUserIDs: c.Telegram.AllowedUserIDs,
 		},
 		Proxies:  proxies,
+		Fetch:    fetchConfig,
 		Warnings: warnings,
 		Agent: AgentConfig{
 			Addr:                  c.Agent.Addr,
@@ -604,6 +645,133 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			MaxReportChars:        c.Agent.MaxReportChars,
 		},
 	}, nil
+}
+
+func (c fileFetchConfig) resolve(proxies ProxyConfig, warnings *[]string) (FetchConfig, error) {
+	seen := make(map[string]struct{}, len(c.Sites))
+	sites := make([]FetchSite, 0, len(c.Sites))
+	for _, site := range c.Sites {
+		name := strings.TrimSpace(site.Name)
+		if name == "" {
+			return FetchConfig{}, errors.New("fetch site name is required")
+		}
+		if _, ok := seen[name]; ok {
+			return FetchConfig{}, errors.Errorf("duplicate fetch site %q", name)
+		}
+		seen[name] = struct{}{}
+		site.Name = name
+
+		if len(site.URLPatterns) == 0 {
+			return FetchConfig{}, errors.Errorf("fetch site %q needs at least one url_patterns entry", name)
+		}
+		for _, pattern := range site.URLPatterns {
+			if !strings.HasPrefix(pattern, "https://") && !strings.HasPrefix(pattern, "http://") {
+				return FetchConfig{}, errors.Errorf("fetch site %q pattern %q must start with http:// or https://", name, pattern)
+			}
+		}
+		methods, warns, err := normalizeFetchMethods(site.Methods)
+		if err != nil {
+			return FetchConfig{}, errors.Wrap(err, "fetch site "+name)
+		}
+		for _, warn := range warns {
+			*warnings = append(*warnings, "fetch site "+name+" allows write method "+warn+"; prefer read-only methods unless explicitly required")
+		}
+		site.Methods = methods
+
+		if site.Proxy != "" && fetchProxyURL(proxies, site.Proxy) == "" {
+			return FetchConfig{}, errors.Errorf("fetch site %q references unknown or empty proxy %q", name, site.Proxy)
+		}
+		creds, err := resolveFetchCredentials(site.Credentials)
+		if err != nil {
+			return FetchConfig{}, errors.Wrap(err, "fetch site "+name+" credentials")
+		}
+		site.Credentials = creds
+		sites = append(sites, site)
+	}
+	return FetchConfig{Sites: sites}, nil
+}
+
+func normalizeFetchMethods(methods []string) ([]string, []string, error) {
+	if len(methods) == 0 {
+		return []string{http.MethodGet}, nil, nil
+	}
+	valid := map[string]struct{}{
+		http.MethodGet: {}, http.MethodHead: {}, http.MethodPost: {},
+		http.MethodPut: {}, http.MethodPatch: {}, http.MethodDelete: {},
+	}
+	seen := make(map[string]struct{}, len(methods))
+	out := make([]string, 0, len(methods))
+	var warnings []string
+	for _, method := range methods {
+		method = strings.ToUpper(strings.TrimSpace(method))
+		if method == "" {
+			continue
+		}
+		if _, ok := valid[method]; !ok {
+			return nil, nil, errors.Errorf("unsupported method %q", method)
+		}
+		if _, ok := seen[method]; ok {
+			continue
+		}
+		seen[method] = struct{}{}
+		out = append(out, method)
+		switch method {
+		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+			warnings = append(warnings, method)
+		}
+	}
+	if len(out) == 0 {
+		out = []string{http.MethodGet}
+	}
+	return out, warnings, nil
+}
+
+func resolveFetchCredentials(creds FetchCredentials) (FetchCredentials, error) {
+	creds.Type = strings.ToLower(strings.TrimSpace(creds.Type))
+	if creds.Type == "" {
+		creds.Type = "none"
+	}
+	switch creds.Type {
+	case "none":
+		return creds, nil
+	case "bearer":
+		if creds.TokenEnv == "" {
+			return FetchCredentials{}, errors.New("token_env is required for bearer credentials")
+		}
+		creds.Token = os.Getenv(creds.TokenEnv)
+		return creds, nil
+	case "header":
+		if creds.Header == "" || creds.TokenEnv == "" {
+			return FetchCredentials{}, errors.New("header and token_env are required for header credentials")
+		}
+		creds.Token = os.Getenv(creds.TokenEnv)
+		return creds, nil
+	case "basic":
+		if creds.Username == "" || creds.PasswordEnv == "" {
+			return FetchCredentials{}, errors.New("username and password_env are required for basic credentials")
+		}
+		creds.Password = os.Getenv(creds.PasswordEnv)
+		return creds, nil
+	default:
+		return FetchCredentials{}, errors.Errorf("unsupported type %q", creds.Type)
+	}
+}
+
+func fetchProxyURL(proxies ProxyConfig, name string) string {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "git":
+		return proxies.Git
+	case "gitlab":
+		return proxies.GitLab
+	case "jira":
+		return proxies.Jira
+	case "ollama":
+		return proxies.Ollama
+	case "openrouter":
+		return proxies.OpenRouter
+	default:
+		return ""
+	}
 }
 
 // resolveDeprecatedAddr merges a deprecated top-level address field with its

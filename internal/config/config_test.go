@@ -59,6 +59,18 @@ proxies:
     value: http://127.0.0.1:8081
   openrouter:
     value: http://127.0.0.1:8082
+fetch:
+  sites:
+    - name: gitlab-internal
+      url_patterns:
+        - https://gitlab.example.com/**
+      methods: [GET, POST]
+      proxy: git
+      credentials:
+        type: bearer
+        token_env: TEST_SISYPHUS_FETCH_TOKEN
+      max_bytes: 524288
+      timeout: 30s
 telegram:
   addr: :9091
   app_id: 123
@@ -84,6 +96,7 @@ agent:
 	t.Setenv("TEST_SISYPHUS_GITLAB_TOKEN", "gitlab-token")
 	t.Setenv("TEST_SISYPHUS_GIT_PROXY", "http://127.0.0.1:8083")
 	t.Setenv("TEST_SISYPHUS_AGENT_AUTH_TOKEN", "agent-token")
+	t.Setenv("TEST_SISYPHUS_FETCH_TOKEN", "fetch-token")
 
 	cfg, err := Load()
 	require.NoError(t, err)
@@ -100,7 +113,7 @@ agent:
 	require.Equal(t, "corp_chunks", cfg.QdrantCollection)
 	require.Equal(t, "http://ssapi:8080", cfg.API.BaseURL)
 	require.Equal(t, "test-token", cfg.API.AuthToken)
-	require.Empty(t, cfg.Warnings)
+	require.Contains(t, cfg.Warnings, "fetch site gitlab-internal allows write method POST; prefer read-only methods unless explicitly required")
 
 	// git: repository content + commits
 	require.Equal(t, "/tmp/git", cfg.Git.WorkDir)
@@ -128,6 +141,14 @@ agent:
 	require.Equal(t, "http://127.0.0.1:8080", cfg.Proxies.Jira)
 	require.Equal(t, "http://127.0.0.1:8081", cfg.Proxies.Ollama)
 	require.Equal(t, "http://127.0.0.1:8082", cfg.Proxies.OpenRouter)
+	require.Len(t, cfg.Fetch.Sites, 1)
+	require.Equal(t, "gitlab-internal", cfg.Fetch.Sites[0].Name)
+	require.Equal(t, []string{"https://gitlab.example.com/**"}, cfg.Fetch.Sites[0].URLPatterns)
+	require.Equal(t, []string{"GET", "POST"}, cfg.Fetch.Sites[0].Methods)
+	require.Equal(t, "git", cfg.Fetch.Sites[0].Proxy)
+	require.Equal(t, int64(524288), cfg.Fetch.Sites[0].MaxBytes)
+	require.Equal(t, "bearer", cfg.Fetch.Sites[0].Credentials.Type)
+	require.Equal(t, "fetch-token", cfg.Fetch.Sites[0].Credentials.Token)
 
 	require.Equal(t, ":8082", cfg.Agent.Addr)
 	require.Equal(t, "http://ssagent:8082", cfg.Agent.BaseURL)
@@ -211,6 +232,7 @@ func clearEnv(t *testing.T) {
 		"TEST_SISYPHUS_JIRA_PASSWORD",
 		"TEST_SISYPHUS_MCP_AUTH_TOKEN",
 		"TEST_SISYPHUS_AGENT_AUTH_TOKEN",
+		"TEST_SISYPHUS_FETCH_TOKEN",
 	} {
 		t.Setenv(key, "")
 	}

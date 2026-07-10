@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/url"
 	"strings"
 	"time"
@@ -263,4 +264,33 @@ type ContentResponse struct {
 // ContentResolver retrieves actual file content from source repositories.
 type ContentResolver interface {
 	ResolveContent(ctx context.Context, req ContentRequest) (ContentResponse, error)
+}
+
+var (
+	// ErrURLNotAllowed reports that a URL did not match any configured fetch allowlist site.
+	ErrURLNotAllowed = errors.New("url not in allowlist")
+	// ErrFetchMethodNotAllowed reports that a URL matched a site, but the method is not allowed there.
+	ErrFetchMethodNotAllowed = errors.New("method not allowed for site")
+)
+
+// FetchRequest identifies a URL to fetch.
+type FetchRequest struct {
+	URL     string
+	Method  string
+	Body    string
+	Headers map[string]string
+}
+
+// FetchResponse holds the result of a whitelisted HTTP fetch.
+type FetchResponse struct {
+	StatusCode int
+	Headers    map[string]string
+	Body       string
+	FromSite   string
+	Truncated  bool
+}
+
+// URLFetcher performs HTTP requests against operator-approved sites.
+type URLFetcher interface {
+	Fetch(ctx context.Context, req FetchRequest) (FetchResponse, error)
 }

@@ -288,3 +288,45 @@ func (c *Client) ResolveContent(ctx context.Context, req index.ContentRequest) (
 		Found:   resp.Found,
 	}, nil
 }
+
+// Fetch implements the index.URLFetcher interface.
+func (c *Client) Fetch(ctx context.Context, req index.FetchRequest) (index.FetchResponse, error) {
+	start := time.Now()
+	ctx, span := c.tracer.Start(ctx, "apiclient.FetchURL",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(attribute.String("url", req.URL)),
+	)
+	var rerr error
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+			span.SetStatus(codes.Error, rerr.Error())
+		}
+		span.End()
+	}()
+
+	oasReq := &oas.FetchURLRequest{
+		URL:    req.URL,
+		Method: oas.NewOptString(req.Method),
+		Body:   oas.NewOptString(req.Body),
+	}
+	if req.Headers != nil {
+		oasReq.Headers = oas.NewOptFetchURLRequestHeaders(oas.FetchURLRequestHeaders(req.Headers))
+	}
+
+	resp, err := c.inv.FetchURL(ctx, oasReq)
+	if err != nil {
+		rerr = errors.Wrap(err, "fetch url")
+		c.m.record(ctx, "fetch_url", time.Since(start).Seconds(), 0, rerr)
+		return index.FetchResponse{}, rerr
+	}
+
+	c.m.record(ctx, "fetch_url", time.Since(start).Seconds(), 1, nil)
+	return index.FetchResponse{
+		StatusCode: resp.StatusCode,
+		Headers:    resp.Headers.Or(nil),
+		Body:       resp.Body,
+		FromSite:   resp.FromSite,
+		Truncated:  resp.Truncated.Or(false),
+	}, nil
+}

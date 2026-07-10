@@ -22,6 +22,15 @@ func (UnimplementedHandler) Context(ctx context.Context, req *ContextRequest) (r
 	return r, ht.ErrNotImplemented
 }
 
+// FetchURL implements fetchURL operation.
+//
+// Fetch a URL from an operator-approved site.
+//
+// POST /fetch
+func (UnimplementedHandler) FetchURL(ctx context.Context, req *FetchURLRequest) (r *FetchURLResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // GetFile implements getFile operation.
 //
 // Retrieve actual file content from a source repository.

@@ -42,7 +42,7 @@ func TestMCPServer_ToolListAndSearch(t *testing.T) {
 	}}}
 
 	answerer := stub.NewAnswerer()
-	srv := New(fake, answerer, nil)
+	srv := New(fake, answerer, nil, nil)
 
 	// In-memory client/server pair.
 	clientTr, serverTr := mcp.NewInMemoryTransports()

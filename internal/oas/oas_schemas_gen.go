@@ -209,6 +209,141 @@ func (s *ErrorStatusCode) SetResponse(val Error) {
 	s.Response = val
 }
 
+// Ref: #/components/schemas/FetchURLRequest
+type FetchURLRequest struct {
+	URL    string    `json:"url"`
+	Method OptString `json:"method"`
+	// Request body for POST/PUT/PATCH (optional).
+	Body OptString `json:"body"`
+	// Additional request headers (optional). Credential headers are set by the server and cannot be
+	// overridden.
+	Headers OptFetchURLRequestHeaders `json:"headers"`
+}
+
+// GetURL returns the value of URL.
+func (s *FetchURLRequest) GetURL() string {
+	return s.URL
+}
+
+// GetMethod returns the value of Method.
+func (s *FetchURLRequest) GetMethod() OptString {
+	return s.Method
+}
+
+// GetBody returns the value of Body.
+func (s *FetchURLRequest) GetBody() OptString {
+	return s.Body
+}
+
+// GetHeaders returns the value of Headers.
+func (s *FetchURLRequest) GetHeaders() OptFetchURLRequestHeaders {
+	return s.Headers
+}
+
+// SetURL sets the value of URL.
+func (s *FetchURLRequest) SetURL(val string) {
+	s.URL = val
+}
+
+// SetMethod sets the value of Method.
+func (s *FetchURLRequest) SetMethod(val OptString) {
+	s.Method = val
+}
+
+// SetBody sets the value of Body.
+func (s *FetchURLRequest) SetBody(val OptString) {
+	s.Body = val
+}
+
+// SetHeaders sets the value of Headers.
+func (s *FetchURLRequest) SetHeaders(val OptFetchURLRequestHeaders) {
+	s.Headers = val
+}
+
+// Additional request headers (optional). Credential headers are set by the server and cannot be
+// overridden.
+type FetchURLRequestHeaders map[string]string
+
+func (s *FetchURLRequestHeaders) init() FetchURLRequestHeaders {
+	m := *s
+	if m == nil {
+		m = map[string]string{}
+		*s = m
+	}
+	return m
+}
+
+// Ref: #/components/schemas/FetchURLResponse
+type FetchURLResponse struct {
+	StatusCode int    `json:"status_code"`
+	Body       string `json:"body"`
+	// Name of the allowlist site that matched.
+	FromSite  string                     `json:"from_site"`
+	Truncated OptBool                    `json:"truncated"`
+	Headers   OptFetchURLResponseHeaders `json:"headers"`
+}
+
+// GetStatusCode returns the value of StatusCode.
+func (s *FetchURLResponse) GetStatusCode() int {
+	return s.StatusCode
+}
+
+// GetBody returns the value of Body.
+func (s *FetchURLResponse) GetBody() string {
+	return s.Body
+}
+
+// GetFromSite returns the value of FromSite.
+func (s *FetchURLResponse) GetFromSite() string {
+	return s.FromSite
+}
+
+// GetTruncated returns the value of Truncated.
+func (s *FetchURLResponse) GetTruncated() OptBool {
+	return s.Truncated
+}
+
+// GetHeaders returns the value of Headers.
+func (s *FetchURLResponse) GetHeaders() OptFetchURLResponseHeaders {
+	return s.Headers
+}
+
+// SetStatusCode sets the value of StatusCode.
+func (s *FetchURLResponse) SetStatusCode(val int) {
+	s.StatusCode = val
+}
+
+// SetBody sets the value of Body.
+func (s *FetchURLResponse) SetBody(val string) {
+	s.Body = val
+}
+
+// SetFromSite sets the value of FromSite.
+func (s *FetchURLResponse) SetFromSite(val string) {
+	s.FromSite = val
+}
+
+// SetTruncated sets the value of Truncated.
+func (s *FetchURLResponse) SetTruncated(val OptBool) {
+	s.Truncated = val
+}
+
+// SetHeaders sets the value of Headers.
+func (s *FetchURLResponse) SetHeaders(val OptFetchURLResponseHeaders) {
+	s.Headers = val
+}
+
+type FetchURLResponseHeaders map[string]string
+
+func (s *FetchURLResponseHeaders) init() FetchURLResponseHeaders {
+	m := *s
+	if m == nil {
+		m = map[string]string{}
+		*s = m
+	}
+	return m
+}
+
 // Ref: #/components/schemas/FileRequest
 type FileRequest struct {
 	// Repository name as recorded in chunk metadata.
@@ -451,6 +586,98 @@ func (o OptContextRequestFilters) Get() (v ContextRequestFilters, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptContextRequestFilters) Or(d ContextRequestFilters) ContextRequestFilters {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptFetchURLRequestHeaders returns new OptFetchURLRequestHeaders with value set to v.
+func NewOptFetchURLRequestHeaders(v FetchURLRequestHeaders) OptFetchURLRequestHeaders {
+	return OptFetchURLRequestHeaders{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptFetchURLRequestHeaders is optional FetchURLRequestHeaders.
+type OptFetchURLRequestHeaders struct {
+	Value FetchURLRequestHeaders
+	Set   bool
+}
+
+// IsSet returns true if OptFetchURLRequestHeaders was set.
+func (o OptFetchURLRequestHeaders) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptFetchURLRequestHeaders) Reset() {
+	var v FetchURLRequestHeaders
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptFetchURLRequestHeaders) SetTo(v FetchURLRequestHeaders) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptFetchURLRequestHeaders) Get() (v FetchURLRequestHeaders, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptFetchURLRequestHeaders) Or(d FetchURLRequestHeaders) FetchURLRequestHeaders {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptFetchURLResponseHeaders returns new OptFetchURLResponseHeaders with value set to v.
+func NewOptFetchURLResponseHeaders(v FetchURLResponseHeaders) OptFetchURLResponseHeaders {
+	return OptFetchURLResponseHeaders{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptFetchURLResponseHeaders is optional FetchURLResponseHeaders.
+type OptFetchURLResponseHeaders struct {
+	Value FetchURLResponseHeaders
+	Set   bool
+}
+
+// IsSet returns true if OptFetchURLResponseHeaders was set.
+func (o OptFetchURLResponseHeaders) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptFetchURLResponseHeaders) Reset() {
+	var v FetchURLResponseHeaders
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptFetchURLResponseHeaders) SetTo(v FetchURLResponseHeaders) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptFetchURLResponseHeaders) Get() (v FetchURLResponseHeaders, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptFetchURLResponseHeaders) Or(d FetchURLResponseHeaders) FetchURLResponseHeaders {
 	if v, ok := o.Get(); ok {
 		return v
 	}

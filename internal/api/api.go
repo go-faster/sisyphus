@@ -5,6 +5,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"net/http"
 	"strings"
 	"time"
@@ -37,6 +38,7 @@ type Handler struct {
 	answerer  index.Answerer
 	answers   AnswerIndexer
 	content   index.ContentResolver
+	fetcher   index.URLFetcher
 	version   string
 }
 
@@ -62,6 +64,13 @@ func WithAnswerIndexer(p AnswerIndexer) Option {
 func WithContentResolver(c index.ContentResolver) Option {
 	return func(h *Handler) {
 		h.content = c
+	}
+}
+
+// WithURLFetcher sets the whitelisted URL fetcher.
+func WithURLFetcher(f index.URLFetcher) Option {
+	return func(h *Handler) {
+		h.fetcher = f
 	}
 }
 
@@ -98,6 +107,43 @@ func (h *Handler) GetFile(ctx context.Context, req *oas.FileRequest) (*oas.FileR
 		Source:  oas.NewOptString(resp.Source),
 		Found:   resp.Found,
 	}, nil
+}
+
+// FetchURL fetches a URL from the configured allowlist.
+func (h *Handler) FetchURL(ctx context.Context, req *oas.FetchURLRequest) (*oas.FetchURLResponse, error) {
+	if h.fetcher == nil {
+		return nil, &oas.ErrorStatusCode{
+			StatusCode: http.StatusForbidden,
+			Response:   oas.Error{ErrorMessage: "url fetcher not configured"},
+		}
+	}
+
+	resp, err := h.fetcher.Fetch(ctx, index.FetchRequest{
+		URL:     req.URL,
+		Method:  req.Method.Or(""),
+		Body:    req.Body.Or(""),
+		Headers: req.Headers.Or(nil),
+	})
+	if err != nil {
+		if stderrors.Is(err, index.ErrURLNotAllowed) || stderrors.Is(err, index.ErrFetchMethodNotAllowed) {
+			return nil, &oas.ErrorStatusCode{
+				StatusCode: http.StatusForbidden,
+				Response:   oas.Error{ErrorMessage: err.Error()},
+			}
+		}
+		return nil, errors.Wrap(err, "fetch url")
+	}
+
+	out := &oas.FetchURLResponse{
+		StatusCode: resp.StatusCode,
+		Body:       resp.Body,
+		FromSite:   resp.FromSite,
+		Truncated:  oas.NewOptBool(resp.Truncated),
+	}
+	if len(resp.Headers) > 0 {
+		out.Headers = oas.NewOptFetchURLResponseHeaders(oas.FetchURLResponseHeaders(resp.Headers))
+	}
+	return out, nil
 }
 
 // Search runs hybrid retrieval.

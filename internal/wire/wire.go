@@ -27,6 +27,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/embed"
 	"github.com/go-faster/sisyphus/internal/ent"
 	entmigrate "github.com/go-faster/sisyphus/internal/ent/migrate"
+	"github.com/go-faster/sisyphus/internal/fetch"
 	"github.com/go-faster/sisyphus/internal/index"
 	"github.com/go-faster/sisyphus/internal/ingest/git"
 	"github.com/go-faster/sisyphus/internal/llm/openrouter"
@@ -76,6 +77,7 @@ type Components struct {
 	Answerer        index.Answerer
 	Answers         *pipeline.Pipeline
 	ContentResolver index.ContentResolver
+	URLFetcher      index.URLFetcher
 	Health          HealthChecker
 
 	closeDB func()
@@ -260,6 +262,15 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 	localReader := content.NewLocalRepoReader(repoMap, lg)
 	dbReader := content.NewDatabaseReader(svcs.DB, lg)
 	contentResolver := content.NewChainResolver(lg, localReader, dbReader)
+	urlFetcher, err := fetch.New(ctx, cfg.Fetch, cfg.Proxies, fetch.Options{
+		Logger:         lg,
+		TracerProvider: opts.TracerProvider,
+		MeterProvider:  opts.MeterProvider,
+	})
+	if err != nil {
+		svcs.Close()
+		return Components{}, errors.Wrap(err, "url fetcher")
+	}
 
 	return Components{
 		DB:              svcs.DB,
@@ -269,6 +280,7 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		Answerer:        answerer,
 		Answers:         answerPipe,
 		ContentResolver: contentResolver,
+		URLFetcher:      urlFetcher,
 		Health:          &healthChecker{db: svcs.SQLDB, vectors: svcs.VectorHealth},
 		closeDB:         svcs.closeDB,
 	}, nil

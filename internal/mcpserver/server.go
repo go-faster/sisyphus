@@ -17,7 +17,7 @@ type Retriever interface {
 
 // New constructs an MCP Server with knowledge tools wired to the provided
 // Retriever and Answerer. Uses official SDK patterns.
-func New(retr Retriever, answerer index.Answerer, contentResolver index.ContentResolver) *mcp.Server {
+func New(retr Retriever, answerer index.Answerer, contentResolver index.ContentResolver, fetcher index.URLFetcher) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{Name: "ssmcp", Version: "0.1.0"}, nil)
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -34,6 +34,11 @@ func New(retr Retriever, answerer index.Answerer, contentResolver index.ContentR
 		Name:        "get_file_content",
 		Description: "Retrieve actual file content from a source repository by repo + path. Use start/end for line ranges. Uses the local repo clone cache when available, falls back to the stored document body.",
 	}, fileHandler(contentResolver))
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "fetch_url",
+		Description: "Fetch content from an operator-approved URL. Use only for URLs matching the allowlist. Returns response body, truncated to the site's max_bytes.",
+	}, fetchHandler(fetcher))
 
 	return s
 }
