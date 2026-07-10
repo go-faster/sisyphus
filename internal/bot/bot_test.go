@@ -28,6 +28,57 @@ func (c *captureQueryAnswerer) AnswerQuery(ctx context.Context, q index.Query, _
 	return "direct answer", nil
 }
 
+type richQueryAnswerer struct {
+	answer index.Answer
+}
+
+func (r *richQueryAnswerer) Answer(_ context.Context, _ string, _ []index.Result) (string, error) {
+	return r.answer.Text, nil
+}
+
+func (r *richQueryAnswerer) AnswerQuery(_ context.Context, _ index.Query, _ []index.Result) (string, error) {
+	return r.answer.Text, nil
+}
+
+func (r *richQueryAnswerer) AnswerQueryRich(_ context.Context, _ index.Query, _ []index.Result) (index.Answer, error) {
+	return r.answer, nil
+}
+
+func TestHandlePrefersRichAnswererAndKeepsLinks(t *testing.T) {
+	want := index.Answer{
+		Text:  "prod is red because X",
+		Links: []index.Link{{Text: "Dashboard", URL: "https://grafana/d/1"}},
+	}
+	a := &richQueryAnswerer{answer: want}
+	b := New(context.Background(), nil, a, BotCredentials{}, BotOptions{
+		Silent:         true,
+		TracerProvider: otel.GetTracerProvider(),
+		Logger:         zap.NewNop(),
+		AllowedUserIDs: []int64{1},
+	})
+	require.NotNil(t, b.richQueryAnswerer)
+
+	got, err := b.handle(context.Background(), "why is prod red?")
+	require.NoError(t, err)
+	require.Equal(t, want, got)
+}
+
+func TestLinksMarkup(t *testing.T) {
+	require.Nil(t, linksMarkup(nil))
+
+	kb := linksMarkup([]index.Link{
+		{Text: "Dashboard", URL: "https://grafana/d/1"},
+		{Text: "Ticket", URL: "https://jira/IDP-1"},
+	})
+	markup, ok := kb.(*tg.ReplyInlineMarkup)
+	require.True(t, ok)
+	require.Len(t, markup.Rows, 2)
+	btn, ok := markup.Rows[0].Buttons[0].(*tg.KeyboardButtonURL)
+	require.True(t, ok)
+	require.Equal(t, "Dashboard", btn.Text)
+	require.Equal(t, "https://grafana/d/1", btn.URL)
+}
+
 func TestPeerChatID(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -172,7 +223,7 @@ func TestHandleUsesQueryAnswererWithDefaultTimeout(t *testing.T) {
 
 	answer, err := b.handle(context.Background(), "why is prod red?")
 	require.NoError(t, err)
-	require.Equal(t, "direct answer", answer)
+	require.Equal(t, "direct answer", answer.Text)
 	require.Equal(t, index.Query{Text: "why is prod red?", Limit: 12}, a.query)
 	require.NotZero(t, a.deadline)
 	require.Positive(t, time.Until(a.deadline))

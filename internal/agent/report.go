@@ -7,7 +7,13 @@ import (
 	"github.com/go-faster/errors"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/shared"
+
+	"github.com/go-faster/sisyphus/internal/index"
 )
+
+// maxReportLinks caps how many link buttons a report may carry, so a runaway
+// model can't attach an unbounded keyboard.
+const maxReportLinks = 6
 
 // Verdict is the outcome of an investigation.
 type Verdict string
@@ -30,12 +36,13 @@ const (
 // Report is the structured result an investigation submits via the
 // submitReportTool.
 type Report struct {
-	Problem  string   `json:"problem"`
-	Steps    []string `json:"steps,omitempty"`
-	Verdict  Verdict  `json:"verdict"`
-	Findings string   `json:"findings,omitempty"`
-	Sources  []string `json:"sources,omitempty"`
-	Actions  []string `json:"actions,omitempty"`
+	Problem  string       `json:"problem"`
+	Steps    []string     `json:"steps,omitempty"`
+	Verdict  Verdict      `json:"verdict"`
+	Findings string       `json:"findings,omitempty"`
+	Sources  []string     `json:"sources,omitempty"`
+	Actions  []string     `json:"actions,omitempty"`
+	Links    []index.Link `json:"links,omitempty"`
 }
 
 // hasActionableVerdict reports whether v is a verdict that can legitimately
@@ -58,7 +65,33 @@ func (r Report) normalize() Report {
 	if !r.Verdict.hasActionableVerdict() {
 		r.Actions = nil
 	}
+	r.Links = validLinks(r.Links)
 	return r
+}
+
+// validLinks drops links that aren't safe to render as buttons (bad/relative
+// URLs, non-http(s) schemes, empty labels), deduplicates by URL, and caps the
+// count at maxReportLinks.
+func validLinks(links []index.Link) []index.Link {
+	if len(links) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(links))
+	var out []index.Link
+	for _, l := range links {
+		if !l.Valid() {
+			continue
+		}
+		if _, ok := seen[l.URL]; ok {
+			continue
+		}
+		seen[l.URL] = struct{}{}
+		out = append(out, l)
+		if len(out) >= maxReportLinks {
+			break
+		}
+	}
+	return out
 }
 
 // CharLen returns the total character (rune) count across all fields, used
@@ -75,6 +108,9 @@ func (r Report) CharLen() int {
 	}
 	for _, s := range r.Actions {
 		n += utf8.RuneCountInString(s)
+	}
+	for _, l := range r.Links {
+		n += utf8.RuneCountInString(l.Text) + utf8.RuneCountInString(l.URL)
 	}
 	return n
 }
@@ -132,6 +168,27 @@ func submitReportTool() openai.ChatCompletionToolUnionParam {
 								"file). Only include when there is something specific to do or check — a real command " +
 								"or a precise pinpoint. Never include for out_of_scope. Omit entirely rather than " +
 								"padding with vague suggestions.",
+						},
+						"links": map[string]any{
+							"type": "array",
+							"description": "Actionable links to attach as tappable buttons: a relevant Grafana dashboard, " +
+								"the matching Jira/GitLab ticket, a runbook. Use ONLY absolute http(s) URLs you actually " +
+								"obtained from tool results — never invent or guess a URL. Omit when there's nothing " +
+								"concrete to link to.",
+							"items": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"text": map[string]any{
+										"type":        "string",
+										"description": "Short button label, e.g. \"Grafana: API latency\" or \"JIRA-123\".",
+									},
+									"url": map[string]any{
+										"type":        "string",
+										"description": "Absolute http(s) URL from a tool result.",
+									},
+								},
+								"required": []string{"text", "url"},
+							},
 						},
 					},
 					"required": []string{"problem", "verdict"},

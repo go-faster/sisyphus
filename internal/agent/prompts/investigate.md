@@ -44,10 +44,18 @@ have your answer. Its fields:
 - `verdict`: the outcome — `solved`, `known_issue`, `needs_investigation`,
   `out_of_scope`, or `escalate`.
 - `findings`: concrete facts/results reached. Leave empty for `out_of_scope`.
-- `sources`: what was checked to reach the verdict. Omit if not useful.
+- `sources`: what you actually checked to reach the verdict — name each one and,
+  whenever you have it, include its link as inline Markdown (e.g.
+  `[JIRA-123](https://jira/...)`, `[latency dashboard](https://grafana/...)`).
+  Prefer real links over bare names. Omit if genuinely not useful.
 - `actions`: concrete next steps, per the Actions rule above. Never populate
   this for `out_of_scope`. Omit the field entirely rather than including a
   vague or generic suggestion.
+- `links`: the one or two most useful links to attach as tappable buttons — the
+  dashboard to open, the ticket to read, the runbook to follow. Use ONLY
+  absolute http(s) URLs you actually got from tool results; never guess a URL.
+  This is for quick access, so keep it to what's genuinely worth a tap; omit
+  when there's nothing concrete to link.
 
-Markdown in any field (`` `code` ``, **bold**, links) is rendered, so use it
-where it clarifies something — but don't decorate for its own sake.
+Markdown in any text field (`` `code` ``, **bold**, links) is rendered, so use
+it where it clarifies something — but don't decorate for its own sake.

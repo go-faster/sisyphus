@@ -46,6 +46,13 @@ type QueryAnswerer interface {
 	AnswerQuery(ctx context.Context, q index.Query, results []index.Result) (string, error)
 }
 
+// RichQueryAnswerer answers a query and returns a structured answer including
+// actionable link buttons. Detected via type assertion; the bot falls back to
+// QueryAnswerer when it is absent.
+type RichQueryAnswerer interface {
+	AnswerQueryRich(ctx context.Context, q index.Query, results []index.Result) (index.Answer, error)
+}
+
 // Investigator is the interface for running on-demand investigations.
 type Investigator interface {
 	Investigate(ctx context.Context, description string) (agent.Report, error)
@@ -64,10 +71,11 @@ type Bot struct {
 	cred   BotCredentials
 	silent bool
 
-	retriever     Retriever
-	answerer      index.Answerer
-	queryAnswerer QueryAnswerer
-	investigator  Investigator
+	retriever         Retriever
+	answerer          index.Answerer
+	queryAnswerer     QueryAnswerer
+	richQueryAnswerer RichQueryAnswerer
+	investigator      Investigator
 
 	tp            trace.TracerProvider
 	mp            metric.MeterProvider
@@ -133,22 +141,27 @@ func New(_ context.Context, r Retriever, a index.Answerer, cred BotCredentials, 
 	if qa, ok := a.(QueryAnswerer); ok {
 		queryAnswerer = qa
 	}
+	var richQueryAnswerer RichQueryAnswerer
+	if rqa, ok := a.(RichQueryAnswerer); ok {
+		richQueryAnswerer = rqa
+	}
 
 	return &Bot{
-		cred:          cred,
-		silent:        opts.Silent,
-		retriever:     r,
-		answerer:      a,
-		queryAnswerer: queryAnswerer,
-		investigator:  opts.Investigator,
-		tp:            tp,
-		mp:            mp,
-		tracer:        tp.Tracer("github.com/go-faster/sisyphus/bot"),
-		logger:        opts.Logger,
-		metrics:       m,
-		allowedChats:  allowedChats,
-		allowedUsers:  allowedUsers,
-		answerTimeout: opts.AnswerTimeout,
+		cred:              cred,
+		silent:            opts.Silent,
+		retriever:         r,
+		answerer:          a,
+		queryAnswerer:     queryAnswerer,
+		richQueryAnswerer: richQueryAnswerer,
+		investigator:      opts.Investigator,
+		tp:                tp,
+		mp:                mp,
+		tracer:            tp.Tracer("github.com/go-faster/sisyphus/bot"),
+		logger:            opts.Logger,
+		metrics:           m,
+		allowedChats:      allowedChats,
+		allowedUsers:      allowedUsers,
+		answerTimeout:     opts.AnswerTimeout,
 	}
 }
 
@@ -248,11 +261,15 @@ func (b *Bot) Run(ctx context.Context) error {
 			answer, err := b.handle(ctx, rest)
 			if err != nil {
 				lg.Error("handle context", zap.Error(err))
-				answer = "Sorry, something went wrong handling that request."
+				answer = index.Answer{Text: "Sorry, something went wrong handling that request."}
 			}
-			lg.Info("replying", zap.String("answer", answer))
+			lg.Info("replying", zap.String("answer", answer.Text), zap.Int("buttons", len(answer.Links)))
 			if !b.silent {
-				if _, err := sender.Reply(e, u).Text(ctx, answer); err != nil {
+				req := sender.Reply(e, u)
+				if kb := linksMarkup(answer.Links); kb != nil {
+					req = req.Markup(kb)
+				}
+				if _, err := req.Text(ctx, answer.Text); err != nil {
 					return errors.Wrap(err, "reply")
 				}
 			}
@@ -287,7 +304,7 @@ func (b *Bot) Run(ctx context.Context) error {
 	})
 }
 
-func (b *Bot) handle(ctx context.Context, query string) (string, error) {
+func (b *Bot) handle(ctx context.Context, query string) (index.Answer, error) {
 	start := time.Now()
 	ctx, span := b.tracer.Start(ctx, "bot.context",
 		trace.WithAttributes(attribute.Int("query.length", len(query))),
@@ -312,31 +329,40 @@ func (b *Bot) handle(ctx context.Context, query string) (string, error) {
 		}
 		span.End()
 	}()
+	// Prefer the structured (rich) path so we can surface source-link buttons.
+	if b.richQueryAnswerer != nil {
+		answer, err := b.richQueryAnswerer.AnswerQueryRich(ctx, index.Query{Text: query, Limit: 12}, nil)
+		if err != nil {
+			rerr = errors.Wrap(err, "answer query")
+			return index.Answer{}, rerr
+		}
+		return answer, nil
+	}
 	if b.queryAnswerer != nil {
 		answer, err := b.queryAnswerer.AnswerQuery(ctx, index.Query{Text: query, Limit: 12}, nil)
 		if err != nil {
 			rerr = errors.Wrap(err, "answer query")
-			return "", rerr
+			return index.Answer{}, rerr
 		}
-		return answer, nil
+		return index.Answer{Text: answer}, nil
 	}
 	if b.retriever == nil || b.answerer == nil {
 		rerr = errors.New("bot answerer is not configured")
-		return "", rerr
+		return index.Answer{}, rerr
 	}
 
 	results, err := b.retriever.Retrieve(ctx, index.Query{Text: query, Limit: 12})
 	if err != nil {
 		rerr = errors.Wrap(err, "retrieve")
-		return "", rerr
+		return index.Answer{}, rerr
 	}
 	resultCount = len(results)
 	answer, err := b.answerer.Answer(ctx, query, results)
 	if err != nil {
 		rerr = errors.Wrap(err, "answer")
-		return "", rerr
+		return index.Answer{}, rerr
 	}
-	return answer, nil
+	return index.Answer{Text: answer}, nil
 }
 
 // investigateAsync runs an investigation in the background and delivers the
@@ -360,9 +386,16 @@ func (b *Bot) investigateAsync(ctx context.Context, sender *message.Sender, e tg
 	}
 
 	chunks := splitMarkdown(reportMarkdown(report), telegramMessageLimit)
-	for _, chunk := range chunks {
+	kb := linksMarkup(report.Links)
+	for i, chunk := range chunks {
 		md := chunk
-		if _, err := sender.Reply(e, u).StyledText(ctx, styling.Custom(func(eb *entity.Builder) error {
+		req := sender.Reply(e, u)
+		// Attach the link buttons to the final message so they sit at the
+		// bottom of the whole report.
+		if kb != nil && i == len(chunks)-1 {
+			req = req.Markup(kb)
+		}
+		if _, err := req.StyledText(ctx, styling.Custom(func(eb *entity.Builder) error {
 			return renderMarkdown(eb, md)
 		})); err != nil {
 			b.logger.Error("investigate follow-up reply failed", zap.Error(err))

@@ -101,7 +101,17 @@ func (c *Client) Answer(ctx context.Context, question string, results []index.Re
 }
 
 // AnswerQuery answers using /context with the same query controls as retrieval.
-func (c *Client) AnswerQuery(ctx context.Context, q index.Query, results []index.Result) (answer string, rerr error) {
+func (c *Client) AnswerQuery(ctx context.Context, q index.Query, results []index.Result) (string, error) {
+	ans, err := c.AnswerQueryRich(ctx, q, results)
+	if err != nil {
+		return "", err
+	}
+	return ans.Text, nil
+}
+
+// AnswerQueryRich answers using /context and returns the structured answer,
+// including any source-link buttons the server surfaced.
+func (c *Client) AnswerQueryRich(ctx context.Context, q index.Query, results []index.Result) (answer index.Answer, rerr error) {
 	start := time.Now()
 	ctx, span := c.tracer.Start(ctx, "apiclient.Answer",
 		trace.WithSpanKind(trace.SpanKindClient),
@@ -132,11 +142,30 @@ func (c *Client) AnswerQuery(ctx context.Context, q index.Query, results []index
 	resp, err := c.inv.Context(ctx, req)
 	if err != nil {
 		rerr = errors.Wrap(err, "get context")
-		return "", rerr
+		return index.Answer{}, rerr
 	}
-	answer = resp.Answer
-	span.SetAttributes(attribute.Int("answer.length", len(answer)))
+	answer = index.Answer{Text: resp.Answer, Links: fromLinks(resp.Buttons)}
+	span.SetAttributes(
+		attribute.Int("answer.length", len(answer.Text)),
+		attribute.Int("answer.links", len(answer.Links)),
+	)
 	return answer, nil
+}
+
+// fromLinks maps oas links to index links, dropping any that are not valid
+// absolute http(s) URLs (defense in depth against a misbehaving server).
+func fromLinks(links []oas.Link) []index.Link {
+	if len(links) == 0 {
+		return nil
+	}
+	out := make([]index.Link, 0, len(links))
+	for _, l := range links {
+		il := index.Link{Text: l.Text, URL: l.URL}
+		if il.Valid() {
+			out = append(out, il)
+		}
+	}
+	return out
 }
 
 // Retrieve implements the Retriever interface.

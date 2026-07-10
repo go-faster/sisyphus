@@ -72,6 +72,29 @@ Service routing is currently inert: retrieval's `service` boost falls back to
 1.0 when `metadata.service` is absent. Add real service routing only when query
 quality demands it.
 
+## Answers & link buttons
+
+Answers can carry actionable links rendered as Telegram inline URL buttons.
+
+- `index.Link{Text,URL}` (`Valid()` requires an absolute http(s) URL + non-empty
+  label) and `index.Answer{Text,Links}` are the shared types. `index.RichAnswerer`
+  is an **opt-in** extension of `index.Answerer` (`AnswerRich` returns `index.Answer`),
+  detected via type assertion — plain `Answerer.Answer` (string) still works and is
+  what MCP + tests use.
+- `/context` (`internal/llm/openrouter.Answerer.AnswerRich`): the answerer prompt
+  tells the model to cite sources as inline Markdown links, and a `submit_answer`
+  tool returns `{answer, buttons}`. Button URLs are validated **and constrained to
+  the retrieved sources' `source_url`** (see `filterButtons`) so the model can't
+  surface a hallucinated/off-context URL. Buttons cross the HTTP boundary as
+  `ContextResponse.buttons` (oas `Link`); `internal/api` populates them,
+  `internal/apiclient.AnswerQueryRich` reads them (re-validating in `fromLinks`),
+  and `internal/bot` renders them via `linksMarkup` on the `/context` reply.
+- `/investigate` (`internal/agent`): `Report.Links` comes from the `submit_report`
+  tool's `links` param; `Report.normalize` drops invalid/duplicate links and caps
+  at `maxReportLinks`. Here links may be **any** http(s) URL the agent obtained from
+  tool results (dashboards, tickets), not just cited sources. The bot attaches them
+  to the final report message.
+
 ## API auth
 
 The HTTP API (`cmd/ssapi`) requires a shared static bearer token (`api.auth_token`

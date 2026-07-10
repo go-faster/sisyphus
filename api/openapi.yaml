@@ -194,7 +194,25 @@ components:
           type: string
         confidence:
           type: string
+        buttons:
+          type: array
+          description: |
+            Actionable links surfaced alongside the answer (e.g. the sources it
+            relied on), suitable for rendering as buttons. URLs are always
+            absolute http(s).
+          items:
+            $ref: "#/components/schemas/Link"
         results:
           type: array
           items:
             $ref: "#/components/schemas/SearchResult"
+    Link:
+      type: object
+      required: [text, url]
+      properties:
+        text:
+          type: string
+          description: Human-readable button label.
+        url:
+          type: string
+          description: Absolute http(s) URL.
