@@ -101,6 +101,8 @@ func (a *Answerer) AnswerRich(ctx context.Context, question string, results []in
 	}
 	msgs = append(msgs, openai.UserMessage(
 		"Reply by calling the submit_answer tool exactly once. Put the prose answer in `answer`, "+
+			"using only Telegram-safe Markdown: paragraphs, short bullet or numbered lists, bold, italic, code, and inline links. "+
+			"Do not use Markdown tables; rewrite tabular data as concise bullets or a labeled list. "+
 			"and in `buttons` include only the sources you actually relied on, using their exact URLs "+
 			"from the context above. Omit `buttons` entirely if no source has a useful URL.",
 	))
@@ -170,7 +172,7 @@ func submitAnswerTool() openai.ChatCompletionToolUnionParam {
 					"properties": map[string]any{
 						"answer": map[string]any{
 							"type":        "string",
-							"description": "The prose answer, grounded in the provided context. Markdown is allowed.",
+							"description": "The prose answer, grounded in the provided context. Use Telegram-safe Markdown only: paragraphs, short lists, bold, italic, code, and inline links. Do not use Markdown tables; rewrite tables as concise bullets or labeled lines.",
 						},
 						"buttons": map[string]any{
 							"type": "array",

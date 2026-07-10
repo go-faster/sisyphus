@@ -49,6 +49,20 @@ func TestRenderMarkdown_CodeSpanAndLink(t *testing.T) {
 	require.True(t, hasURL, "expected a text URL entity")
 }
 
+func TestRenderMarkdown_Table(t *testing.T) {
+	text, entities := render(t, strings.Join([]string{
+		"| From | To | Port |",
+		"| --- | --- | --- |",
+		"| management VLAN | clients VLAN | 443 |",
+		"| ANY VLAN | vSphere API EP | 443 |",
+	}, "\n"))
+
+	require.Contains(t, text, "From            | To             | Port")
+	require.Contains(t, text, "management VLAN | clients VLAN   | 443")
+	require.Len(t, entities, 1)
+	require.IsType(t, &tg.MessageEntityPre{}, entities[0])
+}
+
 func TestRenderMarkdown_FencedCode(t *testing.T) {
 	text, entities := render(t, "```go\nfmt.Println(\"hi\")\n```")
 	require.Equal(t, "fmt.Println(\"hi\")", text)

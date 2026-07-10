@@ -269,8 +269,13 @@ func (b *Bot) Run(ctx context.Context) error {
 				if kb := linksMarkup(answer.Links); kb != nil {
 					req = req.Markup(kb)
 				}
-				if _, err := req.Text(ctx, answer.Text); err != nil {
-					return errors.Wrap(err, "reply")
+				if _, err := req.StyledText(ctx, styling.Custom(func(eb *entity.Builder) error {
+					return renderMarkdown(eb, answer.Text)
+				})); err != nil {
+					lg.Warn("styled context reply failed, falling back to plain text", zap.Error(err))
+					if _, err := req.Text(ctx, answer.Text); err != nil {
+						return errors.Wrap(err, "reply fallback")
+					}
 				}
 			}
 		case "investigate":

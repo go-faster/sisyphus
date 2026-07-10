@@ -10,18 +10,23 @@ package bot
 import (
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/gotd/td/telegram/message/entity"
 	"github.com/yuin/goldmark"
 	gast "github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/extension"
+	east "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/text"
 )
+
+var telegramMarkdown = goldmark.New(goldmark.WithExtensions(extension.Table))
 
 // renderMarkdown parses source as Markdown and writes its content into eb
 // using Telegram formatting entities.
 func renderMarkdown(eb *entity.Builder, source string) error {
 	src := []byte(source)
-	doc := goldmark.DefaultParser().Parse(text.NewReader(src))
+	doc := telegramMarkdown.Parser().Parse(text.NewReader(src))
 	r := &mdRenderer{eb: eb, src: src}
 	return r.renderChildren(doc, 0)
 }
@@ -79,12 +84,87 @@ func (r *mdRenderer) renderBlock(n gast.Node, depth int) error {
 		}
 	case *gast.ThematicBreak:
 		// Not representable in Telegram formatting; omit.
+	case *east.Table:
+		r.renderTable(v)
 	default:
 		if err := r.renderChildren(n, depth); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (r *mdRenderer) renderTable(t *east.Table) {
+	rows := r.tableRows(t)
+	if len(rows) == 0 {
+		return
+	}
+	widths := tableColumnWidths(rows)
+	var sb strings.Builder
+	for i, row := range rows {
+		if i == 1 {
+			writeTableSeparator(&sb, widths)
+		}
+		for col, width := range widths {
+			if col > 0 {
+				sb.WriteString(" | ")
+			}
+			cell := ""
+			if col < len(row) {
+				cell = row[col]
+			}
+			sb.WriteString(cell)
+			for range width - utf8.RuneCountInString(cell) {
+				sb.WriteByte(' ')
+			}
+		}
+		sb.WriteByte('\n')
+	}
+	r.eb.Format(strings.TrimRight(sb.String(), "\n"), entity.Pre(""))
+	r.eb.Plain("\n\n")
+}
+
+func (r *mdRenderer) tableRows(t *east.Table) [][]string {
+	var rows [][]string
+	for rowNode := t.FirstChild(); rowNode != nil; rowNode = rowNode.NextSibling() {
+		switch rowNode.(type) {
+		case *east.TableHeader, *east.TableRow:
+		default:
+			continue
+		}
+		var row []string
+		for cellNode := rowNode.FirstChild(); cellNode != nil; cellNode = cellNode.NextSibling() {
+			if _, ok := cellNode.(*east.TableCell); !ok {
+				continue
+			}
+			row = append(row, strings.TrimSpace(r.plainText(cellNode)))
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+func tableColumnWidths(rows [][]string) []int {
+	var widths []int
+	for _, row := range rows {
+		for col, cell := range row {
+			if col >= len(widths) {
+				widths = append(widths, 0)
+			}
+			widths[col] = max(widths[col], utf8.RuneCountInString(cell))
+		}
+	}
+	return widths
+}
+
+func writeTableSeparator(sb *strings.Builder, widths []int) {
+	for col, width := range widths {
+		if col > 0 {
+			sb.WriteString("-+-")
+		}
+		sb.WriteString(strings.Repeat("-", max(width, 3)))
+	}
+	sb.WriteByte('\n')
 }
 
 func (r *mdRenderer) renderList(l *gast.List, depth int) error {
@@ -200,6 +280,30 @@ func (r *mdRenderer) inlineText(n gast.Node) string {
 		sb.Write(t.Segment.Value(r.src))
 	}
 	return sb.String()
+}
+
+func (r *mdRenderer) plainText(n gast.Node) string {
+	var sb strings.Builder
+	var walk func(gast.Node)
+	walk = func(n gast.Node) {
+		for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+			switch v := c.(type) {
+			case *gast.Text:
+				sb.Write(v.Segment.Value(r.src))
+				if v.SoftLineBreak() || v.HardLineBreak() {
+					sb.WriteByte(' ')
+				}
+			case *gast.String:
+				sb.Write(v.Value)
+			case *gast.CodeSpan:
+				sb.WriteString(r.inlineText(v))
+			default:
+				walk(v)
+			}
+		}
+	}
+	walk(n)
+	return strings.Join(strings.Fields(sb.String()), " ")
 }
 
 func codeBlockText(lines *text.Segments, src []byte) string {
