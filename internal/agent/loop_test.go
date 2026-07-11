@@ -113,8 +113,10 @@ func TestLoop_Run_MaxIterations(t *testing.T) {
 	ts := &fakeToolSource{}
 
 	loop := NewLoop(llm, ts, "test-model", 2, zaptest.NewLogger(t))
-	_, err := loop.Run(context.Background(), "system", "user")
+	res, err := loop.Run(context.Background(), "system", "user")
 	require.ErrorContains(t, err, "exceeded max iterations (2)")
+	require.Equal(t, 2, res.Iterations)
+	require.Equal(t, 2, res.ToolsUsed)
 }
 
 func TestLoop_Run_ToolError(t *testing.T) {

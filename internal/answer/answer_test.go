@@ -41,6 +41,47 @@ func TestAnswerRich(t *testing.T) {
 	require.Equal(t, []index.Link{{Text: "Doc", URL: "https://example.com/doc"}}, ans.Links)
 }
 
+type recordingRetriever struct {
+	calls   int
+	queries []index.Query
+	results []index.Result
+}
+
+func (r *recordingRetriever) Retrieve(_ context.Context, q index.Query) ([]index.Result, error) {
+	r.calls++
+	r.queries = append(r.queries, q)
+	return r.results, nil
+}
+
+// TestAnswerRich_SkipsPreSearchWhenResultsProvided ensures AnswerRich reuses
+// the caller-supplied results (which may carry service/source-tier filters
+// the caller applied) instead of silently re-retrieving with a bare
+// Text+Limit query that would drop those filters.
+func TestAnswerRich_SkipsPreSearchWhenResultsProvided(t *testing.T) {
+	llm := &fakeLLM{responses: []openai.ChatCompletionMessage{{ToolCalls: []openai.ChatCompletionMessageToolCallUnion{submitAnswerCall("call_1", "hello", nil)}}}}
+	ts := &answerToolSource{tools: []openai.ChatCompletionToolUnionParam{searchKnowledgeTool()}}
+	retr := &recordingRetriever{}
+	a := NewAgenticAnswerer(llm, ts, "test-model", AgenticOptions{Logger: zaptest.NewLogger(t), PreSearch: true, Retriever: retr})
+
+	seed := []index.Result{{Chunk: index.Chunk{Metadata: map[string]any{"source_url": "https://example.com/doc"}}}}
+	_, err := a.AnswerRich(context.Background(), "question", seed)
+	require.NoError(t, err)
+	require.Zero(t, retr.calls, "pre-search must not run when the caller already retrieved results")
+}
+
+// TestAnswerRich_PreSearchesWhenNoResultsProvided keeps the fallback search
+// working when the caller passes an empty/nil result set.
+func TestAnswerRich_PreSearchesWhenNoResultsProvided(t *testing.T) {
+	llm := &fakeLLM{responses: []openai.ChatCompletionMessage{{ToolCalls: []openai.ChatCompletionMessageToolCallUnion{submitAnswerCall("call_1", "hello", nil)}}}}
+	ts := &answerToolSource{tools: []openai.ChatCompletionToolUnionParam{searchKnowledgeTool()}}
+	retr := &recordingRetriever{}
+	a := NewAgenticAnswerer(llm, ts, "test-model", AgenticOptions{Logger: zaptest.NewLogger(t), PreSearch: true, Retriever: retr})
+
+	_, err := a.AnswerRich(context.Background(), "question", nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, retr.calls)
+}
+
 func TestAnswerRich_Fallback(t *testing.T) {
 	llm := &fakeLLM{responses: []openai.ChatCompletionMessage{{Content: "fallback"}}}
 	ts := &answerToolSource{tools: []openai.ChatCompletionToolUnionParam{searchKnowledgeTool()}}
@@ -48,4 +89,39 @@ func TestAnswerRich_Fallback(t *testing.T) {
 	ans, err := a.AnswerRich(context.Background(), "question", nil)
 	require.NoError(t, err)
 	require.Equal(t, "fallback", ans.Text)
+}
+
+// capturingLLM records the system prompt it was asked to complete with, so
+// tests can assert on how AgenticAnswerer builds it.
+type capturingLLM struct {
+	systemPrompt string
+	response     openai.ChatCompletionMessage
+}
+
+func (c *capturingLLM) CompleteWithTools(_ context.Context, _ string, messages []openai.ChatCompletionMessageParamUnion, _ []openai.ChatCompletionToolUnionParam) (openai.ChatCompletionMessage, error) {
+	if len(messages) > 0 {
+		if sys := messages[0].OfSystem; sys != nil && sys.Content.OfString.Valid() {
+			c.systemPrompt = sys.Content.OfString.Value
+		}
+	}
+	return c.response, nil
+}
+
+func TestAnswerRich_SandboxDisabledNotedInPrompt(t *testing.T) {
+	llm := &capturingLLM{response: openai.ChatCompletionMessage{ToolCalls: []openai.ChatCompletionMessageToolCallUnion{submitAnswerCall("call_1", "hello", nil)}}}
+	ts := &answerToolSource{tools: []openai.ChatCompletionToolUnionParam{searchKnowledgeTool()}}
+	a := NewAgenticAnswerer(llm, ts, "test-model", AgenticOptions{Logger: zaptest.NewLogger(t), PreSearch: false, SandboxEnabled: false})
+	_, err := a.AnswerRich(context.Background(), "question", nil)
+	require.NoError(t, err)
+	require.Contains(t, llm.systemPrompt, "NOT available")
+	require.NotContains(t, llm.systemPrompt, "The sandbox machine is named")
+}
+
+func TestAnswerRich_SandboxEnabledNamesMachine(t *testing.T) {
+	llm := &capturingLLM{response: openai.ChatCompletionMessage{ToolCalls: []openai.ChatCompletionMessageToolCallUnion{submitAnswerCall("call_1", "hello", nil)}}}
+	ts := &answerToolSource{tools: []openai.ChatCompletionToolUnionParam{searchKnowledgeTool()}}
+	a := NewAgenticAnswerer(llm, ts, "test-model", AgenticOptions{Logger: zaptest.NewLogger(t), PreSearch: false, SandboxEnabled: true, SandboxMachine: "sandbox"})
+	_, err := a.AnswerRich(context.Background(), "question", nil)
+	require.NoError(t, err)
+	require.Contains(t, llm.systemPrompt, "The sandbox machine is named sandbox")
 }
