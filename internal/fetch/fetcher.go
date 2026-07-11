@@ -103,7 +103,7 @@ func New(ctx context.Context, cfg config.FetchConfig, proxies config.ProxyConfig
 	return &Fetcher{
 		sites:  sites,
 		lg:     opts.Logger,
-		tracer: opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/fetch"),
+		tracer: opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/fetch"),
 	}, nil
 }
 

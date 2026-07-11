@@ -74,7 +74,7 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry) error {
 		timeout = 3 * time.Minute
 	}
 
-	tracer := telemetry.TracerProvider().Tracer("github.com/go-faster/sisyphus/ssagent")
+	tracer := telemetry.TracerProvider().Tracer("github.com/go-faster/sisyphus/cmd/ssagent")
 	metrics, err := newAgentMetrics(telemetry.MeterProvider())
 	if err != nil {
 		return errors.Wrap(err, "agent metrics")

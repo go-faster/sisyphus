@@ -29,7 +29,7 @@ type KnowledgeToolSource struct {
 
 func NewKnowledgeToolSource(retriever Retriever, fetcher index.URLFetcher, tracer trace.Tracer) *KnowledgeToolSource {
 	if tracer == nil {
-		tracer = noop.NewTracerProvider().Tracer("github.com/go-faster/sisyphus/answer")
+		tracer = noop.NewTracerProvider().Tracer("github.com/go-faster/sisyphus/internal/answer")
 	}
 	return &KnowledgeToolSource{retriever: retriever, fetcher: fetcher, tracer: tracer}
 }

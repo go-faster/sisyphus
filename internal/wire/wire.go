@@ -293,7 +293,7 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 	}
 
 	if cfg.OpenRouter.Enabled() && cfg.Context.Agentic {
-		knowledgeTools := answer.NewKnowledgeToolSource(retr, urlFetcher, opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/answer/tools"))
+		knowledgeTools := answer.NewKnowledgeToolSource(retr, urlFetcher, opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/answer/tools"))
 		var sshTools agent.ToolSource
 		if cfg.Context.SSHMCPURL != "" {
 			connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -317,7 +317,7 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 			MaxAnswerChars: cfg.Context.MaxAnswerChars,
 			SandboxMachine: cfg.Context.SandboxMachine,
 			SandboxEnabled: sshTools != nil,
-			Tracer:         opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/answer"),
+			Tracer:         opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/answer"),
 		})
 	}
 

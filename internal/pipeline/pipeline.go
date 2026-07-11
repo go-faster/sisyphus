@@ -69,7 +69,7 @@ func New(db *ent.Client, chunker index.Chunker, embedder index.Embedder, vectors
 		chunker:  chunker,
 		embedder: embedder,
 		vectors:  vectors,
-		tracer:   opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/pipeline"),
+		tracer:   opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/pipeline"),
 		metrics:  m,
 		docLocks: newKeyLocker(),
 	}, nil

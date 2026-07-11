@@ -107,7 +107,9 @@ func (a Answerer) Answer(_ context.Context, q index.Query, results []index.Resul
 	var response strings.Builder
 
 	// Header echoing the question.
-	response.WriteString("Question: " + q.Text + "\n\n")
+	response.WriteString("Question: ")
+	response.WriteString(q.Text)
+	response.WriteString("\n\n")
 
 	if len(results) == 0 {
 		response.WriteString("No relevant context was found to answer this question.\n\n")
@@ -148,8 +150,9 @@ func (a Answerer) Answer(_ context.Context, q index.Query, results []index.Resul
 			runeSlice := []rune(snippet)
 			snippet = string(runeSlice[:maxSnippetRunes]) + "…"
 		}
-		response.WriteString("   " + strings.TrimSpace(snippet) + "\n")
-		response.WriteString("\n")
+		response.WriteString("   ")
+		response.WriteString(strings.TrimSpace(snippet))
+		response.WriteString("\n\n")
 	}
 
 	// Confidence footer.

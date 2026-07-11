@@ -60,7 +60,7 @@ func (opts *AgenticOptions) setDefaults() {
 		opts.SandboxMachine = "sandbox"
 	}
 	if opts.Tracer == nil {
-		opts.Tracer = otel.GetTracerProvider().Tracer("github.com/go-faster/sisyphus/answer")
+		opts.Tracer = otel.GetTracerProvider().Tracer("github.com/go-faster/sisyphus/internal/answer")
 	}
 }
 

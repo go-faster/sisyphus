@@ -71,7 +71,7 @@ func New(baseURL, token string, opts Options) (*Client, error) {
 		inv:        c,
 		baseURL:    baseURL,
 		httpClient: opts.HTTPClient,
-		tracer:     opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/apiclient"),
+		tracer:     opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/apiclient"),
 		m:          m,
 	}, nil
 }
