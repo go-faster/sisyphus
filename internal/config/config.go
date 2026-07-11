@@ -214,6 +214,7 @@ type fileFetchConfig struct {
 
 // ProxyConfig configures per-client HTTP proxies.
 type ProxyConfig struct {
+	Fetch      string
 	Git        string
 	GitLab     string
 	Jira       string
@@ -759,6 +760,8 @@ func resolveFetchCredentials(creds FetchCredentials) (FetchCredentials, error) {
 
 func fetchProxyURL(proxies ProxyConfig, name string) string {
 	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "fetch":
+		return proxies.Fetch
 	case "git":
 		return proxies.Git
 	case "gitlab":
