@@ -60,7 +60,15 @@ internal/llm/openrouter OpenRouter-backed LLM answerer (chat completions) used t
                         answer /context questions from retrieved chunks.
 internal/apiclient      oas.Client adapter satisfying bot/mcpserver's local Retriever
                         interface + index.Answerer over HTTP with bearer auth
-internal/mcpserver      MCP server impl (search/answer tools) + BearerAuthMiddleware
+internal/content        index.ContentResolver implementations backing the file-content
+                        API/tool: DatabaseReader (document.body from Postgres, with git_docs/
+                        git_code/git_manifest source-prefix fallback), LocalRepoReader (local
+                        git clone on disk, path-traversal/symlink-escape guarded), ChainResolver
+                        (tries resolvers in order, first Found wins)
+internal/fetch          index.URLFetcher implementation: per-site HTTP allowlist (URL glob
+                        patterns, allowed methods, credential injection, byte cap) configured
+                        via FetchConfig; backs the fetch API/MCP tool
+internal/mcpserver      MCP server impl (search/answer/file/fetch tools) + BearerAuthMiddleware
                         for ssmcp's optional /mcp bearer auth
 internal/wire           shared wiring for cmd/ssapi and cmd/ssingest (Services + Components)
 internal/oas            ogen generated code
@@ -123,6 +131,15 @@ See `internal/config/config.go`'s `resolveDeprecatedAddr`/`resolveDeprecatedSecr
 `cmd/ssbot`'s Telegram bot is allowlist-gated and **fails closed**: `telegram.allowed_chats`
 / `allowed_user_ids` (both empty by default) must list at least one chat or user, or the
 bot silently ignores every message (see `internal/bot.Bot.isAllowed`).
+
+`proxies.*` (`ProxyConfig`) configures a per-client HTTP proxy: `git`, `gitlab`, `jira`,
+`ollama`, `openrouter`, and `fetch` (the dedicated proxy for `internal/fetch` sites that
+set `proxy: fetch`). A fetch site's `proxy` name is resolved twice — once in
+`internal/config/config.go` (`fetchProxyURL`, used for config validation) and again in
+`internal/fetch/fetcher.go` (`proxyURL`, used to actually build the site's `http.Client`).
+Both switches must be kept in sync when adding a new proxy name; a name present in one but
+not the other either fails validation for a working proxy or silently fetches with no
+proxy at all.
 
 ## Conventions
 
