@@ -296,7 +296,9 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		knowledgeTools := answer.NewKnowledgeToolSource(retr, urlFetcher, opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/answer/tools"))
 		var sshTools agent.ToolSource
 		if cfg.Context.SSHMCPURL != "" {
-			toolSource, closeFn, err := answer.NewSSHToolSource(ctx, cfg.Context.SSHMCPURL, cfg.Context.SSHMCPHeaders, answer.SSHToolSourceOptions{})
+			connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			toolSource, closeFn, err := answer.NewSSHToolSource(connectCtx, cfg.Context.SSHMCPURL, cfg.Context.SSHMCPHeaders, answer.SSHToolSourceOptions{})
+			cancel()
 			if err != nil {
 				lg.Warn("ssh-mcp unavailable, sandbox tools disabled", zap.Error(err))
 			} else {
@@ -314,6 +316,7 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 			TimeoutSeconds: cfg.Context.TimeoutSeconds,
 			MaxAnswerChars: cfg.Context.MaxAnswerChars,
 			SandboxMachine: cfg.Context.SandboxMachine,
+			SandboxEnabled: sshTools != nil,
 			Tracer:         opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/answer"),
 		})
 	}

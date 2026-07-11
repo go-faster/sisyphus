@@ -105,7 +105,7 @@ func (l *Loop) run(ctx context.Context, messages []openai.ChatCompletionMessageP
 		},
 	}, maxIterations, l.logger)
 	if err != nil {
-		return Result{}, err
+		return Result{Iterations: coreRes.Iterations, ToolsUsed: coreRes.ToolsUsed}, err
 	}
 
 	res := Result{

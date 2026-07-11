@@ -3,6 +3,7 @@ package answer
 import (
 	"context"
 	"encoding/json"
+	"sync"
 
 	"github.com/go-faster/errors"
 	"github.com/openai/openai-go/v3"
@@ -13,7 +14,9 @@ import (
 // MultiToolSource merges multiple agent.ToolSource into one.
 type MultiToolSource struct {
 	sources []agent.ToolSource
-	index   map[string]agent.ToolSource
+
+	mu    sync.RWMutex
+	index map[string]agent.ToolSource
 }
 
 func NewMultiToolSource(sources ...agent.ToolSource) *MultiToolSource {
@@ -46,17 +49,25 @@ func (m *MultiToolSource) Tools(ctx context.Context) ([]openai.ChatCompletionToo
 			tools = append(tools, tool)
 		}
 	}
+	m.mu.Lock()
 	m.index = indexByName
+	m.mu.Unlock()
 	return tools, nil
 }
 
 func (m *MultiToolSource) Call(ctx context.Context, name string, argsJSON json.RawMessage) (string, error) {
-	if m.index == nil {
+	m.mu.RLock()
+	index := m.index
+	m.mu.RUnlock()
+	if index == nil {
 		if _, err := m.Tools(ctx); err != nil {
 			return "", err
 		}
+		m.mu.RLock()
+		index = m.index
+		m.mu.RUnlock()
 	}
-	src, ok := m.index[name]
+	src, ok := index[name]
 	if !ok {
 		return "", errors.Errorf("unknown tool %q", name)
 	}

@@ -14,7 +14,11 @@ import (
 	"go.uber.org/zap"
 )
 
-var urlPattern = regexp.MustCompile(`https?://[^\s<>"')\]]+`)
+// sourceURLPattern extracts URLs only from structured "source_url"/"url" JSON
+// fields in tool results, never from free-form body text (e.g. a chunk's
+// text or a fetched page's body) — those are untrusted content and must not
+// be treated as vetted source links (see filterButtons).
+var sourceURLPattern = regexp.MustCompile(`"(?:source_url|url)"\s*:\s*"(https?://[^"\\]+)"`)
 
 // TerminalTool describes the submit tool that ends the loop.
 type TerminalTool struct {
@@ -130,8 +134,8 @@ func coreLoop(ctx context.Context, llm LLM, toolSource ToolSource, model string,
 }
 
 func collectURLs(dst map[string]struct{}, text string) {
-	for _, raw := range urlPattern.FindAllString(text, -1) {
-		raw = strings.TrimRight(raw, ".,;:!?)]}>")
+	for _, m := range sourceURLPattern.FindAllStringSubmatch(text, -1) {
+		raw := strings.TrimRight(m[1], ".,;:!?)]}>")
 		if raw == "" {
 			continue
 		}

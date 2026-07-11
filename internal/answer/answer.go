@@ -33,6 +33,7 @@ type AgenticOptions struct {
 	TimeoutSeconds int
 	MaxAnswerChars int
 	SandboxMachine string
+	SandboxEnabled bool
 	Tracer         trace.Tracer
 }
 
@@ -74,6 +75,7 @@ type AgenticAnswerer struct {
 	timeoutSeconds int
 	maxAnswerChars int
 	sandboxMachine string
+	sandboxEnabled bool
 	tracer         trace.Tracer
 }
 
@@ -93,6 +95,7 @@ func NewAgenticAnswerer(llm agent.LLM, toolSource agent.ToolSource, model string
 		timeoutSeconds: opts.TimeoutSeconds,
 		maxAnswerChars: opts.MaxAnswerChars,
 		sandboxMachine: opts.SandboxMachine,
+		sandboxEnabled: opts.SandboxEnabled,
 		tracer:         opts.Tracer,
 	}
 }
@@ -120,8 +123,11 @@ func (a *AgenticAnswerer) AnswerRich(ctx context.Context, question string, resul
 		defer cancel()
 	}
 
+	// Only fall back to an in-process search when the caller didn't already
+	// retrieve results — the caller's query carries filters (service, source
+	// tier/prefixes) that a bare Text+Limit re-search here would silently drop.
 	seedResults := results
-	if a.preSearch != nil {
+	if a.preSearch != nil && len(results) == 0 {
 		retrieved, err := a.preSearch.Retrieve(ctx, index.Query{Text: question, Limit: a.queryLimit})
 		if err != nil {
 			span.RecordError(err)
@@ -132,8 +138,11 @@ func (a *AgenticAnswerer) AnswerRich(ctx context.Context, question string, resul
 	}
 
 	systemPrompt := strings.TrimSpace(a.prompt)
-	if a.sandboxMachine != "" {
+	if a.sandboxEnabled && a.sandboxMachine != "" {
 		systemPrompt += fmt.Sprintf("\n\nThe sandbox machine is named %s.", a.sandboxMachine)
+	} else {
+		systemPrompt += "\n\nThe sandbox/SSH shell tools described above are NOT available " +
+			"for this request. Do not call ssh_* tools; rely only on search_knowledge and fetch_url."
 	}
 	if a.maxAnswerChars > 0 {
 		systemPrompt += fmt.Sprintf("\n\nKeep the final answer under %d characters.", a.maxAnswerChars)
