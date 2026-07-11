@@ -7,8 +7,6 @@ import (
 
 	"github.com/go-faster/errors"
 	"github.com/openai/openai-go/v3"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -91,70 +89,40 @@ func (l *Loop) Shorten(ctx context.Context, res Result, limitChars int) (Result,
 }
 
 func (l *Loop) run(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolUnionParam, maxIterations int) (Result, error) {
-	span := trace.SpanFromContext(ctx)
-
-	var res Result
-	res.tools = tools
-
-	for range maxIterations {
-		res.Iterations++
-		span.AddEvent("agent.iteration", trace.WithAttributes(attribute.Int("iteration", res.Iterations)))
-
-		msg, err := l.llm.CompleteWithTools(ctx, l.model, messages, tools)
-		if err != nil {
-			return res, errors.Wrap(err, "complete with tools")
-		}
-		messages = append(messages, msg.ToParam())
-
-		if len(msg.ToolCalls) == 0 {
-			// Model didn't call submit_report; fall back to treating its
-			// prose as findings rather than losing the investigation.
-			res.Report = Report{Findings: msg.Content, Verdict: VerdictNeedsInvestigation}.normalize()
-			res.conversation = messages
-			span.AddEvent("agent.submit_report", trace.WithAttributes(attribute.String("verdict", string(res.Report.Verdict))))
-			return res, nil
-		}
-
-		var (
-			done      bool
-			reportErr error
-		)
-		for _, tc := range msg.ToolCalls {
-			if tc.Type != "function" {
-				continue
+	coreRes, err := coreLoop(ctx, l.llm, l.toolSource, l.model, messages, tools, TerminalTool{
+		Name: submitReportToolName,
+		Def:  submitReportTool(),
+		Parse: func(argsJSON string) (bool, error) {
+			_, err := parseReport(argsJSON)
+			if err != nil {
+				return false, err
 			}
-
-			if tc.Function.Name == submitReportToolName {
-				report, err := parseReport(tc.Function.Arguments)
-				if err != nil {
-					reportErr = err
-					messages = append(messages, openai.ToolMessage(fmt.Sprintf("error: %v", err), tc.ID))
-					continue
-				}
-				res.Report = report
-				messages = append(messages, openai.ToolMessage("ok", tc.ID))
-				done = true
-				continue
-			}
-
-			res.ToolsUsed++
-			l.logger.Debug("calling tool", zap.String("tool", tc.Function.Name), zap.String("args", tc.Function.Arguments))
-			span.AddEvent("agent.tool_call", trace.WithAttributes(attribute.String("tool", tc.Function.Name)))
-
-			toolRes, toolErr := l.toolSource.Call(ctx, tc.Function.Name, json.RawMessage(tc.Function.Arguments))
-			if toolErr != nil {
-				l.logger.Warn("tool call failed", zap.String("tool", tc.Function.Name), zap.Error(toolErr))
-				toolRes = fmt.Sprintf("error: %v", toolErr)
-			}
-			messages = append(messages, openai.ToolMessage(toolRes, tc.ID))
-		}
-
-		if done && reportErr == nil {
-			res.conversation = messages
-			span.AddEvent("agent.submit_report", trace.WithAttributes(attribute.String("verdict", string(res.Report.Verdict))))
-			return res, nil
-		}
+			return true, nil
+		},
+		SuccessMsg: "ok",
+		ErrMsg: func(err error) string {
+			return fmt.Sprintf("error: %v", err)
+		},
+	}, maxIterations, l.logger)
+	if err != nil {
+		return Result{}, err
 	}
 
-	return res, errors.Errorf("exceeded max iterations (%d)", maxIterations)
+	res := Result{
+		Iterations:   coreRes.Iterations,
+		ToolsUsed:    coreRes.ToolsUsed,
+		conversation: coreRes.Conversation,
+		tools:        coreRes.Tools,
+	}
+	if coreRes.TerminalArgs != "" {
+		report, err := parseReport(coreRes.TerminalArgs)
+		if err != nil {
+			return Result{}, errors.Wrap(err, "parse report")
+		}
+		res.Report = report
+		return res, nil
+	}
+
+	res.Report = Report{Findings: coreRes.NoToolContent, Verdict: VerdictNeedsInvestigation}.normalize()
+	return res, nil
 }

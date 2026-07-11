@@ -21,6 +21,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/go-faster/sisyphus/internal/agent"
+	"github.com/go-faster/sisyphus/internal/answer"
 	chunkmd "github.com/go-faster/sisyphus/internal/chunk/markdown"
 	"github.com/go-faster/sisyphus/internal/config"
 	"github.com/go-faster/sisyphus/internal/content"
@@ -29,7 +31,7 @@ import (
 	entmigrate "github.com/go-faster/sisyphus/internal/ent/migrate"
 	"github.com/go-faster/sisyphus/internal/fetch"
 	"github.com/go-faster/sisyphus/internal/index"
-	"github.com/go-faster/sisyphus/internal/ingest/git"
+	ingestgit "github.com/go-faster/sisyphus/internal/ingest/git"
 	"github.com/go-faster/sisyphus/internal/llm/openrouter"
 	"github.com/go-faster/sisyphus/internal/llm/stub"
 	"github.com/go-faster/sisyphus/internal/netclient"
@@ -196,6 +198,12 @@ func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trac
 func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, error) {
 	opts.setDefaults()
 	lg := zctx.From(ctx)
+	var sshCleanup func()
+	cleanup := func() {
+		if sshCleanup != nil {
+			sshCleanup()
+		}
+	}
 
 	svcs, err := NewServices(ctx, cfg, lg, opts.TracerProvider, opts.MeterProvider, opts.RunMigrations)
 	if err != nil {
@@ -207,11 +215,15 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		MeterProvider:  opts.MeterProvider,
 	})
 	if err != nil {
+		cleanup()
 		svcs.Close()
 		return Components{}, errors.Wrap(err, "retrieval")
 	}
 
-	var answerer index.Answerer
+	var (
+		answerer index.Answerer
+		orClient *openrouter.Client
+	)
 	if cfg.OpenRouter.Enabled() {
 		lg.Info("openrouter LLM enabled", zap.String("model", cfg.OpenRouter.Model))
 		httpClient, err := netclient.HTTPClient(ctx, "openrouter", cfg.Proxies.OpenRouter, netclient.HTTPClientOptions{
@@ -219,10 +231,11 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 			MeterProvider:  opts.MeterProvider,
 		})
 		if err != nil {
+			cleanup()
 			svcs.Close()
 			return Components{}, errors.Wrap(err, "openrouter http client")
 		}
-		orClient := openrouter.New(cfg.OpenRouter.APIKey, openrouter.Options{
+		orClient = openrouter.New(cfg.OpenRouter.APIKey, openrouter.Options{
 			HTTPClient:     httpClient,
 			TracerProvider: opts.TracerProvider,
 			MeterProvider:  opts.MeterProvider,
@@ -237,6 +250,7 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		MeterProvider:  opts.MeterProvider,
 	})
 	if err != nil {
+		cleanup()
 		svcs.Close()
 		return Components{}, errors.Wrap(err, "answer pipeline")
 	}
@@ -245,14 +259,14 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 	for _, src := range cfg.Git.Repos {
 		name := src.Repo
 		if name == "" {
-			name = git.DefaultRepoName(git.Source{
+			name = ingestgit.DefaultRepoName(ingestgit.Source{
 				Root: src.Root,
 				URL:  src.URL,
 			})
 		}
 		root := src.Root
 		if root == "" && src.URL != "" && cfg.Git.WorkDir != "" {
-			root = filepath.Join(cfg.Git.WorkDir, git.SafeDirName(name))
+			root = filepath.Join(cfg.Git.WorkDir, ingestgit.SafeDirName(name))
 		}
 		if name != "" && root != "" {
 			repoMap[name] = root
@@ -273,8 +287,43 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		MeterProvider:  opts.MeterProvider,
 	})
 	if err != nil {
+		cleanup()
 		svcs.Close()
 		return Components{}, errors.Wrap(err, "url fetcher")
+	}
+
+	if cfg.OpenRouter.Enabled() && cfg.Context.Agentic {
+		knowledgeTools := answer.NewKnowledgeToolSource(retr, urlFetcher, opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/answer/tools"))
+		var sshTools agent.ToolSource
+		if cfg.Context.SSHMCPURL != "" {
+			toolSource, closeFn, err := answer.NewSSHToolSource(ctx, cfg.Context.SSHMCPURL, cfg.Context.SSHMCPHeaders, answer.SSHToolSourceOptions{})
+			if err != nil {
+				lg.Warn("ssh-mcp unavailable, sandbox tools disabled", zap.Error(err))
+			} else {
+				sshTools = toolSource
+				sshCleanup = closeFn
+			}
+		}
+		toolSource := answer.NewMultiToolSource(knowledgeTools, sshTools)
+		answerer = answer.NewAgenticAnswerer(orClient, toolSource, cfg.OpenRouter.Model, answer.AgenticOptions{
+			Logger:         lg,
+			Retriever:      retr,
+			QueryLimit:     cfg.Context.PreSearchLimit,
+			PreSearch:      cfg.Context.PreSearch,
+			MaxIterations:  cfg.Context.MaxIterations,
+			TimeoutSeconds: cfg.Context.TimeoutSeconds,
+			MaxAnswerChars: cfg.Context.MaxAnswerChars,
+			SandboxMachine: cfg.Context.SandboxMachine,
+			Tracer:         opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/answer"),
+		})
+	}
+
+	closeDB := svcs.closeDB
+	if sshCleanup != nil {
+		closeDB = func() {
+			sshCleanup()
+			svcs.closeDB()
+		}
 	}
 
 	return Components{
@@ -287,7 +336,7 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		ContentResolver: contentResolver,
 		URLFetcher:      urlFetcher,
 		Health:          &healthChecker{db: svcs.SQLDB, vectors: svcs.VectorHealth},
-		closeDB:         svcs.closeDB,
+		closeDB:         closeDB,
 	}, nil
 }
 

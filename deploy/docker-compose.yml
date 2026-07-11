@@ -62,6 +62,37 @@ services:
     # Pull the embedding model on first run:
     #   docker compose exec ollama ollama pull bge-m3
 
+  sandbox:
+    build: ./sandbox
+    ports:
+      - "127.0.0.1:2222:22"
+    volumes:
+      - ./data/repos:/repos:ro
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop:
+      - ALL
+    read_only: true
+    restart: unless-stopped
+
+  ssh-mcp:
+    image: ghcr.io/go-faster/ssh-mcp:latest
+    command:
+      - "-transport"
+      - "streamable-http"
+      - "-addr"
+      - ":8090"
+      - "-disable-sudo"
+      - "-command-timeout"
+      - "10s"
+    ports:
+      - "127.0.0.1:8090:8090"
+    volumes:
+      - ./ssh/known_hosts:/home/mcp/.ssh/known_hosts:ro
+    restart: unless-stopped
+    depends_on:
+      - sandbox
+
   ssapi:
     build:
       context: ..

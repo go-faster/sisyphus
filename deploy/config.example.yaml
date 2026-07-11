@@ -114,6 +114,18 @@ openrouter:
     env: SISYPHUS_OPENROUTER_API_KEY
   model: openai/gpt-4o-mini
 
+# context: agentic /context workflow settings.
+context:
+  agentic: false
+  max_iterations: 6
+  timeout_seconds: 180
+  max_answer_chars: 2000
+  ssh_mcp_url: ""
+  ssh_mcp_headers: {}
+  sandbox_machine: sandbox
+  pre_search: true
+  pre_search_limit: 12
+
 # telegram: ssbot. addr is the address ssbot's standalone health/ready HTTP
 # server listens on (ssbot has no primary HTTP API of its own).
 telegram:

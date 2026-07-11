@@ -1,3 +1,4 @@
+// Package content resolves repository files from local clones or the database.
 package content
 
 import (
@@ -105,10 +106,7 @@ func (r *LocalRepoReader) ResolveContent(ctx context.Context, req index.ContentR
 	content := string(data)
 	if req.Start > 0 || req.End > 0 {
 		lines := strings.Split(content, "\n")
-		start := req.Start - 1
-		if start < 0 {
-			start = 0
-		}
+		start := max(req.Start-1, 0)
 		end := req.End
 		if end <= 0 || end > len(lines) {
 			end = len(lines)

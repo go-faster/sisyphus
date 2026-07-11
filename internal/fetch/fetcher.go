@@ -1,3 +1,4 @@
+// Package fetch performs whitelisted HTTP requests against approved sites.
 package fetch
 
 import (

@@ -38,7 +38,8 @@ type Config struct {
 	Proxies    ProxyConfig
 	Fetch      FetchConfig
 
-	Agent AgentConfig
+	Agent   AgentConfig
+	Context ContextConfig
 
 	// Warnings holds deprecation warnings collected while resolving the
 	// config (e.g. use of a field superseded by a per-service section). The
@@ -63,6 +64,19 @@ type AgentConfig struct {
 	RequestTimeoutSeconds int
 	GatewayURL            string
 	MaxReportChars        int
+}
+
+// ContextConfig holds configuration for the agentic /context workflow.
+type ContextConfig struct {
+	Agentic        bool
+	MaxIterations  int
+	TimeoutSeconds int
+	MaxAnswerChars int
+	SSHMCPURL      string
+	SSHMCPHeaders  map[string]string
+	SandboxMachine string
+	PreSearch      bool
+	PreSearchLimit int
 }
 
 // JiraConfig holds Jira REST API configuration for ingestion.
@@ -161,7 +175,8 @@ type fileConfig struct {
 	// Deprecated: use mcp.auth_token.
 	MCPAuthToken Secret `yaml:"mcp_auth_token"`
 
-	Agent fileAgentConfig `yaml:"agent"`
+	Agent   fileAgentConfig   `yaml:"agent"`
+	Context fileContextConfig `yaml:"context"`
 }
 
 type fileMCPConfig struct {
@@ -178,6 +193,18 @@ type fileAgentConfig struct {
 	RequestTimeoutSeconds int    `yaml:"request_timeout_seconds"`
 	GatewayURL            string `yaml:"gateway_url"`
 	MaxReportChars        int    `yaml:"max_report_chars"`
+}
+
+type fileContextConfig struct {
+	Agentic        bool              `yaml:"agentic"`
+	MaxIterations  int               `yaml:"max_iterations"`
+	TimeoutSeconds int               `yaml:"timeout_seconds"`
+	MaxAnswerChars int               `yaml:"max_answer_chars"`
+	SSHMCPURL      string            `yaml:"ssh_mcp_url"`
+	SSHMCPHeaders  map[string]string `yaml:"ssh_mcp_headers"`
+	SandboxMachine string            `yaml:"sandbox_machine"`
+	PreSearch      bool              `yaml:"pre_search"`
+	PreSearchLimit int               `yaml:"pre_search_limit"`
 }
 
 // FetchConfig configures the URL fetcher allowlist.
@@ -462,6 +489,15 @@ func defaultConfig() fileConfig {
 			RequestTimeoutSeconds: 180,
 			MaxReportChars:        1500,
 		},
+		Context: fileContextConfig{
+			Agentic:        false,
+			MaxIterations:  6,
+			TimeoutSeconds: 180,
+			MaxAnswerChars: 2000,
+			SandboxMachine: "sandbox",
+			PreSearch:      true,
+			PreSearchLimit: 12,
+		},
 	}
 }
 
@@ -646,6 +682,17 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			GatewayURL:            c.Agent.GatewayURL,
 			MaxReportChars:        c.Agent.MaxReportChars,
 		},
+		Context: ContextConfig{
+			Agentic:        c.Context.Agentic,
+			MaxIterations:  c.Context.MaxIterations,
+			TimeoutSeconds: c.Context.TimeoutSeconds,
+			MaxAnswerChars: c.Context.MaxAnswerChars,
+			SSHMCPURL:      c.Context.SSHMCPURL,
+			SSHMCPHeaders:  c.Context.SSHMCPHeaders,
+			SandboxMachine: c.Context.SandboxMachine,
+			PreSearch:      c.Context.PreSearch,
+			PreSearchLimit: c.Context.PreSearchLimit,
+		},
 	}, nil
 }
 
@@ -693,7 +740,7 @@ func (c fileFetchConfig) resolve(proxies ProxyConfig, warnings *[]string) (Fetch
 	return FetchConfig{Sites: sites}, nil
 }
 
-func normalizeFetchMethods(methods []string) ([]string, []string, error) {
+func normalizeFetchMethods(methods []string) (normalized, methodWarnings []string, err error) {
 	if len(methods) == 0 {
 		return []string{http.MethodGet}, nil, nil
 	}
@@ -703,7 +750,6 @@ func normalizeFetchMethods(methods []string) ([]string, []string, error) {
 	}
 	seen := make(map[string]struct{}, len(methods))
 	out := make([]string, 0, len(methods))
-	var warnings []string
 	for _, method := range methods {
 		method = strings.ToUpper(strings.TrimSpace(method))
 		if method == "" {
@@ -719,13 +765,13 @@ func normalizeFetchMethods(methods []string) ([]string, []string, error) {
 		out = append(out, method)
 		switch method {
 		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
-			warnings = append(warnings, method)
+			methodWarnings = append(methodWarnings, method)
 		}
 	}
 	if len(out) == 0 {
 		out = []string{http.MethodGet}
 	}
-	return out, warnings, nil
+	return out, methodWarnings, nil
 }
 
 func resolveFetchCredentials(creds FetchCredentials) (FetchCredentials, error) {
