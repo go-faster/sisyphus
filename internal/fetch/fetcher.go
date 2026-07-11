@@ -125,6 +125,8 @@ func proxyURL(proxies config.ProxyConfig, name string) string {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "":
 		return ""
+	case "fetch":
+		return proxies.Fetch
 	case "git":
 		return proxies.Git
 	case "gitlab":

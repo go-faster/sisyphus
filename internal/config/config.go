@@ -223,6 +223,7 @@ type ProxyConfig struct {
 }
 
 type fileProxyConfig struct {
+	Fetch      Secret `yaml:"fetch"`
 	Git        Secret `yaml:"git"`
 	GitLab     Secret `yaml:"gitlab"`
 	Jira       Secret `yaml:"jira"`
@@ -808,6 +809,10 @@ func resolveDeprecatedSecret(warnings *[]string, deprecatedKey string, deprecate
 }
 
 func (c fileProxyConfig) resolve(baseDir string) (ProxyConfig, error) {
+	fetch, err := c.Fetch.Resolve(baseDir)
+	if err != nil {
+		return ProxyConfig{}, errors.Wrap(err, "proxy fetch")
+	}
 	git, err := c.Git.Resolve(baseDir)
 	if err != nil {
 		return ProxyConfig{}, errors.Wrap(err, "proxy git")
@@ -829,6 +834,7 @@ func (c fileProxyConfig) resolve(baseDir string) (ProxyConfig, error) {
 		return ProxyConfig{}, errors.Wrap(err, "proxy openrouter")
 	}
 	return ProxyConfig{
+		Fetch:      fetch,
 		Git:        git,
 		GitLab:     gitlab,
 		Jira:       jira,

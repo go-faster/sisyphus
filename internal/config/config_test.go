@@ -159,6 +159,32 @@ agent:
 	require.Equal(t, "http://mcpgateway:8090/mcp", cfg.Agent.GatewayURL)
 }
 
+func TestLoadProxyFetch(t *testing.T) {
+	clearEnv(t)
+
+	path := writeConfig(t, `database_dsn:
+  value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+qdrant_addr: qdrant:6334
+proxies:
+  fetch:
+    value: http://fetch-proxy:8080
+fetch:
+  sites:
+    - name: fetch-allowed
+      url_patterns:
+        - https://fetch.example.com/**
+      proxy: fetch
+`)
+	t.Setenv("SISYPHUS_CONFIG", path)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "http://fetch-proxy:8080", cfg.Proxies.Fetch)
+	require.Len(t, cfg.Fetch.Sites, 1)
+	require.Equal(t, "fetch-allowed", cfg.Fetch.Sites[0].Name)
+	require.Equal(t, "fetch", cfg.Fetch.Sites[0].Proxy)
+}
+
 func TestLoadSecretEnv(t *testing.T) {
 	clearEnv(t)
 
