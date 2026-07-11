@@ -41,18 +41,6 @@ type Retriever interface {
 	Retrieve(ctx context.Context, q index.Query) ([]index.Result, error)
 }
 
-// QueryAnswerer answers a query while preserving query controls.
-type QueryAnswerer interface {
-	AnswerQuery(ctx context.Context, q index.Query, results []index.Result) (string, error)
-}
-
-// RichQueryAnswerer answers a query and returns a structured answer including
-// actionable link buttons. Detected via type assertion; the bot falls back to
-// QueryAnswerer when it is absent.
-type RichQueryAnswerer interface {
-	AnswerQueryRich(ctx context.Context, q index.Query, results []index.Result) (index.Answer, error)
-}
-
 // Investigator is the interface for running on-demand investigations.
 type Investigator interface {
 	Investigate(ctx context.Context, description string) (agent.Report, error)
@@ -71,11 +59,9 @@ type Bot struct {
 	cred   BotCredentials
 	silent bool
 
-	retriever         Retriever
-	answerer          index.Answerer
-	queryAnswerer     QueryAnswerer
-	richQueryAnswerer RichQueryAnswerer
-	investigator      Investigator
+	retriever    Retriever
+	answerer     index.Answerer
+	investigator Investigator
 
 	tp            trace.TracerProvider
 	mp            metric.MeterProvider
@@ -137,31 +123,21 @@ func New(_ context.Context, r Retriever, a index.Answerer, cred BotCredentials, 
 	if len(allowedChats) == 0 && len(allowedUsers) == 0 {
 		opts.Logger.Warn("telegram bot: no allowlist configured, will not respond to anyone")
 	}
-	var queryAnswerer QueryAnswerer
-	if qa, ok := a.(QueryAnswerer); ok {
-		queryAnswerer = qa
-	}
-	var richQueryAnswerer RichQueryAnswerer
-	if rqa, ok := a.(RichQueryAnswerer); ok {
-		richQueryAnswerer = rqa
-	}
 
 	return &Bot{
-		cred:              cred,
-		silent:            opts.Silent,
-		retriever:         r,
-		answerer:          a,
-		queryAnswerer:     queryAnswerer,
-		richQueryAnswerer: richQueryAnswerer,
-		investigator:      opts.Investigator,
-		tp:                tp,
-		mp:                mp,
-		tracer:            tp.Tracer("github.com/go-faster/sisyphus/bot"),
-		logger:            opts.Logger,
-		metrics:           m,
-		allowedChats:      allowedChats,
-		allowedUsers:      allowedUsers,
-		answerTimeout:     opts.AnswerTimeout,
+		cred:          cred,
+		silent:        opts.Silent,
+		retriever:     r,
+		answerer:      a,
+		investigator:  opts.Investigator,
+		tp:            tp,
+		mp:            mp,
+		tracer:        tp.Tracer("github.com/go-faster/sisyphus/bot"),
+		logger:        opts.Logger,
+		metrics:       m,
+		allowedChats:  allowedChats,
+		allowedUsers:  allowedUsers,
+		answerTimeout: opts.AnswerTimeout,
 	}
 }
 
@@ -334,40 +310,28 @@ func (b *Bot) handle(ctx context.Context, query string) (index.Answer, error) {
 		}
 		span.End()
 	}()
-	// Prefer the structured (rich) path so we can surface source-link buttons.
-	if b.richQueryAnswerer != nil {
-		answer, err := b.richQueryAnswerer.AnswerQueryRich(ctx, index.Query{Text: query, Limit: 12}, nil)
-		if err != nil {
-			rerr = errors.Wrap(err, "answer query")
-			return index.Answer{}, rerr
-		}
-		return answer, nil
-	}
-	if b.queryAnswerer != nil {
-		answer, err := b.queryAnswerer.AnswerQuery(ctx, index.Query{Text: query, Limit: 12}, nil)
-		if err != nil {
-			rerr = errors.Wrap(err, "answer query")
-			return index.Answer{}, rerr
-		}
-		return index.Answer{Text: answer}, nil
-	}
-	if b.retriever == nil || b.answerer == nil {
+	if b.answerer == nil {
 		rerr = errors.New("bot answerer is not configured")
 		return index.Answer{}, rerr
 	}
 
-	results, err := b.retriever.Retrieve(ctx, index.Query{Text: query, Limit: 12})
-	if err != nil {
-		rerr = errors.Wrap(err, "retrieve")
-		return index.Answer{}, rerr
+	q := index.Query{Text: query, Limit: 12}
+	var results []index.Result
+	if b.retriever != nil {
+		var err error
+		results, err = b.retriever.Retrieve(ctx, q)
+		if err != nil {
+			rerr = errors.Wrap(err, "retrieve")
+			return index.Answer{}, rerr
+		}
+		resultCount = len(results)
 	}
-	resultCount = len(results)
-	answer, err := b.answerer.Answer(ctx, query, results)
+	answer, err := b.answerer.Answer(ctx, q, results)
 	if err != nil {
 		rerr = errors.Wrap(err, "answer")
 		return index.Answer{}, rerr
 	}
-	return index.Answer{Text: answer}, nil
+	return answer, nil
 }
 
 // investigateAsync runs an investigation in the background and delivers the

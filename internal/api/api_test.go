@@ -23,10 +23,15 @@ func (f *captureRetriever) Retrieve(ctx context.Context, q index.Query) ([]index
 	return nil, nil
 }
 
-type stubAnswerer struct{}
+type stubAnswerer struct {
+	answer index.Answer
+}
 
-func (stubAnswerer) Answer(_ context.Context, _ string, _ []index.Result) (string, error) {
-	return "stub", nil
+func (s stubAnswerer) Answer(_ context.Context, _ index.Query, _ []index.Result) (index.Answer, error) {
+	if s.answer.Text == "" {
+		return index.Answer{Text: "stub"}, nil
+	}
+	return s.answer, nil
 }
 
 type captureAnswerIndexer struct {
@@ -193,21 +198,11 @@ func TestHandler_Context_IndexesAnsweredQuestion(t *testing.T) {
 	require.Equal(t, string(index.AuthorityLow), idx.doc.Metadata["authority"])
 }
 
-type richAnswerer struct{}
-
-func (richAnswerer) Answer(_ context.Context, _ string, _ []index.Result) (string, error) {
-	return "text", nil
-}
-
-func (richAnswerer) AnswerRich(_ context.Context, _ string, _ []index.Result) (index.Answer, error) {
-	return index.Answer{
+func TestHandler_Context_StructuredAnswerWithButtons(t *testing.T) {
+	h := New(&captureRetriever{}, stubAnswerer{answer: index.Answer{
 		Text:  "text",
 		Links: []index.Link{{Text: "Dashboard", URL: "https://grafana/d/1"}},
-	}, nil
-}
-
-func TestHandler_Context_RichAnswererButtons(t *testing.T) {
-	h := New(&captureRetriever{}, richAnswerer{}, "test")
+	}}, "test")
 
 	resp, err := h.Context(t.Context(), &oas.ContextRequest{Question: "why red?"})
 	require.NoError(t, err)

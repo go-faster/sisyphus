@@ -31,8 +31,8 @@ type e2eBackend struct {
 }
 
 type answerCall struct {
-	question string
-	results  int
+	query   index.Query
+	results int
 }
 
 func (b *e2eBackend) Retrieve(_ context.Context, q index.Query) ([]index.Result, error) {
@@ -44,12 +44,12 @@ func (b *e2eBackend) Retrieve(_ context.Context, q index.Query) ([]index.Result,
 	return []index.Result{result}, nil
 }
 
-func (b *e2eBackend) Answer(_ context.Context, question string, results []index.Result) (string, error) {
+func (b *e2eBackend) Answer(_ context.Context, q index.Query, results []index.Result) (index.Answer, error) {
 	b.mu.Lock()
-	b.answerCalls = append(b.answerCalls, answerCall{question: question, results: len(results)})
+	b.answerCalls = append(b.answerCalls, answerCall{query: q, results: len(results)})
 	b.mu.Unlock()
 
-	return fmt.Sprintf("answer:%s:%d", question, len(results)), nil
+	return index.Answer{Text: fmt.Sprintf("answer:%s:%d", q.Text, len(results))}, nil
 }
 
 func (b *e2eBackend) ResolveContent(_ context.Context, req index.ContentRequest) (index.ContentResponse, error) {
@@ -183,7 +183,14 @@ func TestClientPublicToolsEndToEnd(t *testing.T) {
 	require.Equal(t, backend.searchQueries[1], backend.searchQueries[2])
 
 	require.Len(t, backend.answerCalls, 1)
-	require.Equal(t, answerCall{question: "How to change plan?", results: 1}, backend.answerCalls[0])
+	require.Equal(t, answerCall{query: index.Query{
+		Text:           "How to change plan?",
+		Service:        "billing",
+		Filters:        map[string]string{"repo": "docs", "status": "open"},
+		SourceTier:     "code",
+		SourcePrefixes: []string{"git_docs:"},
+		Limit:          12,
+	}, results: 1}, backend.answerCalls[0])
 
 	require.Len(t, backend.fileRequests, 1)
 	require.Equal(t, index.ContentRequest{Repo: "docs-repo", Path: "guide.md", Branch: "main", Start: 3, End: 9}, backend.fileRequests[0])

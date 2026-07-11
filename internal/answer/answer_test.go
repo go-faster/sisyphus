@@ -31,11 +31,11 @@ func (a *answerToolSource) Call(ctx context.Context, name string, argsJSON json.
 
 var _ agent.ToolSource = (*answerToolSource)(nil)
 
-func TestAnswerRich(t *testing.T) {
+func TestAnswer(t *testing.T) {
 	llm := &fakeLLM{responses: []openai.ChatCompletionMessage{{ToolCalls: []openai.ChatCompletionMessageToolCallUnion{submitAnswerCall("call_1", "hello", []index.Link{{Text: "Doc", URL: "https://example.com/doc"}, {Text: "Nope", URL: "https://evil.invalid"}})}}}}
 	ts := &answerToolSource{tools: []openai.ChatCompletionToolUnionParam{searchKnowledgeTool()}, vals: map[string]string{}}
 	a := NewAgenticAnswerer(llm, ts, "test-model", AgenticOptions{Logger: zaptest.NewLogger(t), PreSearch: false})
-	ans, err := a.AnswerRich(context.Background(), "question", []index.Result{{Chunk: index.Chunk{Metadata: map[string]any{"source_url": "https://example.com/doc"}}}})
+	ans, err := a.Answer(context.Background(), index.Query{Text: "question"}, []index.Result{{Chunk: index.Chunk{Metadata: map[string]any{"source_url": "https://example.com/doc"}}}})
 	require.NoError(t, err)
 	require.Equal(t, "hello", ans.Text)
 	require.Equal(t, []index.Link{{Text: "Doc", URL: "https://example.com/doc"}}, ans.Links)
@@ -53,40 +53,41 @@ func (r *recordingRetriever) Retrieve(_ context.Context, q index.Query) ([]index
 	return r.results, nil
 }
 
-// TestAnswerRich_SkipsPreSearchWhenResultsProvided ensures AnswerRich reuses
+// TestAnswer_SkipsPreSearchWhenResultsProvided ensures Answer reuses
 // the caller-supplied results (which may carry service/source-tier filters
 // the caller applied) instead of silently re-retrieving with a bare
 // Text+Limit query that would drop those filters.
-func TestAnswerRich_SkipsPreSearchWhenResultsProvided(t *testing.T) {
+func TestAnswer_SkipsPreSearchWhenResultsProvided(t *testing.T) {
 	llm := &fakeLLM{responses: []openai.ChatCompletionMessage{{ToolCalls: []openai.ChatCompletionMessageToolCallUnion{submitAnswerCall("call_1", "hello", nil)}}}}
 	ts := &answerToolSource{tools: []openai.ChatCompletionToolUnionParam{searchKnowledgeTool()}}
 	retr := &recordingRetriever{}
 	a := NewAgenticAnswerer(llm, ts, "test-model", AgenticOptions{Logger: zaptest.NewLogger(t), PreSearch: true, Retriever: retr})
 
 	seed := []index.Result{{Chunk: index.Chunk{Metadata: map[string]any{"source_url": "https://example.com/doc"}}}}
-	_, err := a.AnswerRich(context.Background(), "question", seed)
+	_, err := a.Answer(context.Background(), index.Query{Text: "question"}, seed)
 	require.NoError(t, err)
 	require.Zero(t, retr.calls, "pre-search must not run when the caller already retrieved results")
 }
 
-// TestAnswerRich_PreSearchesWhenNoResultsProvided keeps the fallback search
+// TestAnswer_PreSearchesWhenNoResultsProvided keeps the fallback search
 // working when the caller passes an empty/nil result set.
-func TestAnswerRich_PreSearchesWhenNoResultsProvided(t *testing.T) {
+func TestAnswer_PreSearchesWhenNoResultsProvided(t *testing.T) {
 	llm := &fakeLLM{responses: []openai.ChatCompletionMessage{{ToolCalls: []openai.ChatCompletionMessageToolCallUnion{submitAnswerCall("call_1", "hello", nil)}}}}
 	ts := &answerToolSource{tools: []openai.ChatCompletionToolUnionParam{searchKnowledgeTool()}}
 	retr := &recordingRetriever{}
 	a := NewAgenticAnswerer(llm, ts, "test-model", AgenticOptions{Logger: zaptest.NewLogger(t), PreSearch: true, Retriever: retr})
 
-	_, err := a.AnswerRich(context.Background(), "question", nil)
+	_, err := a.Answer(context.Background(), index.Query{Text: "question", Service: "svc", Filters: map[string]string{"key": "val"}, SourceTier: "code", SourcePrefixes: []string{"git_code:repo"}}, nil)
 	require.NoError(t, err)
 	require.Equal(t, 1, retr.calls)
+	require.Equal(t, index.Query{Text: "question", Service: "svc", Filters: map[string]string{"key": "val"}, SourceTier: "code", SourcePrefixes: []string{"git_code:repo"}, Limit: 12}, retr.queries[0])
 }
 
-func TestAnswerRich_Fallback(t *testing.T) {
+func TestAnswer_Fallback(t *testing.T) {
 	llm := &fakeLLM{responses: []openai.ChatCompletionMessage{{Content: "fallback"}}}
 	ts := &answerToolSource{tools: []openai.ChatCompletionToolUnionParam{searchKnowledgeTool()}}
 	a := NewAgenticAnswerer(llm, ts, "test-model", AgenticOptions{Logger: zaptest.NewLogger(t), PreSearch: false})
-	ans, err := a.AnswerRich(context.Background(), "question", nil)
+	ans, err := a.Answer(context.Background(), index.Query{Text: "question"}, nil)
 	require.NoError(t, err)
 	require.Equal(t, "fallback", ans.Text)
 }
@@ -107,21 +108,21 @@ func (c *capturingLLM) CompleteWithTools(_ context.Context, _ string, messages [
 	return c.response, nil
 }
 
-func TestAnswerRich_SandboxDisabledNotedInPrompt(t *testing.T) {
+func TestAnswer_SandboxDisabledNotedInPrompt(t *testing.T) {
 	llm := &capturingLLM{response: openai.ChatCompletionMessage{ToolCalls: []openai.ChatCompletionMessageToolCallUnion{submitAnswerCall("call_1", "hello", nil)}}}
 	ts := &answerToolSource{tools: []openai.ChatCompletionToolUnionParam{searchKnowledgeTool()}}
 	a := NewAgenticAnswerer(llm, ts, "test-model", AgenticOptions{Logger: zaptest.NewLogger(t), PreSearch: false, SandboxEnabled: false})
-	_, err := a.AnswerRich(context.Background(), "question", nil)
+	_, err := a.Answer(context.Background(), index.Query{Text: "question"}, nil)
 	require.NoError(t, err)
 	require.Contains(t, llm.systemPrompt, "NOT available")
 	require.NotContains(t, llm.systemPrompt, "The sandbox machine is named")
 }
 
-func TestAnswerRich_SandboxEnabledNamesMachine(t *testing.T) {
+func TestAnswer_SandboxEnabledNamesMachine(t *testing.T) {
 	llm := &capturingLLM{response: openai.ChatCompletionMessage{ToolCalls: []openai.ChatCompletionMessageToolCallUnion{submitAnswerCall("call_1", "hello", nil)}}}
 	ts := &answerToolSource{tools: []openai.ChatCompletionToolUnionParam{searchKnowledgeTool()}}
 	a := NewAgenticAnswerer(llm, ts, "test-model", AgenticOptions{Logger: zaptest.NewLogger(t), PreSearch: false, SandboxEnabled: true, SandboxMachine: "sandbox"})
-	_, err := a.AnswerRich(context.Background(), "question", nil)
+	_, err := a.Answer(context.Background(), index.Query{Text: "question"}, nil)
 	require.NoError(t, err)
 	require.Contains(t, llm.systemPrompt, "The sandbox machine is named sandbox")
 }

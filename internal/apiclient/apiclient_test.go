@@ -57,8 +57,8 @@ func (f *fakeRetriever) Retrieve(ctx context.Context, q index.Query) ([]index.Re
 // fakeAnswerer returns a fixed answer.
 type fakeAnswerer struct{}
 
-func (f *fakeAnswerer) Answer(ctx context.Context, question string, results []index.Result) (string, error) {
-	return "This is the answer to: " + question, nil
+func (f *fakeAnswerer) Answer(_ context.Context, q index.Query, _ []index.Result) (index.Answer, error) {
+	return index.Answer{Text: "This is the answer to: " + q.Text}, nil
 }
 
 func TestClientRetrieve(t *testing.T) {
@@ -116,9 +116,9 @@ func TestClientAnswer(t *testing.T) {
 	client, err := New(httpServer.URL, "secret-token", Options{})
 	require.NoError(t, err)
 
-	answer, err := client.Answer(context.Background(), "What is the answer?", nil)
+	answer, err := client.Answer(context.Background(), index.Query{Text: "What is the answer?"}, nil)
 	require.NoError(t, err)
-	assert.Equal(t, "This is the answer to: What is the answer?", answer)
+	assert.Equal(t, "This is the answer to: What is the answer?", answer.Text)
 }
 
 func TestClientWrongToken(t *testing.T) {
@@ -140,7 +140,7 @@ func TestClientWrongToken(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "401") // Unauthorized
 
-	_, err = client.Answer(context.Background(), "test?", nil)
+	_, err = client.Answer(context.Background(), index.Query{Text: "test?"}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "401")
 }
@@ -180,7 +180,7 @@ func TestClientRetrieveWithFilters(t *testing.T) {
 	assert.Equal(t, query.Limit, captureRetriever.lastQuery.Limit)
 }
 
-func TestClientAnswerQuerySourceControls(t *testing.T) {
+func TestClientAnswerSourceControls(t *testing.T) {
 	captureRetriever := &captureQueryRetriever{}
 
 	handler := api.New(captureRetriever, &fakeAnswerer{}, "v1.0.0")
@@ -199,7 +199,7 @@ func TestClientAnswerQuerySourceControls(t *testing.T) {
 		SourceTier:     "history",
 		SourcePrefixes: []string{index.SourceGitCommitsPrefix},
 	}
-	_, err = client.AnswerQuery(context.Background(), query, nil)
+	_, err = client.Answer(context.Background(), query, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, query.Text, captureRetriever.lastQuery.Text)

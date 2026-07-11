@@ -189,10 +189,9 @@ type Summarizer interface {
 	Summarize(ctx context.Context, prompt string) (string, error)
 }
 
-// Answerer constructs a final answer from retrieved context (plan §14). Deferred,
-// stubbed for now.
+// Answerer constructs a final answer from retrieved context (plan §14).
 type Answerer interface {
-	Answer(ctx context.Context, question string, results []Result) (string, error)
+	Answer(ctx context.Context, q Query, results []Result) (Answer, error)
 }
 
 // Link is a labeled URL surfaced as an actionable link (e.g. a Telegram inline
@@ -218,19 +217,10 @@ func (l Link) Valid() bool {
 	return u.Scheme == "http" || u.Scheme == "https"
 }
 
-// Answer is a structured answer: prose plus optional actionable links. The
-// plain Answerer.Answer returns only Text; a RichAnswerer additionally returns
-// Links so callers can render them (e.g. as Telegram inline buttons).
+// Answer is a structured answer: prose plus optional actionable links.
 type Answer struct {
 	Text  string
 	Links []Link
-}
-
-// RichAnswerer optionally produces a structured Answer (prose plus actionable
-// links) instead of plain text. It is an opt-in extension of Answerer detected
-// via type assertion; callers fall back to Answerer.Answer when it is absent.
-type RichAnswerer interface {
-	AnswerRich(ctx context.Context, question string, results []Result) (Answer, error)
 }
 
 // Hash returns the hex sha256 of normalized text. Normalization trims surrounding

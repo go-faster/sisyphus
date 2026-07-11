@@ -64,7 +64,7 @@ func (opts *AgenticOptions) setDefaults() {
 	}
 }
 
-// AgenticAnswerer implements index.RichAnswerer via an LLM tool-calling loop.
+// AgenticAnswerer implements index.Answerer via an LLM tool-calling loop.
 type AgenticAnswerer struct {
 	loop           *ContextLoop
 	model          string
@@ -100,16 +100,8 @@ func NewAgenticAnswerer(llm agent.LLM, toolSource agent.ToolSource, model string
 	}
 }
 
-func (a *AgenticAnswerer) Answer(ctx context.Context, question string, results []index.Result) (string, error) {
-	ans, err := a.AnswerRich(ctx, question, results)
-	if err != nil {
-		return "", err
-	}
-	return ans.Text, nil
-}
-
-func (a *AgenticAnswerer) AnswerRich(ctx context.Context, question string, results []index.Result) (index.Answer, error) {
-	ctx, span := a.tracer.Start(ctx, "answer.AgenticAnswerRich",
+func (a *AgenticAnswerer) Answer(ctx context.Context, q index.Query, results []index.Result) (index.Answer, error) {
+	ctx, span := a.tracer.Start(ctx, "answer.AgenticAnswer",
 		trace.WithAttributes(
 			attribute.String("model", a.model),
 			attribute.Int("results.count", len(results)),
@@ -128,7 +120,15 @@ func (a *AgenticAnswerer) AnswerRich(ctx context.Context, question string, resul
 	// tier/prefixes) that a bare Text+Limit re-search here would silently drop.
 	seedResults := results
 	if a.preSearch != nil && len(results) == 0 {
-		retrieved, err := a.preSearch.Retrieve(ctx, index.Query{Text: question, Limit: a.queryLimit})
+		preQuery := index.Query{
+			Text:           q.Text,
+			Service:        q.Service,
+			Filters:        q.Filters,
+			SourceTier:     q.SourceTier,
+			SourcePrefixes: q.SourcePrefixes,
+			Limit:          a.queryLimit,
+		}
+		retrieved, err := a.preSearch.Retrieve(ctx, preQuery)
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
@@ -147,7 +147,7 @@ func (a *AgenticAnswerer) AnswerRich(ctx context.Context, question string, resul
 	if a.maxAnswerChars > 0 {
 		systemPrompt += fmt.Sprintf("\n\nKeep the final answer under %d characters.", a.maxAnswerChars)
 	}
-	loopRes, err := a.loop.Run(ctx, systemPrompt, question, seedResults)
+	loopRes, err := a.loop.Run(ctx, systemPrompt, q.Text, seedResults)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -160,7 +160,4 @@ func (a *AgenticAnswerer) AnswerRich(ctx context.Context, question string, resul
 	return loopRes.Answer, nil
 }
 
-var (
-	_ index.Answerer     = (*AgenticAnswerer)(nil)
-	_ index.RichAnswerer = (*AgenticAnswerer)(nil)
-)
+var _ index.Answerer = (*AgenticAnswerer)(nil)

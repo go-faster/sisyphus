@@ -93,25 +93,9 @@ func (c *Client) CheckHealth(ctx context.Context) error {
 	return nil
 }
 
-// Answer implements the Answerer interface.
-// The results are not sent over the wire; /context performs its own
-// server-side retrieval pass, so the caller's results only affect telemetry.
-func (c *Client) Answer(ctx context.Context, question string, results []index.Result) (answer string, rerr error) {
-	return c.AnswerQuery(ctx, index.Query{Text: question}, results)
-}
-
-// AnswerQuery answers using /context with the same query controls as retrieval.
-func (c *Client) AnswerQuery(ctx context.Context, q index.Query, results []index.Result) (string, error) {
-	ans, err := c.AnswerQueryRich(ctx, q, results)
-	if err != nil {
-		return "", err
-	}
-	return ans.Text, nil
-}
-
-// AnswerQueryRich answers using /context and returns the structured answer,
+// Answer answers using /context and returns the structured answer,
 // including any source-link buttons the server surfaced.
-func (c *Client) AnswerQueryRich(ctx context.Context, q index.Query, results []index.Result) (answer index.Answer, rerr error) {
+func (c *Client) Answer(ctx context.Context, q index.Query, results []index.Result) (answer index.Answer, rerr error) {
 	start := time.Now()
 	ctx, span := c.tracer.Start(ctx, "apiclient.Answer",
 		trace.WithSpanKind(trace.SpanKindClient),

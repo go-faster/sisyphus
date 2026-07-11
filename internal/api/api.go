@@ -178,16 +178,9 @@ func (h *Handler) Context(ctx context.Context, req *oas.ContextRequest) (*oas.Co
 		return nil, errors.Wrap(err, "retrieve")
 	}
 
-	// Prefer the richer structured answer (prose + source-link buttons) when the
-	// answerer supports it; otherwise fall back to plain text.
-	var answer index.Answer
-	if ra, ok := h.answerer.(index.RichAnswerer); ok {
-		answer, err = ra.AnswerRich(ctx, req.Question, results)
-	} else {
-		var text string
-		text, err = h.answerer.Answer(ctx, req.Question, results)
-		answer.Text = text
-	}
+	// Call the unified Answerer which always returns a full index.Answer
+	// including any source-link buttons.
+	answer, err := h.answerer.Answer(ctx, q, results)
 	if err != nil {
 		return nil, errors.Wrap(err, "answer")
 	}

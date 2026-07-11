@@ -63,7 +63,7 @@ internal/agent          shared LLM tool-calling loop engine (coreLoop in core.go
                         the agentic /context path (internal/answer.ContextLoop); also collects
                         DiscoveredURLs from tool results (source_url/url JSON fields only —
                         never free-form body text, see "Answers & link buttons")
-internal/answer         agentic /context answerer (index.RichAnswerer): AgenticAnswerer runs
+internal/answer         agentic /context answerer (index.Answerer): AgenticAnswerer runs
                         agent.coreLoop with search_knowledge/fetch_url tools (knowledge_tools.go,
                         in-process) merged via MultiToolSource with an optional ssh-mcp-backed
                         shell sandbox (ssh_tools.go, MCP client over streamable-http). Enabled by
@@ -96,24 +96,23 @@ quality demands it.
 Answers can carry actionable links rendered as Telegram inline URL buttons.
 
 - `index.Link{Text,URL}` (`Valid()` requires an absolute http(s) URL + non-empty
-  label) and `index.Answer{Text,Links}` are the shared types. `index.RichAnswerer`
-  is an **opt-in** extension of `index.Answerer` (`AnswerRich` returns `index.Answer`),
-  detected via type assertion — plain `Answerer.Answer` (string) still works and is
-  what MCP + tests use.
-- `/context` (`internal/llm/openrouter.Answerer.AnswerRich`): the answerer prompt
+  label) and `index.Answer{Text,Links}` are the shared types. `index.Answerer`
+  accepts the full `index.Query` and always returns `index.Answer`, so query
+  controls and link buttons are preserved through API, bot, and MCP paths.
+- `/context` (`internal/llm/openrouter.Answerer.Answer`): the answerer prompt
   tells the model to cite sources as inline Markdown links, and a `submit_answer`
   tool returns `{answer, buttons}`. Button URLs are validated **and constrained to
   the retrieved sources' `source_url`** (see `filterButtons`) so the model can't
   surface a hallucinated/off-context URL. Buttons cross the HTTP boundary as
   `ContextResponse.buttons` (oas `Link`); `internal/api` populates them,
-  `internal/apiclient.AnswerQueryRich` reads them (re-validating in `fromLinks`),
-  and `internal/bot` renders them via `linksMarkup` on the `/context` reply.
+  `internal/apiclient.Answer` reads them (re-validating in `fromLinks`), and
+  `internal/bot` renders them via `linksMarkup` on the `/context` reply.
 - `/investigate` (`internal/agent`): `Report.Links` comes from the `submit_report`
   tool's `links` param; `Report.normalize` drops invalid/duplicate links and caps
   at `maxReportLinks`. Here links may be **any** http(s) URL the agent obtained from
   tool results (dashboards, tickets), not just cited sources. The bot attaches them
   to the final report message.
-- Agentic `/context` (`internal/answer.AgenticAnswerer.AnswerRich`, opt-in via
+- Agentic `/context` (`internal/answer.AgenticAnswerer.Answer`, opt-in via
   `context.agentic: true`): same `submit_answer`/`filterButtons` contract as the
   OpenRouter answerer above, but the allowed-URL set is built from two sources —
   the seed results' `source_url` (`buildSeedMessages`) plus any URL the loop

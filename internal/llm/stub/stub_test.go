@@ -168,19 +168,19 @@ func TestAnswererEmptyResults(t *testing.T) {
 	ctx := t.Context()
 
 	question := "What is the meaning of life?"
-	result, err := a.Answer(ctx, question, []index.Result{})
+	result, err := a.Answer(ctx, index.Query{Text: question}, []index.Result{})
 	if err != nil {
 		t.Fatalf("Answer failed: %v", err)
 	}
 
-	if !hasPrefix(result, "Question: What is the meaning of life?") {
-		t.Errorf("missing question header in %q", result)
+	if !hasPrefix(result.Text, "Question: What is the meaning of life?") {
+		t.Errorf("missing question header in %q", result.Text)
 	}
-	if !contains(result, "No relevant context was found") {
-		t.Errorf("missing 'no context' message in %q", result)
+	if !contains(result.Text, "No relevant context was found") {
+		t.Errorf("missing 'no context' message in %q", result.Text)
 	}
-	if !hasSuffix(result, "Confidence: low (LLM disabled)") {
-		t.Errorf("missing confidence footer in %q", result)
+	if !hasSuffix(result.Text, "Confidence: low (LLM disabled)") {
+		t.Errorf("missing confidence footer in %q", result.Text)
 	}
 }
 
@@ -199,27 +199,27 @@ func TestAnswererSingleResult(t *testing.T) {
 	}
 	result := index.Result{Chunk: chunk, Score: 0.95, Vector: true}
 
-	answer, err := a.Answer(ctx, "What is Go?", []index.Result{result})
+	answer, err := a.Answer(ctx, index.Query{Text: "What is Go?"}, []index.Result{result})
 	if err != nil {
 		t.Fatalf("Answer failed: %v", err)
 	}
 
-	if !hasPrefix(answer, "Question: What is Go?") {
+	if !hasPrefix(answer.Text, "Question: What is Go?") {
 		t.Errorf("missing question header in %q", answer)
 	}
-	if !contains(answer, "1. Go Basics") {
+	if !contains(answer.Text, "1. Go Basics") {
 		t.Errorf("missing numbered title in %q", answer)
 	}
-	if !contains(answer, "[source: docs]") {
+	if !contains(answer.Text, "[source: docs]") {
 		t.Errorf("missing source metadata in %q", answer)
 	}
-	if !contains(answer, "[https://golang.org]") {
+	if !contains(answer.Text, "[https://golang.org]") {
 		t.Errorf("missing source_url in %q", answer)
 	}
-	if !contains(answer, "Go is a compiled, statically typed language") {
+	if !contains(answer.Text, "Go is a compiled, statically typed language") {
 		t.Errorf("missing snippet in %q", answer)
 	}
-	if !hasSuffix(answer, "Confidence: low (LLM disabled)") {
+	if !hasSuffix(answer.Text, "Confidence: low (LLM disabled)") {
 		t.Errorf("missing confidence footer in %q", answer)
 	}
 }
@@ -250,21 +250,21 @@ func TestAnswererMultipleResults(t *testing.T) {
 		{Chunk: chunk2, Score: 0.85},
 	}
 
-	answer, err := a.Answer(ctx, "Tell me about sources", results)
+	answer, err := a.Answer(ctx, index.Query{Text: "Tell me about sources"}, results)
 	if err != nil {
 		t.Fatalf("Answer failed: %v", err)
 	}
 
-	if !contains(answer, "1. First Source") {
+	if !contains(answer.Text, "1. First Source") {
 		t.Errorf("missing first numbered source in %q", answer)
 	}
-	if !contains(answer, "2. Second Source") {
+	if !contains(answer.Text, "2. Second Source") {
 		t.Errorf("missing second numbered source in %q", answer)
 	}
-	if !contains(answer, "This is the content of the first source.") {
+	if !contains(answer.Text, "This is the content of the first source.") {
 		t.Errorf("missing first snippet in %q", answer)
 	}
-	if !contains(answer, "This is the content of the second source") {
+	if !contains(answer.Text, "This is the content of the second source") {
 		t.Errorf("missing second snippet in %q", answer)
 	}
 }
@@ -289,18 +289,18 @@ func TestAnswererSnippetTruncation(t *testing.T) {
 	}
 	result := index.Result{Chunk: chunk}
 
-	answer, err := a.Answer(ctx, "What about this?", []index.Result{result})
+	answer, err := a.Answer(ctx, index.Query{Text: "What about this?"}, []index.Result{result})
 	if err != nil {
 		t.Fatalf("Answer failed: %v", err)
 	}
 
 	// Check that the snippet is truncated.
-	if !contains(answer, "…") {
+	if !contains(answer.Text, "…") {
 		t.Errorf("snippet not truncated with ellipsis in %q", answer)
 	}
 
 	// The "very long" text should be present, but "much more content" should likely not be.
-	if !contains(answer, "very long") {
+	if !contains(answer.Text, "very long") {
 		t.Errorf("missing start of snippet in %q", answer)
 	}
 }
@@ -317,15 +317,15 @@ func TestAnswererNoMetadata(t *testing.T) {
 	}
 	result := index.Result{Chunk: chunk}
 
-	answer, err := a.Answer(ctx, "Question?", []index.Result{result})
+	answer, err := a.Answer(ctx, index.Query{Text: "Question?"}, []index.Result{result})
 	if err != nil {
 		t.Fatalf("Answer failed: %v", err)
 	}
 
-	if !contains(answer, "1. Title Only") {
+	if !contains(answer.Text, "1. Title Only") {
 		t.Errorf("missing title in %q", answer)
 	}
-	if !contains(answer, "Some text content.") {
+	if !contains(answer.Text, "Some text content.") {
 		t.Errorf("missing text in %q", answer)
 	}
 }
@@ -344,12 +344,12 @@ func TestAnswererNoTitle(t *testing.T) {
 	}
 	result := index.Result{Chunk: chunk}
 
-	answer, err := a.Answer(ctx, "Question?", []index.Result{result})
+	answer, err := a.Answer(ctx, index.Query{Text: "Question?"}, []index.Result{result})
 	if err != nil {
 		t.Fatalf("Answer failed: %v", err)
 	}
 
-	if !contains(answer, "1. (Untitled)") {
+	if !contains(answer.Text, "1. (Untitled)") {
 		t.Errorf("missing untitled fallback in %q", answer)
 	}
 }
@@ -369,18 +369,18 @@ func TestAnswererDeterminism(t *testing.T) {
 	result := index.Result{Chunk: chunk}
 	results := []index.Result{result}
 
-	answer1, err := a.Answer(ctx, "Question?", results)
+	answer1, err := a.Answer(ctx, index.Query{Text: "Question?"}, results)
 	if err != nil {
 		t.Fatalf("Answer failed: %v", err)
 	}
 
-	answer2, err := a.Answer(ctx, "Question?", results)
+	answer2, err := a.Answer(ctx, index.Query{Text: "Question?"}, results)
 	if err != nil {
 		t.Fatalf("Answer failed: %v", err)
 	}
 
-	if answer1 != answer2 {
-		t.Errorf("non-deterministic:\n%q\n!=\n%q", answer1, answer2)
+	if answer1.Text != answer2.Text {
+		t.Errorf("non-deterministic:\n%q\n!=\n%q", answer1.Text, answer2.Text)
 	}
 }
 
@@ -399,15 +399,15 @@ func TestAnswererStableOrdering(t *testing.T) {
 		{Chunk: chunk3},
 	}
 
-	answer, err := a.Answer(ctx, "Q?", results)
+	answer, err := a.Answer(ctx, index.Query{Text: "Q?"}, results)
 	if err != nil {
 		t.Fatalf("Answer failed: %v", err)
 	}
 
 	// Check that numbering is in input order.
-	idx1 := findIndex(answer, "1. First")
-	idx2 := findIndex(answer, "2. Second")
-	idx3 := findIndex(answer, "3. Third")
+	idx1 := findIndex(answer.Text, "1. First")
+	idx2 := findIndex(answer.Text, "2. Second")
+	idx3 := findIndex(answer.Text, "3. Third")
 
 	if idx1 < 0 || idx2 < 0 || idx3 < 0 {
 		t.Errorf("not all results found in answer")
