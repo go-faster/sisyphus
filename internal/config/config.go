@@ -64,6 +64,8 @@ type AgentConfig struct {
 	RequestTimeoutSeconds int
 	GatewayURL            string
 	MaxReportChars        int
+	MaxConcurrent         int
+	MaxBodyBytes          int64
 }
 
 // ContextConfig holds configuration for the agentic /context workflow.
@@ -223,6 +225,8 @@ type fileAgentConfig struct {
 	RequestTimeoutSeconds int    `yaml:"request_timeout_seconds"`
 	GatewayURL            string `yaml:"gateway_url"`
 	MaxReportChars        int    `yaml:"max_report_chars"`
+	MaxConcurrent         int    `yaml:"max_concurrent"`
+	MaxBodyBytes          int64  `yaml:"max_body_bytes"`
 }
 
 type fileContextConfig struct {
@@ -524,6 +528,8 @@ func defaultConfig() fileConfig {
 			MaxToolIterations:     8,
 			RequestTimeoutSeconds: 180,
 			MaxReportChars:        1500,
+			MaxConcurrent:         4,
+			MaxBodyBytes:          64 * 1024,
 		},
 		Context: fileContextConfig{
 			Agentic:        false,
@@ -745,6 +751,8 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			RequestTimeoutSeconds: c.Agent.RequestTimeoutSeconds,
 			GatewayURL:            c.Agent.GatewayURL,
 			MaxReportChars:        c.Agent.MaxReportChars,
+			MaxConcurrent:         c.Agent.MaxConcurrent,
+			MaxBodyBytes:          c.Agent.MaxBodyBytes,
 		},
 		Context: ContextConfig{
 			Agentic:        c.Context.Agentic,

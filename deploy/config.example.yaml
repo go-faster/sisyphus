@@ -165,3 +165,9 @@ agent:
   # Character budget for the assembled report; if the model's first
   # submit_report exceeds this, it's asked once to resubmit a shorter one.
   max_report_chars: 1500
+  # Caps how many /investigate requests run concurrently; each one holds an
+  # LLM tool-calling loop open for up to request_timeout_seconds. Extra
+  # requests get 429 instead of piling up unbounded goroutines/LLM spend.
+  max_concurrent: 4
+  # Request body size cap in bytes for POST /investigate.
+  max_body_bytes: 65536

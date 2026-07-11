@@ -79,7 +79,20 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry) error {
 	if err != nil {
 		return errors.Wrap(err, "agent metrics")
 	}
-	mux.Handle("/investigate", mcpserver.BearerAuthMiddleware(cfg.Agent.AuthToken)(handleInvestigate(inv, timeout, tracer, metrics, lg)))
+	maxConcurrent := cfg.Agent.MaxConcurrent
+	if maxConcurrent == 0 {
+		maxConcurrent = 4
+	}
+	var sem chan struct{}
+	if maxConcurrent > 0 {
+		sem = make(chan struct{}, maxConcurrent)
+	}
+	maxBodyBytes := cfg.Agent.MaxBodyBytes
+	if maxBodyBytes == 0 {
+		maxBodyBytes = 64 * 1024
+	}
+
+	mux.Handle("/investigate", mcpserver.BearerAuthMiddleware(cfg.Agent.AuthToken)(handleInvestigate(inv, timeout, maxBodyBytes, sem, tracer, metrics, lg)))
 
 	srv := &http.Server{
 		Addr:              cfg.Agent.Addr,

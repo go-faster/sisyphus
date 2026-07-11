@@ -40,7 +40,12 @@ func sendError(w http.ResponseWriter, statusCode int, err error) {
 	_ = json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 }
 
-func handleInvestigate(inv agent.Investigator, timeout time.Duration, tracer trace.Tracer, metrics *agentMetrics, logger *zap.Logger) http.HandlerFunc {
+// handleInvestigate serves POST /investigate. maxBodyBytes caps the request
+// body to bound memory use from a single request; sem bounds how many
+// investigations (each an LLM tool-calling loop that can run for minutes and
+// costs real tokens) run concurrently, so a burst of requests can't fan out
+// an unbounded number of expensive loops. A nil sem disables the limit.
+func handleInvestigate(inv agent.Investigator, timeout time.Duration, maxBodyBytes int64, sem chan struct{}, tracer trace.Tracer, metrics *agentMetrics, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		status := "ok"
@@ -57,6 +62,21 @@ func handleInvestigate(inv agent.Investigator, timeout time.Duration, tracer tra
 			status = "method_not_allowed"
 			sendError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
 			return
+		}
+
+		if sem != nil {
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			default:
+				status = "too_many_requests"
+				sendError(w, http.StatusTooManyRequests, errors.New("too many concurrent investigations, retry later"))
+				return
+			}
+		}
+
+		if maxBodyBytes > 0 {
+			r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 		}
 
 		var req InvestigateRequest

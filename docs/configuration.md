@@ -101,9 +101,17 @@ agent:
   request_timeout_seconds: 180
   gateway_url: http://mcpgateway:8090/mcp
   max_report_chars: 1500
+  max_concurrent: 4
+  max_body_bytes: 65536
 ```
 
 Leave `agent.base_url` empty to disable `/investigate` in `ssbot`.
+
+`agent.max_concurrent` caps how many `/investigate` requests run at once — each
+holds an LLM tool-calling loop open for up to `request_timeout_seconds`, so an
+unbounded fan-out would hold that many goroutines and bill that much LLM spend
+simultaneously. Requests beyond the cap get `429 Too Many Requests`.
+`agent.max_body_bytes` caps the POST body size for `/investigate`.
 
 ## Source Config
 

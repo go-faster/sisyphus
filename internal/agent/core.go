@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/go-faster/errors"
@@ -13,12 +12,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
-
-// sourceURLPattern extracts URLs only from structured "source_url"/"url" JSON
-// fields in tool results, never from free-form body text (e.g. a chunk's
-// text or a fetched page's body) — those are untrusted content and must not
-// be treated as vetted source links (see filterButtons).
-var sourceURLPattern = regexp.MustCompile(`"(?:source_url|url)"\s*:\s*"(https?://[^"\\]+)"`)
 
 // TerminalTool describes the submit tool that ends the loop.
 type TerminalTool struct {
@@ -133,14 +126,57 @@ func coreLoop(ctx context.Context, llm LLM, toolSource ToolSource, model string,
 	return res, errors.Errorf("exceeded max iterations (%d)", maxIterations)
 }
 
+// collectURLs extracts URLs only from structured "source_url"/"url" JSON
+// fields in a tool result, never from free-form body text (e.g. a chunk's
+// text or a fetched page's body) — those are untrusted content and must not
+// be treated as vetted source links (see filterButtons).
+//
+// It does this by actually decoding the result as JSON and walking the
+// resulting value tree, rather than regexing the raw string: a regex over
+// raw text would also match a "url": "..." substring that merely appears
+// inside untrusted string content (a tool error message, ingested chunk
+// text, or raw shell output from the ssh sandbox tools), letting a
+// prompt-injected payload smuggle an attacker-controlled URL into the
+// allowed set. json.Unmarshal only exposes object keys that are structurally
+// keys, not text that happens to look like one inside a string value, and a
+// non-JSON result (e.g. plain-text tool errors or shell output) simply
+// yields no URLs instead of a false match.
 func collectURLs(dst map[string]struct{}, text string) {
-	for _, m := range sourceURLPattern.FindAllStringSubmatch(text, -1) {
-		raw := strings.TrimRight(m[1], ".,;:!?)]}>")
-		if raw == "" {
-			continue
-		}
-		dst[raw] = struct{}{}
+	var v any
+	if err := json.Unmarshal([]byte(text), &v); err != nil {
+		return
 	}
+	walkURLs(dst, v)
+}
+
+func walkURLs(dst map[string]struct{}, v any) {
+	switch t := v.(type) {
+	case map[string]any:
+		for k, val := range t {
+			if k == "source_url" || k == "url" {
+				if s, ok := val.(string); ok {
+					addURL(dst, s)
+					continue
+				}
+			}
+			walkURLs(dst, val)
+		}
+	case []any:
+		for _, e := range t {
+			walkURLs(dst, e)
+		}
+	}
+}
+
+func addURL(dst map[string]struct{}, raw string) {
+	raw = strings.TrimRight(strings.TrimSpace(raw), ".,;:!?)]}>")
+	if raw == "" {
+		return
+	}
+	if !strings.HasPrefix(raw, "http://") && !strings.HasPrefix(raw, "https://") {
+		return
+	}
+	dst[raw] = struct{}{}
 }
 
 // CoreLoop is the exported entry point for the shared agent loop engine.

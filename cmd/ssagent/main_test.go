@@ -106,7 +106,7 @@ func TestHandleInvestigate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			inv := tt.setupInv()
-			handler := mcpserver.BearerAuthMiddleware("secret")(handleInvestigate(inv, 5*time.Second, noop.NewTracerProvider().Tracer(""), nil, logger))
+			handler := mcpserver.BearerAuthMiddleware("secret")(handleInvestigate(inv, 5*time.Second, 64*1024, nil, noop.NewTracerProvider().Tracer(""), nil, logger))
 
 			var body []byte
 			if tt.reqBody != nil {
@@ -130,4 +130,37 @@ func TestHandleInvestigate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHandleInvestigate_ConcurrencyLimit(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	sem := make(chan struct{}, 1)
+	sem <- struct{}{} // pre-fill so the next request is rejected immediately.
+
+	inv := &fakeInvestigator{res: agent.Result{Report: agent.Report{Verdict: agent.VerdictSolved}}}
+	handler := mcpserver.BearerAuthMiddleware("secret")(handleInvestigate(inv, 5*time.Second, 64*1024, sem, noop.NewTracerProvider().Tracer(""), nil, logger))
+
+	body, _ := json.Marshal(InvestigateRequest{Description: "test"})
+	req := httptest.NewRequest(http.MethodPost, "/investigate", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusTooManyRequests, rec.Code)
+}
+
+func TestHandleInvestigate_BodyTooLarge(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+	inv := &fakeInvestigator{res: agent.Result{Report: agent.Report{Verdict: agent.VerdictSolved}}}
+	handler := mcpserver.BearerAuthMiddleware("secret")(handleInvestigate(inv, 5*time.Second, 16, nil, noop.NewTracerProvider().Tracer(""), nil, logger))
+
+	body, _ := json.Marshal(InvestigateRequest{Description: "this description is definitely longer than sixteen bytes"})
+	req := httptest.NewRequest(http.MethodPost, "/investigate", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
