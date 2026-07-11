@@ -215,3 +215,150 @@ func (c *captureQueryRetriever) Retrieve(ctx context.Context, q index.Query) ([]
 	c.lastQuery = q
 	return nil, nil
 }
+
+// fakeContentResolver for testing GetFile endpoint
+type fakeContentResolverAPI struct{}
+
+func (f *fakeContentResolverAPI) ResolveContent(ctx context.Context, req index.ContentRequest) (index.ContentResponse, error) {
+	if req.Path == "notfound.txt" {
+		return index.ContentResponse{Found: false}, nil
+	}
+	return index.ContentResponse{
+		Content: "file content here",
+		Source:  "database",
+		Found:   true,
+	}, nil
+}
+
+// fakeURLFetcherAPI for testing FetchURL endpoint
+type fakeURLFetcherAPI struct{}
+
+func (f *fakeURLFetcherAPI) Fetch(ctx context.Context, req index.FetchRequest) (index.FetchResponse, error) {
+	if req.URL == "https://forbidden.com/data" {
+		return index.FetchResponse{}, index.ErrURLNotAllowed
+	}
+	if req.Method == "DELETE" {
+		return index.FetchResponse{}, index.ErrFetchMethodNotAllowed
+	}
+	return index.FetchResponse{
+		StatusCode: 200,
+		Body:       `{"status":"ok"}`,
+		FromSite:   "example.com",
+		Truncated:  false,
+		Headers:    map[string]string{"Content-Type": "application/json"},
+	}, nil
+}
+
+func TestClientResolveContent_Success(t *testing.T) {
+	handler := api.New(&fakeRetriever{}, &fakeAnswerer{}, "v1.0.0",
+		api.WithContentResolver(&fakeContentResolverAPI{}))
+	secHandler := api.NewSecurityHandler("secret-token")
+	server, err := oas.NewServer(handler, secHandler, oas.WithErrorHandler(api.ErrorHandler))
+	require.NoError(t, err)
+
+	httpServer := httptest.NewServer(server)
+	defer httpServer.Close()
+
+	client, err := New(httpServer.URL, "secret-token", Options{})
+	require.NoError(t, err)
+
+	resp, err := client.ResolveContent(context.Background(), index.ContentRequest{
+		Repo:   "myrepo",
+		Path:   "README.md",
+		Branch: "main",
+	})
+	require.NoError(t, err)
+	assert.True(t, resp.Found)
+	assert.Equal(t, "file content here", resp.Content)
+	assert.Equal(t, "database", resp.Source)
+}
+
+func TestClientResolveContent_NotFound(t *testing.T) {
+	handler := api.New(&fakeRetriever{}, &fakeAnswerer{}, "v1.0.0",
+		api.WithContentResolver(&fakeContentResolverAPI{}))
+	secHandler := api.NewSecurityHandler("secret-token")
+	server, err := oas.NewServer(handler, secHandler, oas.WithErrorHandler(api.ErrorHandler))
+	require.NoError(t, err)
+
+	httpServer := httptest.NewServer(server)
+	defer httpServer.Close()
+
+	client, err := New(httpServer.URL, "secret-token", Options{})
+	require.NoError(t, err)
+
+	resp, err := client.ResolveContent(context.Background(), index.ContentRequest{
+		Repo: "myrepo",
+		Path: "notfound.txt",
+	})
+	require.NoError(t, err)
+	assert.False(t, resp.Found)
+	assert.Empty(t, resp.Content)
+}
+
+func TestClientFetch_Success(t *testing.T) {
+	handler := api.New(&fakeRetriever{}, &fakeAnswerer{}, "v1.0.0",
+		api.WithURLFetcher(&fakeURLFetcherAPI{}))
+	secHandler := api.NewSecurityHandler("secret-token")
+	server, err := oas.NewServer(handler, secHandler, oas.WithErrorHandler(api.ErrorHandler))
+	require.NoError(t, err)
+
+	httpServer := httptest.NewServer(server)
+	defer httpServer.Close()
+
+	client, err := New(httpServer.URL, "secret-token", Options{})
+	require.NoError(t, err)
+
+	resp, err := client.Fetch(context.Background(), index.FetchRequest{
+		URL:    "https://example.com/api",
+		Method: "GET",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+	assert.Equal(t, `{"status":"ok"}`, resp.Body)
+	assert.Equal(t, "example.com", resp.FromSite)
+	assert.False(t, resp.Truncated)
+	assert.Equal(t, "application/json", resp.Headers["Content-Type"])
+}
+
+func TestClientFetch_URLNotAllowed(t *testing.T) {
+	handler := api.New(&fakeRetriever{}, &fakeAnswerer{}, "v1.0.0",
+		api.WithURLFetcher(&fakeURLFetcherAPI{}))
+	secHandler := api.NewSecurityHandler("secret-token")
+	server, err := oas.NewServer(handler, secHandler, oas.WithErrorHandler(api.ErrorHandler))
+	require.NoError(t, err)
+
+	httpServer := httptest.NewServer(server)
+	defer httpServer.Close()
+
+	client, err := New(httpServer.URL, "secret-token", Options{})
+	require.NoError(t, err)
+
+	resp, err := client.Fetch(context.Background(), index.FetchRequest{
+		URL: "https://forbidden.com/data",
+	})
+	require.Error(t, err)
+	assert.Empty(t, resp)
+	assert.Contains(t, err.Error(), "403") // StatusForbidden
+}
+
+func TestClientFetch_MethodNotAllowed(t *testing.T) {
+	handler := api.New(&fakeRetriever{}, &fakeAnswerer{}, "v1.0.0",
+		api.WithURLFetcher(&fakeURLFetcherAPI{}))
+	secHandler := api.NewSecurityHandler("secret-token")
+	server, err := oas.NewServer(handler, secHandler, oas.WithErrorHandler(api.ErrorHandler))
+	require.NoError(t, err)
+
+	httpServer := httptest.NewServer(server)
+	defer httpServer.Close()
+
+	client, err := New(httpServer.URL, "secret-token", Options{})
+	require.NoError(t, err)
+
+	resp, err := client.Fetch(context.Background(), index.FetchRequest{
+		URL:    "https://example.com/api",
+		Method: "DELETE",
+	})
+	require.Error(t, err)
+	assert.Empty(t, resp)
+	assert.Contains(t, err.Error(), "403") // StatusForbidden
+}

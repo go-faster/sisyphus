@@ -253,3 +253,255 @@ func TestHandler_NewError_SecurityError(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, errResp.StatusCode)
 	assert.Equal(t, "unauthorized", errResp.Response.ErrorMessage)
 }
+
+// fakeContentResolver provides test responses for GetFile.
+type fakeContentResolver struct {
+	response index.ContentResponse
+	err      error
+}
+
+func (f *fakeContentResolver) ResolveContent(ctx context.Context, req index.ContentRequest) (index.ContentResponse, error) {
+	return f.response, f.err
+}
+
+// fakeURLFetcher provides test responses for FetchURL.
+type fakeURLFetcher struct {
+	response index.FetchResponse
+	err      error
+}
+
+func (f *fakeURLFetcher) Fetch(ctx context.Context, req index.FetchRequest) (index.FetchResponse, error) {
+	return f.response, f.err
+}
+
+func TestHandler_GetFile_NotConfigured(t *testing.T) {
+	h := New(&captureRetriever{}, stubAnswerer{}, "test")
+
+	resp, err := h.GetFile(t.Context(), &oas.FileRequest{
+		Repo: "myrepo",
+		Path: "README.md",
+	})
+	require.NoError(t, err)
+	assert.False(t, resp.Found)
+	assert.Empty(t, resp.Content)
+	assert.Empty(t, resp.Source.Value)
+}
+
+func TestHandler_GetFile_Found(t *testing.T) {
+	resolver := &fakeContentResolver{
+		response: index.ContentResponse{
+			Content: "# Hello\n\nWorld",
+			Source:  "database",
+			Found:   true,
+		},
+	}
+	h := New(&captureRetriever{}, stubAnswerer{}, "test", WithContentResolver(resolver))
+
+	resp, err := h.GetFile(t.Context(), &oas.FileRequest{
+		Repo: "myrepo",
+		Path: "README.md",
+	})
+	require.NoError(t, err)
+	assert.True(t, resp.Found)
+	assert.Equal(t, "# Hello\n\nWorld", resp.Content)
+	assert.Equal(t, "database", resp.Source.Value)
+}
+
+func TestHandler_GetFile_NotFound(t *testing.T) {
+	resolver := &fakeContentResolver{
+		response: index.ContentResponse{
+			Found: false,
+		},
+	}
+	h := New(&captureRetriever{}, stubAnswerer{}, "test", WithContentResolver(resolver))
+
+	resp, err := h.GetFile(t.Context(), &oas.FileRequest{
+		Repo: "myrepo",
+		Path: "nonexistent.go",
+	})
+	require.NoError(t, err)
+	assert.False(t, resp.Found)
+	assert.Empty(t, resp.Content)
+}
+
+func TestHandler_GetFile_ResolveError(t *testing.T) {
+	resolver := &fakeContentResolver{
+		err: errors.New("database error"),
+	}
+	h := New(&captureRetriever{}, stubAnswerer{}, "test", WithContentResolver(resolver))
+
+	resp, err := h.GetFile(t.Context(), &oas.FileRequest{
+		Repo: "myrepo",
+		Path: "README.md",
+	})
+	require.NoError(t, err)
+	assert.False(t, resp.Found)
+	assert.Empty(t, resp.Content)
+}
+
+func TestHandler_GetFile_WithLineRange(t *testing.T) {
+	resolver := &fakeContentResolver{
+		response: index.ContentResponse{
+			Content: "line 1\nline 2\nline 3",
+			Source:  "local_clone",
+			Found:   true,
+		},
+	}
+	h := New(&captureRetriever{}, stubAnswerer{}, "test", WithContentResolver(resolver))
+
+	resp, err := h.GetFile(t.Context(), &oas.FileRequest{
+		Repo:   "myrepo",
+		Path:   "code.go",
+		Start:  oas.NewOptInt32(1),
+		End:    oas.NewOptInt32(2),
+		Branch: oas.NewOptString("main"),
+	})
+	require.NoError(t, err)
+	assert.True(t, resp.Found)
+	assert.Equal(t, "line 1\nline 2\nline 3", resp.Content)
+	assert.Equal(t, "local_clone", resp.Source.Value)
+}
+
+func TestHandler_FetchURL_NotConfigured(t *testing.T) {
+	h := New(&captureRetriever{}, stubAnswerer{}, "test")
+
+	resp, err := h.FetchURL(t.Context(), &oas.FetchURLRequest{
+		URL: "https://example.com/data",
+	})
+	require.Error(t, err)
+	assert.Nil(t, resp)
+	errResp, ok := err.(*oas.ErrorStatusCode)
+	require.True(t, ok)
+	assert.Equal(t, http.StatusForbidden, errResp.StatusCode)
+	assert.Equal(t, "url fetcher not configured", errResp.Response.ErrorMessage)
+}
+
+func TestHandler_FetchURL_Success(t *testing.T) {
+	fetcher := &fakeURLFetcher{
+		response: index.FetchResponse{
+			StatusCode: 200,
+			Body:       `{"data":"value"}`,
+			FromSite:   "example.com",
+			Truncated:  false,
+			Headers: map[string]string{
+				"Content-Type": "application/json",
+				"X-Custom":     "header",
+			},
+		},
+	}
+	h := New(&captureRetriever{}, stubAnswerer{}, "test", WithURLFetcher(fetcher))
+
+	resp, err := h.FetchURL(t.Context(), &oas.FetchURLRequest{
+		URL:    "https://example.com/data",
+		Method: oas.NewOptString("GET"),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, 200, resp.StatusCode)
+	assert.Equal(t, `{"data":"value"}`, resp.Body)
+	assert.Equal(t, "example.com", resp.FromSite)
+	assert.False(t, resp.Truncated.Value)
+	// Headers should be present
+	assert.NotNil(t, resp.Headers)
+	require.True(t, resp.Headers.Set)
+	assert.Equal(t, "application/json", resp.Headers.Value["Content-Type"])
+	assert.Equal(t, "header", resp.Headers.Value["X-Custom"])
+}
+
+func TestHandler_FetchURL_NoHeaders(t *testing.T) {
+	fetcher := &fakeURLFetcher{
+		response: index.FetchResponse{
+			StatusCode: 204,
+			Body:       "",
+			FromSite:   "api.example.com",
+			Truncated:  false,
+			Headers:    nil, // No headers
+		},
+	}
+	h := New(&captureRetriever{}, stubAnswerer{}, "test", WithURLFetcher(fetcher))
+
+	resp, err := h.FetchURL(t.Context(), &oas.FetchURLRequest{
+		URL: "https://api.example.com/endpoint",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, 204, resp.StatusCode)
+	// Headers should not be set
+	assert.False(t, resp.Headers.Set)
+}
+
+func TestHandler_FetchURL_URLNotAllowed(t *testing.T) {
+	fetcher := &fakeURLFetcher{
+		err: index.ErrURLNotAllowed,
+	}
+	h := New(&captureRetriever{}, stubAnswerer{}, "test", WithURLFetcher(fetcher))
+
+	resp, err := h.FetchURL(t.Context(), &oas.FetchURLRequest{
+		URL: "https://forbidden.com/data",
+	})
+	require.Error(t, err)
+	assert.Nil(t, resp)
+	errResp, ok := err.(*oas.ErrorStatusCode)
+	require.True(t, ok)
+	assert.Equal(t, http.StatusForbidden, errResp.StatusCode)
+	assert.Equal(t, "url not in allowlist", errResp.Response.ErrorMessage)
+}
+
+func TestHandler_FetchURL_MethodNotAllowed(t *testing.T) {
+	fetcher := &fakeURLFetcher{
+		err: index.ErrFetchMethodNotAllowed,
+	}
+	h := New(&captureRetriever{}, stubAnswerer{}, "test", WithURLFetcher(fetcher))
+
+	resp, err := h.FetchURL(t.Context(), &oas.FetchURLRequest{
+		URL:    "https://example.com/api",
+		Method: oas.NewOptString("DELETE"),
+	})
+	require.Error(t, err)
+	assert.Nil(t, resp)
+	errResp, ok := err.(*oas.ErrorStatusCode)
+	require.True(t, ok)
+	assert.Equal(t, http.StatusForbidden, errResp.StatusCode)
+	assert.Equal(t, "method not allowed for site", errResp.Response.ErrorMessage)
+}
+
+func TestHandler_FetchURL_GenericError(t *testing.T) {
+	fetcher := &fakeURLFetcher{
+		err: errors.New("network timeout"),
+	}
+	h := New(&captureRetriever{}, stubAnswerer{}, "test", WithURLFetcher(fetcher))
+
+	resp, err := h.FetchURL(t.Context(), &oas.FetchURLRequest{
+		URL: "https://example.com/data",
+	})
+	require.Error(t, err)
+	assert.Nil(t, resp)
+	assert.Contains(t, err.Error(), "fetch url")
+}
+
+func TestHandler_FetchURL_WithBody(t *testing.T) {
+	fetcher := &fakeURLFetcher{
+		response: index.FetchResponse{
+			StatusCode: 200,
+			Body:       `{"result":"ok"}`,
+			FromSite:   "api.example.com",
+			Truncated:  true,
+			Headers:    map[string]string{"X-Truncated": "true"},
+		},
+	}
+	h := New(&captureRetriever{}, stubAnswerer{}, "test", WithURLFetcher(fetcher))
+
+	resp, err := h.FetchURL(t.Context(), &oas.FetchURLRequest{
+		URL:    "https://api.example.com/endpoint",
+		Method: oas.NewOptString("POST"),
+		Body:   oas.NewOptString(`{"key":"value"}`),
+		Headers: oas.NewOptFetchURLRequestHeaders(map[string]string{
+			"Content-Type": "application/json",
+		}),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, 200, resp.StatusCode)
+	assert.Equal(t, `{"result":"ok"}`, resp.Body)
+	assert.True(t, resp.Truncated.Value)
+}
