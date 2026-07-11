@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/go-faster/errors"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/go-faster/sisyphus/internal/index"
@@ -30,18 +32,33 @@ func (m RepoResolverMap) Resolve(repo string) (string, bool) {
 
 // LocalRepoReader retrieves file content from a local git clone.
 type LocalRepoReader struct {
-	repos RepoResolver
-	lg    *zap.Logger
+	repos  RepoResolver
+	lg     *zap.Logger
+	tracer trace.Tracer
 }
 
-func NewLocalRepoReader(repos RepoResolver, lg *zap.Logger) *LocalRepoReader {
+func NewLocalRepoReader(repos RepoResolver, opts Options) *LocalRepoReader {
+	opts.setDefaults()
 	return &LocalRepoReader{
-		repos: repos,
-		lg:    lg,
+		repos:  repos,
+		lg:     opts.Logger,
+		tracer: opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/content"),
 	}
 }
 
-func (r *LocalRepoReader) ResolveContent(ctx context.Context, req index.ContentRequest) (index.ContentResponse, error) {
+func (r *LocalRepoReader) ResolveContent(ctx context.Context, req index.ContentRequest) (_ index.ContentResponse, rerr error) {
+	_, span := r.tracer.Start(ctx, "content.LocalRepoReader.ResolveContent",
+		trace.WithAttributes(
+			attribute.String("repo", req.Repo),
+			attribute.String("path", req.Path),
+		),
+	)
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+		}
+		span.End()
+	}()
 	root, ok := r.repos.Resolve(req.Repo)
 	if !ok {
 		return index.ContentResponse{Found: false}, nil

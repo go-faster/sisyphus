@@ -259,9 +259,14 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		}
 	}
 
-	localReader := content.NewLocalRepoReader(repoMap, lg)
-	dbReader := content.NewDatabaseReader(svcs.DB, lg)
-	contentResolver := content.NewChainResolver(lg, localReader, dbReader)
+	contentOpts := content.Options{
+		Logger:         lg,
+		TracerProvider: opts.TracerProvider,
+		MeterProvider:  opts.MeterProvider,
+	}
+	localReader := content.NewLocalRepoReader(repoMap, contentOpts)
+	dbReader := content.NewDatabaseReader(svcs.DB, contentOpts)
+	contentResolver := content.NewChainResolver([]index.ContentResolver{localReader, dbReader}, contentOpts)
 	urlFetcher, err := fetch.New(ctx, cfg.Fetch, cfg.Proxies, fetch.Options{
 		Logger:         lg,
 		TracerProvider: opts.TracerProvider,

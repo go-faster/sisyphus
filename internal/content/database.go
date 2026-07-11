@@ -4,6 +4,10 @@ import (
 	"context"
 	"strings"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/go-faster/sisyphus/internal/ent"
@@ -11,20 +15,54 @@ import (
 	"github.com/go-faster/sisyphus/internal/index"
 )
 
+// Options configures DatabaseReader, LocalRepoReader, and ChainResolver construction.
+type Options struct {
+	Logger         *zap.Logger
+	TracerProvider trace.TracerProvider
+	MeterProvider  metric.MeterProvider
+}
+
+func (o *Options) setDefaults() {
+	if o.Logger == nil {
+		o.Logger = zap.NewNop()
+	}
+	if o.TracerProvider == nil {
+		o.TracerProvider = otel.GetTracerProvider()
+	}
+	if o.MeterProvider == nil {
+		o.MeterProvider = otel.GetMeterProvider()
+	}
+}
+
 // DatabaseReader retrieves file content from the Postgres document.body.
 type DatabaseReader struct {
 	client *ent.Client
 	lg     *zap.Logger
+	tracer trace.Tracer
 }
 
-func NewDatabaseReader(client *ent.Client, lg *zap.Logger) *DatabaseReader {
+func NewDatabaseReader(client *ent.Client, opts Options) *DatabaseReader {
+	opts.setDefaults()
 	return &DatabaseReader{
 		client: client,
-		lg:     lg,
+		lg:     opts.Logger,
+		tracer: opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/content"),
 	}
 }
 
-func (r *DatabaseReader) ResolveContent(ctx context.Context, req index.ContentRequest) (index.ContentResponse, error) {
+func (r *DatabaseReader) ResolveContent(ctx context.Context, req index.ContentRequest) (_ index.ContentResponse, rerr error) {
+	ctx, span := r.tracer.Start(ctx, "content.DatabaseReader.ResolveContent",
+		trace.WithAttributes(
+			attribute.String("repo", req.Repo),
+			attribute.String("path", req.Path),
+		),
+	)
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+		}
+		span.End()
+	}()
 	// Try the different possible git source prefixes for files.
 	prefixes := []string{
 		string(index.SourceGitDocs(req.Repo)),
