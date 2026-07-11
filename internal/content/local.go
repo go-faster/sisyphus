@@ -43,7 +43,7 @@ func NewLocalRepoReader(repos RepoResolver, opts Options) *LocalRepoReader {
 	return &LocalRepoReader{
 		repos:  repos,
 		lg:     opts.Logger,
-		tracer: opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/content"),
+		tracer: opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/content"),
 	}
 }
 
@@ -67,7 +67,7 @@ func (r *LocalRepoReader) ResolveContent(ctx context.Context, req index.ContentR
 
 	cleanPath := filepath.Clean(filepath.FromSlash(req.Path))
 	if strings.HasPrefix(cleanPath, ".."+string(filepath.Separator)) || cleanPath == ".." {
-		r.lg.Warn("Path traversal attempt rejected", zap.String("path", req.Path))
+		r.lg.Warn("path traversal attempt rejected", zap.String("path", req.Path))
 		return index.ContentResponse{Found: false}, nil
 	}
 
@@ -76,7 +76,7 @@ func (r *LocalRepoReader) ResolveContent(ctx context.Context, req index.ContentR
 		if os.IsNotExist(err) {
 			return index.ContentResponse{Found: false}, nil
 		}
-		r.lg.Error("Failed to resolve repo root", zap.String("root", root), zap.Error(err))
+		r.lg.Error("failed to resolve repo root", zap.String("root", root), zap.Error(err))
 		return index.ContentResponse{Found: false}, nil
 	}
 
@@ -86,11 +86,11 @@ func (r *LocalRepoReader) ResolveContent(ctx context.Context, req index.ContentR
 		if os.IsNotExist(err) {
 			return index.ContentResponse{Found: false}, nil
 		}
-		r.lg.Error("Failed to resolve local file", zap.String("path", absPath), zap.Error(err))
+		r.lg.Error("failed to resolve local file", zap.String("path", absPath), zap.Error(err))
 		return index.ContentResponse{Found: false}, nil
 	}
 	if !isPathWithin(cleanRoot, resolvedPath) {
-		r.lg.Warn("Path resolves outside root", zap.String("path", req.Path), zap.String("root", root))
+		r.lg.Warn("path resolves outside root", zap.String("path", req.Path), zap.String("root", root))
 		return index.ContentResponse{Found: false}, nil
 	}
 
@@ -99,7 +99,7 @@ func (r *LocalRepoReader) ResolveContent(ctx context.Context, req index.ContentR
 		if os.IsNotExist(err) || err == errContentTooLarge {
 			return index.ContentResponse{Found: false}, nil
 		}
-		r.lg.Error("Failed to read local file", zap.String("path", resolvedPath), zap.Error(err))
+		r.lg.Error("failed to read local file", zap.String("path", resolvedPath), zap.Error(err))
 		return index.ContentResponse{Found: false}, nil
 	}
 

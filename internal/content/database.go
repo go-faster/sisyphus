@@ -46,7 +46,7 @@ func NewDatabaseReader(client *ent.Client, opts Options) *DatabaseReader {
 	return &DatabaseReader{
 		client: client,
 		lg:     opts.Logger,
-		tracer: opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/content"),
+		tracer: opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/content"),
 	}
 }
 
@@ -91,7 +91,7 @@ func (r *DatabaseReader) ResolveContent(ctx context.Context, req index.ContentRe
 		if ent.IsNotFound(err) || doc == nil {
 			return index.ContentResponse{Found: false}, nil
 		}
-		r.lg.Error("Failed to query document", zap.Error(err))
+		r.lg.Error("failed to query document", zap.Error(err))
 		return index.ContentResponse{Found: false}, nil
 	}
 

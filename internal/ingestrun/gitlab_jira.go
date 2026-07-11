@@ -432,7 +432,7 @@ func ResetSource(ctx context.Context, db *ent.Client, vectors pipeline.VectorSto
 			}
 		}
 	} else if vectors == nil && len(chunkIDs) > 0 {
-		lg.Warn("Qdrant unavailable; ent data cleared but vector points remain; they won't match any deleted doc",
+		lg.Warn("qdrant unavailable; ent data cleared but vector points remain; they won't match any deleted doc",
 			zap.String("source", string(src)))
 	}
 

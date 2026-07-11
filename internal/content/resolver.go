@@ -22,7 +22,7 @@ func NewChainResolver(resolvers []index.ContentResolver, opts Options) *ChainRes
 	return &ChainResolver{
 		resolvers: resolvers,
 		lg:        opts.Logger,
-		tracer:    opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/content"),
+		tracer:    opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/content"),
 	}
 }
 
@@ -42,7 +42,7 @@ func (c *ChainResolver) ResolveContent(ctx context.Context, req index.ContentReq
 	for _, r := range c.resolvers {
 		resp, err := r.ResolveContent(ctx, req)
 		if err != nil {
-			c.lg.Warn("Resolver returned error", zap.Error(err))
+			c.lg.Warn("resolver returned error", zap.Error(err))
 			continue
 		}
 		if resp.Found {
