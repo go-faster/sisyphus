@@ -57,7 +57,18 @@ internal/bot            gotd bot, /context handler
 internal/ent            ent schema + generated code (Document, Chunk, SupportRequest,
                         TelegramMessage, SyncState)
 internal/llm/openrouter OpenRouter-backed LLM answerer (chat completions) used to
-                        answer /context questions from retrieved chunks.
+                        answer /context questions from retrieved chunks (non-agentic path).
+internal/agent          shared LLM tool-calling loop engine (coreLoop in core.go) used by
+                        BOTH /investigate (loop.go, Report/submit_report terminal tool) and
+                        the agentic /context path (internal/answer.ContextLoop); also collects
+                        DiscoveredURLs from tool results (source_url/url JSON fields only —
+                        never free-form body text, see "Answers & link buttons")
+internal/answer         agentic /context answerer (index.RichAnswerer): AgenticAnswerer runs
+                        agent.coreLoop with search_knowledge/fetch_url tools (knowledge_tools.go,
+                        in-process) merged via MultiToolSource with an optional ssh-mcp-backed
+                        shell sandbox (ssh_tools.go, MCP client over streamable-http). Enabled by
+                        `context.agentic: true` + OpenRouter; falls back to
+                        `internal/llm/openrouter.Answerer` otherwise (see wire.go)
 internal/apiclient      oas.Client adapter satisfying bot/mcpserver's local Retriever
                         interface + index.Answerer over HTTP with bearer auth
 internal/content        index.ContentResolver implementations backing the file-content
@@ -102,6 +113,18 @@ Answers can carry actionable links rendered as Telegram inline URL buttons.
   at `maxReportLinks`. Here links may be **any** http(s) URL the agent obtained from
   tool results (dashboards, tickets), not just cited sources. The bot attaches them
   to the final report message.
+- Agentic `/context` (`internal/answer.AgenticAnswerer.AnswerRich`, opt-in via
+  `context.agentic: true`): same `submit_answer`/`filterButtons` contract as the
+  OpenRouter answerer above, but the allowed-URL set is built from two sources —
+  the seed results' `source_url` (`buildSeedMessages`) plus any URL the loop
+  *discovers* while calling tools mid-conversation. Discovery is
+  `agent.collectURLs` in `internal/agent/core.go`: it only extracts URLs from
+  structured `"source_url"`/`"url"` JSON keys in a tool's result, **never** by
+  regexing the full result text. This matters because tool results carry
+  untrusted ingested content (a chunk's body, a fetched page) — a naive
+  whole-text URL scan would let any link merely *mentioned* in that content
+  become a clickable button, defeating the "constrained to vetted sources"
+  guarantee. Keep this restriction if `collectURLs` or its call site ever change.
 
 ## API auth
 
@@ -140,6 +163,18 @@ set `proxy: fetch`). A fetch site's `proxy` name is resolved twice — once in
 Both switches must be kept in sync when adding a new proxy name; a name present in one but
 not the other either fails validation for a working proxy or silently fetches with no
 proxy at all.
+
+`context.*` (`ContextConfig`) controls the agentic `/context` path: `agentic` (default
+false) only takes effect if OpenRouter is also enabled (`wire.New` silently falls back to
+the non-agentic `openrouter.Answerer`/stub otherwise — no startup warning today if an
+operator sets `agentic: true` without OpenRouter configured). `ssh_mcp_url` points at an
+ssh-mcp sidecar (see `deploy/sandbox/`); when unset or unreachable, sandbox/`ssh_*` tools
+are unavailable and `AgenticAnswerer` tells the model so in its prompt instead of silently
+letting `ssh_*` tool calls fail (`AgenticOptions.SandboxEnabled`, wired from
+`sshTools != nil` in `wire.go`). `pre_search`/`pre_search_limit` seed the agent loop with
+an initial retrieval — `AnswerRich` only runs this when the caller didn't already pass
+results (`internal/api.Handler.Context` always retrieves first), to avoid a duplicate
+query that would also drop the caller's service/source-tier filters.
 
 ## Conventions
 
