@@ -1,5 +1,6 @@
-database_dsn:
-  env: SISYPHUS_DATABASE_DSN
+database:
+  dsn:
+    env: SISYPHUS_DATABASE_DSN
 
 # api: ssapi, the HTTP API server (owns Postgres + migrations). http_addr is
 # the address ssapi's own server listens on; base_url/auth_token are read by
@@ -16,13 +17,17 @@ mcp:
   auth_token:
     env: SISYPHUS_MCP_AUTH_TOKEN
 
-qdrant_addr: qdrant:6334
-qdrant_collection: corp_chunks
+qdrant:
+  addr: qdrant:6334
+  collection: corp_chunks
 
-ollama_url: http://ollama:11434
-embed_provider: ollama
-embed_model: bge-m3
-embed_dim: 1024
+ollama:
+  url: http://ollama:11434
+
+embed:
+  provider: ollama
+  model: bge-m3
+  dim: 1024
 
 # git: repository content (Markdown docs) + commit messages. Supports N repos;
 # each is keyed independently (git_docs:<repo> / git_commits:<repo>).

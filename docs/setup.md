@@ -53,7 +53,7 @@ export SISYPHUS_JIRA_APITOKEN='...'
 export SISYPHUS_OPENROUTER_API_KEY='sk-or-...'
 ```
 
-`database_dsn` and `api.auth_token` are required for `ssapi`. Other secrets are only needed when their source or service is enabled.
+`database.dsn` and `api.auth_token` are required for `ssapi`. Other secrets are only needed when their source or service is enabled.
 
 ## Ingestion
 

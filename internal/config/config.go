@@ -146,16 +146,27 @@ type TelegramChat struct {
 
 type fileConfig struct {
 	// Deprecated: use api.http_addr.
-	HTTPAddr    string `yaml:"http_addr"`
-	DatabaseDSN Secret `yaml:"database_dsn"`
+	HTTPAddr string `yaml:"http_addr"`
+	// Deprecated: use database.dsn.
+	DatabaseDSN Secret             `yaml:"database_dsn"`
+	Database    fileDatabaseConfig `yaml:"database"`
 
-	QdrantAddr       string `yaml:"qdrant_addr"`
-	QdrantCollection string `yaml:"qdrant_collection"`
+	// Deprecated: use qdrant.addr.
+	QdrantAddr string `yaml:"qdrant_addr"`
+	// Deprecated: use qdrant.collection.
+	QdrantCollection string           `yaml:"qdrant_collection"`
+	Qdrant           fileQdrantConfig `yaml:"qdrant"`
 
-	OllamaURL     string `yaml:"ollama_url"`
+	// Deprecated: use ollama.url.
+	OllamaURL string           `yaml:"ollama_url"`
+	Ollama    fileOllamaConfig `yaml:"ollama"`
+	// Deprecated: use embed.provider.
 	EmbedProvider string `yaml:"embed_provider"`
-	EmbedModel    string `yaml:"embed_model"`
-	EmbedDim      int    `yaml:"embed_dim"`
+	// Deprecated: use embed.model.
+	EmbedModel string `yaml:"embed_model"`
+	// Deprecated: use embed.dim.
+	EmbedDim int             `yaml:"embed_dim"`
+	Embed    fileEmbedConfig `yaml:"embed"`
 
 	Git          fileGitConfig       `yaml:"git"`
 	GitLab       fileGitLabConfig    `yaml:"gitlab"`
@@ -182,6 +193,25 @@ type fileConfig struct {
 type fileMCPConfig struct {
 	Addr      string `yaml:"addr"`
 	AuthToken Secret `yaml:"auth_token"`
+}
+
+type fileDatabaseConfig struct {
+	DSN Secret `yaml:"dsn"`
+}
+
+type fileQdrantConfig struct {
+	Addr       string `yaml:"addr"`
+	Collection string `yaml:"collection"`
+}
+
+type fileOllamaConfig struct {
+	URL string `yaml:"url"`
+}
+
+type fileEmbedConfig struct {
+	Provider string `yaml:"provider"`
+	Model    string `yaml:"model"`
+	Dim      int    `yaml:"dim"`
 }
 
 type fileAgentConfig struct {
@@ -447,7 +477,7 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if c.DatabaseDSN == "" {
-		return Config{}, errors.New("database_dsn is required")
+		return Config{}, errors.New("database.dsn is required")
 	}
 	return c, nil
 }
@@ -463,12 +493,18 @@ const (
 
 func defaultConfig() fileConfig {
 	return fileConfig{
-		QdrantAddr:       "localhost:6334",
-		QdrantCollection: "corp_chunks",
-		OllamaURL:        "http://localhost:11434",
-		EmbedProvider:    "ollama",
-		EmbedModel:       "bge-m3",
-		EmbedDim:         1024,
+		Qdrant: fileQdrantConfig{
+			Addr:       "localhost:6334",
+			Collection: "corp_chunks",
+		},
+		Ollama: fileOllamaConfig{
+			URL: "http://localhost:11434",
+		},
+		Embed: fileEmbedConfig{
+			Provider: "ollama",
+			Model:    "bge-m3",
+			Dim:      1024,
+		},
 		API: fileAPIConfig{
 			HTTPAddr: defaultHTTPAddr,
 			BaseURL:  "http://localhost:8080",
@@ -537,10 +573,38 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-
-	dsn, err := c.DatabaseDSN.Resolve(baseDir)
+	qdrantAddr, err := resolveDeprecatedAddr(&warnings, "qdrant_addr", c.QdrantAddr, "qdrant.addr", c.Qdrant.Addr, "localhost:6334")
 	if err != nil {
-		return Config{}, errors.Wrap(err, "database_dsn")
+		return Config{}, err
+	}
+	qdrantCollection, err := resolveDeprecatedAddr(&warnings, "qdrant_collection", c.QdrantCollection, "qdrant.collection", c.Qdrant.Collection, "corp_chunks")
+	if err != nil {
+		return Config{}, err
+	}
+	ollamaURL, err := resolveDeprecatedAddr(&warnings, "ollama_url", c.OllamaURL, "ollama.url", c.Ollama.URL, "http://localhost:11434")
+	if err != nil {
+		return Config{}, err
+	}
+	embedProvider, err := resolveDeprecatedAddr(&warnings, "embed_provider", c.EmbedProvider, "embed.provider", c.Embed.Provider, "ollama")
+	if err != nil {
+		return Config{}, err
+	}
+	embedModel, err := resolveDeprecatedAddr(&warnings, "embed_model", c.EmbedModel, "embed.model", c.Embed.Model, "bge-m3")
+	if err != nil {
+		return Config{}, err
+	}
+	embedDim, err := resolveDeprecatedInt(&warnings, "embed_dim", c.EmbedDim, "embed.dim", c.Embed.Dim, 1024)
+	if err != nil {
+		return Config{}, err
+	}
+	dsnSecret, err := resolveDeprecatedSecret(&warnings, "database_dsn", c.DatabaseDSN, "database.dsn", c.Database.DSN)
+	if err != nil {
+		return Config{}, err
+	}
+
+	dsn, err := dsnSecret.Resolve(baseDir)
+	if err != nil {
+		return Config{}, errors.Wrap(err, "database dsn")
 	}
 	apiAuthToken, err := c.API.AuthToken.Resolve(baseDir)
 	if err != nil {
@@ -609,12 +673,12 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 
 	return Config{
 		DatabaseDSN:      dsn,
-		QdrantAddr:       c.QdrantAddr,
-		QdrantCollection: c.QdrantCollection,
-		OllamaURL:        c.OllamaURL,
-		EmbedProvider:    c.EmbedProvider,
-		EmbedModel:       c.EmbedModel,
-		EmbedDim:         c.EmbedDim,
+		QdrantAddr:       qdrantAddr,
+		QdrantCollection: qdrantCollection,
+		OllamaURL:        ollamaURL,
+		EmbedProvider:    embedProvider,
+		EmbedModel:       embedModel,
+		EmbedDim:         embedDim,
 		Git: GitConfig{
 			WorkDir: c.Git.WorkDir,
 			Token:   gitToken,
@@ -849,6 +913,17 @@ func resolveDeprecatedSecret(warnings *[]string, deprecatedKey string, deprecate
 	}
 	if current != (Secret{}) {
 		return Secret{}, errors.Errorf("%s is deprecated in favor of %s; set only %s", deprecatedKey, newKey, newKey)
+	}
+	*warnings = append(*warnings, deprecatedKey+" is deprecated, use "+newKey+" instead")
+	return deprecated, nil
+}
+
+func resolveDeprecatedInt(warnings *[]string, deprecatedKey string, deprecated int, newKey string, current, defaultValue int) (int, error) {
+	if deprecated == 0 {
+		return current, nil
+	}
+	if current != defaultValue {
+		return 0, errors.Errorf("%s is deprecated in favor of %s; set only %s", deprecatedKey, newKey, newKey)
 	}
 	*warnings = append(*warnings, deprecatedKey+" is deprecated, use "+newKey+" instead")
 	return deprecated, nil

@@ -15,8 +15,9 @@ Secrets can be literal values, environment variable references, or file referenc
 ## Core Config
 
 ```yaml
-database_dsn:
-  env: SISYPHUS_DATABASE_DSN
+database:
+  dsn:
+    env: SISYPHUS_DATABASE_DSN
 
 api:
   http_addr: :8080
@@ -29,16 +30,20 @@ mcp:
   auth_token:
     env: SISYPHUS_MCP_AUTH_TOKEN
 
-qdrant_addr: qdrant:6334
-qdrant_collection: corp_chunks
+qdrant:
+  addr: qdrant:6334
+  collection: corp_chunks
 
-ollama_url: http://ollama:11434
-embed_provider: ollama
-embed_model: bge-m3
-embed_dim: 1024
+ollama:
+  url: http://ollama:11434
+
+embed:
+  provider: ollama
+  model: bge-m3
+  dim: 1024
 ```
 
-`database_dsn` and `api.auth_token` are required for `ssapi`. `mcp.auth_token` is optional, but should be set for any deployment reachable from untrusted networks.
+`database.dsn` and `api.auth_token` are required for `ssapi`. `mcp.auth_token` is optional, but should be set for any deployment reachable from untrusted networks.
 
 ## Answering Config
 
