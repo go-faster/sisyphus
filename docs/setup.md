@@ -1,6 +1,6 @@
 # Setup
 
-This guide covers a local deployment for `ssapi`, `ssingest`, `ssbot`, `ssmcp`, and `ssagent`.
+This guide covers a local deployment for `ssapi`, `ssingest`, `ssbot`, `ssmcp`, and `ssagent`. See [configuration.md](configuration.md) for service/config details and [ingestion.md](ingestion.md) for source-specific examples.
 
 ## Prerequisites
 
@@ -82,6 +82,8 @@ go run ./cmd/ssingest all --reset all --yes-i-mean-all
 ```
 
 Incremental state is stored in `sync_states`. Re-running ingestion is safe; unchanged documents are skipped by body hash.
+
+See [ingestion.md](ingestion.md) for reset commands, source examples, cursors, and provider-specific behavior.
 
 ## API Check
 

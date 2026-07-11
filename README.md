@@ -1,194 +1,45 @@
 # sisyphus
 
-Internal support/dev assistant that ingests knowledge sources into Postgres full-text search and Qdrant vectors, then answers questions through the Telegram bot or MCP server.
+Internal support/dev assistant that ingests operational knowledge into Postgres full-text search and Qdrant vectors, then answers questions through Telegram, HTTP, or MCP.
 
-Detailed setup docs live in [`docs/setup.md`](docs/setup.md). Webhook setup lives in [`docs/webhooks.md`](docs/webhooks.md).
+## What It Does
 
-Sources supported by `ssingest`:
+- Ingests Git docs/commits/tags, GitLab issues/MRs/releases, Jira issues, Telegram support threads, and curated local files.
+- Stores normalized documents and chunks in Postgres, with vectors in Qdrant for hybrid retrieval.
+- Answers `/context` questions from Telegram and exposes the same retrieval path through HTTP and MCP.
+- Optionally runs `/investigate` through a separate agent service connected to MCP tools.
 
-- Git repository Markdown docs and optional commit messages.
-- GitLab REST API issues, merge requests, and releases.
-- Jira issues.
-- Telegram support chats.
-
-## Configuration
-
-Copy `deploy/config.example.yaml` to `deploy/config.yaml` or provide your own config file with `SISYPHUS_CONFIG`:
+## Quick Start
 
 ```bash
+cp deploy/config.example.yaml deploy/config.yaml
 export SISYPHUS_CONFIG=deploy/config.yaml
-```
+export SISYPHUS_DATABASE_DSN='postgres://sisyphus:sisyphus@localhost:5432/sisyphus?sslmode=disable'
+export SISYPHUS_API_AUTH_TOKEN='change-me'
 
-`database_dsn` is required. Secrets can be literal values, environment variable references, or file references. The example config uses environment variables such as `SISYPHUS_DATABASE_DSN`, `SISYPHUS_GITLAB_TOKEN`, `SISYPHUS_JIRA_PASSWORD`, and `SISYPHUS_TELEGRAM_BOT_TOKEN`.
-
-For local dependencies, start Docker Compose and pull the embedding model once:
-
-```bash
 docker compose -f deploy/docker-compose.yml up -d postgres qdrant ollama
 docker compose -f deploy/docker-compose.yml exec ollama ollama pull bge-m3
+go run ./cmd/ssapi
 ```
 
-## Ingest Commands
-
-Run all configured sources in sequence:
+Run ingestion in another shell:
 
 ```bash
-make ingest
-# or
 go run ./cmd/ssingest all
 ```
 
-Run one source at a time:
+## Documentation
 
-```bash
-make ingest-git
-make ingest-gitlab
-make ingest-jira
-make ingest-telegram
-```
-
-The same commands can be run directly:
-
-```bash
-go run ./cmd/ssingest git
-go run ./cmd/ssingest gitlab
-go run ./cmd/ssingest jira
-go run ./cmd/ssingest telegram
-```
-
-## Ingest Examples
-
-Preview what would be fetched without indexing documents:
-
-```bash
-go run ./cmd/ssingest all --dry-run
-go run ./cmd/ssingest gitlab --dry-run --limit 25
-```
-
-Limit a run to a fixed number of documents per source:
-
-```bash
-go run ./cmd/ssingest git --limit 100
-go run ./cmd/ssingest jira --limit 50
-```
-
-Override the saved incremental cursor for GitLab or Jira:
-
-```bash
-go run ./cmd/ssingest gitlab --since 2026-01-01T00:00:00Z
-go run ./cmd/ssingest jira --since 2026-01-01T00:00:00Z
-```
-
-Rebuild one source from scratch. This deletes that source's documents, chunks, sync state, and vector points before ingesting again:
-
-```bash
-go run ./cmd/ssingest git --reset git
-go run ./cmd/ssingest gitlab --reset gitlab
-go run ./cmd/ssingest jira --reset jira
-go run ./cmd/ssingest telegram --reset telegram
-```
-
-Rebuild every configured source from scratch:
-
-```bash
-go run ./cmd/ssingest all --reset all --yes-i-mean-all
-```
-
-Skip git orphan cleanup for files removed from a repository:
-
-```bash
-go run ./cmd/ssingest git --no-prune
-```
-
-## Git Ingestion
-
-Configure repositories under `git.repos`:
-
-```yaml
-git:
-  work_dir: /data/git
-  token:
-    env: SISYPHUS_GIT_TOKEN
-  repos:
-    - url: https://gitlab.example.com/group/docs.git
-      repo: docs
-      branch: main
-      base_url: https://gitlab.example.com/group/docs/-/blob/main
-      commits: true
-      include:
-        - "docs/**/*.md"
-      exclude:
-        - "docs/archive/**"
-```
-
-Docs and commits are tracked as separate sources per repository: `git_docs:<repo>` and `git_commits:<repo>`. Commit ingestion is disabled unless `commits: true` is set.
-
-## GitLab Ingestion
-
-Configure GitLab REST ingestion with project IDs or paths:
-
-```yaml
-gitlab:
-  base_url: https://gitlab.example.com
-  token:
-    env: SISYPHUS_GITLAB_TOKEN
-  projects:
-    - ref: group/docs
-    - ref: "42"
-  issues: true
-  merge_requests: true
-  releases: true
-```
-
-GitLab stores independent cursors for issues, merge requests, and releases so interrupted runs can resume from the last processed update time.
-
-## Jira Ingestion
-
-Configure Jira with one supported auth method and a list of project objects:
-
-```yaml
-jira:
-  base_url: https://jira.example.com
-  email: bot@example.com
-  api_token:
-    env: SISYPHUS_JIRA_APITOKEN
-  projects:
-    - key: SUP
-    - key: PLAT
-```
-
-Use `--since` to backfill from a specific RFC3339 timestamp instead of the saved cursor.
-
-## Telegram Ingestion
-
-Configure Telegram application credentials, bot token, session storage, and chats:
-
-```yaml
-telegram:
-  app_id: 12345
-  app_hash:
-    env: SISYPHUS_TELEGRAM_APP_HASH
-  bot_token:
-    env: SISYPHUS_TELEGRAM_BOT_TOKEN
-  session_dir: /data/scp/session
-  monitor_chats:
-    - id: -1001234567890
-      username: support-chat
-    - id: -1009876543210
-      username: another-chat
-  ingest_session: support-ingest
-```
-
-Telegram ingestion requires an existing user ingest session. If the session is missing, `ssingest telegram` exits with `telegram not configured or ingest session missing`.
+- [Setup](docs/setup.md) - local services, compose, API checks, and development commands.
+- [Configuration](docs/configuration.md) - key services, config sections, auth, proxies, and runtime options.
+- [Ingestion](docs/ingestion.md) - supported sources, commands, resets, cursors, and provider examples.
+- [Webhooks and polling](docs/webhooks.md) - GitLab/Jira webhook endpoints, polling, reliability, and metrics.
 
 ## Development
 
-Useful targets:
-
 ```bash
-make test_fast
-make test
 make fmt
+make test_fast
 make lint
 make codegen
 ```
