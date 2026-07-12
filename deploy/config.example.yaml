@@ -94,6 +94,18 @@ proxies:
   openrouter:
     env: SISYPHUS_OPENROUTER_PROXY
 
+# fetch: operator-approved URL allowlist for the agentic /context and
+# /investigate loops' fetch_url tool. url_patterns are doublestar globs
+# matched against the full URL; add a site per external system the agent is
+# allowed to reach (e.g. GitLab, so it doesn't have to rely on search_knowledge
+# alone for pages that aren't ingested yet).
+fetch:
+  sites:
+    - name: gitlab
+      url_patterns:
+        - "https://gitlab.example.com/**"
+      methods: [GET]
+
 jira:
   base_url: ""
   email: ""
