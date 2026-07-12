@@ -4,7 +4,6 @@ package bot
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
 	"time"
 
@@ -25,13 +24,6 @@ import (
 	"github.com/go-faster/sisyphus/internal/index"
 	"github.com/go-faster/sisyphus/internal/telemetry"
 )
-
-// helpText is sent in reply to /start and /help.
-const helpText = `Available commands:
-/context <question> — search indexed knowledge and answer a question
-/search <query> — raw ranked search results, no summary
-/investigate <description> — run an on-demand investigation
-/help — show this message`
 
 const defaultAnswerTimeout = time.Minute
 
@@ -71,6 +63,8 @@ type Bot struct {
 
 	allowedChats map[int64]struct{}
 	allowedUsers map[int64]struct{}
+
+	commands *commandRegistry
 }
 
 // BotOptions configures the bot.
@@ -136,6 +130,7 @@ func New(_ context.Context, r Retriever, a index.Answerer, cred BotCredentials, 
 		allowedChats:  allowedChats,
 		allowedUsers:  allowedUsers,
 		answerTimeout: opts.AnswerTimeout,
+		commands:      newCommandRegistry(),
 	}
 }
 
@@ -190,6 +185,8 @@ func (b *Bot) Run(ctx context.Context) error {
 	// as a follow-up message.
 	runCtx := ctx
 
+	b.commands = b.buildCommandRegistry(runCtx)
+
 	dispatcher.OnNewMessage(func(ctx context.Context, e tg.Entities, u *tg.UpdateNewMessage) error {
 		msg, ok := u.Message.(*tg.Message)
 		if !ok || msg.Out {
@@ -204,65 +201,27 @@ func (b *Bot) Run(ctx context.Context) error {
 			return nil
 		}
 
-		lg := zctx.From(ctx)
 		cmd, rest, ok := parseCommand(msg.Message)
 		if !ok {
 			return nil
 		}
-		if rest == "" && cmd != "start" && cmd != "help" {
+		c, ok := b.commands.lookup(cmd)
+		if !ok {
+			return nil
+		}
+		// Commands with a non-empty usage require arguments; silently ignore
+		// bare invocations (preserves the old switch's behavior).
+		if rest == "" && c.usage != "" {
 			return nil
 		}
 
-		switch cmd {
-		case "start":
-			lg.Info("start command", zap.Int64("user_id", senderID))
-			if !b.silent {
-				s := newReplySender(sender, e, u)
-				answer := fmt.Sprintf("Your ID: %d\n\n%s", senderID, helpText)
-				b.sendTextReply(ctx, s, answer)
-			}
-		case "help":
-			lg.Info("help command")
-			if !b.silent {
-				s := newReplySender(sender, e, u)
-				b.sendTextReply(ctx, s, helpText)
-			}
-		case "context":
-			lg.Info("context command", zap.String("query", rest))
-			var s messageSender
-			if !b.silent {
-				s = newReplySender(sender, e, u)
-			} else {
-				s = silentSender{}
-			}
-			b.handleWithProgress(ctx, s, rest, b.handle, "context")
-		case "search":
-			lg.Info("search command", zap.String("query", rest))
-			var s messageSender
-			if !b.silent {
-				s = newReplySender(sender, e, u)
-			} else {
-				s = silentSender{}
-			}
-			b.handleWithProgress(ctx, s, rest, b.handleSearch, "search")
-		case "investigate":
-			lg.Info("investigate command", zap.String("description", rest))
-			if b.investigator == nil {
-				if !b.silent {
-					s := newReplySender(sender, e, u)
-					b.sendTextReply(ctx, s, "Investigation capability is not configured.")
-				}
-				return nil
-			}
-			if !b.silent {
-				s := newReplySender(sender, e, u)
-				b.sendTextReply(ctx, s, "Investigating, this may take a few minutes. I'll follow up here.")
-			}
-			go b.investigateAsync(runCtx, sender, e, u, rest)
-		default:
-			return nil
+		var s messageSender
+		if !b.silent {
+			s = newReplySender(sender, e, u)
+		} else {
+			s = silentSender{}
 		}
-		return nil
+		return c.handler(ctx, s, senderID, rest)
 	})
 
 	dispatcher.OnBotInlineQuery(func(ctx context.Context, _ tg.Entities, u *tg.UpdateBotInlineQuery) error {
@@ -325,6 +284,9 @@ func (b *Bot) Run(ctx context.Context) error {
 	return client.Run(ctx, func(ctx context.Context) error {
 		if _, err := client.Auth().Bot(ctx, b.cred.BotToken); err != nil {
 			return errors.Wrap(err, "bot auth")
+		}
+		if err := b.commands.registerCommands(ctx, raw); err != nil {
+			b.logger.Warn("register bot commands failed", zap.Error(err))
 		}
 		b.logger.Info("bot authenticated, serving /context, /search, /investigate, /start, /help")
 		<-ctx.Done()
@@ -502,19 +464,16 @@ func (b *Bot) handleSearch(ctx context.Context, query string) (index.Answer, err
 // investigateAsync runs an investigation in the background and delivers the
 // report as one or more follow-up replies, so the caller (the OnNewMessage
 // dispatch loop) never blocks on it.
-func (b *Bot) investigateAsync(ctx context.Context, sender *message.Sender, e tg.Entities, u *tg.UpdateNewMessage, description string) {
+func (b *Bot) investigateAsync(ctx context.Context, s messageSender, description string) {
 	report, err := b.handleInvestigate(ctx, description)
 	if err != nil {
 		b.logger.Error("handle investigate", zap.Error(err))
 		if !b.silent {
-			if _, err := sender.Reply(e, u).Text(ctx, "Sorry, investigation failed."); err != nil {
-				b.logger.Error("investigate follow-up reply failed", zap.Error(err))
-			}
+			b.sendTextReply(ctx, s, "Sorry, investigation failed.")
 		}
 		return
 	}
 	b.logger.Info("investigate reply", zap.String("verdict", string(report.Verdict)))
-	s := newReplySender(sender, e, u)
 	b.sendAnswer(ctx, s, index.Answer{Text: reportMarkdown(report), Links: report.Links}, b.logger, "investigate")
 }
 
