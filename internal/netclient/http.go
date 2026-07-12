@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -27,6 +28,7 @@ type HTTPClientOptions struct {
 	TracerProvider trace.TracerProvider
 	Timeout        time.Duration
 	Cache          httpcache.Cache
+	UserAgent      string
 }
 
 func (opts *HTTPClientOptions) setDefaults() {
@@ -79,6 +81,9 @@ func HTTPClient(_ context.Context, name, proxyURL string, opts HTTPClientOptions
 		cacheTransport.Transport = transport
 		transport = cacheTransport
 	}
+	if ua := strings.TrimSpace(opts.UserAgent); ua != "" {
+		transport = &userAgentRoundTripper{userAgent: ua, transport: transport}
+	}
 	transport = &loggingRoundTripper{
 		name:         name,
 		via:          via,
@@ -90,6 +95,19 @@ func HTTPClient(_ context.Context, name, proxyURL string, opts HTTPClientOptions
 		Transport: transport,
 		Timeout:   opts.Timeout,
 	}, nil
+}
+
+type userAgentRoundTripper struct {
+	userAgent string
+	transport http.RoundTripper
+}
+
+func (u *userAgentRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	req2 := req.Clone(req.Context())
+	if req2.Header.Get("User-Agent") == "" {
+		req2.Header.Set("User-Agent", u.userAgent)
+	}
+	return u.transport.RoundTrip(req2)
 }
 
 func configureProxy(transport *http.Transport, u *url.URL) error {

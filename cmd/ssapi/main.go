@@ -13,6 +13,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/go-faster/sisyphus/internal/api"
+	"github.com/go-faster/sisyphus/internal/cliversion"
+	"github.com/go-faster/sisyphus/internal/cmdutil"
 	"github.com/go-faster/sisyphus/internal/config"
 	"github.com/go-faster/sisyphus/internal/httpmw"
 	"github.com/go-faster/sisyphus/internal/mcpserver"
@@ -24,6 +26,7 @@ func main() {
 	app.Run(
 		func(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
 			ctx = zctx.Base(ctx, lg)
+			info, _ := cliversion.GetInfo("github.com/go-faster/sisyphus")
 			cmd := &cobra.Command{
 				Use:   "ssapi",
 				Short: "runs the hybrid-search HTTP API (owns DB + migrations)",
@@ -38,6 +41,8 @@ func main() {
 				SilenceUsage:  true,
 				SilenceErrors: true,
 			}
+			cmdutil.ConfigureVersion(cmd, info)
+			cmd.AddCommand(cmdutil.NewVersionCmd("ssapi", info))
 			cmd.SetContext(ctx)
 			return cmd.Execute()
 		},
@@ -50,11 +55,13 @@ func run(ctx context.Context, cfg config.Config, telemetry *app.Telemetry) error
 	lg := zctx.From(ctx)
 	tp := telemetry.TracerProvider()
 	mp := telemetry.MeterProvider()
+	info, _ := cliversion.GetInfo("github.com/go-faster/sisyphus")
 
 	comp, err := wire.New(ctx, cfg, wire.NewOptions{
 		TracerProvider: tp,
 		MeterProvider:  mp,
 		RunMigrations:  true,
+		UserAgent:      info.UserAgent("ssapi"),
 	})
 	if err != nil {
 		return err
@@ -65,7 +72,7 @@ func run(ctx context.Context, cfg config.Config, telemetry *app.Telemetry) error
 		return errors.New("api.auth_token is required")
 	}
 
-	handler := api.New(comp.Retriever, comp.Answerer, "0.1.0",
+	handler := api.New(comp.Retriever, comp.Answerer, info.Short(),
 		api.WithAnswerIndexer(comp.Answers),
 		api.WithContentResolver(comp.ContentResolver),
 		api.WithURLFetcher(comp.URLFetcher),
@@ -81,7 +88,7 @@ func run(ctx context.Context, cfg config.Config, telemetry *app.Telemetry) error
 	}
 
 	mux := http.NewServeMux()
-	mcpserver.InstallHealth(mux, "0.1.0", comp.Health)
+	mcpserver.InstallHealth(mux, info.Short(), comp.Health)
 	mux.Handle("/", oasSrv)
 	httpSrv := &http.Server{
 		Addr:              cfg.API.HTTPAddr,

@@ -20,6 +20,7 @@ import (
 	"go.uber.org/zap"
 
 	chunkjira "github.com/go-faster/sisyphus/internal/chunk/jira"
+	"github.com/go-faster/sisyphus/internal/cliversion"
 	"github.com/go-faster/sisyphus/internal/index"
 	"github.com/go-faster/sisyphus/internal/netclient"
 )
@@ -34,6 +35,7 @@ type Options struct {
 	PAT        string // Server/DC: personal access token
 	HTTPClient *http.Client
 	PageSize   int // default 100 via setDefaults
+	UserAgent  string
 }
 
 func (opts *Options) setDefaults() {
@@ -44,6 +46,11 @@ func (opts *Options) setDefaults() {
 		opts.PageSize = 100
 	}
 	opts.BaseURL = strings.TrimRight(opts.BaseURL, "/")
+	if opts.UserAgent == "" {
+		if info, ok := cliversion.GetInfo("github.com/go-faster/sisyphus"); ok {
+			opts.UserAgent = info.UserAgent("jira")
+		}
+	}
 }
 
 // FetchOptions controls a single incremental fetch.
@@ -89,6 +96,7 @@ type Fetcher struct {
 	pat        string
 	httpClient *http.Client
 	pageSize   int
+	userAgent  string
 }
 
 // New creates a new Fetcher. Returns an error if no credentials are configured.
@@ -106,6 +114,7 @@ func New(opts Options) (*Fetcher, error) {
 		pat:        opts.PAT,
 		httpClient: opts.HTTPClient,
 		pageSize:   opts.PageSize,
+		userAgent:  opts.UserAgent,
 	}, nil
 }
 
@@ -300,7 +309,9 @@ func (f *Fetcher) buildAPIRequest(ctx context.Context, path string) (*http.Reque
 		return nil, errors.Wrap(err, "create request")
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "sisyphus/ingest")
+	if f.userAgent != "" {
+		req.Header.Set("User-Agent", f.userAgent)
+	}
 
 	switch {
 	case f.pat != "":

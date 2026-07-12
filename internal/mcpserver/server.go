@@ -17,8 +17,8 @@ type Retriever interface {
 
 // New constructs an MCP Server with knowledge tools wired to the provided
 // Retriever and Answerer. Uses official SDK patterns.
-func New(retr Retriever, answerer index.Answerer, contentResolver index.ContentResolver, fetcher index.URLFetcher) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "ssmcp", Version: "0.1.0"}, nil)
+func New(retr Retriever, answerer index.Answerer, contentResolver index.ContentResolver, fetcher index.URLFetcher, version string) *mcp.Server {
+	s := mcp.NewServer(&mcp.Implementation{Name: "ssmcp", Version: version}, nil)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "search_knowledge",

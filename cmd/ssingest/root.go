@@ -6,6 +6,7 @@ import (
 	"github.com/go-faster/sdk/zctx"
 	"github.com/spf13/cobra"
 
+	"github.com/go-faster/sisyphus/internal/cmdutil"
 	"github.com/go-faster/sisyphus/internal/config"
 	"github.com/go-faster/sisyphus/internal/wire"
 )
@@ -19,6 +20,8 @@ func newRoot(t *app.Telemetry) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	cmdutil.ConfigureVersion(root, deps.info)
+	root.AddCommand(cmdutil.NewVersionCmd("ssingest", deps.info))
 
 	root.PersistentFlags().Bool("dry-run", false, "fetch and log only; skip pipeline.Index")
 	root.PersistentFlags().Int("limit", 0, "cap documents per source (0=unlimited)")
@@ -41,7 +44,7 @@ func newRoot(t *app.Telemetry) *cobra.Command {
 		}
 		c.LogWarnings(lg)
 
-		services, err := wire.NewServices(ctx, c, lg, deps.tp, deps.mp, false)
+		services, err := wire.NewServices(ctx, c, lg, deps.tp, deps.mp, deps.userAgent, false)
 		if err != nil {
 			return errors.Wrap(err, "setup services")
 		}

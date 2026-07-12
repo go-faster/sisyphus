@@ -14,6 +14,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/go-faster/sisyphus/internal/apiclient"
+	"github.com/go-faster/sisyphus/internal/cliversion"
+	"github.com/go-faster/sisyphus/internal/cmdutil"
 	"github.com/go-faster/sisyphus/internal/config"
 	"github.com/go-faster/sisyphus/internal/httpmw"
 	"github.com/go-faster/sisyphus/internal/mcpserver"
@@ -24,6 +26,7 @@ func main() {
 	app.Run(
 		func(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
 			ctx = zctx.Base(ctx, lg)
+			info, _ := cliversion.GetInfo("github.com/go-faster/sisyphus")
 			var stdio bool
 			cmd := &cobra.Command{
 				Use:   "ssmcp",
@@ -39,6 +42,8 @@ func main() {
 				SilenceUsage:  true,
 				SilenceErrors: true,
 			}
+			cmdutil.ConfigureVersion(cmd, info)
+			cmd.AddCommand(cmdutil.NewVersionCmd("ssmcp", info))
 			cmd.Flags().BoolVar(&stdio, "stdio", false, "use stdio transport instead of Streamable HTTP")
 			cmd.SetContext(ctx)
 			return cmd.Execute()
@@ -50,6 +55,7 @@ func main() {
 
 func run(ctx context.Context, cfg config.Config, useStdio bool, t *app.Telemetry) error {
 	lg := zctx.From(ctx)
+	info, _ := cliversion.GetInfo("github.com/go-faster/sisyphus")
 	if cfg.API.BaseURL == "" || cfg.API.AuthToken == "" {
 		return errors.New("api.base_url and api.auth_token are required")
 	}
@@ -57,6 +63,7 @@ func run(ctx context.Context, cfg config.Config, useStdio bool, t *app.Telemetry
 	httpClient, err := netclient.HTTPClient(ctx, "ssapi", "", netclient.HTTPClientOptions{
 		TracerProvider: t.TracerProvider(),
 		MeterProvider:  t.MeterProvider(),
+		UserAgent:      info.UserAgent("ssmcp"),
 	})
 	if err != nil {
 		return errors.Wrap(err, "http client")
@@ -71,7 +78,7 @@ func run(ctx context.Context, cfg config.Config, useStdio bool, t *app.Telemetry
 		return errors.Wrap(err, "api client")
 	}
 
-	srv := mcpserver.New(api, api, api, api)
+	srv := mcpserver.New(api, api, api, api, info.Short())
 	if useStdio {
 		lg.Info("mcp stdio starting")
 		return srv.Run(ctx, &mcp.StdioTransport{})
@@ -85,7 +92,7 @@ func run(ctx context.Context, cfg config.Config, useStdio bool, t *app.Telemetry
 	} else {
 		lg.Warn("mcp auth disabled")
 	}
-	mcpserver.InstallHealth(mux, "0.1.0", api)
+	mcpserver.InstallHealth(mux, info.Short(), api)
 	mux.Handle("/mcp", handler)
 
 	s := &http.Server{

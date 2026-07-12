@@ -26,8 +26,9 @@ type Client struct {
 
 // Options configures a new Client.
 type Options struct {
-	URL   string
-	Token string
+	URL        string
+	Token      string
+	HTTPClient *http.Client
 
 	// PollInterval is how often Investigate polls ssagent for a submitted
 	// job's result. Defaults to 3s.
@@ -56,7 +57,12 @@ func New(opts Options) *Client {
 		// poll), not for the whole investigation — Investigate itself no
 		// longer holds one request open for the entire run, so it's bounded
 		// by MaxWait instead.
-		http:         &http.Client{Timeout: 30 * time.Second},
+		http: func() *http.Client {
+			if opts.HTTPClient != nil {
+				return opts.HTTPClient
+			}
+			return &http.Client{Timeout: 30 * time.Second}
+		}(),
 		url:          opts.URL,
 		token:        opts.Token,
 		pollInterval: opts.PollInterval,

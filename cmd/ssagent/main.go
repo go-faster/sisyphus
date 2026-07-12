@@ -14,9 +14,12 @@ import (
 
 	"github.com/go-faster/sdk/app"
 	"github.com/go-faster/sdk/zctx"
+	"github.com/spf13/cobra"
 
 	"github.com/go-faster/sisyphus/internal/agent"
 	"github.com/go-faster/sisyphus/internal/agentstore"
+	"github.com/go-faster/sisyphus/internal/cliversion"
+	"github.com/go-faster/sisyphus/internal/cmdutil"
 	"github.com/go-faster/sisyphus/internal/config"
 	"github.com/go-faster/sisyphus/internal/ent"
 	"github.com/go-faster/sisyphus/internal/httpmw"
@@ -44,7 +47,7 @@ func openJobDB(dsn string) (*ent.Client, func(), error) {
 	return client, func() { _ = db.Close() }, nil
 }
 
-func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry) error {
+func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry, info cliversion.Info) error {
 	ctx = zctx.Base(ctx, lg)
 	cfg, err := config.Load()
 	if err != nil {
@@ -75,9 +78,18 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry) error {
 	httpClient, err := netclient.HTTPClient(ctx, "openrouter", cfg.Proxies.OpenRouter, netclient.HTTPClientOptions{
 		TracerProvider: telemetry.TracerProvider(),
 		MeterProvider:  telemetry.MeterProvider(),
+		UserAgent:      info.UserAgent("ssagent"),
 	})
 	if err != nil {
 		return errors.Wrap(err, "openrouter http client")
+	}
+	mcpHTTPClient, err := netclient.HTTPClient(ctx, "mcp", "", netclient.HTTPClientOptions{
+		TracerProvider: telemetry.TracerProvider(),
+		MeterProvider:  telemetry.MeterProvider(),
+		UserAgent:      info.UserAgent("ssagent"),
+	})
+	if err != nil {
+		return errors.Wrap(err, "mcp http client")
 	}
 	llm := openrouter.New(cfg.OpenRouter.APIKey, openrouter.Options{
 		HTTPClient:     httpClient,
@@ -88,6 +100,8 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry) error {
 	mcpOpts := mcpclient.Options{
 		URL:           cfg.Agent.GatewayURL,
 		MeterProvider: telemetry.MeterProvider(),
+		HTTPClient:    mcpHTTPClient,
+		Version:       info.Short(),
 	}
 	mClient, err := mcpclient.New(ctx, mcpOpts)
 	if err != nil {
@@ -107,7 +121,7 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry) error {
 	inv := agent.NewInvestigator(llm, mClient, model, cfg.Agent.MaxToolIterations, cfg.Agent.MaxReportChars, lg)
 
 	mux := http.NewServeMux()
-	mcpserver.InstallHealth(mux, "ssagent", mClient)
+	mcpserver.InstallHealth(mux, info.Short(), mClient)
 
 	jobTimeout := time.Duration(cfg.Agent.RequestTimeoutSeconds) * time.Second
 	if jobTimeout == 0 {
@@ -149,5 +163,21 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry) error {
 }
 
 func main() {
-	app.Run(run, app.WithServiceName("ssagent"), app.WithServiceNamespace("sisyphus"))
+	app.Run(func(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry) error {
+		ctx = zctx.Base(ctx, lg)
+		info, _ := cliversion.GetInfo("github.com/go-faster/sisyphus")
+		cmd := &cobra.Command{
+			Use:   "ssagent",
+			Short: "runs the investigation service",
+			RunE: func(cmd *cobra.Command, _ []string) error {
+				return run(cmd.Context(), lg, telemetry, info)
+			},
+			SilenceUsage:  true,
+			SilenceErrors: true,
+		}
+		cmdutil.ConfigureVersion(cmd, info)
+		cmd.AddCommand(cmdutil.NewVersionCmd("ssagent", info))
+		cmd.SetContext(ctx)
+		return cmd.Execute()
+	}, app.WithServiceName("ssagent"), app.WithServiceNamespace("sisyphus"))
 }

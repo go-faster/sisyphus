@@ -75,7 +75,7 @@ func runServe(ctx context.Context, deps *ingestDeps) error {
 	poller.Start(ctx, "telegram", time.Duration(cfg.Ingest.TelegramPollIntervalSeconds)*time.Second)
 
 	mux := http.NewServeMux()
-	mcpserver.InstallHealth(mux, "0.1.0", ingestHealthChecker{deps.services})
+	mcpserver.InstallHealth(mux, deps.info.Short(), ingestHealthChecker{deps.services})
 
 	if cfg.GitLab.WebhookEnabled && cfg.GitLab.WebhookSecret != "" {
 		mux.Handle("POST /webhooks/gitlab", webhook.NewGitLabHandler(cfg.GitLab.WebhookSecret, trigger))

@@ -21,6 +21,7 @@ import (
 type NewOptions struct {
 	TracerProvider trace.TracerProvider
 	MeterProvider  metric.MeterProvider
+	UserAgent      string
 }
 
 func (opts *NewOptions) setDefaults() {
@@ -29,6 +30,9 @@ func (opts *NewOptions) setDefaults() {
 	}
 	if opts.MeterProvider == nil {
 		opts.MeterProvider = otel.GetMeterProvider()
+	}
+	if opts.UserAgent == "" {
+		opts.UserAgent = "embed"
 	}
 }
 
@@ -39,6 +43,7 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (index.Embedde
 	httpOpts := netclient.HTTPClientOptions{
 		TracerProvider: opts.TracerProvider,
 		MeterProvider:  opts.MeterProvider,
+		UserAgent:      opts.UserAgent,
 	}
 
 	switch strings.ToLower(cfg.EmbedProvider) {

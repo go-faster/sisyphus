@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/go-faster/sisyphus/internal/cliversion"
 	"github.com/go-faster/sisyphus/internal/config"
 	"github.com/go-faster/sisyphus/internal/index"
 	"github.com/go-faster/sisyphus/internal/netclient"
@@ -30,6 +31,7 @@ type Options struct {
 	Logger         *zap.Logger
 	TracerProvider trace.TracerProvider
 	MeterProvider  metric.MeterProvider
+	UserAgent      string
 }
 
 func (o *Options) setDefaults() {
@@ -41,6 +43,11 @@ func (o *Options) setDefaults() {
 	}
 	if o.MeterProvider == nil {
 		o.MeterProvider = otel.GetMeterProvider()
+	}
+	if o.UserAgent == "" {
+		if info, ok := cliversion.GetInfo("github.com/go-faster/sisyphus"); ok {
+			o.UserAgent = info.UserAgent("fetch")
+		}
 	}
 }
 
@@ -83,6 +90,7 @@ func New(ctx context.Context, cfg config.FetchConfig, proxies config.ProxyConfig
 			TracerProvider: opts.TracerProvider,
 			MeterProvider:  opts.MeterProvider,
 			Timeout:        timeout,
+			UserAgent:      opts.UserAgent,
 		})
 		if err != nil {
 			return nil, errors.Wrap(err, "http client")

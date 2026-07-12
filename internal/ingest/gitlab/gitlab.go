@@ -18,6 +18,7 @@ import (
 	"go.uber.org/zap"
 
 	chunkgitlab "github.com/go-faster/sisyphus/internal/chunk/gitlab"
+	"github.com/go-faster/sisyphus/internal/cliversion"
 	"github.com/go-faster/sisyphus/internal/index"
 	"github.com/go-faster/sisyphus/internal/netclient"
 )
@@ -29,6 +30,7 @@ type Options struct {
 	Projects   []string // Project IDs or paths.
 	HTTPClient *http.Client
 	PageSize   int // default 100 via setDefaults
+	UserAgent  string
 }
 
 func (opts *Options) setDefaults() {
@@ -39,6 +41,11 @@ func (opts *Options) setDefaults() {
 		opts.PageSize = 100
 	}
 	opts.BaseURL = strings.TrimRight(opts.BaseURL, "/")
+	if opts.UserAgent == "" {
+		if info, ok := cliversion.GetInfo("github.com/go-faster/sisyphus"); ok {
+			opts.UserAgent = info.UserAgent("gitlab")
+		}
+	}
 }
 
 // Cursor persists the incremental fetch state, JSON-encoded into SyncState.last_cursor.
@@ -61,6 +68,7 @@ type Fetcher struct {
 	projects   []string
 	httpClient *http.Client
 	pageSize   int
+	userAgent  string
 }
 
 // New creates a new Fetcher. Returns an error if no token is configured.
@@ -78,6 +86,7 @@ func New(opts Options) (*Fetcher, error) {
 		projects:   append([]string(nil), opts.Projects...),
 		httpClient: opts.HTTPClient,
 		pageSize:   opts.PageSize,
+		userAgent:  opts.UserAgent,
 	}, nil
 }
 
@@ -185,7 +194,9 @@ func (f *Fetcher) buildRequest(ctx context.Context, path string, query url.Value
 
 	req.Header.Set("PRIVATE-TOKEN", f.token)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "sisyphus/ingest")
+	if f.userAgent != "" {
+		req.Header.Set("User-Agent", f.userAgent)
+	}
 	return req, nil
 }
 

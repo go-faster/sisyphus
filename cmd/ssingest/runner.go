@@ -44,12 +44,13 @@ func indexBatch(ctx context.Context, lg *zap.Logger, p *pipeline.Pipeline, docs 
 }
 
 type runner struct {
-	db       *ent.Client
-	vectors  pipeline.VectorStore
-	cfg      config.Config
-	tp       trace.TracerProvider
-	mp       metric.MeterProvider
-	embedder index.Embedder
+	db        *ent.Client
+	vectors   pipeline.VectorStore
+	cfg       config.Config
+	tp        trace.TracerProvider
+	mp        metric.MeterProvider
+	embedder  index.Embedder
+	userAgent string
 }
 
 func (r *runner) runGit(ctx context.Context, reset bool, limit int, dry, prune bool) error {
@@ -500,12 +501,13 @@ func (r *runner) runJira(ctx context.Context, p *pipeline.Pipeline, since time.T
 
 func (r *runner) sharedRunner() ingestrun.Runner {
 	return ingestrun.Runner{
-		DB:       r.db,
-		Vectors:  r.vectors,
-		Embedder: r.embedder,
-		Config:   r.cfg,
-		TP:       r.tp,
-		MP:       r.mp,
+		DB:        r.db,
+		Vectors:   r.vectors,
+		Embedder:  r.embedder,
+		Config:    r.cfg,
+		TP:        r.tp,
+		MP:        r.mp,
+		UserAgent: r.userAgent,
 	}
 }
 

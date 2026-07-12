@@ -112,7 +112,7 @@ func TestClientPublicToolsEndToEnd(t *testing.T) {
 	require.NoError(t, err)
 
 	mcpToken := "mcp-token"
-	srv := mcpserver.New(apiClient, apiClient, apiClient, apiClient)
+	srv := mcpserver.New(apiClient, apiClient, apiClient, apiClient, "test")
 	var mcpHandler http.Handler = mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, nil)
 	mcpHandler = mcpserver.BearerAuthMiddleware(mcpToken)(mcpHandler)
 	mcpMux := http.NewServeMux()
@@ -221,7 +221,7 @@ func TestClientRejectsInvalidMCPToken(t *testing.T) {
 	require.NoError(t, err)
 
 	mcpToken := "mcp-token"
-	srv := mcpserver.New(apiClient, apiClient, apiClient, apiClient)
+	srv := mcpserver.New(apiClient, apiClient, apiClient, apiClient, "test")
 	var mcpHandler http.Handler = mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, nil)
 	mcpHandler = mcpserver.BearerAuthMiddleware(mcpToken)(mcpHandler)
 	mcpMux := http.NewServeMux()

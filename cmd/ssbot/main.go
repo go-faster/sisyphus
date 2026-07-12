@@ -15,6 +15,8 @@ import (
 	"github.com/go-faster/sisyphus/internal/agentclient"
 	"github.com/go-faster/sisyphus/internal/apiclient"
 	"github.com/go-faster/sisyphus/internal/bot"
+	"github.com/go-faster/sisyphus/internal/cliversion"
+	"github.com/go-faster/sisyphus/internal/cmdutil"
 	"github.com/go-faster/sisyphus/internal/config"
 	"github.com/go-faster/sisyphus/internal/httpmw"
 	"github.com/go-faster/sisyphus/internal/mcpserver"
@@ -25,6 +27,7 @@ func main() {
 	app.Run(
 		func(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
 			ctx = zctx.Base(ctx, lg)
+			info, _ := cliversion.GetInfo("github.com/go-faster/sisyphus")
 			cmd := &cobra.Command{
 				Use:   "ssbot",
 				Short: "runs the Telegram /context bot against the sisyphus API",
@@ -39,6 +42,8 @@ func main() {
 				SilenceUsage:  true,
 				SilenceErrors: true,
 			}
+			cmdutil.ConfigureVersion(cmd, info)
+			cmd.AddCommand(cmdutil.NewVersionCmd("ssbot", info))
 			cmd.SetContext(ctx)
 			return cmd.Execute()
 		},
@@ -51,6 +56,7 @@ func run(ctx context.Context, cfg config.Config, telemetry *app.Telemetry) error
 	lg := zctx.From(ctx)
 	tp := telemetry.TracerProvider()
 	mp := telemetry.MeterProvider()
+	info, _ := cliversion.GetInfo("github.com/go-faster/sisyphus")
 	if cfg.API.BaseURL == "" || cfg.API.AuthToken == "" {
 		return errors.New("api.base_url and api.auth_token are required")
 	}
@@ -58,16 +64,29 @@ func run(ctx context.Context, cfg config.Config, telemetry *app.Telemetry) error
 		return errors.New("telegram credentials missing")
 	}
 
-	httpClient, err := netclient.HTTPClient(ctx, "ssapi", "", netclient.HTTPClientOptions{
+	apiHTTPClient, err := netclient.HTTPClient(ctx, "ssapi", "", netclient.HTTPClientOptions{
 		TracerProvider: tp,
 		MeterProvider:  mp,
+		UserAgent:      info.UserAgent("ssbot"),
 	})
 	if err != nil {
 		return errors.Wrap(err, "http client")
 	}
+	agentHTTPClient := apiHTTPClient
+	if cfg.Agent.BaseURL != "" {
+		agentHTTPClient, err = netclient.HTTPClient(ctx, "ssagent", "", netclient.HTTPClientOptions{
+			TracerProvider: tp,
+			MeterProvider:  mp,
+			UserAgent:      info.UserAgent("ssbot"),
+			Timeout:        30 * time.Second,
+		})
+		if err != nil {
+			return errors.Wrap(err, "agent http client")
+		}
+	}
 
 	api, err := apiclient.New(cfg.API.BaseURL, cfg.API.AuthToken, apiclient.Options{
-		HTTPClient:     httpClient,
+		HTTPClient:     apiHTTPClient,
 		TracerProvider: tp,
 		MeterProvider:  mp,
 	})
@@ -84,15 +103,16 @@ func run(ctx context.Context, cfg config.Config, telemetry *app.Telemetry) error
 
 	if cfg.Agent.BaseURL != "" {
 		ag := agentclient.New(agentclient.Options{
-			URL:   cfg.Agent.BaseURL,
-			Token: cfg.Agent.AuthToken,
+			URL:        cfg.Agent.BaseURL,
+			Token:      cfg.Agent.AuthToken,
+			HTTPClient: agentHTTPClient,
 		})
 		investigator = ag
 		checks = append(checks, ag)
 	}
 
 	healthMux := http.NewServeMux()
-	mcpserver.InstallHealth(healthMux, "0.1.0", checks...)
+	mcpserver.InstallHealth(healthMux, info.Short(), checks...)
 	healthSrv := &http.Server{
 		Addr:              cfg.Telegram.Addr,
 		Handler:           httpmw.Wrap(lg, telemetry, healthMux),

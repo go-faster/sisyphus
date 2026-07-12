@@ -24,6 +24,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/agent"
 	"github.com/go-faster/sisyphus/internal/answer"
 	chunkmd "github.com/go-faster/sisyphus/internal/chunk/markdown"
+	"github.com/go-faster/sisyphus/internal/cliversion"
 	"github.com/go-faster/sisyphus/internal/config"
 	"github.com/go-faster/sisyphus/internal/content"
 	"github.com/go-faster/sisyphus/internal/embed"
@@ -101,6 +102,7 @@ func (c Components) Close() {
 type NewOptions struct {
 	TracerProvider trace.TracerProvider
 	MeterProvider  metric.MeterProvider
+	UserAgent      string
 
 	// RunMigrations applies pending schema migrations on startup. Only one
 	// long-running service should set this — sisyphus — so migrations run
@@ -116,13 +118,18 @@ func (opts *NewOptions) setDefaults() {
 	if opts.MeterProvider == nil {
 		opts.MeterProvider = otel.GetMeterProvider()
 	}
+	if opts.UserAgent == "" {
+		if info, ok := cliversion.GetInfo("github.com/go-faster/sisyphus"); ok {
+			opts.UserAgent = info.UserAgent("ssapi")
+		}
+	}
 }
 
 // NewServices opens the database, optionally runs migrations, and wires the
 // embedder and optional vector store. runMigrations is false for ssingest:
 // it runs frequently (cron, concurrently per source) and must not race
 // schema migrations against itself or the long-running services.
-func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trace.TracerProvider, mp metric.MeterProvider, runMigrations bool) (*Services, error) {
+func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trace.TracerProvider, mp metric.MeterProvider, userAgent string, runMigrations bool) (*Services, error) {
 	db, err := otelsql.Open("pgx", cfg.DatabaseDSN,
 		otelsql.WithAttributes(semconv.DBSystemPostgreSQL),
 		otelsql.WithSpanOptions(otelsql.SpanOptions{DisableErrSkip: true}),
@@ -147,6 +154,7 @@ func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trac
 	embedder, err := embed.New(ctx, cfg, embed.NewOptions{
 		TracerProvider: tp,
 		MeterProvider:  mp,
+		UserAgent:      userAgent,
 	})
 	if err != nil {
 		cleanup()
@@ -205,7 +213,7 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		}
 	}
 
-	svcs, err := NewServices(ctx, cfg, lg, opts.TracerProvider, opts.MeterProvider, opts.RunMigrations)
+	svcs, err := NewServices(ctx, cfg, lg, opts.TracerProvider, opts.MeterProvider, opts.UserAgent, opts.RunMigrations)
 	if err != nil {
 		return Components{}, err
 	}
@@ -229,6 +237,7 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		httpClient, err := netclient.HTTPClient(ctx, "openrouter", cfg.Proxies.OpenRouter, netclient.HTTPClientOptions{
 			TracerProvider: opts.TracerProvider,
 			MeterProvider:  opts.MeterProvider,
+			UserAgent:      opts.UserAgent,
 		})
 		if err != nil {
 			cleanup()
@@ -285,6 +294,7 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		Logger:         lg,
 		TracerProvider: opts.TracerProvider,
 		MeterProvider:  opts.MeterProvider,
+		UserAgent:      opts.UserAgent,
 	})
 	if err != nil {
 		cleanup()
@@ -297,7 +307,11 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		var sshTools agent.ToolSource
 		if cfg.Context.SSHMCPURL != "" {
 			connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			toolSource, closeFn, err := answer.NewSSHToolSource(connectCtx, cfg.Context.SSHMCPURL, cfg.Context.SSHMCPHeaders, answer.SSHToolSourceOptions{})
+			toolSource, closeFn, err := answer.NewSSHToolSource(connectCtx, cfg.Context.SSHMCPURL, cfg.Context.SSHMCPHeaders, answer.SSHToolSourceOptions{
+				TracerProvider: opts.TracerProvider,
+				MeterProvider:  opts.MeterProvider,
+				UserAgent:      opts.UserAgent,
+			})
 			cancel()
 			if err != nil {
 				lg.Warn("ssh-mcp unavailable, sandbox tools disabled", zap.Error(err))
