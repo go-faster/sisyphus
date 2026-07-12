@@ -186,7 +186,9 @@ func TestInvestigate_SubmitAndPoll_HappyPath(t *testing.T) {
 
 func TestInvestigate_SubmitRetryWithSameIdempotencyKey_ReturnsSameJob(t *testing.T) {
 	store := newFakeJobStore()
-	inv := &fakeInvestigator{block: make(chan struct{})} // never resolves within the test
+	store.notify = make(chan uuid.UUID, 1)
+	block := make(chan struct{})
+	inv := &fakeInvestigator{block: block}
 	mux := newTestMux(t, store, inv, nil)
 
 	body, _ := json.Marshal(InvestigateRequest{Description: "test issue", IdempotencyKey: "retry-key"})
@@ -201,6 +203,13 @@ func TestInvestigate_SubmitRetryWithSameIdempotencyKey_ReturnsSameJob(t *testing
 	require.NoError(t, json.Unmarshal(rec2.Body.Bytes(), &second))
 
 	require.Equal(t, first.JobID, second.JobID)
+
+	close(block)
+	select {
+	case <-store.notify:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for job to complete")
+	}
 }
 
 func TestInvestigate_Get_UnknownJob(t *testing.T) {
