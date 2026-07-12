@@ -153,6 +153,9 @@ telegram:
 # ssbot to reach ssagent for the /investigate command (leave empty to disable
 # /investigate in ssbot). gateway_url points at the mcpgateway instance that
 # fans out to Grafana/Alertmanager/Jira/GitLab/knowledge-base MCP servers.
+# /investigate jobs are persisted in Postgres (database.dsn, required):
+# ssagent connects to it but never runs migrations itself, so ssapi must have
+# applied them first.
 agent:
   addr: :8082
   base_url: http://ssagent:8082
@@ -165,9 +168,11 @@ agent:
   # Character budget for the assembled report; if the model's first
   # submit_report exceeds this, it's asked once to resubmit a shorter one.
   max_report_chars: 1500
-  # Caps how many /investigate requests run concurrently; each one holds an
-  # LLM tool-calling loop open for up to request_timeout_seconds. Extra
-  # requests get 429 instead of piling up unbounded goroutines/LLM spend.
+  # Caps how many investigations run concurrently; each one holds an LLM
+  # tool-calling loop open for up to request_timeout_seconds. /investigate is
+  # async (202 + job ID, persisted in Postgres via database.dsn - ssagent
+  # connects but does not migrate), so extra requests aren't rejected: the
+  # job is accepted and queued as pending until a worker slot frees up.
   max_concurrent: 4
   # Request body size cap in bytes for POST /investigate.
   max_body_bytes: 65536

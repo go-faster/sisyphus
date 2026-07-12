@@ -5,20 +5,44 @@ import (
 	"net/http"
 	"time"
 
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
+	"github.com/XSAM/otelsql"
 	"github.com/go-faster/errors"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.uber.org/zap"
 
 	"github.com/go-faster/sdk/app"
 	"github.com/go-faster/sdk/zctx"
 
 	"github.com/go-faster/sisyphus/internal/agent"
+	"github.com/go-faster/sisyphus/internal/agentstore"
 	"github.com/go-faster/sisyphus/internal/config"
+	"github.com/go-faster/sisyphus/internal/ent"
 	"github.com/go-faster/sisyphus/internal/httpmw"
 	"github.com/go-faster/sisyphus/internal/llm/openrouter"
 	"github.com/go-faster/sisyphus/internal/mcpclient"
 	"github.com/go-faster/sisyphus/internal/mcpserver"
 	"github.com/go-faster/sisyphus/internal/netclient"
+
+	_ "github.com/jackc/pgx/v5/stdlib" // register pgx driver
 )
+
+// openJobDB opens ssagent's Postgres connection for InvestigationJob
+// persistence. ssagent never runs migrations itself (only ssapi does, see
+// internal/wire) — it assumes the investigation_jobs table already exists,
+// same as ssingest connecting without migrating.
+func openJobDB(dsn string) (*ent.Client, func(), error) {
+	db, err := otelsql.Open("pgx", dsn,
+		otelsql.WithAttributes(semconv.DBSystemPostgreSQL),
+		otelsql.WithSpanOptions(otelsql.SpanOptions{DisableErrSkip: true}),
+	)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "open db")
+	}
+	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))
+	return client, func() { _ = db.Close() }, nil
+}
 
 func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry) error {
 	ctx = zctx.Base(ctx, lg)
@@ -30,6 +54,22 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry) error {
 
 	if cfg.Agent.AuthToken == "" {
 		return errors.New("agent.auth_token is required")
+	}
+	if cfg.DatabaseDSN == "" {
+		return errors.New("database.dsn is required (ssagent persists /investigate jobs in Postgres)")
+	}
+
+	db, closeDB, err := openJobDB(cfg.DatabaseDSN)
+	if err != nil {
+		return errors.Wrap(err, "open job db")
+	}
+	defer closeDB()
+	store := agentstore.New(db)
+
+	if n, err := store.ReapStale(ctx); err != nil {
+		lg.Error("reap stale jobs", zap.Error(err))
+	} else if n > 0 {
+		lg.Warn("reaped stale jobs left over from a previous run", zap.Int("count", n))
 	}
 
 	httpClient, err := netclient.HTTPClient(ctx, "openrouter", cfg.Proxies.OpenRouter, netclient.HTTPClientOptions{
@@ -69,9 +109,9 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry) error {
 	mux := http.NewServeMux()
 	mcpserver.InstallHealth(mux, "ssagent", mClient)
 
-	timeout := time.Duration(cfg.Agent.RequestTimeoutSeconds) * time.Second
-	if timeout == 0 {
-		timeout = 3 * time.Minute
+	jobTimeout := time.Duration(cfg.Agent.RequestTimeoutSeconds) * time.Second
+	if jobTimeout == 0 {
+		jobTimeout = 3 * time.Minute
 	}
 
 	tracer := telemetry.TracerProvider().Tracer("github.com/go-faster/sisyphus/cmd/ssagent")
@@ -92,7 +132,13 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry) error {
 		maxBodyBytes = 64 * 1024
 	}
 
-	mux.Handle("/investigate", mcpserver.BearerAuthMiddleware(cfg.Agent.AuthToken)(handleInvestigate(inv, timeout, maxBodyBytes, sem, tracer, metrics, lg)))
+	auth := mcpserver.BearerAuthMiddleware(cfg.Agent.AuthToken)
+	// baseCtx (not any single request's context) is what dispatched jobs run
+	// under, so an investigation keeps running — and its result still gets
+	// persisted — after the client that submitted it disconnects. It's
+	// canceled when the service itself shuts down.
+	mux.Handle("POST /investigate", auth(handleInvestigateSubmit(ctx, store, inv, jobTimeout, maxBodyBytes, sem, tracer, metrics, lg)))
+	mux.Handle("GET /investigate/{id}", auth(handleInvestigateGet(store, lg)))
 
 	srv := &http.Server{
 		Addr:              cfg.Agent.Addr,

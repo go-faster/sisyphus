@@ -107,10 +107,23 @@ agent:
 
 Leave `agent.base_url` empty to disable `/investigate` in `ssbot`.
 
-`agent.max_concurrent` caps how many `/investigate` requests run at once — each
-holds an LLM tool-calling loop open for up to `request_timeout_seconds`, so an
-unbounded fan-out would hold that many goroutines and bill that much LLM spend
-simultaneously. Requests beyond the cap get `429 Too Many Requests`.
+`POST /investigate` is async: it persists a job row in Postgres and returns
+`202` with a job ID immediately; a background worker then runs the actual LLM
+tool-calling loop, and `internal/agentclient.Client` polls
+`GET /investigate/{id}` until it's `done` or `error`. This means ssagent
+requires `database.dsn` (it connects but does not run migrations — only
+`ssapi` does; see `internal/wire`), and a dropped client connection or an
+ssagent restart no longer loses or duplicates an in-flight investigation: on
+restart, any job still `pending`/`running` is marked `error` (it was
+interrupted) instead of hanging a poller forever, and a retried submission
+that reuses the same `idempotency_key` returns the existing job rather than
+starting a second one.
+
+`agent.max_concurrent` caps how many investigations run at once — each holds
+an LLM tool-calling loop open for up to `request_timeout_seconds`. Unlike the
+old synchronous handler, requests beyond the cap are not rejected: the job is
+still accepted and persisted as `pending`, and simply waits for a free worker
+slot before it starts running.
 `agent.max_body_bytes` caps the POST body size for `/investigate`.
 
 ## Source Config

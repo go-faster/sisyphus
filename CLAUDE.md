@@ -29,6 +29,13 @@ Never store only embeddings — always keep Documents+Chunks in Postgres so we c
 cmd/ssapi              owns Postgres/ent + migrations; serves the HTTP API
                         (bearer-token auth on /search, /context; /health public)
 cmd/ssbot              thin Telegram /context bot; talks to ssapi via internal/apiclient
+cmd/ssagent            HTTP service for /investigate: an async, Postgres-backed job
+                        queue (internal/agentstore) over agent.Investigator's LLM
+                        tool-calling loop. POST /investigate persists a job and returns
+                        202 + job ID immediately; GET /investigate/{id} polls for the
+                        result. Connects to Postgres (database.dsn) but never migrates
+                        (only ssapi does). internal/agentclient is the HTTP client
+                        (submit + poll) ssbot uses to talk to it.
 cmd/ssmcp              MCP server entrypoint (Streamable HTTP or stdio); calls ssapi via internal/apiclient
 cmd/ssingest           one-shot ingestion CLI: git|gitlab|jira|telegram|all subcommands,
                         --reset <src|all> (--yes-i-mean-all for all), --since, --limit, --dry-run.
@@ -63,6 +70,13 @@ internal/agent          shared LLM tool-calling loop engine (coreLoop in core.go
                         the agentic /context path (internal/answer.ContextLoop); also collects
                         DiscoveredURLs from tool results (source_url/url JSON fields only —
                         never free-form body text, see "Answers & link buttons")
+internal/agentstore     ent-backed persistence for cmd/ssagent's InvestigationJob rows
+                        (pending/running/done/error, idempotency_key, Report snapshot).
+                        Store.Submit is the dedup point: a repeated idempotency_key
+                        returns the existing job instead of creating a second one.
+                        Store.ReapStale marks any job still pending/running as error at
+                        ssagent startup, so a crash mid-investigation can't leave a
+                        client polling forever.
 internal/answer         agentic /context answerer (index.Answerer): AgenticAnswerer runs
                         agent.coreLoop with search_knowledge/fetch_url tools (knowledge_tools.go,
                         in-process) merged via MultiToolSource with an optional ssh-mcp-backed
