@@ -12,6 +12,9 @@ type Chunk func(*sql.Selector)
 // Document is the predicate function for document builders.
 type Document func(*sql.Selector)
 
+// InvestigationJob is the predicate function for investigationjob builders.
+type InvestigationJob func(*sql.Selector)
+
 // SupportRequest is the predicate function for supportrequest builders.
 type SupportRequest func(*sql.Selector)
 

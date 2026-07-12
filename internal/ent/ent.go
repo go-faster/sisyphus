@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/go-faster/sisyphus/internal/ent/chunk"
 	"github.com/go-faster/sisyphus/internal/ent/document"
+	"github.com/go-faster/sisyphus/internal/ent/investigationjob"
 	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 	"github.com/go-faster/sisyphus/internal/ent/telegrammessage"
@@ -77,11 +78,12 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			chunk.Table:           chunk.ValidColumn,
-			document.Table:        document.ValidColumn,
-			supportrequest.Table:  supportrequest.ValidColumn,
-			syncstate.Table:       syncstate.ValidColumn,
-			telegrammessage.Table: telegrammessage.ValidColumn,
+			chunk.Table:            chunk.ValidColumn,
+			document.Table:         document.ValidColumn,
+			investigationjob.Table: investigationjob.ValidColumn,
+			supportrequest.Table:   supportrequest.ValidColumn,
+			syncstate.Table:        syncstate.ValidColumn,
+			telegrammessage.Table:  telegrammessage.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)
