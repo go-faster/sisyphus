@@ -22,8 +22,14 @@ func (f fakeFetcher) Fetch(ctx context.Context, req index.FetchRequest) (index.F
 	return f.resp, nil
 }
 
+type fakeResolver struct{ resp index.ContentResponse }
+
+func (f fakeResolver) ResolveContent(ctx context.Context, req index.ContentRequest) (index.ContentResponse, error) {
+	return f.resp, nil
+}
+
 func TestKnowledgeToolSource_SearchKnowledge(t *testing.T) {
-	ks := NewKnowledgeToolSource(fakeRetriever{results: []index.Result{{Chunk: index.Chunk{ID: index.NewID(), DocumentID: index.NewID(), Title: "Doc", Text: "body", Type: index.ChunkSection, Metadata: map[string]any{"source": "git", "source_url": "https://example.com/doc"}}, Score: 0.9, Vector: true}}}, fakeFetcher{}, nil)
+	ks := NewKnowledgeToolSource(fakeRetriever{results: []index.Result{{Chunk: index.Chunk{ID: index.NewID(), DocumentID: index.NewID(), Title: "Doc", Text: "body", Type: index.ChunkSection, Metadata: map[string]any{"source": "git", "source_url": "https://example.com/doc"}}, Score: 0.9, Vector: true}}}, fakeFetcher{}, nil, nil)
 	got, err := ks.Call(context.Background(), "search_knowledge", json.RawMessage(`{"query":"hello","limit":1}`))
 	require.NoError(t, err)
 	require.Contains(t, got, `"chunk_id"`)
@@ -31,24 +37,40 @@ func TestKnowledgeToolSource_SearchKnowledge(t *testing.T) {
 }
 
 func TestKnowledgeToolSource_FetchURL(t *testing.T) {
-	ks := NewKnowledgeToolSource(fakeRetriever{}, fakeFetcher{resp: index.FetchResponse{StatusCode: 200, Body: "ok", FromSite: "site", Truncated: false, Headers: map[string]string{"Content-Type": "text/plain"}}}, nil)
+	ks := NewKnowledgeToolSource(fakeRetriever{}, fakeFetcher{resp: index.FetchResponse{StatusCode: 200, Body: "ok", FromSite: "site", Truncated: false, Headers: map[string]string{"Content-Type": "text/plain"}}}, nil, nil)
 	got, err := ks.Call(context.Background(), "fetch_url", json.RawMessage(`{"url":"https://example.com"}`))
 	require.NoError(t, err)
 	require.Contains(t, got, `"status_code":200`)
 	require.Contains(t, got, `"body":"ok"`)
 }
 
+func TestKnowledgeToolSource_GetFileContent(t *testing.T) {
+	ks := NewKnowledgeToolSource(fakeRetriever{}, fakeFetcher{}, fakeResolver{resp: index.ContentResponse{Content: "package main", Source: "local_clone", Found: true}}, nil)
+	got, err := ks.Call(context.Background(), "get_file_content", json.RawMessage(`{"repo":"docs","path":"main.go"}`))
+	require.NoError(t, err)
+	require.Contains(t, got, `"content":"package main"`)
+	require.Contains(t, got, `"found":true`)
+}
+
 func TestKnowledgeToolSource_UnknownTool(t *testing.T) {
-	ks := NewKnowledgeToolSource(fakeRetriever{}, fakeFetcher{}, nil)
+	ks := NewKnowledgeToolSource(fakeRetriever{}, fakeFetcher{}, nil, nil)
 	_, err := ks.Call(context.Background(), "nope", nil)
 	require.Error(t, err)
 }
 
 func TestKnowledgeToolSource_Tools(t *testing.T) {
-	ks := NewKnowledgeToolSource(fakeRetriever{}, fakeFetcher{}, nil)
+	ks := NewKnowledgeToolSource(fakeRetriever{}, fakeFetcher{}, nil, nil)
 	tools, err := ks.Tools(context.Background())
 	require.NoError(t, err)
 	require.Len(t, tools, 2)
 	require.Equal(t, "search_knowledge", tools[0].OfFunction.Function.Name)
 	require.Equal(t, "fetch_url", tools[1].OfFunction.Function.Name)
+}
+
+func TestKnowledgeToolSource_Tools_WithResolver(t *testing.T) {
+	ks := NewKnowledgeToolSource(fakeRetriever{}, fakeFetcher{}, fakeResolver{}, nil)
+	tools, err := ks.Tools(context.Background())
+	require.NoError(t, err)
+	require.Len(t, tools, 3)
+	require.Equal(t, "get_file_content", tools[2].OfFunction.Function.Name)
 }

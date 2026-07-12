@@ -20,25 +20,31 @@ type Retriever interface {
 	Retrieve(ctx context.Context, q index.Query) ([]index.Result, error)
 }
 
-// KnowledgeToolSource implements agent.ToolSource by wrapping retrieval and URL fetch.
+// KnowledgeToolSource implements agent.ToolSource by wrapping retrieval, URL
+// fetch, and file content resolution.
 type KnowledgeToolSource struct {
 	retriever Retriever
 	fetcher   index.URLFetcher
+	resolver  index.ContentResolver
 	tracer    trace.Tracer
 }
 
-func NewKnowledgeToolSource(retriever Retriever, fetcher index.URLFetcher, tracer trace.Tracer) *KnowledgeToolSource {
+func NewKnowledgeToolSource(retriever Retriever, fetcher index.URLFetcher, resolver index.ContentResolver, tracer trace.Tracer) *KnowledgeToolSource {
 	if tracer == nil {
 		tracer = noop.NewTracerProvider().Tracer("github.com/go-faster/sisyphus/internal/answer")
 	}
-	return &KnowledgeToolSource{retriever: retriever, fetcher: fetcher, tracer: tracer}
+	return &KnowledgeToolSource{retriever: retriever, fetcher: fetcher, resolver: resolver, tracer: tracer}
 }
 
 func (k *KnowledgeToolSource) Tools(_ context.Context) ([]openai.ChatCompletionToolUnionParam, error) {
-	return []openai.ChatCompletionToolUnionParam{
+	tools := []openai.ChatCompletionToolUnionParam{
 		searchKnowledgeTool(),
 		fetchURLTool(),
-	}, nil
+	}
+	if k.resolver != nil {
+		tools = append(tools, getFileContentTool())
+	}
+	return tools, nil
 }
 
 func (k *KnowledgeToolSource) Call(ctx context.Context, name string, argsJSON json.RawMessage) (string, error) {
@@ -47,6 +53,8 @@ func (k *KnowledgeToolSource) Call(ctx context.Context, name string, argsJSON js
 		return k.searchKnowledge(ctx, argsJSON)
 	case "fetch_url":
 		return k.fetchURL(ctx, argsJSON)
+	case "get_file_content":
+		return k.getFileContent(ctx, argsJSON)
 	default:
 		return "", errors.Errorf("unknown tool %q", name)
 	}
@@ -77,8 +85,10 @@ func searchKnowledgeTool() openai.ChatCompletionToolUnionParam {
 	return openai.ChatCompletionToolUnionParam{
 		OfFunction: &openai.ChatCompletionFunctionToolParam{
 			Function: openai.FunctionDefinitionParam{
-				Name:        "search_knowledge",
-				Description: openai.String("Search the knowledge base with hybrid lexical and vector retrieval."),
+				Name: "search_knowledge",
+				Description: openai.String("Search the knowledge base with hybrid lexical and vector retrieval. " +
+					"Use for fuzzy discovery when you don't already know the exact repo/path to look at. " +
+					"If you already know the file, prefer get_file_content for its exact, full/current content."),
 				Parameters: shared.FunctionParameters{
 					"type": "object",
 					"properties": map[string]any{
@@ -214,6 +224,76 @@ func (k *KnowledgeToolSource) fetchURL(ctx context.Context, argsJSON json.RawMes
 	})
 	if err != nil {
 		return "", errors.Wrap(err, "marshal fetch_url result")
+	}
+	return string(b), nil
+}
+
+type getFileContentArgs struct {
+	Repo   string `json:"repo"`
+	Path   string `json:"path"`
+	Branch string `json:"branch"`
+	Start  int    `json:"start"`
+	End    int    `json:"end"`
+}
+
+type getFileContentResult struct {
+	Content string `json:"content"`
+	Source  string `json:"source,omitempty"`
+	Found   bool   `json:"found"`
+}
+
+func getFileContentTool() openai.ChatCompletionToolUnionParam {
+	return openai.ChatCompletionToolUnionParam{
+		OfFunction: &openai.ChatCompletionFunctionToolParam{
+			Function: openai.FunctionDefinitionParam{
+				Name: "get_file_content",
+				Description: openai.String("Retrieve the exact, full (or line-ranged) content of a known file from an " +
+					"ingested repository. Use this instead of search_knowledge when you already know the repo and " +
+					"path (e.g. from a search_knowledge result's metadata or a prior tool result) and need the " +
+					"file's real current content rather than a retrieved chunk."),
+				Parameters: shared.FunctionParameters{
+					"type": "object",
+					"properties": map[string]any{
+						"repo":   map[string]any{"type": "string", "description": "Repository name as recorded in chunk metadata."},
+						"path":   map[string]any{"type": "string", "description": "Repo-relative file path as recorded in chunk metadata."},
+						"branch": map[string]any{"type": "string", "description": "Optional branch."},
+						"start":  map[string]any{"type": "integer", "description": "Optional 1-indexed start line (inclusive)."},
+						"end":    map[string]any{"type": "integer", "description": "Optional 1-indexed end line (inclusive)."},
+					},
+					"required": []string{"repo", "path"},
+				},
+			},
+		},
+	}
+}
+
+func (k *KnowledgeToolSource) getFileContent(ctx context.Context, argsJSON json.RawMessage) (string, error) {
+	if k.resolver == nil {
+		return "", errors.New("file content resolver unavailable")
+	}
+	var args getFileContentArgs
+	if len(argsJSON) > 0 {
+		if err := json.Unmarshal(argsJSON, &args); err != nil {
+			return "", errors.Wrap(err, "unmarshal get_file_content args")
+		}
+	}
+	resp, err := k.resolver.ResolveContent(ctx, index.ContentRequest{
+		Repo:   strings.TrimSpace(args.Repo),
+		Path:   strings.TrimSpace(args.Path),
+		Branch: strings.TrimSpace(args.Branch),
+		Start:  args.Start,
+		End:    args.End,
+	})
+	if err != nil {
+		return "", errors.Wrap(err, "resolve content")
+	}
+	b, err := json.Marshal(getFileContentResult{
+		Content: resp.Content,
+		Source:  resp.Source,
+		Found:   resp.Found,
+	})
+	if err != nil {
+		return "", errors.Wrap(err, "marshal get_file_content result")
 	}
 	return string(b), nil
 }
