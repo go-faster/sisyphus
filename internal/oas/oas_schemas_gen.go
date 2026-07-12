@@ -126,6 +126,9 @@ type ContextResponse struct {
 	// rendering as buttons. URLs are always absolute http(s).
 	Buttons []Link         `json:"buttons"`
 	Results []SearchResult `json:"results"`
+	// Agent-loop diagnostics (trace ID, duration, tool calls, token usage), present only when the operator
+	// has opted into context.show_debug_info.
+	Debug OptDebug `json:"debug"`
 }
 
 // GetAnswer returns the value of Answer.
@@ -148,6 +151,11 @@ func (s *ContextResponse) GetResults() []SearchResult {
 	return s.Results
 }
 
+// GetDebug returns the value of Debug.
+func (s *ContextResponse) GetDebug() OptDebug {
+	return s.Debug
+}
+
 // SetAnswer sets the value of Answer.
 func (s *ContextResponse) SetAnswer(val string) {
 	s.Answer = val
@@ -166,6 +174,82 @@ func (s *ContextResponse) SetButtons(val []Link) {
 // SetResults sets the value of Results.
 func (s *ContextResponse) SetResults(val []SearchResult) {
 	s.Results = val
+}
+
+// SetDebug sets the value of Debug.
+func (s *ContextResponse) SetDebug(val OptDebug) {
+	s.Debug = val
+}
+
+// Agent-loop diagnostics, for debugging only.
+// Ref: #/components/schemas/Debug
+type Debug struct {
+	TraceID          OptString `json:"trace_id"`
+	DurationMs       OptInt64  `json:"duration_ms"`
+	Iterations       OptInt    `json:"iterations"`
+	ToolCalls        OptInt    `json:"tool_calls"`
+	PromptTokens     OptInt64  `json:"prompt_tokens"`
+	CompletionTokens OptInt64  `json:"completion_tokens"`
+}
+
+// GetTraceID returns the value of TraceID.
+func (s *Debug) GetTraceID() OptString {
+	return s.TraceID
+}
+
+// GetDurationMs returns the value of DurationMs.
+func (s *Debug) GetDurationMs() OptInt64 {
+	return s.DurationMs
+}
+
+// GetIterations returns the value of Iterations.
+func (s *Debug) GetIterations() OptInt {
+	return s.Iterations
+}
+
+// GetToolCalls returns the value of ToolCalls.
+func (s *Debug) GetToolCalls() OptInt {
+	return s.ToolCalls
+}
+
+// GetPromptTokens returns the value of PromptTokens.
+func (s *Debug) GetPromptTokens() OptInt64 {
+	return s.PromptTokens
+}
+
+// GetCompletionTokens returns the value of CompletionTokens.
+func (s *Debug) GetCompletionTokens() OptInt64 {
+	return s.CompletionTokens
+}
+
+// SetTraceID sets the value of TraceID.
+func (s *Debug) SetTraceID(val OptString) {
+	s.TraceID = val
+}
+
+// SetDurationMs sets the value of DurationMs.
+func (s *Debug) SetDurationMs(val OptInt64) {
+	s.DurationMs = val
+}
+
+// SetIterations sets the value of Iterations.
+func (s *Debug) SetIterations(val OptInt) {
+	s.Iterations = val
+}
+
+// SetToolCalls sets the value of ToolCalls.
+func (s *Debug) SetToolCalls(val OptInt) {
+	s.ToolCalls = val
+}
+
+// SetPromptTokens sets the value of PromptTokens.
+func (s *Debug) SetPromptTokens(val OptInt64) {
+	s.PromptTokens = val
+}
+
+// SetCompletionTokens sets the value of CompletionTokens.
+func (s *Debug) SetCompletionTokens(val OptInt64) {
+	s.CompletionTokens = val
 }
 
 // Ref: #/components/schemas/Error
@@ -592,6 +676,52 @@ func (o OptContextRequestFilters) Or(d ContextRequestFilters) ContextRequestFilt
 	return d
 }
 
+// NewOptDebug returns new OptDebug with value set to v.
+func NewOptDebug(v Debug) OptDebug {
+	return OptDebug{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptDebug is optional Debug.
+type OptDebug struct {
+	Value Debug
+	Set   bool
+}
+
+// IsSet returns true if OptDebug was set.
+func (o OptDebug) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptDebug) Reset() {
+	var v Debug
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptDebug) SetTo(v Debug) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptDebug) Get() (v Debug, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptDebug) Or(d Debug) Debug {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptFetchURLRequestHeaders returns new OptFetchURLRequestHeaders with value set to v.
 func NewOptFetchURLRequestHeaders(v FetchURLRequestHeaders) OptFetchURLRequestHeaders {
 	return OptFetchURLRequestHeaders{
@@ -684,6 +814,52 @@ func (o OptFetchURLResponseHeaders) Or(d FetchURLResponseHeaders) FetchURLRespon
 	return d
 }
 
+// NewOptInt returns new OptInt with value set to v.
+func NewOptInt(v int) OptInt {
+	return OptInt{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptInt is optional int.
+type OptInt struct {
+	Value int
+	Set   bool
+}
+
+// IsSet returns true if OptInt was set.
+func (o OptInt) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptInt) Reset() {
+	var v int
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptInt) SetTo(v int) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptInt) Get() (v int, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptInt) Or(d int) int {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptInt32 returns new OptInt32 with value set to v.
 func NewOptInt32(v int32) OptInt32 {
 	return OptInt32{
@@ -724,6 +900,52 @@ func (o OptInt32) Get() (v int32, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptInt32) Or(d int32) int32 {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptInt64 returns new OptInt64 with value set to v.
+func NewOptInt64(v int64) OptInt64 {
+	return OptInt64{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptInt64 is optional int64.
+type OptInt64 struct {
+	Value int64
+	Set   bool
+}
+
+// IsSet returns true if OptInt64 was set.
+func (o OptInt64) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptInt64) Reset() {
+	var v int64
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptInt64) SetTo(v int64) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptInt64) Get() (v int64, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptInt64) Or(d int64) int64 {
 	if v, ok := o.Get(); ok {
 		return v
 	}
