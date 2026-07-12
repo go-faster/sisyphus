@@ -6,9 +6,12 @@ import (
 	"net/http"
 	"time"
 
-	"go.opentelemetry.io/otel/trace"
+	"github.com/go-faster/sdk/zctx"
 	"go.uber.org/zap"
 )
+
+// Middleware is a net/http middleware.
+type Middleware = func(http.Handler) http.Handler
 
 type responseRecorder struct {
 	http.ResponseWriter
@@ -44,9 +47,21 @@ func (r *responseRecorder) Unwrap() http.ResponseWriter {
 	return r.ResponseWriter
 }
 
+// InjectLogger injects logger into request context.
+func InjectLogger(lg *zap.Logger) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			reqCtx := r.Context()
+			reqCtx = zctx.WithOpenTelemetryZap(reqCtx)
+			req := r.WithContext(zctx.Base(reqCtx, lg))
+			next.ServeHTTP(w, req)
+		})
+	}
+}
+
 // Logging logs every incoming HTTP request at debug level: method, path,
 // status, duration and remote address.
-func Logging(lg *zap.Logger) func(http.Handler) http.Handler {
+func Logging() Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
@@ -65,12 +80,7 @@ func Logging(lg *zap.Logger) func(http.Handler) http.Handler {
 				zap.String("user_agent", r.UserAgent()),
 				zap.String("remote_addr", r.RemoteAddr),
 			}
-			// Wrap starts the otel span before calling into Logging, so the
-			// span is already live in r.Context() by the time we get here.
-			if sc := trace.SpanContextFromContext(r.Context()); sc.IsValid() {
-				fields = append(fields, zap.String("trace_id", sc.TraceID().String()))
-			}
-			lg.Debug("got http request", fields...)
+			zctx.From(r.Context()).Debug("got http request", fields...)
 		})
 	}
 }

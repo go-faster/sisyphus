@@ -14,7 +14,8 @@ import (
 // Wrap applies the standard middleware chain (OTel server instrumentation,
 // request logging) used by all of sisyphus's HTTP servers.
 func Wrap(lg *zap.Logger, m *app.Telemetry, next http.Handler) http.Handler {
-	return otelhttp.NewHandler(Logging(lg)(next), "http.server",
+	next = InjectLogger(lg)(Logging()(next))
+	return otelhttp.NewHandler(next, "http.server",
 		otelhttp.WithPropagators(m.TextMapPropagator()),
 		otelhttp.WithTracerProvider(m.TracerProvider()),
 		otelhttp.WithMeterProvider(m.MeterProvider()),
