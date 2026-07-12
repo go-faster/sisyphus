@@ -65,12 +65,19 @@ func parseSubmitAnswer(argsJSON string) (index.Answer, error) {
 		return index.Answer{}, errors.Wrap(err, "unmarshal submit answer")
 	}
 	return index.Answer{
-		Text:  strings.TrimSpace(args.Answer),
-		Links: filterButtons(args.Buttons, nil),
+		Text: strings.TrimSpace(args.Answer),
+		// Not the final, allowlist-constrained set: the loop.go call site
+		// re-filters through filterButtons once it knows the full allowed-URL
+		// set (seed sources + URLs discovered mid-loop). This intermediate
+		// value only trims/validates/dedups/caps.
+		Links: sanitizeButtons(args.Buttons),
 	}, nil
 }
 
-func filterButtons(buttons []index.Link, allowedURLs map[string]struct{}) []index.Link {
+// sanitizeButtons trims, validates, deduplicates by URL, and caps at
+// maxAnswerButtons. It applies no allowlist — use filterButtons instead
+// wherever a button's URL must be constrained to vetted sources.
+func sanitizeButtons(buttons []index.Link) []index.Link {
 	if len(buttons) == 0 {
 		return nil
 	}
@@ -82,11 +89,6 @@ func filterButtons(buttons []index.Link, allowedURLs map[string]struct{}) []inde
 		if !b.Valid() {
 			continue
 		}
-		if len(allowedURLs) > 0 {
-			if _, ok := allowedURLs[b.URL]; !ok {
-				continue
-			}
-		}
 		if _, ok := seen[b.URL]; ok {
 			continue
 		}
@@ -95,6 +97,26 @@ func filterButtons(buttons []index.Link, allowedURLs map[string]struct{}) []inde
 		if len(out) >= maxAnswerButtons {
 			break
 		}
+	}
+	return out
+}
+
+// filterButtons sanitizes buttons (see sanitizeButtons) and constrains them
+// to allowedURLs. This enforces the "buttons only link to vetted sources"
+// guarantee: unlike a naive implementation, a nil or empty allowedURLs
+// rejects every button rather than silently skipping the check — there is
+// no way to call this and disable the allowlist.
+func filterButtons(buttons []index.Link, allowedURLs map[string]struct{}) []index.Link {
+	sanitized := sanitizeButtons(buttons)
+	if len(sanitized) == 0 {
+		return nil
+	}
+	var out []index.Link
+	for _, b := range sanitized {
+		if _, ok := allowedURLs[b.URL]; !ok {
+			continue
+		}
+		out = append(out, b)
 	}
 	return out
 }

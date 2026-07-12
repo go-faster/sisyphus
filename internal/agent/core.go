@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -54,6 +56,19 @@ func coreLoop(ctx context.Context, llm LLM, toolSource ToolSource, model string,
 	var res coreResult
 	res.Tools = tools
 	res.DiscoveredURLs = make(map[string]struct{})
+
+	// Every tool result is untrusted content (ingested chunks, fetched pages,
+	// raw shell output) fed back to the model as a ToolMessage. buildSeedMessages
+	// (internal/answer/framing.go) fences the *seed* search results with a random
+	// delimiter tag so the model can visually distinguish data from instructions;
+	// mid-loop results need the same treatment since they're the more likely
+	// vector for a prompt-injection payload (arbitrary fetched/shell content, not
+	// curated seed chunks). One tag is generated per loop run and reused for every
+	// tool result in the conversation.
+	tag, err := randomTag()
+	if err != nil {
+		return res, errors.Wrap(err, "generate delimiter tag")
+	}
 
 	for range maxIterations {
 		res.Iterations++
@@ -111,7 +126,7 @@ func coreLoop(ctx context.Context, llm LLM, toolSource ToolSource, model string,
 				toolRes = fmt.Sprintf("error: %v", toolErr)
 			}
 			collectURLs(res.DiscoveredURLs, toolRes)
-			messages = append(messages, openai.ToolMessage(toolRes, tc.ID))
+			messages = append(messages, openai.ToolMessage(fenceToolResult(tag, toolRes), tc.ID))
 		}
 
 		if done {
@@ -122,6 +137,24 @@ func coreLoop(ctx context.Context, llm LLM, toolSource ToolSource, model string,
 	}
 
 	return res, errors.Errorf("exceeded max iterations (%d)", maxIterations)
+}
+
+// randomTag generates a short random hex tag used to delimit untrusted
+// content blocks, so the delimiter itself can't be guessed/spoofed by
+// injected content in a tool result.
+func randomTag() (string, error) {
+	var buf [8]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf[:]), nil
+}
+
+// fenceToolResult wraps a tool result in a random-tagged delimiter block so
+// the model can visually distinguish untrusted tool output from its own
+// instructions, mirroring buildSeedMessages' fencing of seed search results.
+func fenceToolResult(tag, text string) string {
+	return fmt.Sprintf("<<<TOOL_RESULT_%s>>>\n%s\n<<<END_TOOL_RESULT_%s>>>", tag, text, tag)
 }
 
 // collectURLs extracts URLs only from structured "source_url"/"url" JSON

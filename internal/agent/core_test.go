@@ -110,3 +110,35 @@ func TestCoreLoop_ToolCallAfterTerminalNotExecuted(t *testing.T) {
 	require.Equal(t, 0, res.ToolsUsed)
 	require.Empty(t, ts.calls)
 }
+
+func TestCoreLoop_ToolResultsAreFenced(t *testing.T) {
+	// Mid-loop tool results must be wrapped in a random-tagged delimiter
+	// block, same as buildSeedMessages fences the seed context, so a
+	// prompt-injection payload embedded in untrusted tool output (a fetched
+	// page, shell output) can't blend in with the surrounding instructions.
+	llm := &fakeLLM{
+		responses: []openai.ChatCompletionMessage{
+			{
+				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{toolCall("call_1", "test_tool", `{}`)},
+			},
+			{
+				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{toolCall("call_2", "submit", `"valid"`)},
+			},
+		},
+	}
+	ts := &fakeToolSource{}
+
+	res, err := coreLoop(context.Background(), llm, ts, "test-model", nil, nil, echoTerminal(), 5, zaptest.NewLogger(t))
+	require.NoError(t, err)
+
+	var toolMsg *openai.ChatCompletionMessageParamUnion
+	for i := range res.Conversation {
+		if res.Conversation[i].OfTool != nil && res.Conversation[i].OfTool.ToolCallID == "call_1" {
+			toolMsg = &res.Conversation[i]
+			break
+		}
+	}
+	require.NotNil(t, toolMsg, "expected a tool message for call_1")
+	content := toolMsg.OfTool.Content.OfString.Value
+	require.Regexp(t, `^<<<TOOL_RESULT_[0-9a-f]{16}>>>\ntool success\n<<<END_TOOL_RESULT_[0-9a-f]{16}>>>$`, content)
+}

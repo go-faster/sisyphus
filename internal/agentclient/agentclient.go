@@ -70,9 +70,13 @@ func (c *Client) Investigate(ctx context.Context, description string) (agent.Rep
 	return resp, nil
 }
 
-// CheckHealth checks the ssagent health endpoint.
+// CheckHealth checks ssagent's readiness, not just liveness: /readyz
+// (internal/mcpserver.ReadinessHandler) actually verifies the MCP gateway
+// backend is reachable, whereas /healthz always returns 200 as long as the
+// process is up. Using /healthz here would report ssagent healthy even when
+// its MCP backend — and therefore /investigate — is down.
 func (c *Client) CheckHealth(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url+"/healthz", http.NoBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.url+"/readyz", http.NoBody)
 	if err != nil {
 		return errors.Wrap(err, "new request")
 	}

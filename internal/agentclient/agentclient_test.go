@@ -30,7 +30,7 @@ func TestClient_Investigate(t *testing.T) {
 
 func TestClient_CheckHealth(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/healthz", r.URL.Path)
+		require.Equal(t, "/readyz", r.URL.Path)
 		require.Equal(t, http.MethodGet, r.Method)
 		w.WriteHeader(http.StatusOK)
 	}))
