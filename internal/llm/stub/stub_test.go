@@ -205,22 +205,22 @@ func TestAnswererSingleResult(t *testing.T) {
 	}
 
 	if !hasPrefix(answer.Text, "Question: What is Go?") {
-		t.Errorf("missing question header in %q", answer)
+		t.Errorf("missing question header in %q", answer.Text)
 	}
 	if !contains(answer.Text, "1. Go Basics") {
-		t.Errorf("missing numbered title in %q", answer)
+		t.Errorf("missing numbered title in %q", answer.Text)
 	}
 	if !contains(answer.Text, "[source: docs]") {
-		t.Errorf("missing source metadata in %q", answer)
+		t.Errorf("missing source metadata in %q", answer.Text)
 	}
 	if !contains(answer.Text, "[https://golang.org]") {
-		t.Errorf("missing source_url in %q", answer)
+		t.Errorf("missing source_url in %q", answer.Text)
 	}
 	if !contains(answer.Text, "Go is a compiled, statically typed language") {
-		t.Errorf("missing snippet in %q", answer)
+		t.Errorf("missing snippet in %q", answer.Text)
 	}
 	if !hasSuffix(answer.Text, "Confidence: low (LLM disabled)") {
-		t.Errorf("missing confidence footer in %q", answer)
+		t.Errorf("missing confidence footer in %q", answer.Text)
 	}
 }
 
@@ -256,16 +256,16 @@ func TestAnswererMultipleResults(t *testing.T) {
 	}
 
 	if !contains(answer.Text, "1. First Source") {
-		t.Errorf("missing first numbered source in %q", answer)
+		t.Errorf("missing first numbered source in %q", answer.Text)
 	}
 	if !contains(answer.Text, "2. Second Source") {
-		t.Errorf("missing second numbered source in %q", answer)
+		t.Errorf("missing second numbered source in %q", answer.Text)
 	}
 	if !contains(answer.Text, "This is the content of the first source.") {
-		t.Errorf("missing first snippet in %q", answer)
+		t.Errorf("missing first snippet in %q", answer.Text)
 	}
 	if !contains(answer.Text, "This is the content of the second source") {
-		t.Errorf("missing second snippet in %q", answer)
+		t.Errorf("missing second snippet in %q", answer.Text)
 	}
 }
 
@@ -296,12 +296,12 @@ func TestAnswererSnippetTruncation(t *testing.T) {
 
 	// Check that the snippet is truncated.
 	if !contains(answer.Text, "…") {
-		t.Errorf("snippet not truncated with ellipsis in %q", answer)
+		t.Errorf("snippet not truncated with ellipsis in %q", answer.Text)
 	}
 
 	// The "very long" text should be present, but "much more content" should likely not be.
 	if !contains(answer.Text, "very long") {
-		t.Errorf("missing start of snippet in %q", answer)
+		t.Errorf("missing start of snippet in %q", answer.Text)
 	}
 }
 
@@ -323,10 +323,10 @@ func TestAnswererNoMetadata(t *testing.T) {
 	}
 
 	if !contains(answer.Text, "1. Title Only") {
-		t.Errorf("missing title in %q", answer)
+		t.Errorf("missing title in %q", answer.Text)
 	}
 	if !contains(answer.Text, "Some text content.") {
-		t.Errorf("missing text in %q", answer)
+		t.Errorf("missing text in %q", answer.Text)
 	}
 }
 
@@ -350,7 +350,7 @@ func TestAnswererNoTitle(t *testing.T) {
 	}
 
 	if !contains(answer.Text, "1. (Untitled)") {
-		t.Errorf("missing untitled fallback in %q", answer)
+		t.Errorf("missing untitled fallback in %q", answer.Text)
 	}
 }
 
