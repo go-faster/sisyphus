@@ -10,8 +10,6 @@ import (
 	"github.com/go-faster/sdk/app"
 	"github.com/go-faster/sdk/zctx"
 	"github.com/spf13/cobra"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/go-faster/sisyphus/internal/api"
@@ -36,7 +34,7 @@ func main() {
 						return errors.Wrap(err, "config")
 					}
 					cfg.LogWarnings(lg)
-					return run(cmd.Context(), cfg, t.TracerProvider(), t.MeterProvider())
+					return run(cmd.Context(), cfg, t)
 				},
 				SilenceUsage:  true,
 				SilenceErrors: true,
@@ -49,8 +47,10 @@ func main() {
 	)
 }
 
-func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp metric.MeterProvider) error {
+func run(ctx context.Context, cfg config.Config, telemetry *app.Telemetry) error {
 	lg := zctx.From(ctx)
+	tp := telemetry.TracerProvider()
+	mp := telemetry.MeterProvider()
 
 	comp, err := wire.New(ctx, cfg, wire.NewOptions{
 		TracerProvider: tp,
@@ -119,7 +119,7 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 	mux.Handle("/", oasSrv)
 	httpSrv := &http.Server{
 		Addr:              cfg.API.HTTPAddr,
-		Handler:           httpmw.Wrap(lg, mux),
+		Handler:           httpmw.Wrap(lg, telemetry, mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

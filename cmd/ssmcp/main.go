@@ -90,7 +90,7 @@ func run(ctx context.Context, cfg config.Config, useStdio bool, t *app.Telemetry
 
 	s := &http.Server{
 		Addr:              cfg.MCP.Addr,
-		Handler:           httpmw.Wrap(lg, mux),
+		Handler:           httpmw.Wrap(lg, t, mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	return httpmw.Serve(ctx, lg, "mcp http", s)

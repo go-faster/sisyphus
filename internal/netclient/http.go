@@ -42,7 +42,7 @@ func (opts *HTTPClientOptions) setDefaults() {
 }
 
 // HTTPClient returns an HTTP client using proxyURL when configured.
-func HTTPClient(ctx context.Context, name, proxyURL string, opts HTTPClientOptions) (*http.Client, error) {
+func HTTPClient(_ context.Context, name, proxyURL string, opts HTTPClientOptions) (*http.Client, error) {
 	opts.setDefaults()
 
 	var (
@@ -86,7 +86,6 @@ func HTTPClient(ctx context.Context, name, proxyURL string, opts HTTPClientOptio
 		metrics:      m,
 		cacheEnabled: opts.Cache != nil,
 	}
-	_ = ctx
 	return &http.Client{
 		Transport: transport,
 		Timeout:   opts.Timeout,

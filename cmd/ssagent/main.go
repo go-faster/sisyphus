@@ -142,7 +142,7 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry) error {
 
 	srv := &http.Server{
 		Addr:              cfg.Agent.Addr,
-		Handler:           httpmw.Wrap(lg, mux),
+		Handler:           httpmw.Wrap(lg, telemetry, mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	return httpmw.Serve(ctx, lg, "ssagent", srv)

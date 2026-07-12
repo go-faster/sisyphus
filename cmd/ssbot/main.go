@@ -10,8 +10,6 @@ import (
 	"github.com/go-faster/sdk/app"
 	"github.com/go-faster/sdk/zctx"
 	"github.com/spf13/cobra"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
 	"github.com/go-faster/sisyphus/internal/agentclient"
@@ -36,7 +34,7 @@ func main() {
 						return errors.Wrap(err, "config")
 					}
 					cfg.LogWarnings(lg)
-					return run(cmd.Context(), cfg, t.TracerProvider(), t.MeterProvider())
+					return run(cmd.Context(), cfg, t)
 				},
 				SilenceUsage:  true,
 				SilenceErrors: true,
@@ -49,8 +47,10 @@ func main() {
 	)
 }
 
-func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp metric.MeterProvider) error {
+func run(ctx context.Context, cfg config.Config, telemetry *app.Telemetry) error {
 	lg := zctx.From(ctx)
+	tp := telemetry.TracerProvider()
+	mp := telemetry.MeterProvider()
 	if cfg.API.BaseURL == "" || cfg.API.AuthToken == "" {
 		return errors.New("api.base_url and api.auth_token are required")
 	}
@@ -95,7 +95,7 @@ func run(ctx context.Context, cfg config.Config, tp trace.TracerProvider, mp met
 	mcpserver.InstallHealth(healthMux, "0.1.0", checks...)
 	healthSrv := &http.Server{
 		Addr:              cfg.Telegram.Addr,
-		Handler:           httpmw.Wrap(lg, healthMux),
+		Handler:           httpmw.Wrap(lg, telemetry, healthMux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	healthErrc := httpmw.ListenAndServe(lg, "health", healthSrv)
