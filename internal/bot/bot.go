@@ -363,7 +363,7 @@ func (b *Bot) handleSearch(ctx context.Context, query string) (index.Answer, err
 		return index.Answer{}, rerr
 	}
 
-	results, err := b.retriever.Retrieve(ctx, index.Query{Text: query, Limit: 12})
+	results, err := b.retriever.Retrieve(ctx, index.Query{Text: query, Limit: searchResultLimit})
 	if err != nil {
 		rerr = errors.Wrap(err, "retrieve")
 		return index.Answer{}, rerr
@@ -371,8 +371,7 @@ func (b *Bot) handleSearch(ctx context.Context, query string) (index.Answer, err
 	resultCount = len(results)
 
 	return index.Answer{
-		Text:  searchResultsText(results),
-		Links: searchLinks(results),
+		Text: searchResultsText(results),
 	}, nil
 }
 

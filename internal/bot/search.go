@@ -7,20 +7,26 @@ import (
 	"github.com/go-faster/sisyphus/internal/index"
 )
 
-// maxSearchLinks caps how many source-link buttons a /search reply attaches,
-// mirroring the report/answer link caps elsewhere in the bot.
-const maxSearchLinks = 6
+// searchResultLimit caps how many results a /search reply shows. Kept small
+// so the reply reads as a scannable list rather than a wall of text.
+const searchResultLimit = 5
 
-// searchSnippetChars caps each result's text preview so a reply with many
-// results still fits comfortably under telegramMessageLimit.
-const searchSnippetChars = 240
+// searchSnippetChars caps each result's text preview to roughly two-three
+// lines so a reply with several results still fits comfortably under
+// telegramMessageLimit.
+const searchSnippetChars = 160
 
 // searchResultsText formats raw retrieval results as a numbered list for the
-// /search command: title + snippet, one result per entry. Unlike /context,
-// this is unsummarized retrieval output — no LLM in the loop.
+// /search command: title + short snippet + source link, one result per
+// entry. Unlike /context, this is unsummarized retrieval output — no LLM in
+// the loop. The source link is inlined as Markdown (not a button) so it
+// travels with its result when a reply is split across multiple messages.
 func searchResultsText(results []index.Result) string {
 	if len(results) == 0 {
 		return "No results found."
+	}
+	if len(results) > searchResultLimit {
+		results = results[:searchResultLimit]
 	}
 	var sb strings.Builder
 	for i, r := range results {
@@ -36,39 +42,17 @@ func searchResultsText(results []index.Result) string {
 		sb.WriteString(escapeMarkdown(title))
 		sb.WriteString("**\n")
 		sb.WriteString(escapeMarkdown(snippet(r.Chunk.Text, searchSnippetChars)))
+		if url := metaString(r.Chunk.Metadata, "source_url"); url != "" {
+			link := index.Link{Text: "Source", URL: url}
+			if link.Valid() {
+				sb.WriteString("\n[Source](")
+				sb.WriteString(url)
+				sb.WriteString(")")
+			}
+		}
 		sb.WriteString("\n\n")
 	}
 	return strings.TrimSpace(sb.String())
-}
-
-// searchLinks builds source-link buttons from results' source_url metadata,
-// deduplicated by URL and capped at maxSearchLinks.
-func searchLinks(results []index.Result) []index.Link {
-	seen := make(map[string]struct{}, len(results))
-	var out []index.Link
-	for _, r := range results {
-		url := metaString(r.Chunk.Metadata, "source_url")
-		if url == "" {
-			continue
-		}
-		if _, ok := seen[url]; ok {
-			continue
-		}
-		text := r.Chunk.Title
-		if text == "" {
-			text = url
-		}
-		link := index.Link{Text: text, URL: url}
-		if !link.Valid() {
-			continue
-		}
-		seen[url] = struct{}{}
-		out = append(out, link)
-		if len(out) >= maxSearchLinks {
-			break
-		}
-	}
-	return out
 }
 
 func metaString(m map[string]any, key string) string {

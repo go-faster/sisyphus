@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -42,22 +43,32 @@ func TestSearchResultsTextEscapesMarkdown(t *testing.T) {
 	require.Contains(t, text, `snake\_case\_ident and \# not a heading`)
 }
 
-func TestSearchLinksDedupAndCap(t *testing.T) {
+func TestSearchResultsTextCapsResultCount(t *testing.T) {
 	var results []index.Result
-	for range maxSearchLinks + 2 {
-		results = append(results, index.Result{Chunk: index.Chunk{
-			Title:    "same title",
-			Metadata: map[string]any{"source_url": "https://example.com/dup"},
-		}})
+	for i := range searchResultLimit + 2 {
+		results = append(results, index.Result{Chunk: index.Chunk{Title: "result", Text: "text " + string(rune('a'+i))}})
 	}
-	results = append(results, index.Result{Chunk: index.Chunk{
-		Title:    "invalid",
-		Metadata: map[string]any{"source_url": "not-a-url"},
-	}})
 
-	links := searchLinks(results)
-	require.Len(t, links, 1)
-	require.Equal(t, "https://example.com/dup", links[0].URL)
+	text := searchResultsText(results)
+	require.Contains(t, text, strconv.Itoa(searchResultLimit)+".")
+	require.NotContains(t, text, strconv.Itoa(searchResultLimit+1)+".")
+}
+
+func TestSearchResultsTextInlinesSourceLink(t *testing.T) {
+	text := searchResultsText([]index.Result{
+		{Chunk: index.Chunk{
+			Title:    "doc",
+			Text:     "hello world",
+			Metadata: map[string]any{"source_url": "https://example.com/doc"},
+		}},
+		{Chunk: index.Chunk{
+			Title:    "invalid",
+			Text:     "no link expected",
+			Metadata: map[string]any{"source_url": "not-a-url"},
+		}},
+	})
+	require.Contains(t, text, "[Source](https://example.com/doc)")
+	require.NotContains(t, text, "not-a-url")
 }
 
 func TestHandleSearch(t *testing.T) {
@@ -75,8 +86,10 @@ func TestHandleSearch(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, answer.Text, "doc")
 	require.Contains(t, answer.Text, "hello world")
-	require.Equal(t, []index.Link{{Text: "doc", URL: "https://example.com/doc"}}, answer.Links)
+	require.Contains(t, answer.Text, "[Source](https://example.com/doc)")
+	require.Empty(t, answer.Links)
 	require.Equal(t, "how to restart", r.query.Text)
+	require.Equal(t, searchResultLimit, r.query.Limit)
 }
 
 func TestHandleSearchNoRetriever(t *testing.T) {
