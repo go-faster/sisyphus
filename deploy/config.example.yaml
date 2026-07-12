@@ -1,5 +1,6 @@
-database_dsn:
-  env: SISYPHUS_DATABASE_DSN
+database:
+  dsn:
+    env: SISYPHUS_DATABASE_DSN
 
 # api: ssapi, the HTTP API server (owns Postgres + migrations). http_addr is
 # the address ssapi's own server listens on; base_url/auth_token are read by
@@ -16,13 +17,17 @@ mcp:
   auth_token:
     env: SISYPHUS_MCP_AUTH_TOKEN
 
-qdrant_addr: qdrant:6334
-qdrant_collection: corp_chunks
+qdrant:
+  addr: qdrant:6334
+  collection: corp_chunks
 
-ollama_url: http://ollama:11434
-embed_provider: ollama
-embed_model: bge-m3
-embed_dim: 1024
+ollama:
+  url: http://ollama:11434
+
+embed:
+  provider: ollama
+  model: bge-m3
+  dim: 1024
 
 # git: repository content (Markdown docs) + commit messages. Supports N repos;
 # each is keyed independently (git_docs:<repo> / git_commits:<repo>).
@@ -89,6 +94,18 @@ proxies:
   openrouter:
     env: SISYPHUS_OPENROUTER_PROXY
 
+# fetch: operator-approved URL allowlist for the agentic /context and
+# /investigate loops' fetch_url tool. url_patterns are doublestar globs
+# matched against the full URL; add a site per external system the agent is
+# allowed to reach (e.g. GitLab, so it doesn't have to rely on search_knowledge
+# alone for pages that aren't ingested yet).
+fetch:
+  sites:
+    - name: gitlab
+      url_patterns:
+        - "https://gitlab.example.com/**"
+      methods: [GET]
+
 jira:
   base_url: ""
   email: ""
@@ -114,6 +131,18 @@ openrouter:
     env: SISYPHUS_OPENROUTER_API_KEY
   model: openai/gpt-4o-mini
 
+# context: agentic /context workflow settings.
+context:
+  agentic: false
+  max_iterations: 6
+  timeout_seconds: 180
+  max_answer_chars: 2000
+  ssh_mcp_url: ""
+  ssh_mcp_headers: {}
+  sandbox_machine: sandbox
+  pre_search: true
+  pre_search_limit: 12
+
 # telegram: ssbot. addr is the address ssbot's standalone health/ready HTTP
 # server listens on (ssbot has no primary HTTP API of its own).
 telegram:
@@ -136,6 +165,9 @@ telegram:
 # ssbot to reach ssagent for the /investigate command (leave empty to disable
 # /investigate in ssbot). gateway_url points at the mcpgateway instance that
 # fans out to Grafana/Alertmanager/Jira/GitLab/knowledge-base MCP servers.
+# /investigate jobs are persisted in Postgres (database.dsn, required):
+# ssagent connects to it but never runs migrations itself, so ssapi must have
+# applied them first.
 agent:
   addr: :8082
   base_url: http://ssagent:8082
@@ -148,3 +180,11 @@ agent:
   # Character budget for the assembled report; if the model's first
   # submit_report exceeds this, it's asked once to resubmit a shorter one.
   max_report_chars: 1500
+  # Caps how many investigations run concurrently; each one holds an LLM
+  # tool-calling loop open for up to request_timeout_seconds. /investigate is
+  # async (202 + job ID, persisted in Postgres via database.dsn - ssagent
+  # connects but does not migrate), so extra requests aren't rejected: the
+  # job is accepted and queued as pending until a worker slot frees up.
+  max_concurrent: 4
+  # Request body size cap in bytes for POST /investigate.
+  max_body_bytes: 65536

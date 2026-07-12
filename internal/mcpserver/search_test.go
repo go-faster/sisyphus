@@ -137,19 +137,15 @@ func TestAnswerHandler_QueryAnswerer(t *testing.T) {
 
 type answerNever struct{}
 
-func (answerNever) Answer(_ context.Context, _ string, _ []index.Result) (string, error) {
-	return "stub", nil
+func (answerNever) Answer(_ context.Context, _ index.Query, _ []index.Result) (index.Answer, error) {
+	return index.Answer{Text: "stub"}, nil
 }
 
 type captureQueryAnswerer struct {
 	got index.Query
 }
 
-func (a *captureQueryAnswerer) Answer(_ context.Context, _ string, _ []index.Result) (string, error) {
-	return "fallback", nil
-}
-
-func (a *captureQueryAnswerer) AnswerQuery(_ context.Context, q index.Query, _ []index.Result) (string, error) {
+func (a *captureQueryAnswerer) Answer(_ context.Context, q index.Query, _ []index.Result) (index.Answer, error) {
 	a.got = q
-	return "stub", nil
+	return index.Answer{Text: "stub"}, nil
 }

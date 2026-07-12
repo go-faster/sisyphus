@@ -5,12 +5,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-faster/errors"
 	"github.com/gotd/td/tg"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
+	"github.com/go-faster/sisyphus/internal/agent"
 	"github.com/go-faster/sisyphus/internal/index"
+	"github.com/go-faster/sisyphus/internal/indextest"
 )
 
 type captureQueryAnswerer struct {
@@ -18,45 +21,39 @@ type captureQueryAnswerer struct {
 	deadline time.Time
 }
 
-func (c *captureQueryAnswerer) Answer(_ context.Context, _ string, _ []index.Result) (string, error) {
-	return "fallback", nil
-}
-
-func (c *captureQueryAnswerer) AnswerQuery(ctx context.Context, q index.Query, _ []index.Result) (string, error) {
+func (c *captureQueryAnswerer) Answer(ctx context.Context, q index.Query, _ []index.Result) (index.Answer, error) {
 	c.query = q
 	c.deadline, _ = ctx.Deadline()
-	return "direct answer", nil
+	return index.Answer{Text: "direct answer"}, nil
 }
 
-type richQueryAnswerer struct {
-	answer index.Answer
+func TestInvestigateFailureMessage_DistinguishesCauses(t *testing.T) {
+	require.Contains(t, investigateFailureMessage(context.DeadlineExceeded), "timed out")
+	require.Contains(t, investigateFailureMessage(agent.ErrMaxIterations), "too many steps")
+	require.Equal(t, "Sorry, investigation failed.", investigateFailureMessage(errors.New("boom")))
+	// Errors wrapped along the way (HTTP round trip, ctx propagation) must
+	// still classify correctly via errors.Is, not just bare sentinels.
+	require.Contains(t, investigateFailureMessage(errors.Wrap(context.DeadlineExceeded, "wait for investigation")), "timed out")
 }
 
-func (r *richQueryAnswerer) Answer(_ context.Context, _ string, _ []index.Result) (string, error) {
-	return r.answer.Text, nil
+func TestContextFailureMessage_DistinguishesTimeout(t *testing.T) {
+	require.Contains(t, contextFailureMessage(context.DeadlineExceeded), "took too long")
+	require.Equal(t, "Sorry, something went wrong handling that request.", contextFailureMessage(errors.New("boom")))
 }
 
-func (r *richQueryAnswerer) AnswerQuery(_ context.Context, _ index.Query, _ []index.Result) (string, error) {
-	return r.answer.Text, nil
-}
-
-func (r *richQueryAnswerer) AnswerQueryRich(_ context.Context, _ index.Query, _ []index.Result) (index.Answer, error) {
-	return r.answer, nil
-}
-
-func TestHandlePrefersRichAnswererAndKeepsLinks(t *testing.T) {
+func TestHandleKeepsAnswerLinks(t *testing.T) {
 	want := index.Answer{
 		Text:  "prod is red because X",
 		Links: []index.Link{{Text: "Dashboard", URL: "https://grafana/d/1"}},
 	}
-	a := &richQueryAnswerer{answer: want}
+	a := &indextest.MockAnswerer{AnswerResult: want}
 	b := New(context.Background(), nil, a, BotCredentials{}, BotOptions{
 		Silent:         true,
 		TracerProvider: otel.GetTracerProvider(),
 		Logger:         zap.NewNop(),
 		AllowedUserIDs: []int64{1},
 	})
-	require.NotNil(t, b.richQueryAnswerer)
+	require.NotNil(t, b.answerer)
 
 	got, err := b.handle(context.Background(), "why is prod red?")
 	require.NoError(t, err)

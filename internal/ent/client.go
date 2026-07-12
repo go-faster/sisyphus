@@ -18,6 +18,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/go-faster/sisyphus/internal/ent/chunk"
 	"github.com/go-faster/sisyphus/internal/ent/document"
+	"github.com/go-faster/sisyphus/internal/ent/investigationjob"
 	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 	"github.com/go-faster/sisyphus/internal/ent/telegrammessage"
@@ -32,6 +33,8 @@ type Client struct {
 	Chunk *ChunkClient
 	// Document is the client for interacting with the Document builders.
 	Document *DocumentClient
+	// InvestigationJob is the client for interacting with the InvestigationJob builders.
+	InvestigationJob *InvestigationJobClient
 	// SupportRequest is the client for interacting with the SupportRequest builders.
 	SupportRequest *SupportRequestClient
 	// SyncState is the client for interacting with the SyncState builders.
@@ -51,6 +54,7 @@ func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.Chunk = NewChunkClient(c.config)
 	c.Document = NewDocumentClient(c.config)
+	c.InvestigationJob = NewInvestigationJobClient(c.config)
 	c.SupportRequest = NewSupportRequestClient(c.config)
 	c.SyncState = NewSyncStateClient(c.config)
 	c.TelegramMessage = NewTelegramMessageClient(c.config)
@@ -144,13 +148,14 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:             ctx,
-		config:          cfg,
-		Chunk:           NewChunkClient(cfg),
-		Document:        NewDocumentClient(cfg),
-		SupportRequest:  NewSupportRequestClient(cfg),
-		SyncState:       NewSyncStateClient(cfg),
-		TelegramMessage: NewTelegramMessageClient(cfg),
+		ctx:              ctx,
+		config:           cfg,
+		Chunk:            NewChunkClient(cfg),
+		Document:         NewDocumentClient(cfg),
+		InvestigationJob: NewInvestigationJobClient(cfg),
+		SupportRequest:   NewSupportRequestClient(cfg),
+		SyncState:        NewSyncStateClient(cfg),
+		TelegramMessage:  NewTelegramMessageClient(cfg),
 	}, nil
 }
 
@@ -168,13 +173,14 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:             ctx,
-		config:          cfg,
-		Chunk:           NewChunkClient(cfg),
-		Document:        NewDocumentClient(cfg),
-		SupportRequest:  NewSupportRequestClient(cfg),
-		SyncState:       NewSyncStateClient(cfg),
-		TelegramMessage: NewTelegramMessageClient(cfg),
+		ctx:              ctx,
+		config:           cfg,
+		Chunk:            NewChunkClient(cfg),
+		Document:         NewDocumentClient(cfg),
+		InvestigationJob: NewInvestigationJobClient(cfg),
+		SupportRequest:   NewSupportRequestClient(cfg),
+		SyncState:        NewSyncStateClient(cfg),
+		TelegramMessage:  NewTelegramMessageClient(cfg),
 	}, nil
 }
 
@@ -203,21 +209,23 @@ func (c *Client) Close() error {
 // Use adds the mutation hooks to all the entity clients.
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
-	c.Chunk.Use(hooks...)
-	c.Document.Use(hooks...)
-	c.SupportRequest.Use(hooks...)
-	c.SyncState.Use(hooks...)
-	c.TelegramMessage.Use(hooks...)
+	for _, n := range []interface{ Use(...Hook) }{
+		c.Chunk, c.Document, c.InvestigationJob, c.SupportRequest, c.SyncState,
+		c.TelegramMessage,
+	} {
+		n.Use(hooks...)
+	}
 }
 
 // Intercept adds the query interceptors to all the entity clients.
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
-	c.Chunk.Intercept(interceptors...)
-	c.Document.Intercept(interceptors...)
-	c.SupportRequest.Intercept(interceptors...)
-	c.SyncState.Intercept(interceptors...)
-	c.TelegramMessage.Intercept(interceptors...)
+	for _, n := range []interface{ Intercept(...Interceptor) }{
+		c.Chunk, c.Document, c.InvestigationJob, c.SupportRequest, c.SyncState,
+		c.TelegramMessage,
+	} {
+		n.Intercept(interceptors...)
+	}
 }
 
 // Mutate implements the ent.Mutator interface.
@@ -227,6 +235,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Chunk.mutate(ctx, m)
 	case *DocumentMutation:
 		return c.Document.mutate(ctx, m)
+	case *InvestigationJobMutation:
+		return c.InvestigationJob.mutate(ctx, m)
 	case *SupportRequestMutation:
 		return c.SupportRequest.mutate(ctx, m)
 	case *SyncStateMutation:
@@ -533,6 +543,139 @@ func (c *DocumentClient) mutate(ctx context.Context, m *DocumentMutation) (Value
 		return (&DocumentDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Document mutation op: %q", m.Op())
+	}
+}
+
+// InvestigationJobClient is a client for the InvestigationJob schema.
+type InvestigationJobClient struct {
+	config
+}
+
+// NewInvestigationJobClient returns a client for the InvestigationJob from the given config.
+func NewInvestigationJobClient(c config) *InvestigationJobClient {
+	return &InvestigationJobClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `investigationjob.Hooks(f(g(h())))`.
+func (c *InvestigationJobClient) Use(hooks ...Hook) {
+	c.hooks.InvestigationJob = append(c.hooks.InvestigationJob, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `investigationjob.Intercept(f(g(h())))`.
+func (c *InvestigationJobClient) Intercept(interceptors ...Interceptor) {
+	c.inters.InvestigationJob = append(c.inters.InvestigationJob, interceptors...)
+}
+
+// Create returns a builder for creating a InvestigationJob entity.
+func (c *InvestigationJobClient) Create() *InvestigationJobCreate {
+	mutation := newInvestigationJobMutation(c.config, OpCreate)
+	return &InvestigationJobCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of InvestigationJob entities.
+func (c *InvestigationJobClient) CreateBulk(builders ...*InvestigationJobCreate) *InvestigationJobCreateBulk {
+	return &InvestigationJobCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *InvestigationJobClient) MapCreateBulk(slice any, setFunc func(*InvestigationJobCreate, int)) *InvestigationJobCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &InvestigationJobCreateBulk{err: fmt.Errorf("calling to InvestigationJobClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*InvestigationJobCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &InvestigationJobCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for InvestigationJob.
+func (c *InvestigationJobClient) Update() *InvestigationJobUpdate {
+	mutation := newInvestigationJobMutation(c.config, OpUpdate)
+	return &InvestigationJobUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *InvestigationJobClient) UpdateOne(_m *InvestigationJob) *InvestigationJobUpdateOne {
+	mutation := newInvestigationJobMutation(c.config, OpUpdateOne, withInvestigationJob(_m))
+	return &InvestigationJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *InvestigationJobClient) UpdateOneID(id uuid.UUID) *InvestigationJobUpdateOne {
+	mutation := newInvestigationJobMutation(c.config, OpUpdateOne, withInvestigationJobID(id))
+	return &InvestigationJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for InvestigationJob.
+func (c *InvestigationJobClient) Delete() *InvestigationJobDelete {
+	mutation := newInvestigationJobMutation(c.config, OpDelete)
+	return &InvestigationJobDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *InvestigationJobClient) DeleteOne(_m *InvestigationJob) *InvestigationJobDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *InvestigationJobClient) DeleteOneID(id uuid.UUID) *InvestigationJobDeleteOne {
+	builder := c.Delete().Where(investigationjob.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &InvestigationJobDeleteOne{builder}
+}
+
+// Query returns a query builder for InvestigationJob.
+func (c *InvestigationJobClient) Query() *InvestigationJobQuery {
+	return &InvestigationJobQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeInvestigationJob},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a InvestigationJob entity by its id.
+func (c *InvestigationJobClient) Get(ctx context.Context, id uuid.UUID) (*InvestigationJob, error) {
+	return c.Query().Where(investigationjob.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *InvestigationJobClient) GetX(ctx context.Context, id uuid.UUID) *InvestigationJob {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *InvestigationJobClient) Hooks() []Hook {
+	return c.hooks.InvestigationJob
+}
+
+// Interceptors returns the client interceptors.
+func (c *InvestigationJobClient) Interceptors() []Interceptor {
+	return c.inters.InvestigationJob
+}
+
+func (c *InvestigationJobClient) mutate(ctx context.Context, m *InvestigationJobMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&InvestigationJobCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&InvestigationJobUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&InvestigationJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&InvestigationJobDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown InvestigationJob mutation op: %q", m.Op())
 	}
 }
 
@@ -938,9 +1081,11 @@ func (c *TelegramMessageClient) mutate(ctx context.Context, m *TelegramMessageMu
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Chunk, Document, SupportRequest, SyncState, TelegramMessage []ent.Hook
+		Chunk, Document, InvestigationJob, SupportRequest, SyncState,
+		TelegramMessage []ent.Hook
 	}
 	inters struct {
-		Chunk, Document, SupportRequest, SyncState, TelegramMessage []ent.Interceptor
+		Chunk, Document, InvestigationJob, SupportRequest, SyncState,
+		TelegramMessage []ent.Interceptor
 	}
 )

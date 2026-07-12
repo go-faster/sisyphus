@@ -6,6 +6,7 @@ package qdrant
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/go-faster/errors"
 	"github.com/google/uuid"
@@ -13,6 +14,14 @@ import (
 
 	"github.com/go-faster/sisyphus/internal/index"
 )
+
+// queryEmbedTimeout bounds how long a single query-time embedding call may
+// take. The embedder's own HTTP client (internal/embed) has no short timeout
+// of its own, since the same client is reused for ingestion's much larger
+// batch-embedding calls; a query is always a single short string, so it gets
+// its own tight deadline here instead, to keep a cold/contended embedding
+// backend from stalling the whole search request.
+const queryEmbedTimeout = 15 * time.Second
 
 // Config holds Qdrant client configuration.
 type Config struct {
@@ -158,8 +167,11 @@ func (s *Store) Search(ctx context.Context, q index.Query) ([]index.Result, erro
 		q.Limit = 30
 	}
 
-	// Embed the query text
-	embeddings, err := s.embedder.Embed(ctx, []string{q.Text})
+	// Embed the query text, bounded by queryEmbedTimeout so a cold/contended
+	// embedding backend can't stall the whole search request.
+	embedCtx, cancel := context.WithTimeout(ctx, queryEmbedTimeout)
+	embeddings, err := s.embedder.Embed(embedCtx, []string{q.Text})
+	cancel()
 	if err != nil {
 		return nil, errors.Wrap(err, "embed query")
 	}

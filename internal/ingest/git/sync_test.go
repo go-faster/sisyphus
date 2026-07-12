@@ -20,8 +20,8 @@ func TestPrepareLocalDefaultsRepoName(t *testing.T) {
 }
 
 func TestDefaultRepoName(t *testing.T) {
-	require.Equal(t, "docs", defaultRepoName(Source{URL: "https://gitlab.example.com/group/docs.git"}))
-	require.Equal(t, "docs", defaultRepoName(Source{Root: "/tmp/docs"}))
+	require.Equal(t, "docs", DefaultRepoName(Source{URL: "https://gitlab.example.com/group/docs.git"}))
+	require.Equal(t, "docs", DefaultRepoName(Source{Root: "/tmp/docs"}))
 }
 
 func TestPrepareClonesLocalRepository(t *testing.T) {
@@ -40,8 +40,8 @@ func TestPrepareClonesLocalRepository(t *testing.T) {
 }
 
 func TestSafeDirName(t *testing.T) {
-	require.Equal(t, "group_docs", safeDirName("group/docs"))
-	require.Equal(t, "repo", safeDirName(""))
+	require.Equal(t, "group_docs", SafeDirName("group/docs"))
+	require.Equal(t, "repo", SafeDirName(""))
 }
 
 func TestRedactURL(t *testing.T) {

@@ -18,6 +18,7 @@ import (
 	"go.uber.org/zap"
 
 	chunkgitlab "github.com/go-faster/sisyphus/internal/chunk/gitlab"
+	"github.com/go-faster/sisyphus/internal/cliversion"
 	"github.com/go-faster/sisyphus/internal/index"
 	"github.com/go-faster/sisyphus/internal/netclient"
 )
@@ -29,6 +30,7 @@ type Options struct {
 	Projects   []string // Project IDs or paths.
 	HTTPClient *http.Client
 	PageSize   int // default 100 via setDefaults
+	UserAgent  string
 }
 
 func (opts *Options) setDefaults() {
@@ -39,6 +41,11 @@ func (opts *Options) setDefaults() {
 		opts.PageSize = 100
 	}
 	opts.BaseURL = strings.TrimRight(opts.BaseURL, "/")
+	if opts.UserAgent == "" {
+		if info, ok := cliversion.GetInfo("github.com/go-faster/sisyphus"); ok {
+			opts.UserAgent = info.UserAgent("gitlab")
+		}
+	}
 }
 
 // Cursor persists the incremental fetch state, JSON-encoded into SyncState.last_cursor.
@@ -61,6 +68,7 @@ type Fetcher struct {
 	projects   []string
 	httpClient *http.Client
 	pageSize   int
+	userAgent  string
 }
 
 // New creates a new Fetcher. Returns an error if no token is configured.
@@ -78,6 +86,7 @@ func New(opts Options) (*Fetcher, error) {
 		projects:   append([]string(nil), opts.Projects...),
 		httpClient: opts.HTTPClient,
 		pageSize:   opts.PageSize,
+		userAgent:  opts.UserAgent,
 	}, nil
 }
 
@@ -185,7 +194,9 @@ func (f *Fetcher) buildRequest(ctx context.Context, path string, query url.Value
 
 	req.Header.Set("PRIVATE-TOKEN", f.token)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "sisyphus/ingest")
+	if f.userAgent != "" {
+		req.Header.Set("User-Agent", f.userAgent)
+	}
 	return req, nil
 }
 
@@ -216,7 +227,7 @@ func (f *Fetcher) CheckAuth(ctx context.Context) error {
 		return err
 	}
 
-	_, err = f.doRequest(req, "gitlab auth check")
+	_, err = f.doRequest(req, "fetcher.CheckAuth")
 	return err
 }
 
@@ -291,7 +302,7 @@ func (f *Fetcher) fetchProjectIssues(ctx context.Context, project string, page i
 		return nil, "", err
 	}
 
-	body, err := f.doRequest(req, "gitlab fetch issues")
+	body, err := f.doRequest(req, "fetcher.FetchProjectIssues")
 	if err != nil {
 		return nil, "", err
 	}
@@ -359,7 +370,7 @@ func (f *Fetcher) fetchIssueDiscussions(ctx context.Context, project string, iid
 		return nil, err
 	}
 
-	body, err := f.doRequest(req, "gitlab fetch issue discussions")
+	body, err := f.doRequest(req, "fetcher.FetchIssueDiscussions")
 	if err != nil {
 		return nil, err
 	}
@@ -427,7 +438,7 @@ func (f *Fetcher) fetchIssueLinks(ctx context.Context, project string, iid int) 
 		return nil, err
 	}
 
-	body, err := f.doRequest(req, "gitlab fetch issue links")
+	body, err := f.doRequest(req, "fetcher.FetchIssueLinks")
 	if err != nil {
 		// Non-fatal error: log and return nil
 		zctx.From(ctx).Warn("failed to fetch issue links",
@@ -515,7 +526,7 @@ func (f *Fetcher) fetchProjectMergeRequests(ctx context.Context, project string,
 		return nil, "", err
 	}
 
-	body, err := f.doRequest(req, "gitlab fetch merge requests")
+	body, err := f.doRequest(req, "fetcher.FetchProjectMergeRequests")
 	if err != nil {
 		return nil, "", err
 	}
@@ -583,7 +594,7 @@ func (f *Fetcher) fetchMRDiscussions(ctx context.Context, project string, iid in
 		return nil, err
 	}
 
-	body, err := f.doRequest(req, "gitlab fetch mr discussions")
+	body, err := f.doRequest(req, "fetcher.FetchMRDiscussions")
 	if err != nil {
 		return nil, err
 	}
@@ -651,7 +662,7 @@ func (f *Fetcher) fetchMRClosesIssues(ctx context.Context, project string, iid i
 		return nil, err
 	}
 
-	body, err := f.doRequest(req, "gitlab fetch mr closes issues")
+	body, err := f.doRequest(req, "fetcher.FetchMRClosesIssues")
 	if err != nil {
 		// Non-fatal error: log and return nil
 		zctx.From(ctx).Warn("failed to fetch mr closes issues",
@@ -734,7 +745,7 @@ func (f *Fetcher) fetchProjectReleases(ctx context.Context, project string, page
 		return nil, "", err
 	}
 
-	body, err := f.doRequest(req, "gitlab fetch releases")
+	body, err := f.doRequest(req, "fetcher.FetchReleases")
 	if err != nil {
 		return nil, "", err
 	}

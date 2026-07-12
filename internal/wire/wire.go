@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"net"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -20,12 +21,18 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/go-faster/sisyphus/internal/agent"
+	"github.com/go-faster/sisyphus/internal/answer"
 	chunkmd "github.com/go-faster/sisyphus/internal/chunk/markdown"
+	"github.com/go-faster/sisyphus/internal/cliversion"
 	"github.com/go-faster/sisyphus/internal/config"
+	"github.com/go-faster/sisyphus/internal/content"
 	"github.com/go-faster/sisyphus/internal/embed"
 	"github.com/go-faster/sisyphus/internal/ent"
 	entmigrate "github.com/go-faster/sisyphus/internal/ent/migrate"
+	"github.com/go-faster/sisyphus/internal/fetch"
 	"github.com/go-faster/sisyphus/internal/index"
+	ingestgit "github.com/go-faster/sisyphus/internal/ingest/git"
 	"github.com/go-faster/sisyphus/internal/llm/openrouter"
 	"github.com/go-faster/sisyphus/internal/llm/stub"
 	"github.com/go-faster/sisyphus/internal/netclient"
@@ -69,10 +76,12 @@ type Components struct {
 	Embedder index.Embedder
 	Vectors  pipeline.VectorStore
 
-	Retriever Retriever
-	Answerer  index.Answerer
-	Answers   *pipeline.Pipeline
-	Health    HealthChecker
+	Retriever       Retriever
+	Answerer        index.Answerer
+	Answers         *pipeline.Pipeline
+	ContentResolver index.ContentResolver
+	URLFetcher      index.URLFetcher
+	Health          HealthChecker
 
 	closeDB func()
 }
@@ -93,6 +102,7 @@ func (c Components) Close() {
 type NewOptions struct {
 	TracerProvider trace.TracerProvider
 	MeterProvider  metric.MeterProvider
+	UserAgent      string
 
 	// RunMigrations applies pending schema migrations on startup. Only one
 	// long-running service should set this — sisyphus — so migrations run
@@ -108,13 +118,18 @@ func (opts *NewOptions) setDefaults() {
 	if opts.MeterProvider == nil {
 		opts.MeterProvider = otel.GetMeterProvider()
 	}
+	if opts.UserAgent == "" {
+		if info, ok := cliversion.GetInfo("github.com/go-faster/sisyphus"); ok {
+			opts.UserAgent = info.UserAgent("ssapi")
+		}
+	}
 }
 
 // NewServices opens the database, optionally runs migrations, and wires the
 // embedder and optional vector store. runMigrations is false for ssingest:
 // it runs frequently (cron, concurrently per source) and must not race
 // schema migrations against itself or the long-running services.
-func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trace.TracerProvider, mp metric.MeterProvider, runMigrations bool) (*Services, error) {
+func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trace.TracerProvider, mp metric.MeterProvider, userAgent string, runMigrations bool) (*Services, error) {
 	db, err := otelsql.Open("pgx", cfg.DatabaseDSN,
 		otelsql.WithAttributes(semconv.DBSystemPostgreSQL),
 		otelsql.WithSpanOptions(otelsql.SpanOptions{DisableErrSkip: true}),
@@ -139,6 +154,7 @@ func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trac
 	embedder, err := embed.New(ctx, cfg, embed.NewOptions{
 		TracerProvider: tp,
 		MeterProvider:  mp,
+		UserAgent:      userAgent,
 	})
 	if err != nil {
 		cleanup()
@@ -190,8 +206,14 @@ func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trac
 func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, error) {
 	opts.setDefaults()
 	lg := zctx.From(ctx)
+	var sshCleanup func()
+	cleanup := func() {
+		if sshCleanup != nil {
+			sshCleanup()
+		}
+	}
 
-	svcs, err := NewServices(ctx, cfg, lg, opts.TracerProvider, opts.MeterProvider, opts.RunMigrations)
+	svcs, err := NewServices(ctx, cfg, lg, opts.TracerProvider, opts.MeterProvider, opts.UserAgent, opts.RunMigrations)
 	if err != nil {
 		return Components{}, err
 	}
@@ -201,22 +223,28 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		MeterProvider:  opts.MeterProvider,
 	})
 	if err != nil {
+		cleanup()
 		svcs.Close()
 		return Components{}, errors.Wrap(err, "retrieval")
 	}
 
-	var answerer index.Answerer
+	var (
+		answerer index.Answerer
+		orClient *openrouter.Client
+	)
 	if cfg.OpenRouter.Enabled() {
 		lg.Info("openrouter LLM enabled", zap.String("model", cfg.OpenRouter.Model))
 		httpClient, err := netclient.HTTPClient(ctx, "openrouter", cfg.Proxies.OpenRouter, netclient.HTTPClientOptions{
 			TracerProvider: opts.TracerProvider,
 			MeterProvider:  opts.MeterProvider,
+			UserAgent:      opts.UserAgent,
 		})
 		if err != nil {
+			cleanup()
 			svcs.Close()
 			return Components{}, errors.Wrap(err, "openrouter http client")
 		}
-		orClient := openrouter.New(cfg.OpenRouter.APIKey, openrouter.Options{
+		orClient = openrouter.New(cfg.OpenRouter.APIKey, openrouter.Options{
 			HTTPClient:     httpClient,
 			TracerProvider: opts.TracerProvider,
 			MeterProvider:  opts.MeterProvider,
@@ -231,19 +259,102 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		MeterProvider:  opts.MeterProvider,
 	})
 	if err != nil {
+		cleanup()
 		svcs.Close()
 		return Components{}, errors.Wrap(err, "answer pipeline")
 	}
 
+	repoMap := make(content.RepoResolverMap)
+	for _, src := range cfg.Git.Repos {
+		name := src.Repo
+		if name == "" {
+			name = ingestgit.DefaultRepoName(ingestgit.Source{
+				Root: src.Root,
+				URL:  src.URL,
+			})
+		}
+		root := src.Root
+		if root == "" && src.URL != "" && cfg.Git.WorkDir != "" {
+			root = filepath.Join(cfg.Git.WorkDir, ingestgit.SafeDirName(name))
+		}
+		if name != "" && root != "" {
+			repoMap[name] = root
+		}
+	}
+
+	contentOpts := content.Options{
+		Logger:         lg,
+		TracerProvider: opts.TracerProvider,
+		MeterProvider:  opts.MeterProvider,
+	}
+	localReader := content.NewLocalRepoReader(repoMap, contentOpts)
+	dbReader := content.NewDatabaseReader(svcs.DB, contentOpts)
+	contentResolver := content.NewChainResolver([]index.ContentResolver{localReader, dbReader}, contentOpts)
+	urlFetcher, err := fetch.New(ctx, cfg.Fetch, cfg.Proxies, fetch.Options{
+		Logger:         lg,
+		TracerProvider: opts.TracerProvider,
+		MeterProvider:  opts.MeterProvider,
+		UserAgent:      opts.UserAgent,
+	})
+	if err != nil {
+		cleanup()
+		svcs.Close()
+		return Components{}, errors.Wrap(err, "url fetcher")
+	}
+
+	if cfg.OpenRouter.Enabled() && cfg.Context.Agentic {
+		knowledgeTools := answer.NewKnowledgeToolSource(retr, urlFetcher, contentResolver, opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/answer/tools"))
+		var sshTools agent.ToolSource
+		if cfg.Context.SSHMCPURL != "" {
+			connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			toolSource, closeFn, err := answer.NewSSHToolSource(connectCtx, cfg.Context.SSHMCPURL, cfg.Context.SSHMCPHeaders, answer.SSHToolSourceOptions{
+				TracerProvider: opts.TracerProvider,
+				MeterProvider:  opts.MeterProvider,
+				UserAgent:      opts.UserAgent,
+			})
+			cancel()
+			if err != nil {
+				lg.Warn("ssh-mcp unavailable, sandbox tools disabled", zap.Error(err))
+			} else {
+				sshTools = toolSource
+				sshCleanup = closeFn
+			}
+		}
+		toolSource := answer.NewMultiToolSource(knowledgeTools, sshTools)
+		answerer = answer.NewAgenticAnswerer(orClient, toolSource, cfg.OpenRouter.Model, answer.AgenticOptions{
+			Logger:         lg,
+			Retriever:      retr,
+			QueryLimit:     cfg.Context.PreSearchLimit,
+			PreSearch:      cfg.Context.PreSearch,
+			MaxIterations:  cfg.Context.MaxIterations,
+			TimeoutSeconds: cfg.Context.TimeoutSeconds,
+			MaxAnswerChars: cfg.Context.MaxAnswerChars,
+			SandboxMachine: cfg.Context.SandboxMachine,
+			SandboxEnabled: sshTools != nil,
+			Tracer:         opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/answer"),
+			ShowDebugInfo:  cfg.Context.ShowDebugInfo,
+		})
+	}
+
+	closeDB := svcs.closeDB
+	if sshCleanup != nil {
+		closeDB = func() {
+			sshCleanup()
+			svcs.closeDB()
+		}
+	}
+
 	return Components{
-		DB:        svcs.DB,
-		Embedder:  svcs.Embedder,
-		Vectors:   svcs.Vectors,
-		Retriever: retr,
-		Answerer:  answerer,
-		Answers:   answerPipe,
-		Health:    &healthChecker{db: svcs.SQLDB, vectors: svcs.VectorHealth},
-		closeDB:   svcs.closeDB,
+		DB:              svcs.DB,
+		Embedder:        svcs.Embedder,
+		Vectors:         svcs.Vectors,
+		Retriever:       retr,
+		Answerer:        answerer,
+		Answers:         answerPipe,
+		ContentResolver: contentResolver,
+		URLFetcher:      urlFetcher,
+		Health:          &healthChecker{db: svcs.SQLDB, vectors: svcs.VectorHealth},
+		closeDB:         closeDB,
 	}, nil
 }
 

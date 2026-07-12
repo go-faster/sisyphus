@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"strings"
+	"sync"
 	"unicode"
 	"unicode/utf8"
 
@@ -63,18 +64,33 @@ func (s *Service) specificityBoost(ctx context.Context, q index.Query) func(inde
 		return nil
 	}
 
+	// Fetch each term's doc frequency concurrently: on a cache miss this is a
+	// Postgres round-trip per term, and running them sequentially means
+	// latency scales with the number of query terms instead of the slowest
+	// one.
+	dfs := make([]int, len(terms))
+	errs := make([]error, len(terms))
+	var wg sync.WaitGroup
+	for i, t := range terms {
+		wg.Add(1)
+		go func(i int, t string) {
+			defer wg.Done()
+			dfs[i], errs[i] = s.stats.DocFreq(ctx, t)
+		}(i, t)
+	}
+	wg.Wait()
+
 	idf := make(map[string]float64, len(terms))
 	var maxIDF float64
-	for _, t := range terms {
-		df, err := s.stats.DocFreq(ctx, t)
-		if err != nil {
+	for i, t := range terms {
+		if err := errs[i]; err != nil {
 			zctx.From(ctx).Warn("specificity: doc freq failed",
 				zap.String("term", t), zap.Error(err))
 			return nil
 		}
 		// idf = ln(1 + N/(df+1)): monotonically decreasing in df, with rare
 		// terms (small df) weighted highest and df=0 giving the max weight.
-		w := math.Log1p(float64(total) / float64(df+1))
+		w := math.Log1p(float64(total) / float64(dfs[i]+1))
 		idf[t] = w
 		maxIDF = math.Max(maxIDF, w)
 	}

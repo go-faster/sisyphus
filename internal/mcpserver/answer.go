@@ -23,10 +23,6 @@ type AnswerOut struct {
 	Results []SearchResult `json:"results"`
 }
 
-type queryAnswerer interface {
-	AnswerQuery(ctx context.Context, q index.Query, results []index.Result) (string, error)
-}
-
 func answerHandler(retr Retriever, answerer index.Answerer) func(context.Context, *mcp.CallToolRequest, AnswerArgs) (*mcp.CallToolResult, AnswerOut, error) {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, args AnswerArgs) (*mcp.CallToolResult, AnswerOut, error) {
 		q := index.Query{
@@ -45,12 +41,7 @@ func answerHandler(retr Retriever, answerer index.Answerer) func(context.Context
 			}, AnswerOut{}, nil
 		}
 
-		var answer string
-		if qa, ok := answerer.(queryAnswerer); ok {
-			answer, err = qa.AnswerQuery(ctx, q, results)
-		} else {
-			answer, err = answerer.Answer(ctx, args.Question, results)
-		}
+		answer, err := answerer.Answer(ctx, q, results)
 		if err != nil {
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{&mcp.TextContent{Text: "answer error: " + err.Error()}},
@@ -59,7 +50,7 @@ func answerHandler(retr Retriever, answerer index.Answerer) func(context.Context
 		}
 
 		out := AnswerOut{
-			Answer:  answer,
+			Answer:  answer.Text,
 			Results: toMCPResults(results),
 		}
 		return nil, out, nil

@@ -9,18 +9,27 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
+
+	"github.com/go-faster/sisyphus/internal/cliversion"
 )
 
 // Options configures a new MCP Client.
 type Options struct {
 	URL           string
 	Headers       map[string]string
+	HTTPClient    *http.Client
+	Version       string
 	MeterProvider metric.MeterProvider
 }
 
 func (opts *Options) setDefaults() {
 	if opts.MeterProvider == nil {
 		opts.MeterProvider = otel.GetMeterProvider()
+	}
+	if opts.Version == "" {
+		if info, ok := cliversion.GetInfo("github.com/go-faster/sisyphus"); ok {
+			opts.Version = info.Short()
+		}
 	}
 }
 
@@ -41,16 +50,24 @@ func New(ctx context.Context, opts Options) (*Client, error) {
 			base:    http.DefaultTransport,
 		}
 	}
+	httpClient := opts.HTTPClient
+	if httpClient == nil {
+		httpClient = &http.Client{Transport: transport}
+	} else if len(opts.Headers) > 0 {
+		base := httpClient.Transport
+		if base == nil {
+			base = http.DefaultTransport
+		}
+		httpClient = &http.Client{Transport: &headerTransport{headers: opts.Headers, base: base}}
+	}
 
 	streamableClient := &mcp.StreamableClientTransport{
-		Endpoint: opts.URL,
-		HTTPClient: &http.Client{
-			Transport: transport,
-		},
+		Endpoint:   opts.URL,
+		HTTPClient: httpClient,
 	}
 
 	mcpClient := mcp.NewClient(
-		&mcp.Implementation{Name: "ssagent-mcpclient", Version: "0.1.0"},
+		&mcp.Implementation{Name: "ssagent-mcpclient", Version: opts.Version},
 		nil,
 	)
 

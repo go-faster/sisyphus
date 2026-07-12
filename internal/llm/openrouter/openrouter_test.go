@@ -63,12 +63,12 @@ func TestAnswerer_HappyPath(t *testing.T) {
 	results := []index.Result{
 		{Chunk: index.Chunk{Title: "Doc", Text: "The answer is 42."}},
 	}
-	got, err := a.Answer(context.Background(), "What is the answer?", results)
+	got, err := a.Answer(context.Background(), index.Query{Text: "What is the answer?"}, results)
 	if err != nil {
 		t.Fatalf("Answer: %v", err)
 	}
-	if got != "The answer is 42." {
-		t.Errorf("unexpected answer: %q", got)
+	if got.Text != "The answer is 42." {
+		t.Errorf("unexpected answer: %q", got.Text)
 	}
 }
 
@@ -76,7 +76,7 @@ func TestAnswerer_EmptyResults(t *testing.T) {
 	srv := fakeCompletion(t, "I don't have enough context.")
 	a := NewAnswerer(newClient(t, srv), "test-model", AnswererOptions{})
 
-	_, err := a.Answer(context.Background(), "What is the answer?", nil)
+	_, err := a.Answer(context.Background(), index.Query{Text: "What is the answer?"}, nil)
 	if err != nil {
 		t.Fatalf("Answer with empty results: %v", err)
 	}

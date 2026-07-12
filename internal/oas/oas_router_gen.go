@@ -14,7 +14,13 @@ var (
 	rn1AllowedHeaders = map[string]string{
 		"POST": "Authorization,Content-Type",
 	}
-	rn4AllowedHeaders = map[string]string{
+	rn3AllowedHeaders = map[string]string{
+		"POST": "Authorization,Content-Type",
+	}
+	rn5AllowedHeaders = map[string]string{
+		"POST": "Authorization,Content-Type",
+	}
+	rn7AllowedHeaders = map[string]string{
 		"POST": "Authorization,Content-Type",
 	}
 )
@@ -94,6 +100,70 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 
+			case 'f': // Prefix: "f"
+
+				if l := len("f"); len(elem) >= l && elem[0:l] == "f" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					break
+				}
+				switch elem[0] {
+				case 'e': // Prefix: "etch"
+
+					if l := len("etch"); len(elem) >= l && elem[0:l] == "etch" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch r.Method {
+						case "POST":
+							s.handleFetchURLRequest([0]string{}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, notAllowedParams{
+								allowedMethods: "POST",
+								allowedHeaders: rn3AllowedHeaders,
+								acceptPost:     "application/json",
+								acceptPatch:    "",
+							})
+						}
+
+						return
+					}
+
+				case 'i': // Prefix: "ile"
+
+					if l := len("ile"); len(elem) >= l && elem[0:l] == "ile" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch r.Method {
+						case "POST":
+							s.handleGetFileRequest([0]string{}, elemIsEscaped, w, r)
+						default:
+							s.notAllowed(w, r, notAllowedParams{
+								allowedMethods: "POST",
+								allowedHeaders: rn5AllowedHeaders,
+								acceptPost:     "application/json",
+								acceptPatch:    "",
+							})
+						}
+
+						return
+					}
+
+				}
+
 			case 'h': // Prefix: "health"
 
 				if l := len("health"); len(elem) >= l && elem[0:l] == "health" {
@@ -135,7 +205,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					default:
 						s.notAllowed(w, r, notAllowedParams{
 							allowedMethods: "POST",
-							allowedHeaders: rn4AllowedHeaders,
+							allowedHeaders: rn7AllowedHeaders,
 							acceptPost:     "application/json",
 							acceptPatch:    "",
 						})
@@ -267,6 +337,70 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 					default:
 						return
 					}
+				}
+
+			case 'f': // Prefix: "f"
+
+				if l := len("f"); len(elem) >= l && elem[0:l] == "f" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					break
+				}
+				switch elem[0] {
+				case 'e': // Prefix: "etch"
+
+					if l := len("etch"); len(elem) >= l && elem[0:l] == "etch" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch method {
+						case "POST":
+							r.name = FetchURLOperation
+							r.summary = "Fetch a URL from an operator-approved site."
+							r.operationID = "fetchURL"
+							r.operationGroup = ""
+							r.pathPattern = "/fetch"
+							r.args = args
+							r.count = 0
+							return r, true
+						default:
+							return
+						}
+					}
+
+				case 'i': // Prefix: "ile"
+
+					if l := len("ile"); len(elem) >= l && elem[0:l] == "ile" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						// Leaf node.
+						switch method {
+						case "POST":
+							r.name = GetFileOperation
+							r.summary = "Retrieve actual file content from a source repository."
+							r.operationID = "getFile"
+							r.operationGroup = ""
+							r.pathPattern = "/file"
+							r.args = args
+							r.count = 0
+							return r, true
+						default:
+							return
+						}
+					}
+
 				}
 
 			case 'h': // Prefix: "health"

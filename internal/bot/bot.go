@@ -4,8 +4,8 @@ package bot
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -13,8 +13,6 @@ import (
 	"github.com/gotd/log/logzap"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/message"
-	"github.com/gotd/td/telegram/message/entity"
-	"github.com/gotd/td/telegram/message/styling"
 	"github.com/gotd/td/tg"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -28,29 +26,11 @@ import (
 	"github.com/go-faster/sisyphus/internal/telemetry"
 )
 
-// helpText is sent in reply to /start and /help.
-const helpText = `Available commands:
-/context <question> — search indexed knowledge and answer a question
-/investigate <description> — run an on-demand investigation
-/help — show this message`
-
 const defaultAnswerTimeout = time.Minute
 
 // Retriever is the minimal retrieval interface Bot needs.
 type Retriever interface {
 	Retrieve(ctx context.Context, q index.Query) ([]index.Result, error)
-}
-
-// QueryAnswerer answers a query while preserving query controls.
-type QueryAnswerer interface {
-	AnswerQuery(ctx context.Context, q index.Query, results []index.Result) (string, error)
-}
-
-// RichQueryAnswerer answers a query and returns a structured answer including
-// actionable link buttons. Detected via type assertion; the bot falls back to
-// QueryAnswerer when it is absent.
-type RichQueryAnswerer interface {
-	AnswerQueryRich(ctx context.Context, q index.Query, results []index.Result) (index.Answer, error)
 }
 
 // Investigator is the interface for running on-demand investigations.
@@ -71,11 +51,9 @@ type Bot struct {
 	cred   BotCredentials
 	silent bool
 
-	retriever         Retriever
-	answerer          index.Answerer
-	queryAnswerer     QueryAnswerer
-	richQueryAnswerer RichQueryAnswerer
-	investigator      Investigator
+	retriever    Retriever
+	answerer     index.Answerer
+	investigator Investigator
 
 	tp            trace.TracerProvider
 	mp            metric.MeterProvider
@@ -86,6 +64,8 @@ type Bot struct {
 
 	allowedChats map[int64]struct{}
 	allowedUsers map[int64]struct{}
+
+	commands *commandRegistry
 }
 
 // BotOptions configures the bot.
@@ -124,7 +104,6 @@ func New(_ context.Context, r Retriever, a index.Answerer, cred BotCredentials, 
 	mp := opts.MeterProvider
 	m, _ := newBotMetrics(mp)
 
-	// Build allowlist maps
 	allowedChats := make(map[int64]struct{})
 	for _, chatID := range opts.AllowedChats {
 		allowedChats[chatID] = struct{}{}
@@ -137,31 +116,22 @@ func New(_ context.Context, r Retriever, a index.Answerer, cred BotCredentials, 
 	if len(allowedChats) == 0 && len(allowedUsers) == 0 {
 		opts.Logger.Warn("telegram bot: no allowlist configured, will not respond to anyone")
 	}
-	var queryAnswerer QueryAnswerer
-	if qa, ok := a.(QueryAnswerer); ok {
-		queryAnswerer = qa
-	}
-	var richQueryAnswerer RichQueryAnswerer
-	if rqa, ok := a.(RichQueryAnswerer); ok {
-		richQueryAnswerer = rqa
-	}
 
 	return &Bot{
-		cred:              cred,
-		silent:            opts.Silent,
-		retriever:         r,
-		answerer:          a,
-		queryAnswerer:     queryAnswerer,
-		richQueryAnswerer: richQueryAnswerer,
-		investigator:      opts.Investigator,
-		tp:                tp,
-		mp:                mp,
-		tracer:            tp.Tracer("github.com/go-faster/sisyphus/bot"),
-		logger:            opts.Logger,
-		metrics:           m,
-		allowedChats:      allowedChats,
-		allowedUsers:      allowedUsers,
-		answerTimeout:     opts.AnswerTimeout,
+		cred:          cred,
+		silent:        opts.Silent,
+		retriever:     r,
+		answerer:      a,
+		investigator:  opts.Investigator,
+		tp:            tp,
+		mp:            mp,
+		tracer:        tp.Tracer("github.com/go-faster/sisyphus/internal/bot"),
+		logger:        opts.Logger,
+		metrics:       m,
+		allowedChats:  allowedChats,
+		allowedUsers:  allowedUsers,
+		answerTimeout: opts.AnswerTimeout,
+		commands:      newCommandRegistry(),
 	}
 }
 
@@ -216,13 +186,14 @@ func (b *Bot) Run(ctx context.Context) error {
 	// as a follow-up message.
 	runCtx := ctx
 
+	b.commands = b.buildCommandRegistry(runCtx)
+
 	dispatcher.OnNewMessage(func(ctx context.Context, e tg.Entities, u *tg.UpdateNewMessage) error {
 		msg, ok := u.Message.(*tg.Message)
 		if !ok || msg.Out {
 			return nil
 		}
 
-		// Check allowlist before processing
 		chatID := peerChatID(msg.PeerID)
 		senderID := peerChatID(msg.FromID)
 		if !b.isAllowed(chatID, senderID) {
@@ -231,82 +202,178 @@ func (b *Bot) Run(ctx context.Context) error {
 			return nil
 		}
 
-		lg := zctx.From(ctx)
 		cmd, rest, ok := parseCommand(msg.Message)
 		if !ok {
 			return nil
 		}
-		if rest == "" && cmd != "start" && cmd != "help" {
+		c, ok := b.commands.lookup(cmd)
+		if !ok {
+			return nil
+		}
+		// Commands with a non-empty usage require arguments; silently ignore
+		// bare invocations (preserves the old switch's behavior).
+		if rest == "" && c.usage != "" {
 			return nil
 		}
 
-		switch cmd {
-		case "start":
-			lg.Info("start command", zap.Int64("user_id", senderID))
-			if !b.silent {
-				answer := fmt.Sprintf("Your ID: %d\n\n%s", senderID, helpText)
-				if _, err := sender.Reply(e, u).Text(ctx, answer); err != nil {
-					return errors.Wrap(err, "reply")
-				}
-			}
-		case "help":
-			lg.Info("help command")
-			if !b.silent {
-				if _, err := sender.Reply(e, u).Text(ctx, helpText); err != nil {
-					return errors.Wrap(err, "reply")
-				}
-			}
-		case "context":
-			lg.Info("context command", zap.String("query", rest))
-			answer, err := b.handle(ctx, rest)
-			if err != nil {
-				lg.Error("handle context", zap.Error(err))
-				answer = index.Answer{Text: "Sorry, something went wrong handling that request."}
-			}
-			lg.Info("replying", zap.String("answer", answer.Text), zap.Int("buttons", len(answer.Links)))
-			if !b.silent {
-				req := sender.Reply(e, u)
-				if kb := linksMarkup(answer.Links); kb != nil {
-					req = req.Markup(kb)
-				}
-				if _, err := req.StyledText(ctx, styling.Custom(func(eb *entity.Builder) error {
-					return renderMarkdown(eb, answer.Text)
-				})); err != nil {
-					lg.Warn("styled context reply failed, falling back to plain text", zap.Error(err))
-					if _, err := req.Text(ctx, answer.Text); err != nil {
-						return errors.Wrap(err, "reply fallback")
-					}
-				}
-			}
-		case "investigate":
-			lg.Info("investigate command", zap.String("description", rest))
-			if b.investigator == nil {
-				if !b.silent {
-					if _, err := sender.Reply(e, u).Text(ctx, "Investigation capability is not configured."); err != nil {
-						return errors.Wrap(err, "reply")
-					}
-				}
-				return nil
-			}
-			if !b.silent {
-				if _, err := sender.Reply(e, u).Text(ctx, "Investigating, this may take a few minutes. I'll follow up here."); err != nil {
-					return errors.Wrap(err, "ack reply")
-				}
-			}
-			go b.investigateAsync(runCtx, sender, e, u, rest)
-		default:
-			return nil
+		var s messageSender
+		if !b.silent {
+			s = newReplySender(sender, e, u)
+		} else {
+			s = silentSender{}
 		}
-		return nil
+		return c.handler(ctx, s, senderID, rest)
 	})
+
+	dispatcher.OnBotInlineQuery(func(ctx context.Context, _ tg.Entities, u *tg.UpdateBotInlineQuery) error {
+		if !b.isAllowed(0, u.UserID) {
+			zctx.From(ctx).Debug("bot: ignoring inline query from non-allowlisted user",
+				zap.Int64("user_id", u.UserID))
+			_, err := sender.Inline(u).SwitchPM("Start me to enable search", "start").Set(ctx)
+			return err
+		}
+
+		query := parseInlineQuery(u.Query)
+		if query == "" {
+			_, err := sender.Inline(u).Set(ctx)
+			return err
+		}
+
+		lg := zctx.From(ctx)
+		lg.Info("inline search", zap.String("query", query))
+
+		start := time.Now()
+		ctx, span := b.tracer.Start(ctx, "bot.inline_search",
+			trace.WithAttributes(attribute.Int("query.length", len(query))),
+		)
+		var (
+			resultCount int
+			rerr        error
+		)
+		defer func() {
+			span.SetAttributes(attribute.Int("results.count", resultCount))
+			if rerr != nil {
+				span.RecordError(rerr)
+				span.SetStatus(codes.Error, rerr.Error())
+			}
+			span.End()
+			if b.metrics != nil {
+				b.metrics.recordSearch(ctx, time.Since(start).Seconds(), resultCount, rerr, true)
+			}
+		}()
+
+		results, err := b.retrieveSearch(ctx, query, inlineResultLimit)
+		if err != nil {
+			rerr = err
+			lg.Error("inline search retrieve", zap.Error(err))
+			_, err := sender.Inline(u).Set(ctx)
+			return err
+		}
+		resultCount = len(results)
+
+		ib := sender.Inline(u)
+		ib.CacheTimeSeconds(300).Private(true)
+		s := newInlineSender(ib)
+		_, err = s.setInline(ctx, searchInlineResults(results)...)
+		if err != nil {
+			rerr = err
+			lg.Error("inline search set results", zap.Error(err))
+		}
+		return err
+	})
+
 	return client.Run(ctx, func(ctx context.Context) error {
 		if _, err := client.Auth().Bot(ctx, b.cred.BotToken); err != nil {
 			return errors.Wrap(err, "bot auth")
 		}
-		b.logger.Info("bot authenticated, serving /context, /investigate, /start, /help")
+		if err := b.commands.registerCommands(ctx, raw); err != nil {
+			b.logger.Warn("register bot commands failed", zap.Error(err))
+		}
+		b.logger.Info("bot authenticated, serving /context, /search, /investigate, /start, /help")
 		<-ctx.Done()
 		return ctx.Err()
 	})
+}
+
+func (b *Bot) sendTextReply(ctx context.Context, s messageSender, answer string) {
+	if _, err := s.sendText(ctx, answer); err != nil {
+		b.logger.Error("reply failed", zap.Error(err))
+	}
+}
+
+func (b *Bot) handleWithProgress(ctx context.Context, s messageSender, query string, handler func(context.Context, string) (index.Answer, error), kind string) {
+	lg := zctx.From(ctx)
+	msgID := b.sendPlaceholder(ctx, lg, s)
+	answer, err := handler(ctx, query)
+	if err != nil {
+		lg.Error("handle "+kind, zap.Error(err))
+		answer = index.Answer{Text: contextFailureMessage(err)}
+	}
+	if answer.Debug != nil {
+		answer.Text = strings.TrimSpace(answer.Text) + "\n\n" + debugMarkdown(answer.Debug)
+	}
+	lg.Info("replying", zap.String("answer", answer.Text), zap.Int("buttons", len(answer.Links)))
+	b.sendOrEditAnswer(ctx, s, answer, msgID, lg, kind)
+}
+
+func (b *Bot) sendPlaceholder(ctx context.Context, lg *zap.Logger, s messageSender) int {
+	if b.silent {
+		return 0
+	}
+	msgID, err := s.sendText(ctx, "🔍 Searching\u2026")
+	if err != nil {
+		lg.Warn("failed to send placeholder", zap.Error(err))
+	}
+	return msgID
+}
+
+func (b *Bot) sendOrEditAnswer(ctx context.Context, s messageSender, answer index.Answer, msgID int, lg *zap.Logger, kind string) {
+	if b.silent {
+		return
+	}
+	chunks := splitMarkdown(answer.Text, telegramMessageLimit)
+	if len(chunks) == 0 {
+		chunks = []string{answer.Text}
+	}
+	kb := linksMarkup(answer.Links)
+
+	editOK := false
+	if msgID > 0 {
+		// Single-chunk answer: edit carries the buttons (the loop below won't
+		// run, so this is the only place to attach them). Multi-chunk: edit
+		// the first chunk plain; the loop sends the rest with buttons on last.
+		var editKB tg.ReplyMarkupClass
+		if len(chunks) == 1 {
+			editKB = kb
+		}
+		if err := s.editStyled(ctx, msgID, chunks[0], editKB); err == nil {
+			editOK = true
+			chunks = chunks[1:]
+		} else if tg.IsMessageNotModified(err) {
+			return
+		} else {
+			lg.Warn(kind+" edit failed, falling back to fresh replies", zap.Error(err))
+		}
+	}
+
+	if !editOK && msgID > 0 {
+		answer.Text = "\u21aa " + answer.Text
+		chunks = splitMarkdown(answer.Text, telegramMessageLimit)
+		if len(chunks) == 0 {
+			chunks = []string{answer.Text}
+		}
+	}
+
+	for i, chunk := range chunks {
+		var chunkKB tg.ReplyMarkupClass
+		if kb != nil && i == len(chunks)-1 {
+			chunkKB = kb
+		}
+		if err := s.sendStyled(ctx, chunk, chunkKB); err != nil {
+			lg.Error(kind+" send failed", zap.Error(err), zap.Int("chunk", i))
+			return
+		}
+	}
 }
 
 func (b *Bot) handle(ctx context.Context, query string) (index.Answer, error) {
@@ -334,78 +401,135 @@ func (b *Bot) handle(ctx context.Context, query string) (index.Answer, error) {
 		}
 		span.End()
 	}()
-	// Prefer the structured (rich) path so we can surface source-link buttons.
-	if b.richQueryAnswerer != nil {
-		answer, err := b.richQueryAnswerer.AnswerQueryRich(ctx, index.Query{Text: query, Limit: 12}, nil)
-		if err != nil {
-			rerr = errors.Wrap(err, "answer query")
-			return index.Answer{}, rerr
-		}
-		return answer, nil
-	}
-	if b.queryAnswerer != nil {
-		answer, err := b.queryAnswerer.AnswerQuery(ctx, index.Query{Text: query, Limit: 12}, nil)
-		if err != nil {
-			rerr = errors.Wrap(err, "answer query")
-			return index.Answer{}, rerr
-		}
-		return index.Answer{Text: answer}, nil
-	}
-	if b.retriever == nil || b.answerer == nil {
+	if b.answerer == nil {
 		rerr = errors.New("bot answerer is not configured")
 		return index.Answer{}, rerr
 	}
 
-	results, err := b.retriever.Retrieve(ctx, index.Query{Text: query, Limit: 12})
+	q := index.Query{Text: query, Limit: 12}
+	var results []index.Result
+	if b.retriever != nil {
+		var err error
+		results, err = b.retriever.Retrieve(ctx, q)
+		if err != nil {
+			rerr = errors.Wrap(err, "retrieve")
+			return index.Answer{}, rerr
+		}
+		resultCount = len(results)
+	}
+	answer, err := b.answerer.Answer(ctx, q, results)
+	if err != nil {
+		rerr = errors.Wrap(err, "answer")
+		return index.Answer{}, rerr
+	}
+	return answer, nil
+}
+
+// handleSearch runs raw retrieval (no LLM/answerer) and formats results for
+// the /search command.
+func (b *Bot) handleSearch(ctx context.Context, query string) (index.Answer, error) {
+	start := time.Now()
+	ctx, span := b.tracer.Start(ctx, "bot.search",
+		trace.WithAttributes(attribute.Int("query.length", len(query))),
+	)
+	if b.answerTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, b.answerTimeout)
+		defer cancel()
+	}
+	var (
+		resultCount int
+		rerr        error
+	)
+	defer func() {
+		if b.metrics != nil {
+			b.metrics.recordSearch(ctx, time.Since(start).Seconds(), resultCount, rerr, false)
+		}
+		span.SetAttributes(attribute.Int("results.count", resultCount))
+		if rerr != nil {
+			span.RecordError(rerr)
+			span.SetStatus(codes.Error, rerr.Error())
+		}
+		span.End()
+	}()
+
+	results, err := b.retrieveSearch(ctx, query, searchResultLimit)
 	if err != nil {
 		rerr = errors.Wrap(err, "retrieve")
 		return index.Answer{}, rerr
 	}
 	resultCount = len(results)
-	answer, err := b.answerer.Answer(ctx, query, results)
-	if err != nil {
-		rerr = errors.Wrap(err, "answer")
-		return index.Answer{}, rerr
-	}
-	return index.Answer{Text: answer}, nil
+
+	return index.Answer{
+		Text: searchResultsText(results),
+	}, nil
 }
 
 // investigateAsync runs an investigation in the background and delivers the
-// report as one or more follow-up replies (Telegram caps a single message at
-// telegramMessageLimit characters), so the caller (the OnNewMessage dispatch
-// loop) never blocks on it.
-func (b *Bot) investigateAsync(ctx context.Context, sender *message.Sender, e tg.Entities, u *tg.UpdateNewMessage, description string) {
+// report as one or more follow-up replies, so the caller (the OnNewMessage
+// dispatch loop) never blocks on it.
+func (b *Bot) investigateAsync(ctx context.Context, s messageSender, description string) {
 	report, err := b.handleInvestigate(ctx, description)
 	if err != nil {
 		b.logger.Error("handle investigate", zap.Error(err))
 		if !b.silent {
-			if _, err := sender.Reply(e, u).Text(ctx, "Sorry, investigation failed."); err != nil {
-				b.logger.Error("investigate follow-up reply failed", zap.Error(err))
-			}
+			b.sendTextReply(ctx, s, investigateFailureMessage(err))
 		}
 		return
 	}
 	b.logger.Info("investigate reply", zap.String("verdict", string(report.Verdict)))
+	b.sendAnswer(ctx, s, index.Answer{Text: reportMarkdown(report), Links: report.Links}, b.logger, "investigate")
+}
+
+// sendAnswer delivers answer as one or more replies, splitting the Markdown
+// text on paragraph boundaries so no single message exceeds
+// telegramMessageLimit (Telegram rejects/mangles oversized messages
+// otherwise). Link buttons are attached to the final chunk only, so they sit
+// at the bottom of the whole reply. kind labels log lines (e.g. "context",
+// "search", "investigate").
+func (b *Bot) sendAnswer(ctx context.Context, s messageSender, answer index.Answer, lg *zap.Logger, kind string) {
 	if b.silent {
 		return
 	}
-
-	chunks := splitMarkdown(reportMarkdown(report), telegramMessageLimit)
-	kb := linksMarkup(report.Links)
+	chunks := splitMarkdown(answer.Text, telegramMessageLimit)
+	if len(chunks) == 0 {
+		chunks = []string{answer.Text}
+	}
+	kb := linksMarkup(answer.Links)
 	for i, chunk := range chunks {
-		md := chunk
-		req := sender.Reply(e, u)
-		// Attach the link buttons to the final message so they sit at the
-		// bottom of the whole report.
+		var chunkKB tg.ReplyMarkupClass
 		if kb != nil && i == len(chunks)-1 {
-			req = req.Markup(kb)
+			chunkKB = kb
 		}
-		if _, err := req.StyledText(ctx, styling.Custom(func(eb *entity.Builder) error {
-			return renderMarkdown(eb, md)
-		})); err != nil {
-			b.logger.Error("investigate follow-up reply failed", zap.Error(err))
+		if err := s.sendStyled(ctx, chunk, chunkKB); err != nil {
+			lg.Error(kind+" send failed", zap.Error(err), zap.Int("chunk", i))
 			return
 		}
+	}
+}
+
+// contextFailureMessage picks a user-facing message for a failed /context
+// (or /search) request, distinguishing a timeout from other failures instead
+// of one generic "something went wrong" for every cause.
+func contextFailureMessage(err error) string {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "Sorry, that took too long to answer. Try a narrower question."
+	}
+	return "Sorry, something went wrong handling that request."
+}
+
+// investigateFailureMessage picks a user-facing message for a failed
+// /investigate request, distinguishing a timeout and iteration exhaustion
+// from other failures instead of one generic "investigation failed" for
+// every cause.
+func investigateFailureMessage(err error) string {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "Sorry, the investigation timed out before reaching a conclusion."
+	case errors.Is(err, agent.ErrMaxIterations):
+		return "Sorry, the investigation used too many steps without reaching a conclusion. Try narrowing the question."
+	default:
+		return "Sorry, investigation failed."
 	}
 }
 

@@ -63,7 +63,7 @@ func New(apiKey string, opts Options) *Client {
 	m, _ := newLLMMetrics(opts.MeterProvider)
 	return &Client{
 		oc:     openai.NewClient(ropts...),
-		tracer: opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/llm/openrouter"),
+		tracer: opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/llm/openrouter"),
 		m:      m,
 	}
 }

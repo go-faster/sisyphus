@@ -16,6 +16,8 @@ type Tx struct {
 	Chunk *ChunkClient
 	// Document is the client for interacting with the Document builders.
 	Document *DocumentClient
+	// InvestigationJob is the client for interacting with the InvestigationJob builders.
+	InvestigationJob *InvestigationJobClient
 	// SupportRequest is the client for interacting with the SupportRequest builders.
 	SupportRequest *SupportRequestClient
 	// SyncState is the client for interacting with the SyncState builders.
@@ -155,6 +157,7 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.Chunk = NewChunkClient(tx.config)
 	tx.Document = NewDocumentClient(tx.config)
+	tx.InvestigationJob = NewInvestigationJobClient(tx.config)
 	tx.SupportRequest = NewSupportRequestClient(tx.config)
 	tx.SyncState = NewSyncStateClient(tx.config)
 	tx.TelegramMessage = NewTelegramMessageClient(tx.config)

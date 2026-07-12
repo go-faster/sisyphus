@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/url"
 	"strings"
 	"time"
@@ -188,10 +189,9 @@ type Summarizer interface {
 	Summarize(ctx context.Context, prompt string) (string, error)
 }
 
-// Answerer constructs a final answer from retrieved context (plan §14). Deferred,
-// stubbed for now.
+// Answerer constructs a final answer from retrieved context (plan §14).
 type Answerer interface {
-	Answer(ctx context.Context, question string, results []Result) (string, error)
+	Answer(ctx context.Context, q Query, results []Result) (Answer, error)
 }
 
 // Link is a labeled URL surfaced as an actionable link (e.g. a Telegram inline
@@ -217,19 +217,27 @@ func (l Link) Valid() bool {
 	return u.Scheme == "http" || u.Scheme == "https"
 }
 
-// Answer is a structured answer: prose plus optional actionable links. The
-// plain Answerer.Answer returns only Text; a RichAnswerer additionally returns
-// Links so callers can render them (e.g. as Telegram inline buttons).
+// Answer is a structured answer: prose plus optional actionable links.
 type Answer struct {
 	Text  string
 	Links []Link
+	// Debug carries agent-loop diagnostics (trace ID, duration, tool calls,
+	// token usage). Only populated when the operator has opted into debug
+	// info via config (context.show_debug_info / agent.show_debug_info);
+	// nil otherwise, so the JSON/wire shape is unaffected when disabled.
+	Debug *Debug
 }
 
-// RichAnswerer optionally produces a structured Answer (prose plus actionable
-// links) instead of plain text. It is an opt-in extension of Answerer detected
-// via type assertion; callers fall back to Answerer.Answer when it is absent.
-type RichAnswerer interface {
-	AnswerRich(ctx context.Context, question string, results []Result) (Answer, error)
+// Debug carries agent-loop diagnostics for an answer/report, surfaced only
+// when the operator has opted into it via a config-level toggle. It's meant
+// for debugging, not end-user consumption.
+type Debug struct {
+	TraceID          string `json:"trace_id,omitempty"`
+	DurationMS       int64  `json:"duration_ms,omitempty"`
+	Iterations       int    `json:"iterations,omitempty"`
+	ToolCalls        int    `json:"tool_calls,omitempty"`
+	PromptTokens     int64  `json:"prompt_tokens,omitempty"`
+	CompletionTokens int64  `json:"completion_tokens,omitempty"`
 }
 
 // Hash returns the hex sha256 of normalized text. Normalization trims surrounding
@@ -243,3 +251,53 @@ func Hash(text string) string {
 
 // NewID returns a new random UUID. Centralized so tests can swap it if needed.
 func NewID() uuid.UUID { return uuid.New() }
+
+// ContentRequest identifies a file to retrieve.
+type ContentRequest struct {
+	Repo   string // repo name (matches metadata "repo")
+	Path   string // repo-relative path (matches metadata "path")
+	Branch string // optional branch ref (matches metadata "branch")
+	Start  int    // optional 1-indexed start line (inclusive)
+	End    int    // optional 1-indexed end line (inclusive)
+}
+
+// ContentResponse holds the retrieved file content.
+type ContentResponse struct {
+	Content string
+	Source  string // "local_clone" or "database"
+	Found   bool
+}
+
+// ContentResolver retrieves actual file content from source repositories.
+type ContentResolver interface {
+	ResolveContent(ctx context.Context, req ContentRequest) (ContentResponse, error)
+}
+
+var (
+	// ErrURLNotAllowed reports that a URL did not match any configured fetch allowlist site.
+	ErrURLNotAllowed = errors.New("url not in allowlist")
+	// ErrFetchMethodNotAllowed reports that a URL matched a site, but the method is not allowed there.
+	ErrFetchMethodNotAllowed = errors.New("method not allowed for site")
+)
+
+// FetchRequest identifies a URL to fetch.
+type FetchRequest struct {
+	URL     string
+	Method  string
+	Body    string
+	Headers map[string]string
+}
+
+// FetchResponse holds the result of a whitelisted HTTP fetch.
+type FetchResponse struct {
+	StatusCode int
+	Headers    map[string]string
+	Body       string
+	FromSite   string
+	Truncated  bool
+}
+
+// URLFetcher performs HTTP requests against operator-approved sites.
+type URLFetcher interface {
+	Fetch(ctx context.Context, req FetchRequest) (FetchResponse, error)
+}

@@ -2,9 +2,11 @@
 package config
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/yaml"
@@ -34,13 +36,28 @@ type Config struct {
 	OpenRouter OpenRouter
 	Telegram   Telegram
 	Proxies    ProxyConfig
+	Fetch      FetchConfig
 
-	Agent AgentConfig
+	Agent   AgentConfig
+	Context ContextConfig
+	Ingest  IngestConfig
 
 	// Warnings holds deprecation warnings collected while resolving the
 	// config (e.g. use of a field superseded by a per-service section). The
 	// caller should log these.
 	Warnings []string
+}
+
+// IngestConfig configures ssingest's `serve` daemon mode: the address its
+// health/webhook HTTP server listens on, and poll intervals for the sources
+// that have no dedicated config section of their own to hold one (GitLab and
+// Jira already carry their own Poll.IntervalSeconds/Webhook fields, reused
+// as-is by `serve`).
+type IngestConfig struct {
+	Addr                        string
+	GitPollIntervalSeconds      int
+	FilesPollIntervalSeconds    int
+	TelegramPollIntervalSeconds int
 }
 
 // MCPConfig configures the ssmcp service: the address its Streamable HTTP
@@ -60,6 +77,29 @@ type AgentConfig struct {
 	RequestTimeoutSeconds int
 	GatewayURL            string
 	MaxReportChars        int
+	MaxConcurrent         int
+	MaxBodyBytes          int64
+	// ShowDebugInfo attaches agent-loop diagnostics (trace ID, duration,
+	// tool calls, token usage) to Report.Debug, for operators debugging
+	// /investigate. Off by default.
+	ShowDebugInfo bool
+}
+
+// ContextConfig holds configuration for the agentic /context workflow.
+type ContextConfig struct {
+	Agentic        bool
+	MaxIterations  int
+	TimeoutSeconds int
+	MaxAnswerChars int
+	SSHMCPURL      string
+	SSHMCPHeaders  map[string]string
+	SandboxMachine string
+	PreSearch      bool
+	PreSearchLimit int
+	// ShowDebugInfo attaches agent-loop diagnostics (trace ID, duration,
+	// tool calls, token usage) to Answer.Debug, for operators debugging
+	// /context. Off by default.
+	ShowDebugInfo bool
 }
 
 // JiraConfig holds Jira REST API configuration for ingestion.
@@ -129,16 +169,27 @@ type TelegramChat struct {
 
 type fileConfig struct {
 	// Deprecated: use api.http_addr.
-	HTTPAddr    string `yaml:"http_addr"`
-	DatabaseDSN Secret `yaml:"database_dsn"`
+	HTTPAddr string `yaml:"http_addr"`
+	// Deprecated: use database.dsn.
+	DatabaseDSN Secret             `yaml:"database_dsn"`
+	Database    fileDatabaseConfig `yaml:"database"`
 
-	QdrantAddr       string `yaml:"qdrant_addr"`
-	QdrantCollection string `yaml:"qdrant_collection"`
+	// Deprecated: use qdrant.addr.
+	QdrantAddr string `yaml:"qdrant_addr"`
+	// Deprecated: use qdrant.collection.
+	QdrantCollection string           `yaml:"qdrant_collection"`
+	Qdrant           fileQdrantConfig `yaml:"qdrant"`
 
-	OllamaURL     string `yaml:"ollama_url"`
+	// Deprecated: use ollama.url.
+	OllamaURL string           `yaml:"ollama_url"`
+	Ollama    fileOllamaConfig `yaml:"ollama"`
+	// Deprecated: use embed.provider.
 	EmbedProvider string `yaml:"embed_provider"`
-	EmbedModel    string `yaml:"embed_model"`
-	EmbedDim      int    `yaml:"embed_dim"`
+	// Deprecated: use embed.model.
+	EmbedModel string `yaml:"embed_model"`
+	// Deprecated: use embed.dim.
+	EmbedDim int             `yaml:"embed_dim"`
+	Embed    fileEmbedConfig `yaml:"embed"`
 
 	Git          fileGitConfig       `yaml:"git"`
 	GitLab       fileGitLabConfig    `yaml:"gitlab"`
@@ -151,18 +202,59 @@ type fileConfig struct {
 	OpenRouter fileOpenRouter  `yaml:"openrouter"`
 	Telegram   fileTelegram    `yaml:"telegram"`
 	Proxies    fileProxyConfig `yaml:"proxies"`
+	Fetch      fileFetchConfig `yaml:"fetch"`
 
 	// Deprecated: use mcp.addr.
 	MCPAddr string `yaml:"mcp_addr"`
 	// Deprecated: use mcp.auth_token.
 	MCPAuthToken Secret `yaml:"mcp_auth_token"`
 
-	Agent fileAgentConfig `yaml:"agent"`
+	Agent   fileAgentConfig   `yaml:"agent"`
+	Context fileContextConfig `yaml:"context"`
+	Ingest  fileIngestConfig  `yaml:"ingest"`
+}
+
+type fileIngestConfig struct {
+	Addr string `yaml:"addr"`
+	Git  struct {
+		Poll struct {
+			IntervalSeconds int `yaml:"interval_seconds"`
+		} `yaml:"poll"`
+	} `yaml:"git"`
+	Files struct {
+		Poll struct {
+			IntervalSeconds int `yaml:"interval_seconds"`
+		} `yaml:"poll"`
+	} `yaml:"files"`
+	Telegram struct {
+		Poll struct {
+			IntervalSeconds int `yaml:"interval_seconds"`
+		} `yaml:"poll"`
+	} `yaml:"telegram"`
 }
 
 type fileMCPConfig struct {
 	Addr      string `yaml:"addr"`
 	AuthToken Secret `yaml:"auth_token"`
+}
+
+type fileDatabaseConfig struct {
+	DSN Secret `yaml:"dsn"`
+}
+
+type fileQdrantConfig struct {
+	Addr       string `yaml:"addr"`
+	Collection string `yaml:"collection"`
+}
+
+type fileOllamaConfig struct {
+	URL string `yaml:"url"`
+}
+
+type fileEmbedConfig struct {
+	Provider string `yaml:"provider"`
+	Model    string `yaml:"model"`
+	Dim      int    `yaml:"dim"`
 }
 
 type fileAgentConfig struct {
@@ -174,10 +266,59 @@ type fileAgentConfig struct {
 	RequestTimeoutSeconds int    `yaml:"request_timeout_seconds"`
 	GatewayURL            string `yaml:"gateway_url"`
 	MaxReportChars        int    `yaml:"max_report_chars"`
+	MaxConcurrent         int    `yaml:"max_concurrent"`
+	MaxBodyBytes          int64  `yaml:"max_body_bytes"`
+	ShowDebugInfo         bool   `yaml:"show_debug_info"`
+}
+
+type fileContextConfig struct {
+	Agentic        bool              `yaml:"agentic"`
+	MaxIterations  int               `yaml:"max_iterations"`
+	TimeoutSeconds int               `yaml:"timeout_seconds"`
+	MaxAnswerChars int               `yaml:"max_answer_chars"`
+	SSHMCPURL      string            `yaml:"ssh_mcp_url"`
+	SSHMCPHeaders  map[string]string `yaml:"ssh_mcp_headers"`
+	SandboxMachine string            `yaml:"sandbox_machine"`
+	PreSearch      bool              `yaml:"pre_search"`
+	PreSearchLimit int               `yaml:"pre_search_limit"`
+	ShowDebugInfo  bool              `yaml:"show_debug_info"`
+}
+
+// FetchConfig configures the URL fetcher allowlist.
+type FetchConfig struct {
+	Sites []FetchSite `yaml:"sites"`
+}
+
+// FetchSite defines one whitelisted site the agent may fetch URLs from.
+type FetchSite struct {
+	Name        string           `yaml:"name"`
+	URLPatterns []string         `yaml:"url_patterns"`
+	Methods     []string         `yaml:"methods"`
+	Proxy       string           `yaml:"proxy"`
+	Credentials FetchCredentials `yaml:"credentials"`
+	MaxBytes    int64            `yaml:"max_bytes"`
+	Timeout     time.Duration    `yaml:"timeout"`
+}
+
+// FetchCredentials specifies how to authenticate to a whitelisted site.
+type FetchCredentials struct {
+	Type        string `yaml:"type"`
+	TokenEnv    string `yaml:"token_env"`
+	Header      string `yaml:"header"`
+	Username    string `yaml:"username"`
+	PasswordEnv string `yaml:"password_env"`
+
+	Token    string `yaml:"-"`
+	Password string `yaml:"-"`
+}
+
+type fileFetchConfig struct {
+	Sites []FetchSite `yaml:"sites"`
 }
 
 // ProxyConfig configures per-client HTTP proxies.
 type ProxyConfig struct {
+	Fetch      string
 	Git        string
 	GitLab     string
 	Jira       string
@@ -186,6 +327,7 @@ type ProxyConfig struct {
 }
 
 type fileProxyConfig struct {
+	Fetch      Secret `yaml:"fetch"`
 	Git        Secret `yaml:"git"`
 	GitLab     Secret `yaml:"gitlab"`
 	Jira       Secret `yaml:"jira"`
@@ -382,7 +524,7 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if c.DatabaseDSN == "" {
-		return Config{}, errors.New("database_dsn is required")
+		return Config{}, errors.New("database.dsn is required")
 	}
 	return c, nil
 }
@@ -391,19 +533,26 @@ func Load() (Config, error) {
 // resolve() can tell a deprecated top-level field apart from a per-service
 // section the user actually configured.
 const (
-	defaultHTTPAddr = ":8080"
-	defaultMCPAddr  = ":8081"
-	defaultBotAddr  = ":8083"
+	defaultHTTPAddr   = ":8080"
+	defaultMCPAddr    = ":8081"
+	defaultBotAddr    = ":8083"
+	defaultIngestAddr = ":8084"
 )
 
 func defaultConfig() fileConfig {
 	return fileConfig{
-		QdrantAddr:       "localhost:6334",
-		QdrantCollection: "corp_chunks",
-		OllamaURL:        "http://localhost:11434",
-		EmbedProvider:    "ollama",
-		EmbedModel:       "bge-m3",
-		EmbedDim:         1024,
+		Qdrant: fileQdrantConfig{
+			Addr:       "localhost:6334",
+			Collection: "corp_chunks",
+		},
+		Ollama: fileOllamaConfig{
+			URL: "http://localhost:11434",
+		},
+		Embed: fileEmbedConfig{
+			Provider: "ollama",
+			Model:    "bge-m3",
+			Dim:      1024,
+		},
 		API: fileAPIConfig{
 			HTTPAddr: defaultHTTPAddr,
 			BaseURL:  "http://localhost:8080",
@@ -423,6 +572,20 @@ func defaultConfig() fileConfig {
 			MaxToolIterations:     8,
 			RequestTimeoutSeconds: 180,
 			MaxReportChars:        1500,
+			MaxConcurrent:         4,
+			MaxBodyBytes:          64 * 1024,
+		},
+		Ingest: fileIngestConfig{
+			Addr: defaultIngestAddr,
+		},
+		Context: fileContextConfig{
+			Agentic:        false,
+			MaxIterations:  6,
+			TimeoutSeconds: 180,
+			MaxAnswerChars: 2000,
+			SandboxMachine: "sandbox",
+			PreSearch:      true,
+			PreSearchLimit: 12,
 		},
 	}
 }
@@ -463,10 +626,38 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-
-	dsn, err := c.DatabaseDSN.Resolve(baseDir)
+	qdrantAddr, err := resolveDeprecatedAddr(&warnings, "qdrant_addr", c.QdrantAddr, "qdrant.addr", c.Qdrant.Addr, "localhost:6334")
 	if err != nil {
-		return Config{}, errors.Wrap(err, "database_dsn")
+		return Config{}, err
+	}
+	qdrantCollection, err := resolveDeprecatedAddr(&warnings, "qdrant_collection", c.QdrantCollection, "qdrant.collection", c.Qdrant.Collection, "corp_chunks")
+	if err != nil {
+		return Config{}, err
+	}
+	ollamaURL, err := resolveDeprecatedAddr(&warnings, "ollama_url", c.OllamaURL, "ollama.url", c.Ollama.URL, "http://localhost:11434")
+	if err != nil {
+		return Config{}, err
+	}
+	embedProvider, err := resolveDeprecatedAddr(&warnings, "embed_provider", c.EmbedProvider, "embed.provider", c.Embed.Provider, "ollama")
+	if err != nil {
+		return Config{}, err
+	}
+	embedModel, err := resolveDeprecatedAddr(&warnings, "embed_model", c.EmbedModel, "embed.model", c.Embed.Model, "bge-m3")
+	if err != nil {
+		return Config{}, err
+	}
+	embedDim, err := resolveDeprecatedInt(&warnings, "embed_dim", c.EmbedDim, "embed.dim", c.Embed.Dim, 1024)
+	if err != nil {
+		return Config{}, err
+	}
+	dsnSecret, err := resolveDeprecatedSecret(&warnings, "database_dsn", c.DatabaseDSN, "database.dsn", c.Database.DSN)
+	if err != nil {
+		return Config{}, err
+	}
+
+	dsn, err := dsnSecret.Resolve(baseDir)
+	if err != nil {
+		return Config{}, errors.Wrap(err, "database dsn")
 	}
 	apiAuthToken, err := c.API.AuthToken.Resolve(baseDir)
 	if err != nil {
@@ -520,6 +711,10 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	fetchConfig, err := c.Fetch.resolve(proxies, &warnings)
+	if err != nil {
+		return Config{}, err
+	}
 	mcpAuthToken, err := mcpAuthTokenSecret.Resolve(baseDir)
 	if err != nil {
 		return Config{}, errors.Wrap(err, "mcp auth_token")
@@ -531,12 +726,12 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 
 	return Config{
 		DatabaseDSN:      dsn,
-		QdrantAddr:       c.QdrantAddr,
-		QdrantCollection: c.QdrantCollection,
-		OllamaURL:        c.OllamaURL,
-		EmbedProvider:    c.EmbedProvider,
-		EmbedModel:       c.EmbedModel,
-		EmbedDim:         c.EmbedDim,
+		QdrantAddr:       qdrantAddr,
+		QdrantCollection: qdrantCollection,
+		OllamaURL:        ollamaURL,
+		EmbedProvider:    embedProvider,
+		EmbedModel:       embedModel,
+		EmbedDim:         embedDim,
 		Git: GitConfig{
 			WorkDir: c.Git.WorkDir,
 			Token:   gitToken,
@@ -592,6 +787,7 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			AllowedUserIDs: c.Telegram.AllowedUserIDs,
 		},
 		Proxies:  proxies,
+		Fetch:    fetchConfig,
 		Warnings: warnings,
 		Agent: AgentConfig{
 			Addr:                  c.Agent.Addr,
@@ -602,8 +798,157 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			RequestTimeoutSeconds: c.Agent.RequestTimeoutSeconds,
 			GatewayURL:            c.Agent.GatewayURL,
 			MaxReportChars:        c.Agent.MaxReportChars,
+			MaxConcurrent:         c.Agent.MaxConcurrent,
+			MaxBodyBytes:          c.Agent.MaxBodyBytes,
+			ShowDebugInfo:         c.Agent.ShowDebugInfo,
+		},
+		Context: ContextConfig{
+			Agentic:        c.Context.Agentic,
+			MaxIterations:  c.Context.MaxIterations,
+			TimeoutSeconds: c.Context.TimeoutSeconds,
+			MaxAnswerChars: c.Context.MaxAnswerChars,
+			SSHMCPURL:      c.Context.SSHMCPURL,
+			SSHMCPHeaders:  c.Context.SSHMCPHeaders,
+			SandboxMachine: c.Context.SandboxMachine,
+			PreSearch:      c.Context.PreSearch,
+			PreSearchLimit: c.Context.PreSearchLimit,
+			ShowDebugInfo:  c.Context.ShowDebugInfo,
+		},
+		Ingest: IngestConfig{
+			Addr:                        c.Ingest.Addr,
+			GitPollIntervalSeconds:      c.Ingest.Git.Poll.IntervalSeconds,
+			FilesPollIntervalSeconds:    c.Ingest.Files.Poll.IntervalSeconds,
+			TelegramPollIntervalSeconds: c.Ingest.Telegram.Poll.IntervalSeconds,
 		},
 	}, nil
+}
+
+func (c fileFetchConfig) resolve(proxies ProxyConfig, warnings *[]string) (FetchConfig, error) {
+	seen := make(map[string]struct{}, len(c.Sites))
+	sites := make([]FetchSite, 0, len(c.Sites))
+	for _, site := range c.Sites {
+		name := strings.TrimSpace(site.Name)
+		if name == "" {
+			return FetchConfig{}, errors.New("fetch site name is required")
+		}
+		if _, ok := seen[name]; ok {
+			return FetchConfig{}, errors.Errorf("duplicate fetch site %q", name)
+		}
+		seen[name] = struct{}{}
+		site.Name = name
+
+		if len(site.URLPatterns) == 0 {
+			return FetchConfig{}, errors.Errorf("fetch site %q needs at least one url_patterns entry", name)
+		}
+		for _, pattern := range site.URLPatterns {
+			if !strings.HasPrefix(pattern, "https://") && !strings.HasPrefix(pattern, "http://") {
+				return FetchConfig{}, errors.Errorf("fetch site %q pattern %q must start with http:// or https://", name, pattern)
+			}
+		}
+		methods, warns, err := normalizeFetchMethods(site.Methods)
+		if err != nil {
+			return FetchConfig{}, errors.Wrap(err, "fetch site "+name)
+		}
+		for _, warn := range warns {
+			*warnings = append(*warnings, "fetch site "+name+" allows write method "+warn+"; prefer read-only methods unless explicitly required")
+		}
+		site.Methods = methods
+
+		if site.Proxy != "" && fetchProxyURL(proxies, site.Proxy) == "" {
+			return FetchConfig{}, errors.Errorf("fetch site %q references unknown or empty proxy %q", name, site.Proxy)
+		}
+		creds, err := resolveFetchCredentials(site.Credentials)
+		if err != nil {
+			return FetchConfig{}, errors.Wrap(err, "fetch site "+name+" credentials")
+		}
+		site.Credentials = creds
+		sites = append(sites, site)
+	}
+	return FetchConfig{Sites: sites}, nil
+}
+
+func normalizeFetchMethods(methods []string) (normalized, methodWarnings []string, err error) {
+	if len(methods) == 0 {
+		return []string{http.MethodGet}, nil, nil
+	}
+	valid := map[string]struct{}{
+		http.MethodGet: {}, http.MethodHead: {}, http.MethodPost: {},
+		http.MethodPut: {}, http.MethodPatch: {}, http.MethodDelete: {},
+	}
+	seen := make(map[string]struct{}, len(methods))
+	out := make([]string, 0, len(methods))
+	for _, method := range methods {
+		method = strings.ToUpper(strings.TrimSpace(method))
+		if method == "" {
+			continue
+		}
+		if _, ok := valid[method]; !ok {
+			return nil, nil, errors.Errorf("unsupported method %q", method)
+		}
+		if _, ok := seen[method]; ok {
+			continue
+		}
+		seen[method] = struct{}{}
+		out = append(out, method)
+		switch method {
+		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+			methodWarnings = append(methodWarnings, method)
+		}
+	}
+	if len(out) == 0 {
+		out = []string{http.MethodGet}
+	}
+	return out, methodWarnings, nil
+}
+
+func resolveFetchCredentials(creds FetchCredentials) (FetchCredentials, error) {
+	creds.Type = strings.ToLower(strings.TrimSpace(creds.Type))
+	if creds.Type == "" {
+		creds.Type = "none"
+	}
+	switch creds.Type {
+	case "none":
+		return creds, nil
+	case "bearer":
+		if creds.TokenEnv == "" {
+			return FetchCredentials{}, errors.New("token_env is required for bearer credentials")
+		}
+		creds.Token = os.Getenv(creds.TokenEnv)
+		return creds, nil
+	case "header":
+		if creds.Header == "" || creds.TokenEnv == "" {
+			return FetchCredentials{}, errors.New("header and token_env are required for header credentials")
+		}
+		creds.Token = os.Getenv(creds.TokenEnv)
+		return creds, nil
+	case "basic":
+		if creds.Username == "" || creds.PasswordEnv == "" {
+			return FetchCredentials{}, errors.New("username and password_env are required for basic credentials")
+		}
+		creds.Password = os.Getenv(creds.PasswordEnv)
+		return creds, nil
+	default:
+		return FetchCredentials{}, errors.Errorf("unsupported type %q", creds.Type)
+	}
+}
+
+func fetchProxyURL(proxies ProxyConfig, name string) string {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "fetch":
+		return proxies.Fetch
+	case "git":
+		return proxies.Git
+	case "gitlab":
+		return proxies.GitLab
+	case "jira":
+		return proxies.Jira
+	case "ollama":
+		return proxies.Ollama
+	case "openrouter":
+		return proxies.OpenRouter
+	default:
+		return ""
+	}
 }
 
 // resolveDeprecatedAddr merges a deprecated top-level address field with its
@@ -636,7 +981,22 @@ func resolveDeprecatedSecret(warnings *[]string, deprecatedKey string, deprecate
 	return deprecated, nil
 }
 
+func resolveDeprecatedInt(warnings *[]string, deprecatedKey string, deprecated int, newKey string, current, defaultValue int) (int, error) {
+	if deprecated == 0 {
+		return current, nil
+	}
+	if current != defaultValue {
+		return 0, errors.Errorf("%s is deprecated in favor of %s; set only %s", deprecatedKey, newKey, newKey)
+	}
+	*warnings = append(*warnings, deprecatedKey+" is deprecated, use "+newKey+" instead")
+	return deprecated, nil
+}
+
 func (c fileProxyConfig) resolve(baseDir string) (ProxyConfig, error) {
+	fetch, err := c.Fetch.Resolve(baseDir)
+	if err != nil {
+		return ProxyConfig{}, errors.Wrap(err, "proxy fetch")
+	}
 	git, err := c.Git.Resolve(baseDir)
 	if err != nil {
 		return ProxyConfig{}, errors.Wrap(err, "proxy git")
@@ -658,6 +1018,7 @@ func (c fileProxyConfig) resolve(baseDir string) (ProxyConfig, error) {
 		return ProxyConfig{}, errors.Wrap(err, "proxy openrouter")
 	}
 	return ProxyConfig{
+		Fetch:      fetch,
 		Git:        git,
 		GitLab:     gitlab,
 		Jira:       jira,

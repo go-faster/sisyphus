@@ -58,6 +58,44 @@ paths:
                 $ref: "#/components/schemas/ContextResponse"
         default:
           $ref: "#/components/responses/Error"
+  /file:
+    post:
+      operationId: getFile
+      summary: Retrieve actual file content from a source repository.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FileRequest"
+      responses:
+        "200":
+          description: File content (full or line range).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /fetch:
+    post:
+      operationId: fetchURL
+      summary: Fetch a URL from an operator-approved site.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FetchURLRequest"
+      responses:
+        "200":
+          description: Fetch result (body + status + metadata).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FetchURLResponse"
+        default:
+          $ref: "#/components/responses/Error"
 components:
   securitySchemes:
     bearerAuth:
@@ -206,6 +244,31 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SearchResult"
+        debug:
+          description: |
+            Agent-loop diagnostics (trace ID, duration, tool calls, token
+            usage), present only when the operator has opted into
+            context.show_debug_info.
+          $ref: "#/components/schemas/Debug"
+    Debug:
+      type: object
+      description: Agent-loop diagnostics, for debugging only.
+      properties:
+        trace_id:
+          type: string
+        duration_ms:
+          type: integer
+          format: int64
+        iterations:
+          type: integer
+        tool_calls:
+          type: integer
+        prompt_tokens:
+          type: integer
+          format: int64
+        completion_tokens:
+          type: integer
+          format: int64
     Link:
       type: object
       required: [text, url]
@@ -216,3 +279,69 @@ components:
         url:
           type: string
           description: Absolute http(s) URL.
+    FileRequest:
+      type: object
+      required: [repo, path]
+      properties:
+        repo:
+          type: string
+          description: Repository name as recorded in chunk metadata.
+        path:
+          type: string
+          description: Repo-relative file path as recorded in chunk metadata.
+        branch:
+          type: string
+          description: Optional branch (recorded in metadata but not used for lookup).
+        start:
+          type: integer
+          format: int32
+          description: Optional 1-indexed start line (inclusive).
+        end:
+          type: integer
+          format: int32
+          description: Optional 1-indexed end line (inclusive).
+    FileResponse:
+      type: object
+      required: [content, found]
+      properties:
+        content:
+          type: string
+        source:
+          type: string
+          description: Where the content came from ("local_clone" or "database").
+        found:
+          type: boolean
+    FetchURLRequest:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+        method:
+          type: string
+          default: GET
+        body:
+          type: string
+          description: Request body for POST/PUT/PATCH (optional).
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          description: Additional request headers (optional). Credential headers are set by the server and cannot be overridden.
+    FetchURLResponse:
+      type: object
+      required: [status_code, body, from_site]
+      properties:
+        status_code:
+          type: integer
+        body:
+          type: string
+        from_site:
+          type: string
+          description: Name of the allowlist site that matched.
+        truncated:
+          type: boolean
+        headers:
+          type: object
+          additionalProperties:
+            type: string

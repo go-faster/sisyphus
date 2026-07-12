@@ -879,8 +879,8 @@ func TestUserAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if gotUA != "sisyphus/ingest" {
-		t.Errorf("User-Agent: expected %q, got %q", "sisyphus/ingest", gotUA)
+	if !strings.HasPrefix(gotUA, "jira/") {
+		t.Errorf("User-Agent: expected prefix %q, got %q", "jira/", gotUA)
 	}
 }
 

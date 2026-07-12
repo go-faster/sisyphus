@@ -30,3 +30,16 @@ func parseCommand(text string) (cmd, rest string, ok bool) {
 	}
 	return cmd, rest, true
 }
+
+// parseInlineQuery strips an optional "search " or "/search " prefix from an
+// inline query string. Returns the remaining text.
+func parseInlineQuery(text string) string {
+	text = strings.TrimSpace(text)
+	// Strip optional leading "search " or "/search ".
+	for _, prefix := range []string{"/search ", "search "} {
+		if strings.HasPrefix(strings.ToLower(text), prefix) {
+			return strings.TrimSpace(text[len(prefix):])
+		}
+	}
+	return text
+}

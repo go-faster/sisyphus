@@ -11,10 +11,18 @@ import (
 func TestLoadYAML(t *testing.T) {
 	clearEnv(t)
 
-	path := writeConfig(t, `database_dsn:
-  value: postgres://user:pass@localhost/sisyphus?sslmode=disable
-qdrant_addr: qdrant:6334
-embed_dim: 512
+	path := writeConfig(t, `database:
+  dsn:
+    value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+qdrant:
+  addr: qdrant:6334
+  collection: test_chunks
+ollama:
+  url: http://ollama:11434
+embed:
+  provider: ollama
+  model: test-embed
+  dim: 512
 api:
   http_addr: :9090
   base_url: http://ssapi:8080
@@ -59,6 +67,18 @@ proxies:
     value: http://127.0.0.1:8081
   openrouter:
     value: http://127.0.0.1:8082
+fetch:
+  sites:
+    - name: gitlab-internal
+      url_patterns:
+        - https://gitlab.example.com/**
+      methods: [GET, POST]
+      proxy: git
+      credentials:
+        type: bearer
+        token_env: TEST_SISYPHUS_FETCH_TOKEN
+      max_bytes: 524288
+      timeout: 30s
 telegram:
   addr: :9091
   app_id: 123
@@ -84,6 +104,7 @@ agent:
 	t.Setenv("TEST_SISYPHUS_GITLAB_TOKEN", "gitlab-token")
 	t.Setenv("TEST_SISYPHUS_GIT_PROXY", "http://127.0.0.1:8083")
 	t.Setenv("TEST_SISYPHUS_AGENT_AUTH_TOKEN", "agent-token")
+	t.Setenv("TEST_SISYPHUS_FETCH_TOKEN", "fetch-token")
 
 	cfg, err := Load()
 	require.NoError(t, err)
@@ -93,14 +114,17 @@ agent:
 	require.Equal(t, "mcp-token", cfg.MCP.AuthToken)
 	require.Equal(t, ":9091", cfg.Telegram.Addr)
 	require.Equal(t, "qdrant:6334", cfg.QdrantAddr)
+	require.Equal(t, "test_chunks", cfg.QdrantCollection)
+	require.Equal(t, "http://ollama:11434", cfg.OllamaURL)
+	require.Equal(t, "ollama", cfg.EmbedProvider)
+	require.Equal(t, "test-embed", cfg.EmbedModel)
 	require.Equal(t, 512, cfg.EmbedDim)
 	require.Equal(t, 123, cfg.Telegram.AppID)
 	require.Equal(t, "/tmp/sisyphus-session", cfg.Telegram.SessionDir)
 	require.Equal(t, "test-model", cfg.OpenRouter.Model)
-	require.Equal(t, "corp_chunks", cfg.QdrantCollection)
 	require.Equal(t, "http://ssapi:8080", cfg.API.BaseURL)
 	require.Equal(t, "test-token", cfg.API.AuthToken)
-	require.Empty(t, cfg.Warnings)
+	require.Contains(t, cfg.Warnings, "fetch site gitlab-internal allows write method POST; prefer read-only methods unless explicitly required")
 
 	// git: repository content + commits
 	require.Equal(t, "/tmp/git", cfg.Git.WorkDir)
@@ -128,6 +152,14 @@ agent:
 	require.Equal(t, "http://127.0.0.1:8080", cfg.Proxies.Jira)
 	require.Equal(t, "http://127.0.0.1:8081", cfg.Proxies.Ollama)
 	require.Equal(t, "http://127.0.0.1:8082", cfg.Proxies.OpenRouter)
+	require.Len(t, cfg.Fetch.Sites, 1)
+	require.Equal(t, "gitlab-internal", cfg.Fetch.Sites[0].Name)
+	require.Equal(t, []string{"https://gitlab.example.com/**"}, cfg.Fetch.Sites[0].URLPatterns)
+	require.Equal(t, []string{"GET", "POST"}, cfg.Fetch.Sites[0].Methods)
+	require.Equal(t, "git", cfg.Fetch.Sites[0].Proxy)
+	require.Equal(t, int64(524288), cfg.Fetch.Sites[0].MaxBytes)
+	require.Equal(t, "bearer", cfg.Fetch.Sites[0].Credentials.Type)
+	require.Equal(t, "fetch-token", cfg.Fetch.Sites[0].Credentials.Token)
 
 	require.Equal(t, ":8082", cfg.Agent.Addr)
 	require.Equal(t, "http://ssagent:8082", cfg.Agent.BaseURL)
@@ -138,11 +170,40 @@ agent:
 	require.Equal(t, "http://mcpgateway:8090/mcp", cfg.Agent.GatewayURL)
 }
 
+func TestLoadProxyFetch(t *testing.T) {
+	clearEnv(t)
+
+	path := writeConfig(t, `database:
+  dsn:
+    value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+qdrant:
+  addr: qdrant:6334
+proxies:
+  fetch:
+    value: http://fetch-proxy:8080
+fetch:
+  sites:
+    - name: fetch-allowed
+      url_patterns:
+        - https://fetch.example.com/**
+      proxy: fetch
+`)
+	t.Setenv("SISYPHUS_CONFIG", path)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "http://fetch-proxy:8080", cfg.Proxies.Fetch)
+	require.Len(t, cfg.Fetch.Sites, 1)
+	require.Equal(t, "fetch-allowed", cfg.Fetch.Sites[0].Name)
+	require.Equal(t, "fetch", cfg.Fetch.Sites[0].Proxy)
+}
+
 func TestLoadSecretEnv(t *testing.T) {
 	clearEnv(t)
 
-	path := writeConfig(t, `database_dsn:
-  env: TEST_SISYPHUS_DATABASE_DSN
+	path := writeConfig(t, `database:
+  dsn:
+    env: TEST_SISYPHUS_DATABASE_DSN
 openrouter:
   api_key:
     env: TEST_SISYPHUS_OPENROUTER_API_KEY
@@ -173,8 +234,9 @@ func TestLoadSecretFile(t *testing.T) {
 	secretPath := filepath.Join(dir, "database_dsn")
 	require.NoError(t, os.WriteFile(secretPath, []byte("file-dsn\n"), 0o600))
 	configPath := filepath.Join(dir, "config.yaml")
-	require.NoError(t, os.WriteFile(configPath, []byte(`database_dsn:
-  file: database_dsn
+	require.NoError(t, os.WriteFile(configPath, []byte(`database:
+  dsn:
+    file: database_dsn
 `), 0o600))
 	t.Setenv("SISYPHUS_CONFIG", configPath)
 
@@ -211,6 +273,7 @@ func clearEnv(t *testing.T) {
 		"TEST_SISYPHUS_JIRA_PASSWORD",
 		"TEST_SISYPHUS_MCP_AUTH_TOKEN",
 		"TEST_SISYPHUS_AGENT_AUTH_TOKEN",
+		"TEST_SISYPHUS_FETCH_TOKEN",
 	} {
 		t.Setenv(key, "")
 	}
@@ -219,8 +282,9 @@ func clearEnv(t *testing.T) {
 func TestMCPAuthToken(t *testing.T) {
 	clearEnv(t)
 
-	path := writeConfig(t, `database_dsn:
-  value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+	path := writeConfig(t, `database:
+  dsn:
+    value: postgres://user:pass@localhost/sisyphus?sslmode=disable
 mcp:
   auth_token:
     env: TEST_SISYPHUS_MCP_AUTH_TOKEN
@@ -236,8 +300,9 @@ mcp:
 func TestMCPAuthTokenEmptyWhenNotConfigured(t *testing.T) {
 	clearEnv(t)
 
-	path := writeConfig(t, `database_dsn:
-  value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+	path := writeConfig(t, `database:
+  dsn:
+    value: postgres://user:pass@localhost/sisyphus?sslmode=disable
 `)
 	t.Setenv("SISYPHUS_CONFIG", path)
 
@@ -249,8 +314,9 @@ func TestMCPAuthTokenEmptyWhenNotConfigured(t *testing.T) {
 func TestDeprecatedHTTPAddrWarns(t *testing.T) {
 	clearEnv(t)
 
-	path := writeConfig(t, `database_dsn:
-  value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+	path := writeConfig(t, `database:
+  dsn:
+    value: postgres://user:pass@localhost/sisyphus?sslmode=disable
 http_addr: :7070
 `)
 	t.Setenv("SISYPHUS_CONFIG", path)
@@ -264,8 +330,9 @@ http_addr: :7070
 func TestDeprecatedHTTPAddrConflictsWithNewField(t *testing.T) {
 	clearEnv(t)
 
-	path := writeConfig(t, `database_dsn:
-  value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+	path := writeConfig(t, `database:
+  dsn:
+    value: postgres://user:pass@localhost/sisyphus?sslmode=disable
 http_addr: :7070
 api:
   http_addr: :7071
@@ -279,8 +346,9 @@ api:
 func TestDeprecatedMCPAddrWarns(t *testing.T) {
 	clearEnv(t)
 
-	path := writeConfig(t, `database_dsn:
-  value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+	path := writeConfig(t, `database:
+  dsn:
+    value: postgres://user:pass@localhost/sisyphus?sslmode=disable
 mcp_addr: :7072
 `)
 	t.Setenv("SISYPHUS_CONFIG", path)
@@ -294,8 +362,9 @@ mcp_addr: :7072
 func TestDeprecatedMCPAddrConflictsWithNewField(t *testing.T) {
 	clearEnv(t)
 
-	path := writeConfig(t, `database_dsn:
-  value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+	path := writeConfig(t, `database:
+  dsn:
+    value: postgres://user:pass@localhost/sisyphus?sslmode=disable
 mcp_addr: :7072
 mcp:
   addr: :7073
@@ -309,8 +378,9 @@ mcp:
 func TestDeprecatedMCPAuthTokenConflictsWithNewField(t *testing.T) {
 	clearEnv(t)
 
-	path := writeConfig(t, `database_dsn:
-  value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+	path := writeConfig(t, `database:
+  dsn:
+    value: postgres://user:pass@localhost/sisyphus?sslmode=disable
 mcp_auth_token:
   value: old-token
 mcp:
@@ -321,4 +391,131 @@ mcp:
 
 	_, err := Load()
 	require.Error(t, err)
+}
+
+func TestDeprecatedQdrantAddrWarns(t *testing.T) {
+	clearEnv(t)
+
+	path := writeConfig(t, `database:
+  dsn:
+    value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+qdrant_addr: qdrant:6334
+`)
+	t.Setenv("SISYPHUS_CONFIG", path)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "qdrant:6334", cfg.QdrantAddr)
+	require.Contains(t, cfg.Warnings, "qdrant_addr is deprecated, use qdrant.addr instead")
+}
+
+func TestDeprecatedQdrantAddrConflictsWithNewField(t *testing.T) {
+	clearEnv(t)
+
+	path := writeConfig(t, `database:
+  dsn:
+    value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+qdrant_addr: qdrant:6334
+qdrant:
+  addr: other-qdrant:6334
+`)
+	t.Setenv("SISYPHUS_CONFIG", path)
+
+	_, err := Load()
+	require.Error(t, err)
+}
+
+func TestDeprecatedDatabaseDSNWarns(t *testing.T) {
+	clearEnv(t)
+
+	path := writeConfig(t, `database_dsn:
+  value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+`)
+	t.Setenv("SISYPHUS_CONFIG", path)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "postgres://user:pass@localhost/sisyphus?sslmode=disable", cfg.DatabaseDSN)
+	require.Contains(t, cfg.Warnings, "database_dsn is deprecated, use database.dsn instead")
+}
+
+func TestDeprecatedDatabaseDSNConflictsWithNewField(t *testing.T) {
+	clearEnv(t)
+
+	path := writeConfig(t, `database_dsn:
+  value: old-dsn
+database:
+  dsn:
+    value: new-dsn
+`)
+	t.Setenv("SISYPHUS_CONFIG", path)
+
+	_, err := Load()
+	require.Error(t, err)
+}
+
+func TestDeprecatedCoreFieldsWarn(t *testing.T) {
+	clearEnv(t)
+
+	path := writeConfig(t, `database:
+  dsn:
+    value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+qdrant_collection: old_chunks
+ollama_url: http://old-ollama:11434
+embed_provider: old-provider
+embed_model: old-model
+embed_dim: 768
+`)
+	t.Setenv("SISYPHUS_CONFIG", path)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "old_chunks", cfg.QdrantCollection)
+	require.Equal(t, "http://old-ollama:11434", cfg.OllamaURL)
+	require.Equal(t, "old-provider", cfg.EmbedProvider)
+	require.Equal(t, "old-model", cfg.EmbedModel)
+	require.Equal(t, 768, cfg.EmbedDim)
+	require.Contains(t, cfg.Warnings, "qdrant_collection is deprecated, use qdrant.collection instead")
+	require.Contains(t, cfg.Warnings, "ollama_url is deprecated, use ollama.url instead")
+	require.Contains(t, cfg.Warnings, "embed_provider is deprecated, use embed.provider instead")
+	require.Contains(t, cfg.Warnings, "embed_model is deprecated, use embed.model instead")
+	require.Contains(t, cfg.Warnings, "embed_dim is deprecated, use embed.dim instead")
+}
+
+func TestDeprecatedCoreFieldsConflictWithNewField(t *testing.T) {
+	for name, yaml := range map[string]string{
+		"qdrant_collection": `qdrant_collection: old_chunks
+qdrant:
+  collection: new_chunks
+`,
+		"ollama_url": `ollama_url: http://old-ollama:11434
+ollama:
+  url: http://new-ollama:11434
+`,
+		"embed_provider": `embed_provider: old-provider
+embed:
+  provider: new-provider
+`,
+		"embed_model": `embed_model: old-model
+embed:
+  model: new-model
+`,
+		"embed_dim": `embed_dim: 768
+embed:
+  dim: 1536
+`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			clearEnv(t)
+
+			path := writeConfig(t, `database:
+  dsn:
+    value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+`+yaml)
+			t.Setenv("SISYPHUS_CONFIG", path)
+
+			_, err := Load()
+			require.Error(t, err)
+		})
+	}
 }

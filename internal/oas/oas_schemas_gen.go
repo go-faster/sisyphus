@@ -126,6 +126,9 @@ type ContextResponse struct {
 	// rendering as buttons. URLs are always absolute http(s).
 	Buttons []Link         `json:"buttons"`
 	Results []SearchResult `json:"results"`
+	// Agent-loop diagnostics (trace ID, duration, tool calls, token usage), present only when the operator
+	// has opted into context.show_debug_info.
+	Debug OptDebug `json:"debug"`
 }
 
 // GetAnswer returns the value of Answer.
@@ -148,6 +151,11 @@ func (s *ContextResponse) GetResults() []SearchResult {
 	return s.Results
 }
 
+// GetDebug returns the value of Debug.
+func (s *ContextResponse) GetDebug() OptDebug {
+	return s.Debug
+}
+
 // SetAnswer sets the value of Answer.
 func (s *ContextResponse) SetAnswer(val string) {
 	s.Answer = val
@@ -166,6 +174,82 @@ func (s *ContextResponse) SetButtons(val []Link) {
 // SetResults sets the value of Results.
 func (s *ContextResponse) SetResults(val []SearchResult) {
 	s.Results = val
+}
+
+// SetDebug sets the value of Debug.
+func (s *ContextResponse) SetDebug(val OptDebug) {
+	s.Debug = val
+}
+
+// Agent-loop diagnostics, for debugging only.
+// Ref: #/components/schemas/Debug
+type Debug struct {
+	TraceID          OptString `json:"trace_id"`
+	DurationMs       OptInt64  `json:"duration_ms"`
+	Iterations       OptInt    `json:"iterations"`
+	ToolCalls        OptInt    `json:"tool_calls"`
+	PromptTokens     OptInt64  `json:"prompt_tokens"`
+	CompletionTokens OptInt64  `json:"completion_tokens"`
+}
+
+// GetTraceID returns the value of TraceID.
+func (s *Debug) GetTraceID() OptString {
+	return s.TraceID
+}
+
+// GetDurationMs returns the value of DurationMs.
+func (s *Debug) GetDurationMs() OptInt64 {
+	return s.DurationMs
+}
+
+// GetIterations returns the value of Iterations.
+func (s *Debug) GetIterations() OptInt {
+	return s.Iterations
+}
+
+// GetToolCalls returns the value of ToolCalls.
+func (s *Debug) GetToolCalls() OptInt {
+	return s.ToolCalls
+}
+
+// GetPromptTokens returns the value of PromptTokens.
+func (s *Debug) GetPromptTokens() OptInt64 {
+	return s.PromptTokens
+}
+
+// GetCompletionTokens returns the value of CompletionTokens.
+func (s *Debug) GetCompletionTokens() OptInt64 {
+	return s.CompletionTokens
+}
+
+// SetTraceID sets the value of TraceID.
+func (s *Debug) SetTraceID(val OptString) {
+	s.TraceID = val
+}
+
+// SetDurationMs sets the value of DurationMs.
+func (s *Debug) SetDurationMs(val OptInt64) {
+	s.DurationMs = val
+}
+
+// SetIterations sets the value of Iterations.
+func (s *Debug) SetIterations(val OptInt) {
+	s.Iterations = val
+}
+
+// SetToolCalls sets the value of ToolCalls.
+func (s *Debug) SetToolCalls(val OptInt) {
+	s.ToolCalls = val
+}
+
+// SetPromptTokens sets the value of PromptTokens.
+func (s *Debug) SetPromptTokens(val OptInt64) {
+	s.PromptTokens = val
+}
+
+// SetCompletionTokens sets the value of CompletionTokens.
+func (s *Debug) SetCompletionTokens(val OptInt64) {
+	s.CompletionTokens = val
 }
 
 // Ref: #/components/schemas/Error
@@ -207,6 +291,243 @@ func (s *ErrorStatusCode) SetStatusCode(val int) {
 // SetResponse sets the value of Response.
 func (s *ErrorStatusCode) SetResponse(val Error) {
 	s.Response = val
+}
+
+// Ref: #/components/schemas/FetchURLRequest
+type FetchURLRequest struct {
+	URL    string    `json:"url"`
+	Method OptString `json:"method"`
+	// Request body for POST/PUT/PATCH (optional).
+	Body OptString `json:"body"`
+	// Additional request headers (optional). Credential headers are set by the server and cannot be
+	// overridden.
+	Headers OptFetchURLRequestHeaders `json:"headers"`
+}
+
+// GetURL returns the value of URL.
+func (s *FetchURLRequest) GetURL() string {
+	return s.URL
+}
+
+// GetMethod returns the value of Method.
+func (s *FetchURLRequest) GetMethod() OptString {
+	return s.Method
+}
+
+// GetBody returns the value of Body.
+func (s *FetchURLRequest) GetBody() OptString {
+	return s.Body
+}
+
+// GetHeaders returns the value of Headers.
+func (s *FetchURLRequest) GetHeaders() OptFetchURLRequestHeaders {
+	return s.Headers
+}
+
+// SetURL sets the value of URL.
+func (s *FetchURLRequest) SetURL(val string) {
+	s.URL = val
+}
+
+// SetMethod sets the value of Method.
+func (s *FetchURLRequest) SetMethod(val OptString) {
+	s.Method = val
+}
+
+// SetBody sets the value of Body.
+func (s *FetchURLRequest) SetBody(val OptString) {
+	s.Body = val
+}
+
+// SetHeaders sets the value of Headers.
+func (s *FetchURLRequest) SetHeaders(val OptFetchURLRequestHeaders) {
+	s.Headers = val
+}
+
+// Additional request headers (optional). Credential headers are set by the server and cannot be
+// overridden.
+type FetchURLRequestHeaders map[string]string
+
+func (s *FetchURLRequestHeaders) init() FetchURLRequestHeaders {
+	m := *s
+	if m == nil {
+		m = map[string]string{}
+		*s = m
+	}
+	return m
+}
+
+// Ref: #/components/schemas/FetchURLResponse
+type FetchURLResponse struct {
+	StatusCode int    `json:"status_code"`
+	Body       string `json:"body"`
+	// Name of the allowlist site that matched.
+	FromSite  string                     `json:"from_site"`
+	Truncated OptBool                    `json:"truncated"`
+	Headers   OptFetchURLResponseHeaders `json:"headers"`
+}
+
+// GetStatusCode returns the value of StatusCode.
+func (s *FetchURLResponse) GetStatusCode() int {
+	return s.StatusCode
+}
+
+// GetBody returns the value of Body.
+func (s *FetchURLResponse) GetBody() string {
+	return s.Body
+}
+
+// GetFromSite returns the value of FromSite.
+func (s *FetchURLResponse) GetFromSite() string {
+	return s.FromSite
+}
+
+// GetTruncated returns the value of Truncated.
+func (s *FetchURLResponse) GetTruncated() OptBool {
+	return s.Truncated
+}
+
+// GetHeaders returns the value of Headers.
+func (s *FetchURLResponse) GetHeaders() OptFetchURLResponseHeaders {
+	return s.Headers
+}
+
+// SetStatusCode sets the value of StatusCode.
+func (s *FetchURLResponse) SetStatusCode(val int) {
+	s.StatusCode = val
+}
+
+// SetBody sets the value of Body.
+func (s *FetchURLResponse) SetBody(val string) {
+	s.Body = val
+}
+
+// SetFromSite sets the value of FromSite.
+func (s *FetchURLResponse) SetFromSite(val string) {
+	s.FromSite = val
+}
+
+// SetTruncated sets the value of Truncated.
+func (s *FetchURLResponse) SetTruncated(val OptBool) {
+	s.Truncated = val
+}
+
+// SetHeaders sets the value of Headers.
+func (s *FetchURLResponse) SetHeaders(val OptFetchURLResponseHeaders) {
+	s.Headers = val
+}
+
+type FetchURLResponseHeaders map[string]string
+
+func (s *FetchURLResponseHeaders) init() FetchURLResponseHeaders {
+	m := *s
+	if m == nil {
+		m = map[string]string{}
+		*s = m
+	}
+	return m
+}
+
+// Ref: #/components/schemas/FileRequest
+type FileRequest struct {
+	// Repository name as recorded in chunk metadata.
+	Repo string `json:"repo"`
+	// Repo-relative file path as recorded in chunk metadata.
+	Path string `json:"path"`
+	// Optional branch (recorded in metadata but not used for lookup).
+	Branch OptString `json:"branch"`
+	// Optional 1-indexed start line (inclusive).
+	Start OptInt32 `json:"start"`
+	// Optional 1-indexed end line (inclusive).
+	End OptInt32 `json:"end"`
+}
+
+// GetRepo returns the value of Repo.
+func (s *FileRequest) GetRepo() string {
+	return s.Repo
+}
+
+// GetPath returns the value of Path.
+func (s *FileRequest) GetPath() string {
+	return s.Path
+}
+
+// GetBranch returns the value of Branch.
+func (s *FileRequest) GetBranch() OptString {
+	return s.Branch
+}
+
+// GetStart returns the value of Start.
+func (s *FileRequest) GetStart() OptInt32 {
+	return s.Start
+}
+
+// GetEnd returns the value of End.
+func (s *FileRequest) GetEnd() OptInt32 {
+	return s.End
+}
+
+// SetRepo sets the value of Repo.
+func (s *FileRequest) SetRepo(val string) {
+	s.Repo = val
+}
+
+// SetPath sets the value of Path.
+func (s *FileRequest) SetPath(val string) {
+	s.Path = val
+}
+
+// SetBranch sets the value of Branch.
+func (s *FileRequest) SetBranch(val OptString) {
+	s.Branch = val
+}
+
+// SetStart sets the value of Start.
+func (s *FileRequest) SetStart(val OptInt32) {
+	s.Start = val
+}
+
+// SetEnd sets the value of End.
+func (s *FileRequest) SetEnd(val OptInt32) {
+	s.End = val
+}
+
+// Ref: #/components/schemas/FileResponse
+type FileResponse struct {
+	Content string `json:"content"`
+	// Where the content came from ("local_clone" or "database").
+	Source OptString `json:"source"`
+	Found  bool      `json:"found"`
+}
+
+// GetContent returns the value of Content.
+func (s *FileResponse) GetContent() string {
+	return s.Content
+}
+
+// GetSource returns the value of Source.
+func (s *FileResponse) GetSource() OptString {
+	return s.Source
+}
+
+// GetFound returns the value of Found.
+func (s *FileResponse) GetFound() bool {
+	return s.Found
+}
+
+// SetContent sets the value of Content.
+func (s *FileResponse) SetContent(val string) {
+	s.Content = val
+}
+
+// SetSource sets the value of Source.
+func (s *FileResponse) SetSource(val OptString) {
+	s.Source = val
+}
+
+// SetFound sets the value of Found.
+func (s *FileResponse) SetFound(val bool) {
+	s.Found = val
 }
 
 // Ref: #/components/schemas/Health
@@ -355,6 +676,190 @@ func (o OptContextRequestFilters) Or(d ContextRequestFilters) ContextRequestFilt
 	return d
 }
 
+// NewOptDebug returns new OptDebug with value set to v.
+func NewOptDebug(v Debug) OptDebug {
+	return OptDebug{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptDebug is optional Debug.
+type OptDebug struct {
+	Value Debug
+	Set   bool
+}
+
+// IsSet returns true if OptDebug was set.
+func (o OptDebug) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptDebug) Reset() {
+	var v Debug
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptDebug) SetTo(v Debug) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptDebug) Get() (v Debug, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptDebug) Or(d Debug) Debug {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptFetchURLRequestHeaders returns new OptFetchURLRequestHeaders with value set to v.
+func NewOptFetchURLRequestHeaders(v FetchURLRequestHeaders) OptFetchURLRequestHeaders {
+	return OptFetchURLRequestHeaders{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptFetchURLRequestHeaders is optional FetchURLRequestHeaders.
+type OptFetchURLRequestHeaders struct {
+	Value FetchURLRequestHeaders
+	Set   bool
+}
+
+// IsSet returns true if OptFetchURLRequestHeaders was set.
+func (o OptFetchURLRequestHeaders) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptFetchURLRequestHeaders) Reset() {
+	var v FetchURLRequestHeaders
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptFetchURLRequestHeaders) SetTo(v FetchURLRequestHeaders) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptFetchURLRequestHeaders) Get() (v FetchURLRequestHeaders, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptFetchURLRequestHeaders) Or(d FetchURLRequestHeaders) FetchURLRequestHeaders {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptFetchURLResponseHeaders returns new OptFetchURLResponseHeaders with value set to v.
+func NewOptFetchURLResponseHeaders(v FetchURLResponseHeaders) OptFetchURLResponseHeaders {
+	return OptFetchURLResponseHeaders{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptFetchURLResponseHeaders is optional FetchURLResponseHeaders.
+type OptFetchURLResponseHeaders struct {
+	Value FetchURLResponseHeaders
+	Set   bool
+}
+
+// IsSet returns true if OptFetchURLResponseHeaders was set.
+func (o OptFetchURLResponseHeaders) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptFetchURLResponseHeaders) Reset() {
+	var v FetchURLResponseHeaders
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptFetchURLResponseHeaders) SetTo(v FetchURLResponseHeaders) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptFetchURLResponseHeaders) Get() (v FetchURLResponseHeaders, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptFetchURLResponseHeaders) Or(d FetchURLResponseHeaders) FetchURLResponseHeaders {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptInt returns new OptInt with value set to v.
+func NewOptInt(v int) OptInt {
+	return OptInt{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptInt is optional int.
+type OptInt struct {
+	Value int
+	Set   bool
+}
+
+// IsSet returns true if OptInt was set.
+func (o OptInt) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptInt) Reset() {
+	var v int
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptInt) SetTo(v int) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptInt) Get() (v int, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptInt) Or(d int) int {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptInt32 returns new OptInt32 with value set to v.
 func NewOptInt32(v int32) OptInt32 {
 	return OptInt32{
@@ -395,6 +900,52 @@ func (o OptInt32) Get() (v int32, ok bool) {
 
 // Or returns value if set, or given parameter if does not.
 func (o OptInt32) Or(d int32) int32 {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptInt64 returns new OptInt64 with value set to v.
+func NewOptInt64(v int64) OptInt64 {
+	return OptInt64{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptInt64 is optional int64.
+type OptInt64 struct {
+	Value int64
+	Set   bool
+}
+
+// IsSet returns true if OptInt64 was set.
+func (o OptInt64) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptInt64) Reset() {
+	var v int64
+	o.Value = v
+	o.Set = false
+}
+
+// SetTo sets value to v.
+func (o *OptInt64) SetTo(v int64) {
+	o.Set = true
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptInt64) Get() (v int64, ok bool) {
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptInt64) Or(d int64) int64 {
 	if v, ok := o.Get(); ok {
 		return v
 	}

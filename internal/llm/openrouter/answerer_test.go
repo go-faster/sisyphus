@@ -66,7 +66,7 @@ func TestAnswerer_RandomDelimiterTag(t *testing.T) {
 	}
 
 	// First call
-	_, err := a.Answer(context.Background(), "Question 1", results)
+	_, err := a.Answer(context.Background(), index.Query{Text: "Question 1"}, results)
 	require.NoError(t, err)
 	require.NotEmpty(t, *captured)
 
@@ -80,7 +80,7 @@ func TestAnswerer_RandomDelimiterTag(t *testing.T) {
 	require.True(t, ok)
 
 	// Second call
-	_, err = a.Answer(context.Background(), "Question 2", results)
+	_, err = a.Answer(context.Background(), index.Query{Text: "Question 2"}, results)
 	require.NoError(t, err)
 	require.Len(t, *captured, 2)
 
@@ -115,7 +115,7 @@ func TestAnswerer_ContextIsTagged(t *testing.T) {
 		{Chunk: index.Chunk{Title: "MR #456", Text: "More untrusted data"}},
 	}
 
-	_, err := a.Answer(context.Background(), "What is the status?", results)
+	_, err := a.Answer(context.Background(), index.Query{Text: "What is the status?"}, results)
 	require.NoError(t, err)
 	require.NotEmpty(t, *captured)
 
@@ -163,7 +163,7 @@ func TestAnswerer_SystemPromptMentionsUntrustedContext(t *testing.T) {
 		{Chunk: index.Chunk{Title: "Doc", Text: "Content"}},
 	}
 
-	_, err := a.Answer(context.Background(), "Question", results)
+	_, err := a.Answer(context.Background(), index.Query{Text: "Question"}, results)
 	require.NoError(t, err)
 	require.NotEmpty(t, *captured)
 
@@ -193,7 +193,7 @@ func TestAnswerer_SourceLabelsPreserved(t *testing.T) {
 		{Chunk: index.Chunk{Title: "MR #20", Text: "Second chunk"}},
 	}
 
-	_, err := a.Answer(context.Background(), "Question", results)
+	_, err := a.Answer(context.Background(), index.Query{Text: "Question"}, results)
 	require.NoError(t, err)
 	require.NotEmpty(t, *captured)
 

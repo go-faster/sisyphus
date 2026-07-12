@@ -71,7 +71,7 @@ func New(baseURL, token string, opts Options) (*Client, error) {
 		inv:        c,
 		baseURL:    baseURL,
 		httpClient: opts.HTTPClient,
-		tracer:     opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/apiclient"),
+		tracer:     opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/apiclient"),
 		m:          m,
 	}, nil
 }
@@ -93,25 +93,9 @@ func (c *Client) CheckHealth(ctx context.Context) error {
 	return nil
 }
 
-// Answer implements the Answerer interface.
-// The results are not sent over the wire; /context performs its own
-// server-side retrieval pass, so the caller's results only affect telemetry.
-func (c *Client) Answer(ctx context.Context, question string, results []index.Result) (answer string, rerr error) {
-	return c.AnswerQuery(ctx, index.Query{Text: question}, results)
-}
-
-// AnswerQuery answers using /context with the same query controls as retrieval.
-func (c *Client) AnswerQuery(ctx context.Context, q index.Query, results []index.Result) (string, error) {
-	ans, err := c.AnswerQueryRich(ctx, q, results)
-	if err != nil {
-		return "", err
-	}
-	return ans.Text, nil
-}
-
-// AnswerQueryRich answers using /context and returns the structured answer,
+// Answer answers using /context and returns the structured answer,
 // including any source-link buttons the server surfaced.
-func (c *Client) AnswerQueryRich(ctx context.Context, q index.Query, results []index.Result) (answer index.Answer, rerr error) {
+func (c *Client) Answer(ctx context.Context, q index.Query, results []index.Result) (answer index.Answer, rerr error) {
 	start := time.Now()
 	ctx, span := c.tracer.Start(ctx, "apiclient.Answer",
 		trace.WithSpanKind(trace.SpanKindClient),
@@ -144,7 +128,7 @@ func (c *Client) AnswerQueryRich(ctx context.Context, q index.Query, results []i
 		rerr = errors.Wrap(err, "get context")
 		return index.Answer{}, rerr
 	}
-	answer = index.Answer{Text: resp.Answer, Links: fromLinks(resp.Buttons)}
+	answer = index.Answer{Text: resp.Answer, Links: fromLinks(resp.Buttons), Debug: fromDebug(resp.Debug)}
 	span.SetAttributes(
 		attribute.Int("answer.length", len(answer.Text)),
 		attribute.Int("answer.links", len(answer.Links)),
@@ -166,6 +150,23 @@ func fromLinks(links []oas.Link) []index.Link {
 		}
 	}
 	return out
+}
+
+// fromDebug maps the oas optional Debug field to index.Debug, nil if absent
+// (the server omits it unless context.show_debug_info is enabled).
+func fromDebug(d oas.OptDebug) *index.Debug {
+	if !d.Set {
+		return nil
+	}
+	v := d.Value
+	return &index.Debug{
+		TraceID:          v.TraceID.Or(""),
+		DurationMS:       v.DurationMs.Or(0),
+		Iterations:       v.Iterations.Or(0),
+		ToolCalls:        v.ToolCalls.Or(0),
+		PromptTokens:     v.PromptTokens.Or(0),
+		CompletionTokens: v.CompletionTokens.Or(0),
+	}
 }
 
 // Retrieve implements the Retriever interface.
@@ -241,4 +242,92 @@ type staticBearer struct{ token string }
 
 func (s staticBearer) BearerAuth(_ context.Context, _ oas.OperationName) (oas.BearerAuth, error) {
 	return oas.BearerAuth{Token: s.token}, nil
+}
+
+// ResolveContent implements the index.ContentResolver interface.
+func (c *Client) ResolveContent(ctx context.Context, req index.ContentRequest) (index.ContentResponse, error) {
+	start := time.Now()
+	ctx, span := c.tracer.Start(ctx, "apiclient.GetFile",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("repo", req.Repo),
+			attribute.String("path", req.Path),
+		),
+	)
+	var rerr error
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+			span.SetStatus(codes.Error, rerr.Error())
+		}
+		span.End()
+	}()
+
+	oasReq := &oas.FileRequest{
+		Repo:   req.Repo,
+		Path:   req.Path,
+		Branch: oas.NewOptString(req.Branch),
+	}
+	if req.Start > 0 {
+		oasReq.Start = oas.NewOptInt32(int32(req.Start))
+	}
+	if req.End > 0 {
+		oasReq.End = oas.NewOptInt32(int32(req.End))
+	}
+
+	resp, err := c.inv.GetFile(ctx, oasReq)
+	if err != nil {
+		rerr = errors.Wrap(err, "get file")
+		c.m.record(ctx, "get_file", time.Since(start).Seconds(), 0, rerr)
+		return index.ContentResponse{}, rerr
+	}
+
+	c.m.record(ctx, "get_file", time.Since(start).Seconds(), 1, nil)
+	return index.ContentResponse{
+		Content: resp.Content,
+		Source:  resp.Source.Or(""),
+		Found:   resp.Found,
+	}, nil
+}
+
+// Fetch implements the index.URLFetcher interface.
+func (c *Client) Fetch(ctx context.Context, req index.FetchRequest) (index.FetchResponse, error) {
+	start := time.Now()
+	ctx, span := c.tracer.Start(ctx, "apiclient.FetchURL",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(attribute.String("url", req.URL)),
+	)
+	var rerr error
+	defer func() {
+		if rerr != nil {
+			span.RecordError(rerr)
+			span.SetStatus(codes.Error, rerr.Error())
+		}
+		span.End()
+	}()
+
+	oasReq := &oas.FetchURLRequest{
+		URL:    req.URL,
+		Method: oas.NewOptString(req.Method),
+		Body:   oas.NewOptString(req.Body),
+	}
+	if req.Headers != nil {
+		oasReq.Headers = oas.NewOptFetchURLRequestHeaders(oas.FetchURLRequestHeaders(req.Headers))
+	}
+
+	resp, err := c.inv.FetchURL(ctx, oasReq)
+	if err != nil {
+		rerr = errors.Wrap(err, "fetch url")
+		c.m.record(ctx, "fetch_url", time.Since(start).Seconds(), 0, rerr)
+		return index.FetchResponse{}, rerr
+	}
+
+	c.m.record(ctx, "fetch_url", time.Since(start).Seconds(), 1, nil)
+	return index.FetchResponse{
+		StatusCode: resp.StatusCode,
+		Headers:    resp.Headers.Or(nil),
+		Body:       resp.Body,
+		FromSite:   resp.FromSite,
+		Truncated:  resp.Truncated.Or(false),
+	}, nil
 }

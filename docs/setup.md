@@ -1,6 +1,6 @@
 # Setup
 
-This guide covers a local deployment for `ssapi`, `ssingest`, `ssbot`, `ssmcp`, and `ssagent`.
+This guide covers a local deployment for `ssapi`, `ssingest`, `ssbot`, `ssmcp`, and `ssagent`. See [configuration.md](configuration.md) for service/config details and [ingestion.md](ingestion.md) for source-specific examples.
 
 ## Prerequisites
 
@@ -53,7 +53,7 @@ export SISYPHUS_JIRA_APITOKEN='...'
 export SISYPHUS_OPENROUTER_API_KEY='sk-or-...'
 ```
 
-`database_dsn` and `api.auth_token` are required for `ssapi`. Other secrets are only needed when their source or service is enabled.
+`database.dsn` and `api.auth_token` are required for `ssapi`. Other secrets are only needed when their source or service is enabled.
 
 ## Ingestion
 
@@ -82,6 +82,8 @@ go run ./cmd/ssingest all --reset all --yes-i-mean-all
 ```
 
 Incremental state is stored in `sync_states`. Re-running ingestion is safe; unchanged documents are skipped by body hash.
+
+See [ingestion.md](ingestion.md) for reset commands, source examples, cursors, and provider-specific behavior.
 
 ## API Check
 

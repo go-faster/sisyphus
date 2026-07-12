@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-faster/sisyphus/internal/ent/chunk"
 	"github.com/go-faster/sisyphus/internal/ent/document"
+	"github.com/go-faster/sisyphus/internal/ent/investigationjob"
 	"github.com/go-faster/sisyphus/internal/ent/schema"
 	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
@@ -66,6 +67,42 @@ func init() {
 	documentDescID := documentFields[0].Descriptor()
 	// document.DefaultID holds the default value on creation for the id field.
 	document.DefaultID = documentDescID.Default.(func() uuid.UUID)
+	investigationjobFields := schema.InvestigationJob{}.Fields()
+	_ = investigationjobFields
+	// investigationjobDescIdempotencyKey is the schema descriptor for idempotency_key field.
+	investigationjobDescIdempotencyKey := investigationjobFields[1].Descriptor()
+	// investigationjob.IdempotencyKeyValidator is a validator for the "idempotency_key" field. It is called by the builders before save.
+	investigationjob.IdempotencyKeyValidator = investigationjobDescIdempotencyKey.Validators[0].(func(string) error)
+	// investigationjobDescDescription is the schema descriptor for description field.
+	investigationjobDescDescription := investigationjobFields[2].Descriptor()
+	// investigationjob.DescriptionValidator is a validator for the "description" field. It is called by the builders before save.
+	investigationjob.DescriptionValidator = investigationjobDescDescription.Validators[0].(func(string) error)
+	// investigationjobDescStatus is the schema descriptor for status field.
+	investigationjobDescStatus := investigationjobFields[3].Descriptor()
+	// investigationjob.DefaultStatus holds the default value on creation for the status field.
+	investigationjob.DefaultStatus = investigationjobDescStatus.Default.(string)
+	// investigationjobDescIterations is the schema descriptor for iterations field.
+	investigationjobDescIterations := investigationjobFields[5].Descriptor()
+	// investigationjob.DefaultIterations holds the default value on creation for the iterations field.
+	investigationjob.DefaultIterations = investigationjobDescIterations.Default.(int)
+	// investigationjobDescToolsUsed is the schema descriptor for tools_used field.
+	investigationjobDescToolsUsed := investigationjobFields[6].Descriptor()
+	// investigationjob.DefaultToolsUsed holds the default value on creation for the tools_used field.
+	investigationjob.DefaultToolsUsed = investigationjobDescToolsUsed.Default.(int)
+	// investigationjobDescCreatedAt is the schema descriptor for created_at field.
+	investigationjobDescCreatedAt := investigationjobFields[8].Descriptor()
+	// investigationjob.DefaultCreatedAt holds the default value on creation for the created_at field.
+	investigationjob.DefaultCreatedAt = investigationjobDescCreatedAt.Default.(func() time.Time)
+	// investigationjobDescUpdatedAt is the schema descriptor for updated_at field.
+	investigationjobDescUpdatedAt := investigationjobFields[9].Descriptor()
+	// investigationjob.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	investigationjob.DefaultUpdatedAt = investigationjobDescUpdatedAt.Default.(func() time.Time)
+	// investigationjob.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	investigationjob.UpdateDefaultUpdatedAt = investigationjobDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// investigationjobDescID is the schema descriptor for id field.
+	investigationjobDescID := investigationjobFields[0].Descriptor()
+	// investigationjob.DefaultID holds the default value on creation for the id field.
+	investigationjob.DefaultID = investigationjobDescID.Default.(func() uuid.UUID)
 	supportrequestFields := schema.SupportRequest{}.Fields()
 	_ = supportrequestFields
 	// supportrequestDescRawText is the schema descriptor for raw_text field.

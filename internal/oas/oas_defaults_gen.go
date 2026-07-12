@@ -3,6 +3,14 @@
 package oas
 
 // setDefaults set default value of fields.
+func (s *FetchURLRequest) setDefaults() {
+	{
+		val := string("GET")
+		s.Method.SetTo(val)
+	}
+}
+
+// setDefaults set default value of fields.
 func (s *SearchRequest) setDefaults() {
 	{
 		val := int32(30)

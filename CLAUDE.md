@@ -28,11 +28,23 @@ Never store only embeddings — always keep Documents+Chunks in Postgres so we c
 ```
 cmd/ssapi              owns Postgres/ent + migrations; serves the HTTP API
                         (bearer-token auth on /search, /context; /health public)
-cmd/ssbot              thin Telegram /context bot; talks to ssapi via internal/apiclient
+cmd/ssbot              Exposes system as Telegram bot; talks to ssapi via internal/apiclient
+cmd/ssagent            HTTP service for /investigate: an async, Postgres-backed job
+                        queue (internal/agentstore) over agent.Investigator's LLM
+                        tool-calling loop. POST /investigate persists a job and returns
+                        202 + job ID immediately; GET /investigate/{id} polls for the
+                        result. Connects to Postgres (database.dsn) but never migrates
+                        (only ssapi does). internal/agentclient is the HTTP client
+                        (submit + poll) ssbot uses to talk to it.
 cmd/ssmcp              MCP server entrypoint (Streamable HTTP or stdio); calls ssapi via internal/apiclient
-cmd/ssingest           one-shot ingestion CLI: git|gitlab|jira|telegram|all subcommands,
-                        --reset <src|all> (--yes-i-mean-all for all), --since, --limit, --dry-run.
-                        Wires its dependencies inline (does NOT reuse internal/wire).
+cmd/ssingest           ingestion CLI + daemon: git|files|gitlab|jira|telegram|all subcommands
+                        run one-shot (--reset <src|all> (--yes-i-mean-all for all), --since,
+                        --limit, --dry-run); `serve` instead runs as a long-lived daemon that
+                        triggers the same per-source runs on GitLab/Jira webhooks (internal/webhook
+                        handlers) and on a poller (git/files/gitlab/jira/telegram each on their
+                        own interval), so no external cron is needed. ssingest is the only
+                        webhook/poll owner — ssapi does not run ingestion. Wires its dependencies
+                        inline (does NOT reuse internal/wire, only internal/wire.NewServices).
 internal/index          SHARED CONTRACT: Document, Chunk, Chunker, Embedder, Searcher, constants. Do not add deps here.
 internal/chunk/markdown heading-aware Markdown chunker (implements index.Chunker)
 internal/chunk/git      git commit message / tag -> chunks (implements index.Chunker)
@@ -49,6 +61,15 @@ internal/ingest/gitlab  GitLab REST API client (stdlib net/http) with pagination
 internal/ingest/jira    incremental Jira REST client (stdlib net/http) with sliding-window cursor
 internal/ingest/telegram gotd user-session backfill -> telegram_messages -> support_requests;
                         MessageFetcher interface for testability; bootstrapPeers resolves access hashes
+internal/ingestrun      shared GitLab/Jira incremental-run logic (Runner.RunGitLab/RunJira) used
+                        by both cmd/ssingest's one-shot subcommands and its `serve` daemon mode;
+                        also IndexBatch/ResetSource/UpsertSyncState helpers shared with git/files/
+                        telegram runs, which live directly in cmd/ssingest (package main) since
+                        they're not needed anywhere else.
+internal/webhook        debounced Trigger (coalesces a webhook + a poll tick racing on the same
+                        source into one run) + ticker-based Poller (fire-on-start, then every
+                        interval) + GitLab/Jira webhook http.Handlers (X-Gitlab-Token/X-Jira-Token
+                        validation). Used only by cmd/ssingest's `serve` subcommand.
 internal/pipeline       Pipeline.Index: idempotent doc+chunk upsert (ent) + embed (Ollama)
                         + vector Upsert/Delete (Qdrant). Per-chunk embedding skip (preserves
                         unchanged chunks' qdrant_point_id) and stale-point cleanup on changed docs.
@@ -57,10 +78,36 @@ internal/bot            gotd bot, /context handler
 internal/ent            ent schema + generated code (Document, Chunk, SupportRequest,
                         TelegramMessage, SyncState)
 internal/llm/openrouter OpenRouter-backed LLM answerer (chat completions) used to
-                        answer /context questions from retrieved chunks.
+                        answer /context questions from retrieved chunks (non-agentic path).
+internal/agent          shared LLM tool-calling loop engine (coreLoop in core.go) used by
+                        BOTH /investigate (loop.go, Report/submit_report terminal tool) and
+                        the agentic /context path (internal/answer.ContextLoop); also collects
+                        DiscoveredURLs from tool results (source_url/url JSON fields only —
+                        never free-form body text, see "Answers & link buttons")
+internal/agentstore     ent-backed persistence for cmd/ssagent's InvestigationJob rows
+                        (pending/running/done/error, idempotency_key, Report snapshot).
+                        Store.Submit is the dedup point: a repeated idempotency_key
+                        returns the existing job instead of creating a second one.
+                        Store.ReapStale marks any job still pending/running as error at
+                        ssagent startup, so a crash mid-investigation can't leave a
+                        client polling forever.
+internal/answer         agentic /context answerer (index.Answerer): AgenticAnswerer runs
+                        agent.coreLoop with search_knowledge/fetch_url tools (knowledge_tools.go,
+                        in-process) merged via MultiToolSource with an optional ssh-mcp-backed
+                        shell sandbox (ssh_tools.go, MCP client over streamable-http). Enabled by
+                        `context.agentic: true` + OpenRouter; falls back to
+                        `internal/llm/openrouter.Answerer` otherwise (see wire.go)
 internal/apiclient      oas.Client adapter satisfying bot/mcpserver's local Retriever
                         interface + index.Answerer over HTTP with bearer auth
-internal/mcpserver      MCP server impl (search/answer tools) + BearerAuthMiddleware
+internal/content        index.ContentResolver implementations backing the file-content
+                        API/tool: DatabaseReader (document.body from Postgres, with git_docs/
+                        git_code/git_manifest source-prefix fallback), LocalRepoReader (local
+                        git clone on disk, path-traversal/symlink-escape guarded), ChainResolver
+                        (tries resolvers in order, first Found wins)
+internal/fetch          index.URLFetcher implementation: per-site HTTP allowlist (URL glob
+                        patterns, allowed methods, credential injection, byte cap) configured
+                        via FetchConfig; backs the fetch API/MCP tool
+internal/mcpserver      MCP server impl (search/answer/file/fetch tools) + BearerAuthMiddleware
                         for ssmcp's optional /mcp bearer auth
 internal/wire           shared wiring for cmd/ssapi and cmd/ssingest (Services + Components)
 internal/oas            ogen generated code
@@ -77,23 +124,34 @@ quality demands it.
 Answers can carry actionable links rendered as Telegram inline URL buttons.
 
 - `index.Link{Text,URL}` (`Valid()` requires an absolute http(s) URL + non-empty
-  label) and `index.Answer{Text,Links}` are the shared types. `index.RichAnswerer`
-  is an **opt-in** extension of `index.Answerer` (`AnswerRich` returns `index.Answer`),
-  detected via type assertion — plain `Answerer.Answer` (string) still works and is
-  what MCP + tests use.
-- `/context` (`internal/llm/openrouter.Answerer.AnswerRich`): the answerer prompt
+  label) and `index.Answer{Text,Links}` are the shared types. `index.Answerer`
+  accepts the full `index.Query` and always returns `index.Answer`, so query
+  controls and link buttons are preserved through API, bot, and MCP paths.
+- `/context` (`internal/llm/openrouter.Answerer.Answer`): the answerer prompt
   tells the model to cite sources as inline Markdown links, and a `submit_answer`
   tool returns `{answer, buttons}`. Button URLs are validated **and constrained to
   the retrieved sources' `source_url`** (see `filterButtons`) so the model can't
   surface a hallucinated/off-context URL. Buttons cross the HTTP boundary as
   `ContextResponse.buttons` (oas `Link`); `internal/api` populates them,
-  `internal/apiclient.AnswerQueryRich` reads them (re-validating in `fromLinks`),
-  and `internal/bot` renders them via `linksMarkup` on the `/context` reply.
+  `internal/apiclient.Answer` reads them (re-validating in `fromLinks`), and
+  `internal/bot` renders them via `linksMarkup` on the `/context` reply.
 - `/investigate` (`internal/agent`): `Report.Links` comes from the `submit_report`
   tool's `links` param; `Report.normalize` drops invalid/duplicate links and caps
   at `maxReportLinks`. Here links may be **any** http(s) URL the agent obtained from
   tool results (dashboards, tickets), not just cited sources. The bot attaches them
   to the final report message.
+- Agentic `/context` (`internal/answer.AgenticAnswerer.Answer`, opt-in via
+  `context.agentic: true`): same `submit_answer`/`filterButtons` contract as the
+  OpenRouter answerer above, but the allowed-URL set is built from two sources —
+  the seed results' `source_url` (`buildSeedMessages`) plus any URL the loop
+  *discovers* while calling tools mid-conversation. Discovery is
+  `agent.collectURLs` in `internal/agent/core.go`: it only extracts URLs from
+  structured `"source_url"`/`"url"` JSON keys in a tool's result, **never** by
+  regexing the full result text. This matters because tool results carry
+  untrusted ingested content (a chunk's body, a fetched page) — a naive
+  whole-text URL scan would let any link merely *mentioned* in that content
+  become a clickable button, defeating the "constrained to vetted sources"
+  guarantee. Keep this restriction if `collectURLs` or its call site ever change.
 
 ## API auth
 
@@ -113,16 +171,46 @@ networks.
 Each service's own settings live in a per-service YAML section rather than as
 flat top-level keys: `api.http_addr` (ssapi's server), `mcp.addr`/`mcp.auth_token`
 (ssmcp), `telegram.addr` (ssbot's standalone health server — it has no other
-HTTP API to attach health checks to), `agent.addr` (ssagent). The old flat
+HTTP API to attach health checks to), `agent.addr` (ssagent), `ingest.addr`
+(`ssingest serve`'s health/webhook server). The old flat
 `http_addr`, `mcp_addr`, and `mcp_auth_token` top-level keys still parse for
 backwards compatibility but are deprecated: using one logs a warning
 (`Config.Warnings`, surfaced via `Config.LogWarnings`), and setting both the
 old and new field for the same value is a hard error at `config.Load()` time.
 See `internal/config/config.go`'s `resolveDeprecatedAddr`/`resolveDeprecatedSecret`.
 
+`ingest.*` (`IngestConfig`) controls `ssingest serve`'s daemon polling for the sources
+that have no config section of their own to hold a poll interval: `ingest.git.poll.interval_seconds`,
+`ingest.files.poll.interval_seconds`, `ingest.telegram.poll.interval_seconds` (all 0 by
+default — polling for that source is off unless set). GitLab and Jira reuse their own
+existing `gitlab.poll.interval_seconds`/`jira.poll.interval_seconds` and
+`gitlab.webhook.*`/`jira.webhook.*` — the same config keys, just now consumed by
+`ssingest serve` instead of `ssapi` (see cmd/ssingest/cmd_serve.go).
+
 `cmd/ssbot`'s Telegram bot is allowlist-gated and **fails closed**: `telegram.allowed_chats`
 / `allowed_user_ids` (both empty by default) must list at least one chat or user, or the
 bot silently ignores every message (see `internal/bot.Bot.isAllowed`).
+
+`proxies.*` (`ProxyConfig`) configures a per-client HTTP proxy: `git`, `gitlab`, `jira`,
+`ollama`, `openrouter`, and `fetch` (the dedicated proxy for `internal/fetch` sites that
+set `proxy: fetch`). A fetch site's `proxy` name is resolved twice — once in
+`internal/config/config.go` (`fetchProxyURL`, used for config validation) and again in
+`internal/fetch/fetcher.go` (`proxyURL`, used to actually build the site's `http.Client`).
+Both switches must be kept in sync when adding a new proxy name; a name present in one but
+not the other either fails validation for a working proxy or silently fetches with no
+proxy at all.
+
+`context.*` (`ContextConfig`) controls the agentic `/context` path: `agentic` (default
+false) only takes effect if OpenRouter is also enabled (`wire.New` silently falls back to
+the non-agentic `openrouter.Answerer`/stub otherwise — no startup warning today if an
+operator sets `agentic: true` without OpenRouter configured). `ssh_mcp_url` points at an
+ssh-mcp sidecar (see `deploy/sandbox/`); when unset or unreachable, sandbox/`ssh_*` tools
+are unavailable and `AgenticAnswerer` tells the model so in its prompt instead of silently
+letting `ssh_*` tool calls fail (`AgenticOptions.SandboxEnabled`, wired from
+`sshTools != nil` in `wire.go`). `pre_search`/`pre_search_limit` seed the agent loop with
+an initial retrieval — `AnswerRich` only runs this when the caller didn't already pass
+results (`internal/api.Handler.Context` always retrieves first), to avoid a duplicate
+query that would also drop the caller's service/source-tier filters.
 
 ## Conventions
 
@@ -205,8 +293,21 @@ Down`-style comment will actually execute.
 ## Ingestion
 
 `make ingest` (= `go run ./cmd/ssingest all`) runs incremental backfills for every
-configured source. Per-source: `make ingest-git`, `make ingest-gitlab`, `make ingest-jira`,
-`make ingest-telegram`.
+configured source, once, then exits. Per-source: `make ingest-git`, `make ingest-gitlab`,
+`make ingest-jira`, `make ingest-telegram`.
+
+`make ingest-serve` (= `go run ./cmd/ssingest serve`) instead runs as a daemon: it never
+exits, and instead re-runs each source's incremental ingestion on a debounced
+`internal/webhook.Trigger` fired either by that source's webhook HTTP endpoint (GitLab/Jira
+only — `POST /webhooks/gitlab`/`/webhooks/jira` on `ingest.addr`, gated by
+`gitlab.webhook.enabled`+`gitlab.webhook.secret` / `jira.webhook.*`) or by a per-source
+`internal/webhook.Poller` ticker (`gitlab.poll.interval_seconds`, `jira.poll.interval_seconds`,
+`ingest.git.poll.interval_seconds`, `ingest.files.poll.interval_seconds`,
+`ingest.telegram.poll.interval_seconds` — each 0/unset disables that source's polling). A
+webhook and a poll tick racing on the same source coalesce into one run instead of two
+(`Trigger.Fire`'s debounce). This is the only ingestion scheduler in the deploy stack —
+`cmd/ssapi` does not run any ingestion itself, so there's exactly one process racing to
+write a given source's rows.
 
 Each source (or per-repo for git, per-resource type for gitlab REST) has a `SyncState` row
 in ent: `source`, `last_synced_at`, `last_cursor` (opaque JSON), `status`, `error`,

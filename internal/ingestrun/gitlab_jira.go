@@ -47,12 +47,13 @@ const indexConcurrency = 8
 
 // Runner runs ingestion sources against the shared pipeline infrastructure.
 type Runner struct {
-	DB       *ent.Client
-	Vectors  pipeline.VectorStore
-	Embedder index.Embedder
-	Config   config.Config
-	TP       trace.TracerProvider
-	MP       metric.MeterProvider
+	DB        *ent.Client
+	Vectors   pipeline.VectorStore
+	Embedder  index.Embedder
+	Config    config.Config
+	TP        trace.TracerProvider
+	MP        metric.MeterProvider
+	UserAgent string
 }
 
 // Pipeline builds an indexing pipeline for a source chunker.
@@ -101,6 +102,7 @@ func (r Runner) RunGitLab(ctx context.Context, opts GitLabOptions) error {
 		TracerProvider: r.TP,
 		MeterProvider:  r.MP,
 		Cache:          cache,
+		UserAgent:      r.UserAgent,
 	})
 	if err != nil {
 		return errors.Wrap(err, "gitlab http client")
@@ -111,6 +113,7 @@ func (r Runner) RunGitLab(ctx context.Context, opts GitLabOptions) error {
 		Token:      cfg.GitLab.Token,
 		Projects:   projects,
 		HTTPClient: httpClient,
+		UserAgent:  r.UserAgent,
 	})
 	if err != nil {
 		return errors.Wrap(err, "gitlab new fetcher")
@@ -247,6 +250,7 @@ func (r Runner) RunJira(ctx context.Context, opts JiraOptions) error {
 		TracerProvider: r.TP,
 		MeterProvider:  r.MP,
 		Cache:          cache,
+		UserAgent:      r.UserAgent,
 	})
 	if err != nil {
 		return errors.Wrap(err, "jira http client")
@@ -259,6 +263,7 @@ func (r Runner) RunJira(ctx context.Context, opts JiraOptions) error {
 		Password:   jc.Password,
 		PAT:        jc.PAT,
 		HTTPClient: httpClient,
+		UserAgent:  r.UserAgent,
 	})
 	if err != nil {
 		return errors.Wrap(err, "jira new fetcher")
@@ -432,7 +437,7 @@ func ResetSource(ctx context.Context, db *ent.Client, vectors pipeline.VectorSto
 			}
 		}
 	} else if vectors == nil && len(chunkIDs) > 0 {
-		lg.Warn("Qdrant unavailable; ent data cleared but vector points remain; they won't match any deleted doc",
+		lg.Warn("qdrant unavailable; ent data cleared but vector points remain; they won't match any deleted doc",
 			zap.String("source", string(src)))
 	}
 

@@ -33,6 +33,18 @@ func (f DocumentFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, er
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.DocumentMutation", m)
 }
 
+// The InvestigationJobFunc type is an adapter to allow the use of ordinary
+// function as InvestigationJob mutator.
+type InvestigationJobFunc func(context.Context, *ent.InvestigationJobMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f InvestigationJobFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.InvestigationJobMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.InvestigationJobMutation", m)
+}
+
 // The SupportRequestFunc type is an adapter to allow the use of ordinary
 // function as SupportRequest mutator.
 type SupportRequestFunc func(context.Context, *ent.SupportRequestMutation) (ent.Value, error)

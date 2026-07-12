@@ -9,6 +9,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/go-faster/sisyphus/internal/agent"
 )
 
 // CompleteWithTools sends a chat completion request to the LLM with the provided tools
@@ -18,7 +20,7 @@ func (c *Client) CompleteWithTools(
 	model string,
 	messages []openai.ChatCompletionMessageParamUnion,
 	tools []openai.ChatCompletionToolUnionParam,
-) (_ openai.ChatCompletionMessage, rerr error) {
+) (_ openai.ChatCompletionMessage, _ agent.Usage, rerr error) {
 	start := time.Now()
 	var promptTokens, completionTokens int64
 	ctx, span := c.tracer.Start(ctx, "llm.complete_with_tools",
@@ -45,10 +47,10 @@ func (c *Client) CompleteWithTools(
 
 	resp, err := c.oc.Chat.Completions.New(ctx, req)
 	if err != nil {
-		return openai.ChatCompletionMessage{}, errors.Wrap(err, "chat completion with tools")
+		return openai.ChatCompletionMessage{}, agent.Usage{}, errors.Wrap(err, "chat completion with tools")
 	}
 	if len(resp.Choices) == 0 {
-		return openai.ChatCompletionMessage{}, errors.New("openrouter returned no choices")
+		return openai.ChatCompletionMessage{}, agent.Usage{}, errors.New("openrouter returned no choices")
 	}
 
 	promptTokens = resp.Usage.PromptTokens
@@ -58,5 +60,5 @@ func (c *Client) CompleteWithTools(
 		attribute.Int64("tokens.completion", completionTokens),
 	)
 
-	return resp.Choices[0].Message, nil
+	return resp.Choices[0].Message, agent.Usage{PromptTokens: promptTokens, CompletionTokens: completionTokens}, nil
 }

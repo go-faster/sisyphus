@@ -103,16 +103,18 @@ func NewAnswerer() Answerer {
 // It returns a short header echoing the question, a numbered "Relevant sources"
 // list built from each result's Chunk fields, and a "Confidence: low (LLM disabled)"
 // footer. If results is empty, it indicates no relevant context was found.
-func (a Answerer) Answer(_ context.Context, question string, results []index.Result) (string, error) {
+func (a Answerer) Answer(_ context.Context, q index.Query, results []index.Result) (index.Answer, error) {
 	var response strings.Builder
 
 	// Header echoing the question.
-	response.WriteString("Question: " + question + "\n\n")
+	response.WriteString("Question: ")
+	response.WriteString(q.Text)
+	response.WriteString("\n\n")
 
 	if len(results) == 0 {
 		response.WriteString("No relevant context was found to answer this question.\n\n")
 		response.WriteString("Confidence: low (LLM disabled)")
-		return response.String(), nil
+		return index.Answer{Text: response.String()}, nil
 	}
 
 	// Relevant sources section.
@@ -148,12 +150,13 @@ func (a Answerer) Answer(_ context.Context, question string, results []index.Res
 			runeSlice := []rune(snippet)
 			snippet = string(runeSlice[:maxSnippetRunes]) + "…"
 		}
-		response.WriteString("   " + strings.TrimSpace(snippet) + "\n")
-		response.WriteString("\n")
+		response.WriteString("   ")
+		response.WriteString(strings.TrimSpace(snippet))
+		response.WriteString("\n\n")
 	}
 
 	// Confidence footer.
 	response.WriteString("Confidence: low (LLM disabled)")
 
-	return response.String(), nil
+	return index.Answer{Text: response.String()}, nil
 }

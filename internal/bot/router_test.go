@@ -6,6 +6,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestParseInlineQuery(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"how to restart", "how to restart"},
+		{"search how to restart", "how to restart"},
+		{"/search how to restart", "how to restart"},
+		{"Search how to restart", "how to restart"},
+		{"/SEARCH something", "something"},
+		{"search   with spaces", "with spaces"},
+		{"", ""},
+		{"  ", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := parseInlineQuery(tt.input)
+			require.Equal(t, tt.expected, got)
+		})
+	}
+}
+
 func TestParseCommand(t *testing.T) {
 	tests := []struct {
 		text     string

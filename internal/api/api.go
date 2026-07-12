@@ -5,6 +5,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"net/http"
 	"strings"
 	"time"
@@ -36,6 +37,8 @@ type Handler struct {
 	retriever Retriever
 	answerer  index.Answerer
 	answers   AnswerIndexer
+	content   index.ContentResolver
+	fetcher   index.URLFetcher
 	version   string
 }
 
@@ -57,12 +60,90 @@ func WithAnswerIndexer(p AnswerIndexer) Option {
 	}
 }
 
+// WithContentResolver sets the file content resolver.
+func WithContentResolver(c index.ContentResolver) Option {
+	return func(h *Handler) {
+		h.content = c
+	}
+}
+
+// WithURLFetcher sets the whitelisted URL fetcher.
+func WithURLFetcher(f index.URLFetcher) Option {
+	return func(h *Handler) {
+		h.fetcher = f
+	}
+}
+
 // GetHealth implements the liveness probe.
 func (h *Handler) GetHealth(_ context.Context) (*oas.Health, error) {
 	return &oas.Health{
 		Status:  "ok",
 		Version: oas.NewOptString(h.version),
 	}, nil
+}
+
+// GetFile retrieves actual file content.
+func (h *Handler) GetFile(ctx context.Context, req *oas.FileRequest) (*oas.FileResponse, error) {
+	if h.content == nil {
+		return &oas.FileResponse{Found: false}, nil
+	}
+
+	cr := index.ContentRequest{
+		Repo:   req.Repo,
+		Path:   req.Path,
+		Branch: req.Branch.Or(""),
+		Start:  int(req.Start.Or(0)),
+		End:    int(req.End.Or(0)),
+	}
+
+	resp, err := h.content.ResolveContent(ctx, cr)
+	if err != nil {
+		zctx.From(ctx).Error("failed to resolve file content", zap.Error(err))
+		return &oas.FileResponse{Found: false}, nil
+	}
+
+	return &oas.FileResponse{
+		Content: resp.Content,
+		Source:  oas.NewOptString(resp.Source),
+		Found:   resp.Found,
+	}, nil
+}
+
+// FetchURL fetches a URL from the configured allowlist.
+func (h *Handler) FetchURL(ctx context.Context, req *oas.FetchURLRequest) (*oas.FetchURLResponse, error) {
+	if h.fetcher == nil {
+		return nil, &oas.ErrorStatusCode{
+			StatusCode: http.StatusForbidden,
+			Response:   oas.Error{ErrorMessage: "url fetcher not configured"},
+		}
+	}
+
+	resp, err := h.fetcher.Fetch(ctx, index.FetchRequest{
+		URL:     req.URL,
+		Method:  req.Method.Or(""),
+		Body:    req.Body.Or(""),
+		Headers: req.Headers.Or(nil),
+	})
+	if err != nil {
+		if stderrors.Is(err, index.ErrURLNotAllowed) || stderrors.Is(err, index.ErrFetchMethodNotAllowed) {
+			return nil, &oas.ErrorStatusCode{
+				StatusCode: http.StatusForbidden,
+				Response:   oas.Error{ErrorMessage: err.Error()},
+			}
+		}
+		return nil, errors.Wrap(err, "fetch url")
+	}
+
+	out := &oas.FetchURLResponse{
+		StatusCode: resp.StatusCode,
+		Body:       resp.Body,
+		FromSite:   resp.FromSite,
+		Truncated:  oas.NewOptBool(resp.Truncated),
+	}
+	if len(resp.Headers) > 0 {
+		out.Headers = oas.NewOptFetchURLResponseHeaders(oas.FetchURLResponseHeaders(resp.Headers))
+	}
+	return out, nil
 }
 
 // Search runs hybrid retrieval.
@@ -97,16 +178,9 @@ func (h *Handler) Context(ctx context.Context, req *oas.ContextRequest) (*oas.Co
 		return nil, errors.Wrap(err, "retrieve")
 	}
 
-	// Prefer the richer structured answer (prose + source-link buttons) when the
-	// answerer supports it; otherwise fall back to plain text.
-	var answer index.Answer
-	if ra, ok := h.answerer.(index.RichAnswerer); ok {
-		answer, err = ra.AnswerRich(ctx, req.Question, results)
-	} else {
-		var text string
-		text, err = h.answerer.Answer(ctx, req.Question, results)
-		answer.Text = text
-	}
+	// Call the unified Answerer which always returns a full index.Answer
+	// including any source-link buttons.
+	answer, err := h.answerer.Answer(ctx, q, results)
 	if err != nil {
 		return nil, errors.Wrap(err, "answer")
 	}
@@ -121,6 +195,7 @@ func (h *Handler) Context(ctx context.Context, req *oas.ContextRequest) (*oas.Co
 		Confidence: oas.NewOptString("low"),
 		Buttons:    toLinks(answer.Links),
 		Results:    toSearchResults(results),
+		Debug:      toDebug(answer.Debug),
 	}, nil
 }
 
@@ -134,6 +209,22 @@ func toLinks(links []index.Link) []oas.Link {
 		out = append(out, oas.Link{Text: l.Text, URL: l.URL})
 	}
 	return out
+}
+
+// toDebug maps index.Debug to its oas representation; absent from the
+// response unless the operator has opted into debug info.
+func toDebug(d *index.Debug) oas.OptDebug {
+	if d == nil {
+		return oas.OptDebug{}
+	}
+	return oas.NewOptDebug(oas.Debug{
+		TraceID:          oas.NewOptString(d.TraceID),
+		DurationMs:       oas.NewOptInt64(d.DurationMS),
+		Iterations:       oas.NewOptInt(d.Iterations),
+		ToolCalls:        oas.NewOptInt(d.ToolCalls),
+		PromptTokens:     oas.NewOptInt64(d.PromptTokens),
+		CompletionTokens: oas.NewOptInt64(d.CompletionTokens),
+	})
 }
 
 func answeredQuestionDocument(question, answer string) index.Document {

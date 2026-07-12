@@ -51,4 +51,7 @@ ingest-jira:
 ingest-telegram:
 	go run ./cmd/ssingest telegram
 
-.PHONY: lint fmt codegen migrate-diff run run-bot run-agent ingest ingest-git ingest-gitlab ingest-jira ingest-telegram
+ingest-serve:
+	go run ./cmd/ssingest serve
+
+.PHONY: lint fmt codegen migrate-diff run run-bot run-agent ingest ingest-git ingest-gitlab ingest-jira ingest-telegram ingest-serve

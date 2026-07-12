@@ -7,6 +7,8 @@ type OperationName = string
 
 const (
 	ContextOperation   OperationName = "Context"
+	FetchURLOperation  OperationName = "FetchURL"
+	GetFileOperation   OperationName = "GetFile"
 	GetHealthOperation OperationName = "GetHealth"
 	SearchOperation    OperationName = "Search"
 )

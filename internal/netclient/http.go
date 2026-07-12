@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -27,6 +28,7 @@ type HTTPClientOptions struct {
 	TracerProvider trace.TracerProvider
 	Timeout        time.Duration
 	Cache          httpcache.Cache
+	UserAgent      string
 }
 
 func (opts *HTTPClientOptions) setDefaults() {
@@ -42,7 +44,7 @@ func (opts *HTTPClientOptions) setDefaults() {
 }
 
 // HTTPClient returns an HTTP client using proxyURL when configured.
-func HTTPClient(ctx context.Context, name, proxyURL string, opts HTTPClientOptions) (*http.Client, error) {
+func HTTPClient(_ context.Context, name, proxyURL string, opts HTTPClientOptions) (*http.Client, error) {
 	opts.setDefaults()
 
 	var (
@@ -79,6 +81,9 @@ func HTTPClient(ctx context.Context, name, proxyURL string, opts HTTPClientOptio
 		cacheTransport.Transport = transport
 		transport = cacheTransport
 	}
+	if ua := strings.TrimSpace(opts.UserAgent); ua != "" {
+		transport = &userAgentRoundTripper{userAgent: ua, transport: transport}
+	}
 	transport = &loggingRoundTripper{
 		name:         name,
 		via:          via,
@@ -86,11 +91,23 @@ func HTTPClient(ctx context.Context, name, proxyURL string, opts HTTPClientOptio
 		metrics:      m,
 		cacheEnabled: opts.Cache != nil,
 	}
-	_ = ctx
 	return &http.Client{
 		Transport: transport,
 		Timeout:   opts.Timeout,
 	}, nil
+}
+
+type userAgentRoundTripper struct {
+	userAgent string
+	transport http.RoundTripper
+}
+
+func (u *userAgentRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	req2 := req.Clone(req.Context())
+	if req2.Header.Get("User-Agent") == "" {
+		req2.Header.Set("User-Agent", u.userAgent)
+	}
+	return u.transport.RoundTrip(req2)
 }
 
 func configureProxy(transport *http.Transport, u *url.URL) error {
@@ -133,7 +150,7 @@ func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	if l.via != "" {
 		viaField = zap.String("via", l.via)
 	}
-	logger.Debug("HTTP request",
+	logger.Debug("http request",
 		zap.String("client_name", l.name),
 		zap.String("method", req.Method),
 		zap.String("url", redactURL(req.URL)),
@@ -142,7 +159,7 @@ func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	resp, err := l.transport.RoundTrip(req)
 	if err != nil {
 		l.metrics.recordError(req.Context(), l.name, httpErrorType(err), time.Since(start).Seconds())
-		logger.Error("HTTP request failed", zap.Error(err))
+		logger.Error("http request failed", zap.Error(err))
 		return nil, err
 	}
 
@@ -150,7 +167,7 @@ func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	if ct := resp.Header.Get("Content-Type"); ct != "" {
 		ctField = zap.String("content_type", ct)
 	}
-	logger.Debug("HTTP response",
+	logger.Debug("http response",
 		zap.Int("status", resp.StatusCode),
 		zap.Int("content_length", int(resp.ContentLength)),
 		zap.Duration("took", time.Since(start)),

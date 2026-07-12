@@ -91,7 +91,7 @@ func New(lexical, vector index.Searcher, fetcher ChunkFetcher, opts ServiceOptio
 		lexical: lexical,
 		vector:  vector,
 		fetcher: fetcher,
-		tracer:  opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/retrieval"),
+		tracer:  opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/retrieval"),
 		m:       m,
 	}
 	// The lexical backend (Postgres FTS) can report corpus document frequencies,
