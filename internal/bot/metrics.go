@@ -106,12 +106,16 @@ func (m *botMetrics) recordContext(ctx context.Context, durSeconds float64, resu
 	}
 }
 
-func (m *botMetrics) recordSearch(ctx context.Context, durSeconds float64, resultCount int, err error) {
+func (m *botMetrics) recordSearch(ctx context.Context, durSeconds float64, resultCount int, err error, inline bool) {
 	status := "ok"
 	if err != nil {
 		status = "error"
 	}
-	attrs := metric.WithAttributes(attribute.String("status", status))
+	channel := "message"
+	if inline {
+		channel = "inline"
+	}
+	attrs := metric.WithAttributes(attribute.String("status", status), attribute.String("channel", channel))
 	m.searchReqs.Add(ctx, 1, attrs)
 	m.searchDur.Record(ctx, durSeconds, attrs)
 	if err == nil {

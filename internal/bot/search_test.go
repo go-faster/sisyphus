@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/google/uuid"
+	"github.com/gotd/td/tg"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
@@ -31,7 +33,7 @@ func TestSearchResultsText(t *testing.T) {
 		{Chunk: index.Chunk{Text: "no title here", Metadata: map[string]any{"source": "gitlab_issue"}}},
 	})
 	require.Contains(t, text, `1. **Runbook\: prod outage**`)
-	require.Contains(t, text, "Restart the pods")
+	require.Contains(t, text, "```\nRestart the pods")
 	require.Contains(t, text, `2. **gitlab\_issue**`)
 }
 
@@ -40,7 +42,8 @@ func TestSearchResultsTextEscapesMarkdown(t *testing.T) {
 		{Chunk: index.Chunk{Title: "*bold* [link](evil)", Text: "snake_case_ident and # not a heading"}},
 	})
 	require.Contains(t, text, `\*bold\* \[link\]\(evil\)`)
-	require.Contains(t, text, `snake\_case\_ident and \# not a heading`)
+	// Snippet is now inside a fenced code block, so no escaping needed.
+	require.Contains(t, text, "```\nsnake_case_ident and # not a heading\n```")
 }
 
 func TestSearchResultsTextCapsResultCount(t *testing.T) {
@@ -52,6 +55,80 @@ func TestSearchResultsTextCapsResultCount(t *testing.T) {
 	text := searchResultsText(results)
 	require.Contains(t, text, strconv.Itoa(searchResultLimit)+".")
 	require.NotContains(t, text, strconv.Itoa(searchResultLimit+1)+".")
+}
+
+func TestFormatSearchResultRendersCodeBlockEntity(t *testing.T) {
+	r := index.Result{
+		Chunk: index.Chunk{Title: "test", Text: "some code or data"},
+		Score: 1.0,
+	}
+	md := formatSearchResult(r, 0)
+	text, entities := render(t, md)
+	require.Contains(t, text, "some code or data")
+	hasPre := false
+	for _, e := range entities {
+		if _, ok := e.(*tg.MessageEntityPre); ok {
+			hasPre = true
+			break
+		}
+	}
+	require.True(t, hasPre, "expected a MessageEntityPre for the code block")
+}
+
+func TestDedupResults(t *testing.T) {
+	doc1 := uuid.New()
+	doc2 := uuid.New()
+	results := []index.Result{
+		{Chunk: index.Chunk{DocumentID: doc1, Title: "doc1a"}, Score: 0.9},
+		{Chunk: index.Chunk{DocumentID: doc2, Title: "doc2"}, Score: 0.8},
+		{Chunk: index.Chunk{DocumentID: doc1, Title: "doc1b"}, Score: 0.7},
+	}
+	deduped := dedupResults(results, 2)
+	require.Len(t, deduped, 2)
+	require.Equal(t, "doc1a", deduped[0].Chunk.Title)
+	require.Equal(t, "doc2", deduped[1].Chunk.Title)
+}
+
+func TestDedupResultsEmpty(t *testing.T) {
+	require.Nil(t, dedupResults(nil, 5))
+}
+
+func TestDedupResultsCaps(t *testing.T) {
+	results := make([]index.Result, 10)
+	for i := range results {
+		results[i] = index.Result{
+			Chunk: index.Chunk{
+				DocumentID: uuid.New(),
+				Title:      strconv.Itoa(i),
+			},
+		}
+	}
+	require.Len(t, dedupResults(results, 3), 3)
+}
+
+func TestHandleSearch(t *testing.T) {
+	r := &fakeRetriever{results: []index.Result{
+		{Chunk: index.Chunk{
+			ID: uuid.New(), DocumentID: uuid.New(),
+			Title: "doc", Text: "hello world",
+			Metadata: map[string]any{"source_url": "https://example.com/doc"},
+		}},
+	}}
+	b := New(context.Background(), r, nil, BotCredentials{}, BotOptions{
+		Silent:         true,
+		TracerProvider: otel.GetTracerProvider(),
+		Logger:         zap.NewNop(),
+		AllowedUserIDs: []int64{1},
+	})
+
+	answer, err := b.handleSearch(context.Background(), "how to restart")
+	require.NoError(t, err)
+	require.Contains(t, answer.Text, "doc")
+	require.Contains(t, answer.Text, "hello world")
+	require.Contains(t, answer.Text, "[Source](https://example.com/doc)")
+	require.Empty(t, answer.Links)
+	require.Equal(t, "how to restart", r.query.Text)
+	require.Equal(t, searchPool, r.query.Limit)
 }
 
 func TestSearchResultsTextInlinesSourceLink(t *testing.T) {
@@ -71,25 +148,42 @@ func TestSearchResultsTextInlinesSourceLink(t *testing.T) {
 	require.NotContains(t, text, "not-a-url")
 }
 
-func TestHandleSearch(t *testing.T) {
-	r := &fakeRetriever{results: []index.Result{
-		{Chunk: index.Chunk{Title: "doc", Text: "hello world", Metadata: map[string]any{"source_url": "https://example.com/doc"}}},
-	}}
-	b := New(context.Background(), r, nil, BotCredentials{}, BotOptions{
-		Silent:         true,
-		TracerProvider: otel.GetTracerProvider(),
-		Logger:         zap.NewNop(),
-		AllowedUserIDs: []int64{1},
-	})
-
-	answer, err := b.handleSearch(context.Background(), "how to restart")
-	require.NoError(t, err)
-	require.Contains(t, answer.Text, "doc")
-	require.Contains(t, answer.Text, "hello world")
-	require.Contains(t, answer.Text, "[Source](https://example.com/doc)")
-	require.Empty(t, answer.Links)
-	require.Equal(t, "how to restart", r.query.Text)
-	require.Equal(t, searchResultLimit, r.query.Limit)
+func TestSearchInlineResults(t *testing.T) {
+	results := []index.Result{
+		{
+			Chunk: index.Chunk{
+				ID: uuid.New(), DocumentID: uuid.New(),
+				Title: "Test Doc 1",
+				Text:  "Some content here for testing",
+			},
+			Score: 0.9,
+		},
+		{
+			Chunk: index.Chunk{
+				ID: uuid.New(), DocumentID: uuid.New(),
+				Title: "",
+				Text:  "No title, using source fallback",
+				Metadata: map[string]any{
+					"source":     "gitlab_issue",
+					"source_url": "https://gitlab.com/test/1",
+				},
+			},
+			Score: 0.8,
+		},
+		{
+			Chunk: index.Chunk{
+				ID: uuid.New(), DocumentID: uuid.New(),
+				Title: "With URL",
+				Text:  "Has a source URL",
+				Metadata: map[string]any{
+					"source_url": "https://example.com/doc",
+				},
+			},
+			Score: 0.7,
+		},
+	}
+	opts := searchInlineResults(results)
+	require.Len(t, opts, 3)
 }
 
 func TestHandleSearchNoRetriever(t *testing.T) {

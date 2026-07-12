@@ -13,8 +13,6 @@ import (
 	"github.com/gotd/log/logzap"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/message"
-	"github.com/gotd/td/telegram/message/entity"
-	"github.com/gotd/td/telegram/message/styling"
 	"github.com/gotd/td/tg"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -111,7 +109,6 @@ func New(_ context.Context, r Retriever, a index.Answerer, cred BotCredentials, 
 	mp := opts.MeterProvider
 	m, _ := newBotMetrics(mp)
 
-	// Build allowlist maps
 	allowedChats := make(map[int64]struct{})
 	for _, chatID := range opts.AllowedChats {
 		allowedChats[chatID] = struct{}{}
@@ -199,7 +196,6 @@ func (b *Bot) Run(ctx context.Context) error {
 			return nil
 		}
 
-		// Check allowlist before processing
 		chatID := peerChatID(msg.PeerID)
 		senderID := peerChatID(msg.FromID)
 		if !b.isAllowed(chatID, senderID) {
@@ -221,50 +217,46 @@ func (b *Bot) Run(ctx context.Context) error {
 		case "start":
 			lg.Info("start command", zap.Int64("user_id", senderID))
 			if !b.silent {
+				s := newReplySender(sender, e, u)
 				answer := fmt.Sprintf("Your ID: %d\n\n%s", senderID, helpText)
-				if _, err := sender.Reply(e, u).Text(ctx, answer); err != nil {
-					return errors.Wrap(err, "reply")
-				}
+				b.sendTextReply(ctx, s, answer)
 			}
 		case "help":
 			lg.Info("help command")
 			if !b.silent {
-				if _, err := sender.Reply(e, u).Text(ctx, helpText); err != nil {
-					return errors.Wrap(err, "reply")
-				}
+				s := newReplySender(sender, e, u)
+				b.sendTextReply(ctx, s, helpText)
 			}
 		case "context":
 			lg.Info("context command", zap.String("query", rest))
-			answer, err := b.handle(ctx, rest)
-			if err != nil {
-				lg.Error("handle context", zap.Error(err))
-				answer = index.Answer{Text: "Sorry, something went wrong handling that request."}
+			var s messageSender
+			if !b.silent {
+				s = newReplySender(sender, e, u)
+			} else {
+				s = silentSender{}
 			}
-			lg.Info("replying", zap.String("answer", answer.Text), zap.Int("buttons", len(answer.Links)))
-			b.sendAnswer(ctx, sender, e, u, answer, lg, "context")
+			b.handleWithProgress(ctx, s, rest, b.handle, "context")
 		case "search":
 			lg.Info("search command", zap.String("query", rest))
-			answer, err := b.handleSearch(ctx, rest)
-			if err != nil {
-				lg.Error("handle search", zap.Error(err))
-				answer = index.Answer{Text: "Sorry, something went wrong handling that request."}
+			var s messageSender
+			if !b.silent {
+				s = newReplySender(sender, e, u)
+			} else {
+				s = silentSender{}
 			}
-			lg.Info("replying", zap.String("answer", answer.Text), zap.Int("buttons", len(answer.Links)))
-			b.sendAnswer(ctx, sender, e, u, answer, lg, "search")
+			b.handleWithProgress(ctx, s, rest, b.handleSearch, "search")
 		case "investigate":
 			lg.Info("investigate command", zap.String("description", rest))
 			if b.investigator == nil {
 				if !b.silent {
-					if _, err := sender.Reply(e, u).Text(ctx, "Investigation capability is not configured."); err != nil {
-						return errors.Wrap(err, "reply")
-					}
+					s := newReplySender(sender, e, u)
+					b.sendTextReply(ctx, s, "Investigation capability is not configured.")
 				}
 				return nil
 			}
 			if !b.silent {
-				if _, err := sender.Reply(e, u).Text(ctx, "Investigating, this may take a few minutes. I'll follow up here."); err != nil {
-					return errors.Wrap(err, "ack reply")
-				}
+				s := newReplySender(sender, e, u)
+				b.sendTextReply(ctx, s, "Investigating, this may take a few minutes. I'll follow up here.")
 			}
 			go b.investigateAsync(runCtx, sender, e, u, rest)
 		default:
@@ -272,6 +264,64 @@ func (b *Bot) Run(ctx context.Context) error {
 		}
 		return nil
 	})
+
+	dispatcher.OnBotInlineQuery(func(ctx context.Context, _ tg.Entities, u *tg.UpdateBotInlineQuery) error {
+		if !b.isAllowed(0, u.UserID) {
+			zctx.From(ctx).Debug("bot: ignoring inline query from non-allowlisted user",
+				zap.Int64("user_id", u.UserID))
+			_, err := sender.Inline(u).SwitchPM("Start me to enable search", "start").Set(ctx)
+			return err
+		}
+
+		query := parseInlineQuery(u.Query)
+		if query == "" {
+			_, err := sender.Inline(u).Set(ctx)
+			return err
+		}
+
+		lg := zctx.From(ctx)
+		lg.Info("inline search", zap.String("query", query))
+
+		start := time.Now()
+		ctx, span := b.tracer.Start(ctx, "bot.inline_search",
+			trace.WithAttributes(attribute.Int("query.length", len(query))),
+		)
+		var (
+			resultCount int
+			rerr        error
+		)
+		defer func() {
+			span.SetAttributes(attribute.Int("results.count", resultCount))
+			if rerr != nil {
+				span.RecordError(rerr)
+				span.SetStatus(codes.Error, rerr.Error())
+			}
+			span.End()
+			if b.metrics != nil {
+				b.metrics.recordSearch(ctx, time.Since(start).Seconds(), resultCount, rerr, true)
+			}
+		}()
+
+		results, err := b.retrieveSearch(ctx, query, inlineResultLimit)
+		if err != nil {
+			rerr = err
+			lg.Error("inline search retrieve", zap.Error(err))
+			_, err := sender.Inline(u).Set(ctx)
+			return err
+		}
+		resultCount = len(results)
+
+		ib := sender.Inline(u)
+		ib.CacheTimeSeconds(300).Private(true)
+		s := newInlineSender(ib)
+		_, err = s.setInline(ctx, searchInlineResults(results)...)
+		if err != nil {
+			rerr = err
+			lg.Error("inline search set results", zap.Error(err))
+		}
+		return err
+	})
+
 	return client.Run(ctx, func(ctx context.Context) error {
 		if _, err := client.Auth().Bot(ctx, b.cred.BotToken); err != nil {
 			return errors.Wrap(err, "bot auth")
@@ -280,6 +330,84 @@ func (b *Bot) Run(ctx context.Context) error {
 		<-ctx.Done()
 		return ctx.Err()
 	})
+}
+
+func (b *Bot) sendTextReply(ctx context.Context, s messageSender, answer string) {
+	if _, err := s.sendText(ctx, answer); err != nil {
+		b.logger.Error("reply failed", zap.Error(err))
+	}
+}
+
+func (b *Bot) handleWithProgress(ctx context.Context, s messageSender, query string, handler func(context.Context, string) (index.Answer, error), kind string) {
+	lg := zctx.From(ctx)
+	msgID := b.sendPlaceholder(ctx, lg, s)
+	answer, err := handler(ctx, query)
+	if err != nil {
+		lg.Error("handle "+kind, zap.Error(err))
+		answer = index.Answer{Text: "Sorry, something went wrong handling that request."}
+	}
+	lg.Info("replying", zap.String("answer", answer.Text), zap.Int("buttons", len(answer.Links)))
+	b.sendOrEditAnswer(ctx, s, answer, msgID, lg, kind)
+}
+
+func (b *Bot) sendPlaceholder(ctx context.Context, lg *zap.Logger, s messageSender) int {
+	if b.silent {
+		return 0
+	}
+	msgID, err := s.sendText(ctx, "🔍 Searching\u2026")
+	if err != nil {
+		lg.Warn("failed to send placeholder", zap.Error(err))
+	}
+	return msgID
+}
+
+func (b *Bot) sendOrEditAnswer(ctx context.Context, s messageSender, answer index.Answer, msgID int, lg *zap.Logger, kind string) {
+	if b.silent {
+		return
+	}
+	chunks := splitMarkdown(answer.Text, telegramMessageLimit)
+	if len(chunks) == 0 {
+		chunks = []string{answer.Text}
+	}
+	kb := linksMarkup(answer.Links)
+
+	editOK := false
+	if msgID > 0 {
+		// Single-chunk answer: edit carries the buttons (the loop below won't
+		// run, so this is the only place to attach them). Multi-chunk: edit
+		// the first chunk plain; the loop sends the rest with buttons on last.
+		var editKB tg.ReplyMarkupClass
+		if len(chunks) == 1 {
+			editKB = kb
+		}
+		if err := s.editStyled(ctx, msgID, chunks[0], editKB); err == nil {
+			editOK = true
+			chunks = chunks[1:]
+		} else if tg.IsMessageNotModified(err) {
+			return
+		} else {
+			lg.Warn(kind+" edit failed, falling back to fresh replies", zap.Error(err))
+		}
+	}
+
+	if !editOK && msgID > 0 {
+		answer.Text = "\u21aa " + answer.Text
+		chunks = splitMarkdown(answer.Text, telegramMessageLimit)
+		if len(chunks) == 0 {
+			chunks = []string{answer.Text}
+		}
+	}
+
+	for i, chunk := range chunks {
+		var chunkKB tg.ReplyMarkupClass
+		if kb != nil && i == len(chunks)-1 {
+			chunkKB = kb
+		}
+		if err := s.sendStyled(ctx, chunk, chunkKB); err != nil {
+			lg.Error(kind+" send failed", zap.Error(err), zap.Int("chunk", i))
+			return
+		}
+	}
 }
 
 func (b *Bot) handle(ctx context.Context, query string) (index.Answer, error) {
@@ -349,7 +477,7 @@ func (b *Bot) handleSearch(ctx context.Context, query string) (index.Answer, err
 	)
 	defer func() {
 		if b.metrics != nil {
-			b.metrics.recordSearch(ctx, time.Since(start).Seconds(), resultCount, rerr)
+			b.metrics.recordSearch(ctx, time.Since(start).Seconds(), resultCount, rerr, false)
 		}
 		span.SetAttributes(attribute.Int("results.count", resultCount))
 		if rerr != nil {
@@ -358,12 +486,8 @@ func (b *Bot) handleSearch(ctx context.Context, query string) (index.Answer, err
 		}
 		span.End()
 	}()
-	if b.retriever == nil {
-		rerr = errors.New("bot retriever is not configured")
-		return index.Answer{}, rerr
-	}
 
-	results, err := b.retriever.Retrieve(ctx, index.Query{Text: query, Limit: searchResultLimit})
+	results, err := b.retrieveSearch(ctx, query, searchResultLimit)
 	if err != nil {
 		rerr = errors.Wrap(err, "retrieve")
 		return index.Answer{}, rerr
@@ -390,7 +514,8 @@ func (b *Bot) investigateAsync(ctx context.Context, sender *message.Sender, e tg
 		return
 	}
 	b.logger.Info("investigate reply", zap.String("verdict", string(report.Verdict)))
-	b.sendAnswer(ctx, sender, e, u, index.Answer{Text: reportMarkdown(report), Links: report.Links}, b.logger, "investigate")
+	s := newReplySender(sender, e, u)
+	b.sendAnswer(ctx, s, index.Answer{Text: reportMarkdown(report), Links: report.Links}, b.logger, "investigate")
 }
 
 // sendAnswer delivers answer as one or more replies, splitting the Markdown
@@ -399,7 +524,7 @@ func (b *Bot) investigateAsync(ctx context.Context, sender *message.Sender, e tg
 // otherwise). Link buttons are attached to the final chunk only, so they sit
 // at the bottom of the whole reply. kind labels log lines (e.g. "context",
 // "search", "investigate").
-func (b *Bot) sendAnswer(ctx context.Context, sender *message.Sender, e tg.Entities, u *tg.UpdateNewMessage, answer index.Answer, lg *zap.Logger, kind string) {
+func (b *Bot) sendAnswer(ctx context.Context, s messageSender, answer index.Answer, lg *zap.Logger, kind string) {
 	if b.silent {
 		return
 	}
@@ -409,19 +534,13 @@ func (b *Bot) sendAnswer(ctx context.Context, sender *message.Sender, e tg.Entit
 	}
 	kb := linksMarkup(answer.Links)
 	for i, chunk := range chunks {
-		md := chunk
-		req := sender.Reply(e, u)
+		var chunkKB tg.ReplyMarkupClass
 		if kb != nil && i == len(chunks)-1 {
-			req = req.Markup(kb)
+			chunkKB = kb
 		}
-		if _, err := req.StyledText(ctx, styling.Custom(func(eb *entity.Builder) error {
-			return renderMarkdown(eb, md)
-		})); err != nil {
-			lg.Warn("styled "+kind+" reply failed, falling back to plain text", zap.Error(err))
-			if _, err := req.Text(ctx, md); err != nil {
-				lg.Error(kind+" reply fallback failed", zap.Error(err))
-				return
-			}
+		if err := s.sendStyled(ctx, chunk, chunkKB); err != nil {
+			lg.Error(kind+" send failed", zap.Error(err), zap.Int("chunk", i))
+			return
 		}
 	}
 }
