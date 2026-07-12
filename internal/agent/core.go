@@ -24,10 +24,6 @@ type TerminalTool struct {
 	ErrMsg     func(err error) string
 }
 
-// CoreResult is the exported form of coreResult for other packages that share
-// the loop engine.
-type CoreResult = coreResult
-
 // coreResult holds the loop's raw output for the caller to interpret.
 type coreResult struct {
 	Iterations     int
@@ -208,15 +204,4 @@ func addURL(dst map[string]struct{}, raw string) {
 		return
 	}
 	dst[raw] = struct{}{}
-}
-
-// CoreLoop is the exported entry point for the shared agent loop engine.
-func CoreLoop(ctx context.Context, llm LLM, toolSource ToolSource, model string,
-	messages []openai.ChatCompletionMessageParamUnion,
-	tools []openai.ChatCompletionToolUnionParam,
-	terminal TerminalTool,
-	maxIterations int,
-	logger *zap.Logger,
-) (CoreResult, error) {
-	return coreLoop(ctx, llm, toolSource, model, messages, tools, terminal, maxIterations, logger)
 }

@@ -27,102 +27,68 @@ type Result struct {
 	Iterations int
 	ToolsUsed  int
 
-	// conversation and tools carry the exchange that produced Report, so a
+	// engineResult carries the raw exchange that produced Report, so a
 	// caller can hand the Result back to Loop.Shorten to continue it rather
 	// than starting a fresh investigation.
-	conversation []openai.ChatCompletionMessageParamUnion
-	tools        []openai.ChatCompletionToolUnionParam
+	engineResult EngineResult[Report]
 }
 
-// Loop runs the tool-calling loop.
+// Loop runs the investigate agent's tool-calling loop.
 type Loop struct {
-	llm           LLM
-	toolSource    ToolSource
-	model         string
-	maxIterations int
-	logger        *zap.Logger
+	engine *Engine[Report]
 }
 
 // NewLoop creates a new agent Loop.
 func NewLoop(llm LLM, toolSource ToolSource, model string, maxIterations int, logger *zap.Logger) *Loop {
-	if logger == nil {
-		logger = zap.NewNop()
-	}
-	return &Loop{
-		llm:           llm,
-		toolSource:    toolSource,
-		model:         model,
-		maxIterations: maxIterations,
-		logger:        logger,
-	}
-}
-
-// Run executes the agent loop until it calls submit_report or reaches max
-// iterations.
-func (l *Loop) Run(ctx context.Context, systemPrompt, userInput string) (Result, error) {
-	tools, err := l.toolSource.Tools(ctx)
-	if err != nil {
-		return Result{}, errors.Wrap(err, "get tools")
-	}
-	tools = append(tools, submitReportTool())
-
-	messages := []openai.ChatCompletionMessageParamUnion{
-		openai.SystemMessage(systemPrompt),
-		openai.UserMessage(userInput),
-	}
-
-	return l.run(ctx, messages, tools, l.maxIterations)
-}
-
-// Shorten continues a prior Result's conversation, asking the model to
-// resubmit a shorter report. limitChars is the character budget to ask for.
-func (l *Loop) Shorten(ctx context.Context, res Result, limitChars int) (Result, error) {
-	if res.conversation == nil {
-		return Result{}, errors.New("result has no conversation to continue")
-	}
-	messages := append(append([]openai.ChatCompletionMessageParamUnion{}, res.conversation...), openai.UserMessage(fmt.Sprintf(
-		"Your report is too long. Call %s again with a shorter version: keep only the "+
-			"essential facts and stay under %d characters total across all fields.",
-		submitReportToolName, limitChars,
-	)))
-	return l.run(ctx, messages, res.tools, 3)
-}
-
-func (l *Loop) run(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolUnionParam, maxIterations int) (Result, error) {
-	coreRes, err := coreLoop(ctx, l.llm, l.toolSource, l.model, messages, tools, TerminalTool{
-		Name: submitReportToolName,
-		Def:  submitReportTool(),
-		Parse: func(argsJSON string) (bool, error) {
-			_, err := parseReport(argsJSON)
-			if err != nil {
-				return false, err
-			}
-			return true, nil
+	spec := TerminalSpec[Report]{
+		Name:  submitReportToolName,
+		Def:   submitReportTool(),
+		Parse: parseReport,
+		Fallback: func(noToolContent string) Report {
+			return Report{Findings: noToolContent, Verdict: VerdictNeedsInvestigation}.normalize()
 		},
 		SuccessMsg: "ok",
 		ErrMsg: func(err error) string {
 			return fmt.Sprintf("error: %v", err)
 		},
-	}, maxIterations, l.logger)
+	}
+	return &Loop{engine: NewEngine(llm, toolSource, model, maxIterations, logger, spec)}
+}
+
+// Run executes the agent loop until it calls submit_report or reaches max
+// iterations.
+func (l *Loop) Run(ctx context.Context, systemPrompt, userInput string) (Result, error) {
+	messages := []openai.ChatCompletionMessageParamUnion{
+		openai.SystemMessage(systemPrompt),
+		openai.UserMessage(userInput),
+	}
+	er, err := l.engine.Run(ctx, messages)
 	if err != nil {
-		return Result{Iterations: coreRes.Iterations, ToolsUsed: coreRes.ToolsUsed}, err
+		return toResult(er), err
 	}
+	return toResult(er), nil
+}
 
-	res := Result{
-		Iterations:   coreRes.Iterations,
-		ToolsUsed:    coreRes.ToolsUsed,
-		conversation: coreRes.Conversation,
-		tools:        coreRes.Tools,
+// Shorten continues a prior Result's conversation, asking the model to
+// resubmit a shorter report. limitChars is the character budget to ask for.
+func (l *Loop) Shorten(ctx context.Context, res Result, limitChars int) (Result, error) {
+	extra := openai.UserMessage(fmt.Sprintf(
+		"Your report is too long. Call %s again with a shorter version: keep only the "+
+			"essential facts and stay under %d characters total across all fields.",
+		submitReportToolName, limitChars,
+	))
+	er, err := l.engine.Continue(ctx, res.engineResult, extra, 3)
+	if err != nil {
+		return Result{}, errors.Wrap(err, "continue loop")
 	}
-	if coreRes.TerminalArgs != "" {
-		report, err := parseReport(coreRes.TerminalArgs)
-		if err != nil {
-			return Result{}, errors.Wrap(err, "parse report")
-		}
-		res.Report = report
-		return res, nil
-	}
+	return toResult(er), nil
+}
 
-	res.Report = Report{Findings: coreRes.NoToolContent, Verdict: VerdictNeedsInvestigation}.normalize()
-	return res, nil
+func toResult(er EngineResult[Report]) Result {
+	return Result{
+		Report:       er.Value,
+		Iterations:   er.Iterations,
+		ToolsUsed:    er.ToolsUsed,
+		engineResult: er,
+	}
 }
