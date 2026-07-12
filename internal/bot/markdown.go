@@ -22,6 +22,52 @@ import (
 
 var telegramMarkdown = goldmark.New(goldmark.WithExtensions(extension.Table))
 
+// markdownSpecialChars are the ASCII punctuation characters CommonMark
+// recognizes as backslash-escapable (https://spec.commonmark.org/0.30/#backslash-escapes).
+const markdownSpecialChars = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
+
+// escapeMarkdown backslash-escapes s so that goldmark renders it as literal
+// text rather than interpreting any of its characters as Markdown syntax.
+// Use this for raw, untrusted strings (ingested titles, snippets, etc.) that
+// get interpolated into a Markdown document before rendering — without it, a
+// stray "*", "_", "[", or a leading "#"/"-"/">" can bleed formatting into
+// neighboring text or get misparsed as a heading/list/blockquote.
+func escapeMarkdown(s string) string {
+	var sb strings.Builder
+	sb.Grow(len(s))
+	for _, r := range s {
+		if strings.ContainsRune(markdownSpecialChars, r) {
+			sb.WriteByte('\\')
+		}
+		sb.WriteRune(r)
+	}
+	return sb.String()
+}
+
+// unescapeMarkdownBackslashes drops the backslash from CommonMark
+// backslash-escape sequences (e.g. "\*" -> "*") in a Text/String leaf's raw
+// value. goldmark's AST keeps escape sequences verbatim in the source
+// segment and only resolves them at render time (mirroring
+// yuin/goldmark/renderer/html.Writer.Write) — since mdRenderer reads segment
+// bytes directly rather than going through that writer, it must replicate
+// the same unescaping or escapeMarkdown's output would show literal
+// backslashes instead of being rendered as plain text.
+func unescapeMarkdownBackslashes(s string) string {
+	if !strings.ContainsRune(s, '\\') {
+		return s
+	}
+	runes := []rune(s)
+	var sb strings.Builder
+	sb.Grow(len(s))
+	for i := 0; i < len(runes); i++ {
+		if runes[i] == '\\' && i+1 < len(runes) && strings.ContainsRune(markdownSpecialChars, runes[i+1]) {
+			i++
+		}
+		sb.WriteRune(runes[i])
+	}
+	return sb.String()
+}
+
 // renderMarkdown parses source as Markdown and writes its content into eb
 // using Telegram formatting entities.
 func renderMarkdown(eb *entity.Builder, source string) error {
@@ -219,7 +265,7 @@ func (r *mdRenderer) walkInline(n gast.Node, active []entity.Formatter) error {
 	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
 		switch v := c.(type) {
 		case *gast.Text:
-			s := string(v.Segment.Value(r.src))
+			s := unescapeMarkdownBackslashes(string(v.Segment.Value(r.src)))
 			r.writeLeaf(s, active)
 			if v.SoftLineBreak() {
 				r.eb.Plain(" ")
@@ -228,7 +274,7 @@ func (r *mdRenderer) walkInline(n gast.Node, active []entity.Formatter) error {
 				r.eb.Plain("\n")
 			}
 		case *gast.String:
-			r.writeLeaf(string(v.Value), active)
+			r.writeLeaf(unescapeMarkdownBackslashes(string(v.Value)), active)
 		case *gast.CodeSpan:
 			r.writeLeaf(r.inlineText(v), append(append([]entity.Formatter{}, active...), entity.Code()))
 		case *gast.Emphasis:

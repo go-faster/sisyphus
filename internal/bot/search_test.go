@@ -29,9 +29,17 @@ func TestSearchResultsText(t *testing.T) {
 		{Chunk: index.Chunk{Title: "Runbook: prod outage", Text: "Restart the pods and check the queue depth."}},
 		{Chunk: index.Chunk{Text: "no title here", Metadata: map[string]any{"source": "gitlab_issue"}}},
 	})
-	require.Contains(t, text, "1. **Runbook: prod outage**")
+	require.Contains(t, text, `1. **Runbook\: prod outage**`)
 	require.Contains(t, text, "Restart the pods")
-	require.Contains(t, text, "2. **gitlab_issue**")
+	require.Contains(t, text, `2. **gitlab\_issue**`)
+}
+
+func TestSearchResultsTextEscapesMarkdown(t *testing.T) {
+	text := searchResultsText([]index.Result{
+		{Chunk: index.Chunk{Title: "*bold* [link](evil)", Text: "snake_case_ident and # not a heading"}},
+	})
+	require.Contains(t, text, `\*bold\* \[link\]\(evil\)`)
+	require.Contains(t, text, `snake\_case\_ident and \# not a heading`)
 }
 
 func TestSearchLinksDedupAndCap(t *testing.T) {

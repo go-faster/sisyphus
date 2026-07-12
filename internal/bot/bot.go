@@ -241,20 +241,7 @@ func (b *Bot) Run(ctx context.Context) error {
 				answer = index.Answer{Text: "Sorry, something went wrong handling that request."}
 			}
 			lg.Info("replying", zap.String("answer", answer.Text), zap.Int("buttons", len(answer.Links)))
-			if !b.silent {
-				req := sender.Reply(e, u)
-				if kb := linksMarkup(answer.Links); kb != nil {
-					req = req.Markup(kb)
-				}
-				if _, err := req.StyledText(ctx, styling.Custom(func(eb *entity.Builder) error {
-					return renderMarkdown(eb, answer.Text)
-				})); err != nil {
-					lg.Warn("styled context reply failed, falling back to plain text", zap.Error(err))
-					if _, err := req.Text(ctx, answer.Text); err != nil {
-						return errors.Wrap(err, "reply fallback")
-					}
-				}
-			}
+			b.sendAnswer(ctx, sender, e, u, answer, lg, "context")
 		case "search":
 			lg.Info("search command", zap.String("query", rest))
 			answer, err := b.handleSearch(ctx, rest)
@@ -263,20 +250,7 @@ func (b *Bot) Run(ctx context.Context) error {
 				answer = index.Answer{Text: "Sorry, something went wrong handling that request."}
 			}
 			lg.Info("replying", zap.String("answer", answer.Text), zap.Int("buttons", len(answer.Links)))
-			if !b.silent {
-				req := sender.Reply(e, u)
-				if kb := linksMarkup(answer.Links); kb != nil {
-					req = req.Markup(kb)
-				}
-				if _, err := req.StyledText(ctx, styling.Custom(func(eb *entity.Builder) error {
-					return renderMarkdown(eb, answer.Text)
-				})); err != nil {
-					lg.Warn("styled search reply failed, falling back to plain text", zap.Error(err))
-					if _, err := req.Text(ctx, answer.Text); err != nil {
-						return errors.Wrap(err, "reply fallback")
-					}
-				}
-			}
+			b.sendAnswer(ctx, sender, e, u, answer, lg, "search")
 		case "investigate":
 			lg.Info("investigate command", zap.String("description", rest))
 			if b.investigator == nil {
@@ -403,9 +377,8 @@ func (b *Bot) handleSearch(ctx context.Context, query string) (index.Answer, err
 }
 
 // investigateAsync runs an investigation in the background and delivers the
-// report as one or more follow-up replies (Telegram caps a single message at
-// telegramMessageLimit characters), so the caller (the OnNewMessage dispatch
-// loop) never blocks on it.
+// report as one or more follow-up replies, so the caller (the OnNewMessage
+// dispatch loop) never blocks on it.
 func (b *Bot) investigateAsync(ctx context.Context, sender *message.Sender, e tg.Entities, u *tg.UpdateNewMessage, description string) {
 	report, err := b.handleInvestigate(ctx, description)
 	if err != nil {
@@ -418,25 +391,38 @@ func (b *Bot) investigateAsync(ctx context.Context, sender *message.Sender, e tg
 		return
 	}
 	b.logger.Info("investigate reply", zap.String("verdict", string(report.Verdict)))
+	b.sendAnswer(ctx, sender, e, u, index.Answer{Text: reportMarkdown(report), Links: report.Links}, b.logger, "investigate")
+}
+
+// sendAnswer delivers answer as one or more replies, splitting the Markdown
+// text on paragraph boundaries so no single message exceeds
+// telegramMessageLimit (Telegram rejects/mangles oversized messages
+// otherwise). Link buttons are attached to the final chunk only, so they sit
+// at the bottom of the whole reply. kind labels log lines (e.g. "context",
+// "search", "investigate").
+func (b *Bot) sendAnswer(ctx context.Context, sender *message.Sender, e tg.Entities, u *tg.UpdateNewMessage, answer index.Answer, lg *zap.Logger, kind string) {
 	if b.silent {
 		return
 	}
-
-	chunks := splitMarkdown(reportMarkdown(report), telegramMessageLimit)
-	kb := linksMarkup(report.Links)
+	chunks := splitMarkdown(answer.Text, telegramMessageLimit)
+	if len(chunks) == 0 {
+		chunks = []string{answer.Text}
+	}
+	kb := linksMarkup(answer.Links)
 	for i, chunk := range chunks {
 		md := chunk
 		req := sender.Reply(e, u)
-		// Attach the link buttons to the final message so they sit at the
-		// bottom of the whole report.
 		if kb != nil && i == len(chunks)-1 {
 			req = req.Markup(kb)
 		}
 		if _, err := req.StyledText(ctx, styling.Custom(func(eb *entity.Builder) error {
 			return renderMarkdown(eb, md)
 		})); err != nil {
-			b.logger.Error("investigate follow-up reply failed", zap.Error(err))
-			return
+			lg.Warn("styled "+kind+" reply failed, falling back to plain text", zap.Error(err))
+			if _, err := req.Text(ctx, md); err != nil {
+				lg.Error(kind+" reply fallback failed", zap.Error(err))
+				return
+			}
 		}
 	}
 }

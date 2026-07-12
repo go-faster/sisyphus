@@ -24,6 +24,17 @@ func TestRenderMarkdown_Bold(t *testing.T) {
 	require.IsType(t, &tg.MessageEntityBold{}, entities[0])
 }
 
+func TestEscapeMarkdown_RoundTrip(t *testing.T) {
+	// Escaped, this is one paragraph: soft line breaks between its lines
+	// render as spaces (see mdRenderer.walkInline's SoftLineBreak handling),
+	// same as it would for any other single-paragraph Markdown input.
+	raw := "*bold* _italic_ [link](evil) `code` # heading\n- list\n> quote snake_case_ident"
+	want := "*bold* _italic_ [link](evil) `code` # heading - list > quote snake_case_ident"
+	text, entities := render(t, escapeMarkdown(raw))
+	require.Equal(t, want, text)
+	require.Empty(t, entities)
+}
+
 func TestRenderMarkdown_List(t *testing.T) {
 	text, _ := render(t, "- first\n- second\n")
 	require.Equal(t, "- first\n- second", text)

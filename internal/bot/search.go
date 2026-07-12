@@ -33,9 +33,9 @@ func searchResultsText(results []index.Result) string {
 		}
 		sb.WriteString(strconv.Itoa(i + 1))
 		sb.WriteString(". **")
-		sb.WriteString(title)
+		sb.WriteString(escapeMarkdown(title))
 		sb.WriteString("**\n")
-		sb.WriteString(snippet(r.Chunk.Text, searchSnippetChars))
+		sb.WriteString(escapeMarkdown(snippet(r.Chunk.Text, searchSnippetChars)))
 		sb.WriteString("\n\n")
 	}
 	return strings.TrimSpace(sb.String())
