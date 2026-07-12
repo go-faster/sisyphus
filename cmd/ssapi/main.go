@@ -17,7 +17,6 @@ import (
 	"github.com/go-faster/sisyphus/internal/httpmw"
 	"github.com/go-faster/sisyphus/internal/mcpserver"
 	"github.com/go-faster/sisyphus/internal/oas"
-	"github.com/go-faster/sisyphus/internal/webhook"
 	"github.com/go-faster/sisyphus/internal/wire"
 )
 
@@ -81,41 +80,8 @@ func run(ctx context.Context, cfg config.Config, telemetry *app.Telemetry) error
 		return errors.Wrap(err, "oas server")
 	}
 
-	trigger := webhook.NewTrigger(ctx, webhook.TriggerOptions{
-		Logger:        lg,
-		MeterProvider: mp,
-	})
-
-	poller := webhook.NewPoller(trigger, lg)
-	if comp.DB != nil {
-		worker := webhook.NewWorker(comp.DB, comp.Vectors, comp.Embedder, cfg, webhook.WorkerOptions{
-			Logger:         lg,
-			TracerProvider: tp,
-			MeterProvider:  mp,
-		})
-		trigger.Register("gitlab", worker.RunGitLab)
-		trigger.Register("jira", worker.RunJira)
-
-		poller.Start(ctx, "gitlab", time.Duration(cfg.GitLab.PollIntervalSeconds)*time.Second)
-		poller.Start(ctx, "jira", time.Duration(cfg.Jira.PollIntervalSeconds)*time.Second)
-	}
-
 	mux := http.NewServeMux()
 	mcpserver.InstallHealth(mux, "0.1.0", comp.Health)
-
-	if cfg.GitLab.WebhookEnabled && cfg.GitLab.WebhookSecret != "" {
-		mux.Handle("POST /webhooks/gitlab", webhook.NewGitLabHandler(cfg.GitLab.WebhookSecret, trigger))
-		lg.Info("gitlab webhook enabled", zap.String("path", "/webhooks/gitlab"))
-	} else {
-		lg.Warn("gitlab webhook disabled", zap.Bool("enabled", cfg.GitLab.WebhookEnabled), zap.Bool("has_secret", cfg.GitLab.WebhookSecret != ""))
-	}
-	if cfg.Jira.WebhookEnabled && cfg.Jira.WebhookSecret != "" {
-		mux.Handle("POST /webhooks/jira", webhook.NewJiraHandler(cfg.Jira.WebhookSecret, trigger))
-		lg.Info("jira webhook enabled", zap.String("path", "/webhooks/jira"))
-	} else {
-		lg.Warn("jira webhook disabled", zap.Bool("enabled", cfg.Jira.WebhookEnabled), zap.Bool("has_secret", cfg.Jira.WebhookSecret != ""))
-	}
-
 	mux.Handle("/", oasSrv)
 	httpSrv := &http.Server{
 		Addr:              cfg.API.HTTPAddr,
@@ -123,11 +89,5 @@ func run(ctx context.Context, cfg config.Config, telemetry *app.Telemetry) error
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	err = httpmw.Serve(ctx, lg, "http", httpSrv)
-
-	lg.Info("waiting for in-flight ingestion jobs to drain")
-	poller.Wait()
-	trigger.Wait()
-
-	return err
+	return httpmw.Serve(ctx, lg, "http", httpSrv)
 }

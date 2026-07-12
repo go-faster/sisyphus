@@ -12,16 +12,18 @@ import (
 )
 
 type ingestDeps struct {
-	services *wire.Services
-	cfg      config.Config
-	tp       trace.TracerProvider
-	mp       metric.MeterProvider
+	services  *wire.Services
+	cfg       config.Config
+	tp        trace.TracerProvider
+	mp        metric.MeterProvider
+	telemetry *app.Telemetry
 }
 
 func newIngestDeps(t *app.Telemetry) *ingestDeps {
 	return &ingestDeps{
-		tp: t.TracerProvider(),
-		mp: t.MeterProvider(),
+		tp:        t.TracerProvider(),
+		mp:        t.MeterProvider(),
+		telemetry: t,
 	}
 }
 

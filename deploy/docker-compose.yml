@@ -115,10 +115,6 @@ services:
       SISYPHUS_CONFIG: /data/scp/config.yaml
       SISYPHUS_DATABASE_DSN: ${SISYPHUS_DATABASE_DSN:-postgres://sisyphus:sisyphus@postgres:5432/sisyphus?sslmode=disable}
       SISYPHUS_API_AUTH_TOKEN: ${SISYPHUS_API_AUTH_TOKEN:-}
-      SISYPHUS_GITLAB_TOKEN: ${SISYPHUS_GITLAB_TOKEN:-}
-      SISYPHUS_GITLAB_WEBHOOK_SECRET: ${SISYPHUS_GITLAB_WEBHOOK_SECRET:-}
-      SISYPHUS_JIRA_PASSWORD: ${SISYPHUS_JIRA_PASSWORD:-}
-      SISYPHUS_JIRA_WEBHOOK_SECRET: ${SISYPHUS_JIRA_WEBHOOK_SECRET:-}
       SISYPHUS_OPENROUTER_API_KEY: ${SISYPHUS_OPENROUTER_API_KEY:-}
       OTEL_LOG_LEVEL: debug
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otelcol:4317
@@ -131,6 +127,49 @@ services:
       - ssapi:/data/scp
     healthcheck:
       test: [ "CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/8080' || exit 1" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ssingest:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+    # `serve` runs ssingest as a daemon: webhook-triggered + polled
+    # incremental ingestion for every configured source (git, files, gitlab,
+    # jira, telegram), replacing the old one-shot `ssingest all` cron model.
+    entrypoint: [ "/usr/local/bin/ssingest", "serve" ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    environment:
+      SISYPHUS_CONFIG: /data/scp/config.yaml
+      SISYPHUS_DATABASE_DSN: ${SISYPHUS_DATABASE_DSN:-postgres://sisyphus:sisyphus@postgres:5432/sisyphus?sslmode=disable}
+      SISYPHUS_GITLAB_TOKEN: ${SISYPHUS_GITLAB_TOKEN:-}
+      SISYPHUS_GITLAB_WEBHOOK_SECRET: ${SISYPHUS_GITLAB_WEBHOOK_SECRET:-}
+      SISYPHUS_JIRA_PASSWORD: ${SISYPHUS_JIRA_PASSWORD:-}
+      SISYPHUS_JIRA_WEBHOOK_SECRET: ${SISYPHUS_JIRA_WEBHOOK_SECRET:-}
+      OTEL_LOG_LEVEL: debug
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otelcol:4317
+      OTEL_EXPORTER_OTLP_INSECURE: true
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+    ports:
+      - "18084:8084"
+    volumes:
+      - ./config.yaml:/data/scp/config.yaml:ro
+      - ssingest:/data/scp
+    healthcheck:
+      test: [ "CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/8084' || exit 1" ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -271,6 +310,7 @@ volumes:
   qdrant:
   ollama:
   ssapi:
+  ssingest:
   ssmcp:
   ssbot:
   ssagent:

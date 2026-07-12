@@ -37,9 +37,14 @@ cmd/ssagent            HTTP service for /investigate: an async, Postgres-backed 
                         (only ssapi does). internal/agentclient is the HTTP client
                         (submit + poll) ssbot uses to talk to it.
 cmd/ssmcp              MCP server entrypoint (Streamable HTTP or stdio); calls ssapi via internal/apiclient
-cmd/ssingest           one-shot ingestion CLI: git|gitlab|jira|telegram|all subcommands,
-                        --reset <src|all> (--yes-i-mean-all for all), --since, --limit, --dry-run.
-                        Wires its dependencies inline (does NOT reuse internal/wire).
+cmd/ssingest           ingestion CLI + daemon: git|files|gitlab|jira|telegram|all subcommands
+                        run one-shot (--reset <src|all> (--yes-i-mean-all for all), --since,
+                        --limit, --dry-run); `serve` instead runs as a long-lived daemon that
+                        triggers the same per-source runs on GitLab/Jira webhooks (internal/webhook
+                        handlers) and on a poller (git/files/gitlab/jira/telegram each on their
+                        own interval), so no external cron is needed. ssingest is the only
+                        webhook/poll owner — ssapi does not run ingestion. Wires its dependencies
+                        inline (does NOT reuse internal/wire, only internal/wire.NewServices).
 internal/index          SHARED CONTRACT: Document, Chunk, Chunker, Embedder, Searcher, constants. Do not add deps here.
 internal/chunk/markdown heading-aware Markdown chunker (implements index.Chunker)
 internal/chunk/git      git commit message / tag -> chunks (implements index.Chunker)
@@ -56,6 +61,15 @@ internal/ingest/gitlab  GitLab REST API client (stdlib net/http) with pagination
 internal/ingest/jira    incremental Jira REST client (stdlib net/http) with sliding-window cursor
 internal/ingest/telegram gotd user-session backfill -> telegram_messages -> support_requests;
                         MessageFetcher interface for testability; bootstrapPeers resolves access hashes
+internal/ingestrun      shared GitLab/Jira incremental-run logic (Runner.RunGitLab/RunJira) used
+                        by both cmd/ssingest's one-shot subcommands and its `serve` daemon mode;
+                        also IndexBatch/ResetSource/UpsertSyncState helpers shared with git/files/
+                        telegram runs, which live directly in cmd/ssingest (package main) since
+                        they're not needed anywhere else.
+internal/webhook        debounced Trigger (coalesces a webhook + a poll tick racing on the same
+                        source into one run) + ticker-based Poller (fire-on-start, then every
+                        interval) + GitLab/Jira webhook http.Handlers (X-Gitlab-Token/X-Jira-Token
+                        validation). Used only by cmd/ssingest's `serve` subcommand.
 internal/pipeline       Pipeline.Index: idempotent doc+chunk upsert (ent) + embed (Ollama)
                         + vector Upsert/Delete (Qdrant). Per-chunk embedding skip (preserves
                         unchanged chunks' qdrant_point_id) and stale-point cleanup on changed docs.
@@ -157,12 +171,21 @@ networks.
 Each service's own settings live in a per-service YAML section rather than as
 flat top-level keys: `api.http_addr` (ssapi's server), `mcp.addr`/`mcp.auth_token`
 (ssmcp), `telegram.addr` (ssbot's standalone health server — it has no other
-HTTP API to attach health checks to), `agent.addr` (ssagent). The old flat
+HTTP API to attach health checks to), `agent.addr` (ssagent), `ingest.addr`
+(`ssingest serve`'s health/webhook server). The old flat
 `http_addr`, `mcp_addr`, and `mcp_auth_token` top-level keys still parse for
 backwards compatibility but are deprecated: using one logs a warning
 (`Config.Warnings`, surfaced via `Config.LogWarnings`), and setting both the
 old and new field for the same value is a hard error at `config.Load()` time.
 See `internal/config/config.go`'s `resolveDeprecatedAddr`/`resolveDeprecatedSecret`.
+
+`ingest.*` (`IngestConfig`) controls `ssingest serve`'s daemon polling for the sources
+that have no config section of their own to hold a poll interval: `ingest.git.poll.interval_seconds`,
+`ingest.files.poll.interval_seconds`, `ingest.telegram.poll.interval_seconds` (all 0 by
+default — polling for that source is off unless set). GitLab and Jira reuse their own
+existing `gitlab.poll.interval_seconds`/`jira.poll.interval_seconds` and
+`gitlab.webhook.*`/`jira.webhook.*` — the same config keys, just now consumed by
+`ssingest serve` instead of `ssapi` (see cmd/ssingest/cmd_serve.go).
 
 `cmd/ssbot`'s Telegram bot is allowlist-gated and **fails closed**: `telegram.allowed_chats`
 / `allowed_user_ids` (both empty by default) must list at least one chat or user, or the
@@ -270,8 +293,21 @@ Down`-style comment will actually execute.
 ## Ingestion
 
 `make ingest` (= `go run ./cmd/ssingest all`) runs incremental backfills for every
-configured source. Per-source: `make ingest-git`, `make ingest-gitlab`, `make ingest-jira`,
-`make ingest-telegram`.
+configured source, once, then exits. Per-source: `make ingest-git`, `make ingest-gitlab`,
+`make ingest-jira`, `make ingest-telegram`.
+
+`make ingest-serve` (= `go run ./cmd/ssingest serve`) instead runs as a daemon: it never
+exits, and instead re-runs each source's incremental ingestion on a debounced
+`internal/webhook.Trigger` fired either by that source's webhook HTTP endpoint (GitLab/Jira
+only — `POST /webhooks/gitlab`/`/webhooks/jira` on `ingest.addr`, gated by
+`gitlab.webhook.enabled`+`gitlab.webhook.secret` / `jira.webhook.*`) or by a per-source
+`internal/webhook.Poller` ticker (`gitlab.poll.interval_seconds`, `jira.poll.interval_seconds`,
+`ingest.git.poll.interval_seconds`, `ingest.files.poll.interval_seconds`,
+`ingest.telegram.poll.interval_seconds` — each 0/unset disables that source's polling). A
+webhook and a poll tick racing on the same source coalesce into one run instead of two
+(`Trigger.Fire`'s debounce). This is the only ingestion scheduler in the deploy stack —
+`cmd/ssapi` does not run any ingestion itself, so there's exactly one process racing to
+write a given source's rows.
 
 Each source (or per-repo for git, per-resource type for gitlab REST) has a `SyncState` row
 in ent: `source`, `last_synced_at`, `last_cursor` (opaque JSON), `status`, `error`,

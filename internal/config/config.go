@@ -40,11 +40,24 @@ type Config struct {
 
 	Agent   AgentConfig
 	Context ContextConfig
+	Ingest  IngestConfig
 
 	// Warnings holds deprecation warnings collected while resolving the
 	// config (e.g. use of a field superseded by a per-service section). The
 	// caller should log these.
 	Warnings []string
+}
+
+// IngestConfig configures ssingest's `serve` daemon mode: the address its
+// health/webhook HTTP server listens on, and poll intervals for the sources
+// that have no dedicated config section of their own to hold one (GitLab and
+// Jira already carry their own Poll.IntervalSeconds/Webhook fields, reused
+// as-is by `serve`).
+type IngestConfig struct {
+	Addr                        string
+	GitPollIntervalSeconds      int
+	FilesPollIntervalSeconds    int
+	TelegramPollIntervalSeconds int
 }
 
 // MCPConfig configures the ssmcp service: the address its Streamable HTTP
@@ -190,6 +203,26 @@ type fileConfig struct {
 
 	Agent   fileAgentConfig   `yaml:"agent"`
 	Context fileContextConfig `yaml:"context"`
+	Ingest  fileIngestConfig  `yaml:"ingest"`
+}
+
+type fileIngestConfig struct {
+	Addr string `yaml:"addr"`
+	Git  struct {
+		Poll struct {
+			IntervalSeconds int `yaml:"interval_seconds"`
+		} `yaml:"poll"`
+	} `yaml:"git"`
+	Files struct {
+		Poll struct {
+			IntervalSeconds int `yaml:"interval_seconds"`
+		} `yaml:"poll"`
+	} `yaml:"files"`
+	Telegram struct {
+		Poll struct {
+			IntervalSeconds int `yaml:"interval_seconds"`
+		} `yaml:"poll"`
+	} `yaml:"telegram"`
 }
 
 type fileMCPConfig struct {
@@ -490,9 +523,10 @@ func Load() (Config, error) {
 // resolve() can tell a deprecated top-level field apart from a per-service
 // section the user actually configured.
 const (
-	defaultHTTPAddr = ":8080"
-	defaultMCPAddr  = ":8081"
-	defaultBotAddr  = ":8083"
+	defaultHTTPAddr   = ":8080"
+	defaultMCPAddr    = ":8081"
+	defaultBotAddr    = ":8083"
+	defaultIngestAddr = ":8084"
 )
 
 func defaultConfig() fileConfig {
@@ -530,6 +564,9 @@ func defaultConfig() fileConfig {
 			MaxReportChars:        1500,
 			MaxConcurrent:         4,
 			MaxBodyBytes:          64 * 1024,
+		},
+		Ingest: fileIngestConfig{
+			Addr: defaultIngestAddr,
 		},
 		Context: fileContextConfig{
 			Agentic:        false,
@@ -764,6 +801,12 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			SandboxMachine: c.Context.SandboxMachine,
 			PreSearch:      c.Context.PreSearch,
 			PreSearchLimit: c.Context.PreSearchLimit,
+		},
+		Ingest: IngestConfig{
+			Addr:                        c.Ingest.Addr,
+			GitPollIntervalSeconds:      c.Ingest.Git.Poll.IntervalSeconds,
+			FilesPollIntervalSeconds:    c.Ingest.Files.Poll.IntervalSeconds,
+			TelegramPollIntervalSeconds: c.Ingest.Telegram.Poll.IntervalSeconds,
 		},
 	}, nil
 }

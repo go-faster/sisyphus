@@ -66,6 +66,7 @@ func newRoot(t *app.Telemetry) *cobra.Command {
 		newJiraCmd(deps),
 		newTelegramCmd(deps),
 		newAllCmd(deps),
+		newServeCmd(deps),
 	)
 
 	return root
