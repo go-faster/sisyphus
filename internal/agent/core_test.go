@@ -2,7 +2,11 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/go-faster/errors"
 	"github.com/openai/openai-go/v3"
@@ -162,4 +166,63 @@ func TestCoreLoop_ToolResultsAreFenced(t *testing.T) {
 	require.NotNil(t, toolMsg, "expected a tool message for call_1")
 	content := toolMsg.OfTool.Content.OfString.Value
 	require.Regexp(t, `^<<<TOOL_RESULT_[0-9a-f]{16}>>>\ntool success\n<<<END_TOOL_RESULT_[0-9a-f]{16}>>>$`, content)
+}
+
+// barrierToolSource blocks every Call until exactly n concurrent calls are
+// in flight, then releases them all at once. If fewer than n calls ever
+// arrive concurrently, every blocked goroutine hangs until the test's
+// context deadline fires them into an error — proving (or disproving) that
+// coreLoop actually executes regular tool calls in parallel rather than
+// sequentially.
+type barrierToolSource struct {
+	n       int
+	arrived atomic.Int32
+	release chan struct{}
+	once    sync.Once
+}
+
+func newBarrierToolSource(n int) *barrierToolSource {
+	return &barrierToolSource{n: n, release: make(chan struct{})}
+}
+
+func (b *barrierToolSource) Tools(context.Context) ([]openai.ChatCompletionToolUnionParam, error) {
+	return nil, nil
+}
+
+func (b *barrierToolSource) Call(ctx context.Context, name string, _ json.RawMessage) (string, error) {
+	if b.arrived.Add(1) == int32(b.n) {
+		b.once.Do(func() { close(b.release) })
+	}
+	select {
+	case <-b.release:
+		return name + " done", nil
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+
+func TestCoreLoop_ExecutesRegularToolCallsConcurrently(t *testing.T) {
+	const n = 4
+	llm := &fakeLLM{
+		responses: []openai.ChatCompletionMessage{
+			{
+				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{
+					toolCall("call_1", "tool_a", `{}`),
+					toolCall("call_2", "tool_b", `{}`),
+					toolCall("call_3", "tool_c", `{}`),
+					toolCall("call_4", "tool_d", `{}`),
+				},
+			},
+			{ToolCalls: []openai.ChatCompletionMessageToolCallUnion{toolCall("call_5", "submit", `"valid"`)}},
+		},
+	}
+	ts := newBarrierToolSource(n)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	res, err := coreLoop(ctx, llm, ts, "test-model", nil, nil, echoTerminal(), 5, zaptest.NewLogger(t))
+	require.NoError(t, err)
+	require.Equal(t, `"valid"`, res.TerminalArgs)
+	require.Equal(t, n, int(ts.arrived.Load()))
 }

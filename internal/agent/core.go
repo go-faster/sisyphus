@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-faster/errors"
 	"github.com/openai/openai-go/v3"
@@ -14,6 +16,29 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
+
+// ErrMaxIterations is the sentinel coreLoop's returned error matches (via
+// errors.Is) when the model never calls the terminal tool within the
+// configured iteration budget (plus the grace attempt). Callers can check
+// against it to distinguish exhausted iterations from other failures (e.g. a
+// context timeout).
+var ErrMaxIterations = errors.New("exceeded max iterations")
+
+// maxIterationsError carries the configured budget in its message while
+// still matching ErrMaxIterations via errors.Is, so the message text stays
+// exactly "exceeded max iterations (N)" (errors.Wrap would put the
+// sentinel's text first instead).
+type maxIterationsError struct {
+	max int
+}
+
+func (e *maxIterationsError) Error() string {
+	return fmt.Sprintf("exceeded max iterations (%d)", e.max)
+}
+
+func (e *maxIterationsError) Is(target error) bool {
+	return target == ErrMaxIterations
+}
 
 // TerminalTool describes the submit tool that ends the loop.
 type TerminalTool struct {
@@ -26,13 +51,17 @@ type TerminalTool struct {
 
 // coreResult holds the loop's raw output for the caller to interpret.
 type coreResult struct {
-	Iterations     int
-	ToolsUsed      int
-	Conversation   []openai.ChatCompletionMessageParamUnion
-	Tools          []openai.ChatCompletionToolUnionParam
-	TerminalArgs   string
-	NoToolContent  string
-	DiscoveredURLs map[string]struct{}
+	Iterations       int
+	ToolsUsed        int
+	Conversation     []openai.ChatCompletionMessageParamUnion
+	Tools            []openai.ChatCompletionToolUnionParam
+	TerminalArgs     string
+	NoToolContent    string
+	DiscoveredURLs   map[string]struct{}
+	TraceID          string
+	DurationMS       int64
+	PromptTokens     int64
+	CompletionTokens int64
 }
 
 // coreLoop runs the generic LLM ↔ tool-calling loop until the terminal tool
@@ -49,10 +78,14 @@ func coreLoop(ctx context.Context, llm LLM, toolSource ToolSource, model string,
 		logger = zap.NewNop()
 	}
 	span := trace.SpanFromContext(ctx)
+	start := time.Now()
 
 	var res coreResult
 	res.Tools = tools
 	res.DiscoveredURLs = make(map[string]struct{})
+	if sc := span.SpanContext(); sc.IsValid() {
+		res.TraceID = sc.TraceID().String()
+	}
 
 	// Every tool result is untrusted content (ingested chunks, fetched pages,
 	// raw shell output) fed back to the model as a ToolMessage. buildSeedMessages
@@ -64,6 +97,7 @@ func coreLoop(ctx context.Context, llm LLM, toolSource ToolSource, model string,
 	// tool result in the conversation.
 	tag, err := randomTag()
 	if err != nil {
+		res.DurationMS = time.Since(start).Milliseconds()
 		return res, errors.Wrap(err, "generate delimiter tag")
 	}
 
@@ -87,29 +121,39 @@ func coreLoop(ctx context.Context, llm LLM, toolSource ToolSource, model string,
 				terminal.Name)))
 		}
 
-		msg, err := llm.CompleteWithTools(ctx, model, messages, tools)
+		msg, usage, err := llm.CompleteWithTools(ctx, model, messages, tools)
 		if err != nil {
+			res.DurationMS = time.Since(start).Milliseconds()
 			return res, errors.Wrap(err, "complete with tools")
 		}
+		res.PromptTokens += usage.PromptTokens
+		res.CompletionTokens += usage.CompletionTokens
 		messages = append(messages, msg.ToParam())
 
 		if len(msg.ToolCalls) == 0 {
 			res.NoToolContent = msg.Content
 			res.Conversation = messages
+			res.DurationMS = time.Since(start).Milliseconds()
 			span.AddEvent("agent." + terminal.Name)
 			return res, nil
 		}
 
-		// First valid terminal call wins and ends the loop immediately: any
-		// further tool calls in the same message (terminal or not) are left
-		// unexecuted rather than risk an incoherent state (e.g. a second,
-		// unparseable terminal call overwriting a captured TerminalArgs).
-		var done bool
-		for _, tc := range msg.ToolCalls {
+		// Pass 1 (sequential, no I/O): find the first valid terminal call,
+		// exactly mirroring the old single-pass control flow's continue/break
+		// semantics. Any further tool calls in the same message (terminal or
+		// not) after that point are left unexecuted rather than risk an
+		// incoherent state (e.g. a second, unparseable terminal call
+		// overwriting a captured TerminalArgs). Invalid terminal-call
+		// attempts still get an error ToolMessage and scanning continues.
+		// Regular (non-terminal) calls before the terminal are only recorded
+		// here; they're executed concurrently in pass 2 below.
+		terminalIdx := -1
+		var terminalArgs string
+		var regularIdxs []int
+		for idx, tc := range msg.ToolCalls {
 			if tc.Type != "function" {
 				continue
 			}
-
 			if tc.Function.Name == terminal.Name {
 				called := true
 				if terminal.Parse != nil {
@@ -123,33 +167,71 @@ func coreLoop(ctx context.Context, llm LLM, toolSource ToolSource, model string,
 				if !called {
 					continue
 				}
-				res.TerminalArgs = tc.Function.Arguments
-				messages = append(messages, openai.ToolMessage(terminal.SuccessMsg, tc.ID))
-				done = true
+				terminalIdx = idx
+				terminalArgs = tc.Function.Arguments
 				break
 			}
+			regularIdxs = append(regularIdxs, idx)
+		}
 
+		// Pass 2: run all regular tool calls concurrently. Each goroutine
+		// only writes to its own slot, so no locking is needed here; results
+		// are appended to messages in original index order afterward, since
+		// order doesn't matter to the API (each ToolMessage is matched by
+		// tool_call_id, not position) but a stable order keeps logs/tests
+		// deterministic.
+		type toolOutcome struct {
+			text string
+			urls map[string]struct{}
+		}
+		outcomes := make([]toolOutcome, len(regularIdxs))
+		var wg sync.WaitGroup
+		for i, idx := range regularIdxs {
+			wg.Add(1)
+			go func(i, idx int) {
+				defer wg.Done()
+				tc := msg.ToolCalls[idx]
+				logger.Debug("calling tool", zap.String("tool", tc.Function.Name), zap.String("args", tc.Function.Arguments))
+				span.AddEvent("agent.tool_call", trace.WithAttributes(attribute.String("tool", tc.Function.Name)))
+
+				toolRes, toolErr := toolSource.Call(ctx, tc.Function.Name, json.RawMessage(tc.Function.Arguments))
+				if toolErr != nil {
+					logger.Warn("tool call failed", zap.String("tool", tc.Function.Name), zap.Error(toolErr))
+					toolRes = fmt.Sprintf("error: %v", toolErr)
+				}
+				urls := make(map[string]struct{})
+				collectURLs(urls, toolRes)
+				outcomes[i] = toolOutcome{text: fenceToolResult(tag, toolRes), urls: urls}
+			}(i, idx)
+		}
+		wg.Wait()
+
+		for i, idx := range regularIdxs {
+			tc := msg.ToolCalls[idx]
 			res.ToolsUsed++
-			logger.Debug("calling tool", zap.String("tool", tc.Function.Name), zap.String("args", tc.Function.Arguments))
-			span.AddEvent("agent.tool_call", trace.WithAttributes(attribute.String("tool", tc.Function.Name)))
-
-			toolRes, toolErr := toolSource.Call(ctx, tc.Function.Name, json.RawMessage(tc.Function.Arguments))
-			if toolErr != nil {
-				logger.Warn("tool call failed", zap.String("tool", tc.Function.Name), zap.Error(toolErr))
-				toolRes = fmt.Sprintf("error: %v", toolErr)
+			for u := range outcomes[i].urls {
+				res.DiscoveredURLs[u] = struct{}{}
 			}
-			collectURLs(res.DiscoveredURLs, toolRes)
-			messages = append(messages, openai.ToolMessage(fenceToolResult(tag, toolRes), tc.ID))
+			messages = append(messages, openai.ToolMessage(outcomes[i].text, tc.ID))
+		}
+
+		var done bool
+		if terminalIdx >= 0 {
+			res.TerminalArgs = terminalArgs
+			messages = append(messages, openai.ToolMessage(terminal.SuccessMsg, msg.ToolCalls[terminalIdx].ID))
+			done = true
 		}
 
 		if done {
 			res.Conversation = messages
+			res.DurationMS = time.Since(start).Milliseconds()
 			span.AddEvent("agent." + terminal.Name)
 			return res, nil
 		}
 	}
 
-	return res, errors.Errorf("exceeded max iterations (%d)", maxIterations)
+	res.DurationMS = time.Since(start).Milliseconds()
+	return res, &maxIterationsError{max: maxIterations}
 }
 
 // randomTag generates a short random hex tag used to delimit untrusted
