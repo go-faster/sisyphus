@@ -111,6 +111,27 @@ func TestCoreLoop_ToolCallAfterTerminalNotExecuted(t *testing.T) {
 	require.Empty(t, ts.calls)
 }
 
+func TestCoreLoop_GraceIterationAllowsFinish(t *testing.T) {
+	// maxIterations=2: iteration 1 burns budget on a non-terminal tool call,
+	// iteration 2 gets the "wrap up soon" warning but still doesn't submit,
+	// and the 3rd, grace attempt (with the "final iteration" instruction)
+	// is where the model finally calls the terminal tool. The loop must
+	// succeed instead of erroring out at maxIterations.
+	llm := &fakeLLM{
+		responses: []openai.ChatCompletionMessage{
+			{ToolCalls: []openai.ChatCompletionMessageToolCallUnion{toolCall("call_1", "test_tool", `{}`)}},
+			{ToolCalls: []openai.ChatCompletionMessageToolCallUnion{toolCall("call_2", "test_tool", `{}`)}},
+			{ToolCalls: []openai.ChatCompletionMessageToolCallUnion{toolCall("call_3", "submit", `"valid"`)}},
+		},
+	}
+	ts := &fakeToolSource{}
+
+	res, err := coreLoop(context.Background(), llm, ts, "test-model", nil, nil, echoTerminal(), 2, zaptest.NewLogger(t))
+	require.NoError(t, err)
+	require.Equal(t, `"valid"`, res.TerminalArgs)
+	require.Equal(t, 3, res.Iterations)
+}
+
 func TestCoreLoop_ToolResultsAreFenced(t *testing.T) {
 	// Mid-loop tool results must be wrapped in a random-tagged delimiter
 	// block, same as buildSeedMessages fences the seed context, so a

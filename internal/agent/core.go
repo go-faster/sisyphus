@@ -36,7 +36,8 @@ type coreResult struct {
 }
 
 // coreLoop runs the generic LLM ↔ tool-calling loop until the terminal tool
-// is called or maxIterations is reached.
+// is called or maxIterations is reached (plus one grace attempt to let the
+// model wrap up after a warning — see the loop body below).
 func coreLoop(ctx context.Context, llm LLM, toolSource ToolSource, model string,
 	messages []openai.ChatCompletionMessageParamUnion,
 	tools []openai.ChatCompletionToolUnionParam,
@@ -66,9 +67,25 @@ func coreLoop(ctx context.Context, llm LLM, toolSource ToolSource, model string,
 		return res, errors.Wrap(err, "generate delimiter tag")
 	}
 
-	for range maxIterations {
+	// One grace attempt runs past maxIterations: the model gets a heads-up on
+	// the last regular iteration ("wrap up soon"), then a forced-finish
+	// instruction on the extra attempt, instead of being cut off mid-thought
+	// with no chance to submit whatever it has.
+	totalAttempts := maxIterations + 1
+	for attempt := 1; attempt <= totalAttempts; attempt++ {
 		res.Iterations++
 		span.AddEvent("agent.iteration", trace.WithAttributes(attribute.Int("iteration", res.Iterations)))
+
+		switch attempt {
+		case maxIterations:
+			messages = append(messages, openai.UserMessage(fmt.Sprintf(
+				"Reminder: you have 1 iteration left after this one before the task is stopped. "+
+					"Start wrapping up and call %s soon.", terminal.Name)))
+		case totalAttempts:
+			messages = append(messages, openai.UserMessage(fmt.Sprintf(
+				"This is your final iteration: you must call %s now with your best available answer.",
+				terminal.Name)))
+		}
 
 		msg, err := llm.CompleteWithTools(ctx, model, messages, tools)
 		if err != nil {

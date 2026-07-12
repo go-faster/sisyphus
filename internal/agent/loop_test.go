@@ -98,6 +98,9 @@ func TestLoop_Run_HappyPath(t *testing.T) {
 }
 
 func TestLoop_Run_MaxIterations(t *testing.T) {
+	// maxIterations=2 grants a 3rd, grace attempt after the "wrap up soon"
+	// warning; the mock still doesn't submit on any of the 3 calls, so the
+	// loop errors out with Iterations reflecting all 3 attempts.
 	llm := &fakeLLM{
 		responses: []openai.ChatCompletionMessage{
 			{
@@ -108,6 +111,10 @@ func TestLoop_Run_MaxIterations(t *testing.T) {
 				Content:   "I'll try again.",
 				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{toolCall("call_err2", "error_tool", "{}")},
 			},
+			{
+				Content:   "I'll try once more.",
+				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{toolCall("call_err3", "error_tool", "{}")},
+			},
 		},
 	}
 	ts := &fakeToolSource{}
@@ -115,8 +122,8 @@ func TestLoop_Run_MaxIterations(t *testing.T) {
 	loop := NewLoop(llm, ts, "test-model", 2, zaptest.NewLogger(t))
 	res, err := loop.Run(context.Background(), "system", "user")
 	require.ErrorContains(t, err, "exceeded max iterations (2)")
-	require.Equal(t, 2, res.Iterations)
-	require.Equal(t, 2, res.ToolsUsed)
+	require.Equal(t, 3, res.Iterations)
+	require.Equal(t, 3, res.ToolsUsed)
 }
 
 func TestLoop_Run_ToolError(t *testing.T) {

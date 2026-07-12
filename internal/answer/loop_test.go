@@ -96,10 +96,13 @@ func TestContextLoop_HappyPath(t *testing.T) {
 }
 
 func TestContextLoop_MaxIterations(t *testing.T) {
+	// maxIterations=2 grants a 3rd, grace attempt after the "wrap up soon"
+	// warning; the mock still doesn't submit on any of the 3 calls.
 	toolSource := &fakeToolSource{tools: map[string]openai.ChatCompletionToolUnionParam{"search_knowledge": searchKnowledgeTool()}}
 	llm := &fakeLLM{responses: []openai.ChatCompletionMessage{
 		{ToolCalls: []openai.ChatCompletionMessageToolCallUnion{toolCall("call_1", "search_knowledge", `{}`)}},
 		{ToolCalls: []openai.ChatCompletionMessageToolCallUnion{toolCall("call_2", "search_knowledge", `{}`)}},
+		{ToolCalls: []openai.ChatCompletionMessageToolCallUnion{toolCall("call_3", "search_knowledge", `{}`)}},
 	}}
 	loop := NewContextLoop(llm, toolSource, "test-model", 2, zaptest.NewLogger(t))
 	_, err := loop.Run(context.Background(), "system", "question", nil)
