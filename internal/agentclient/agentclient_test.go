@@ -64,6 +64,46 @@ func TestClient_Investigate_JobError(t *testing.T) {
 	require.ErrorContains(t, err, "boom")
 }
 
+func TestClient_Investigate_JobError_MaxIterations(t *testing.T) {
+	// The server-side error's type (agent.ErrMaxIterations) doesn't survive
+	// the HTTP/JSON boundary as-is — only its rendered text does — so the
+	// client must recover it by matching job.Error's text, letting a caller
+	// (e.g. internal/bot) distinguish this from a generic failure.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodPost:
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"job_id":"job-1","status":"pending"}`))
+		case http.MethodGet:
+			_, _ = w.Write([]byte(`{"job_id":"job-1","status":"error","error":"exceeded max iterations (8)"}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	c := New(Options{URL: srv.URL, PollInterval: time.Millisecond})
+	_, err := c.Investigate(context.Background(), "test issue")
+	require.ErrorIs(t, err, agent.ErrMaxIterations)
+}
+
+func TestClient_Investigate_JobError_Timeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodPost:
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"job_id":"job-1","status":"pending"}`))
+		case http.MethodGet:
+			_, _ = w.Write([]byte(`{"job_id":"job-1","status":"error","error":"investigate: context deadline exceeded"}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	c := New(Options{URL: srv.URL, PollInterval: time.Millisecond})
+	_, err := c.Investigate(context.Background(), "test issue")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
 func TestClient_Investigate_SubmitRetriesOnTransportFailure(t *testing.T) {
 	var attempts atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

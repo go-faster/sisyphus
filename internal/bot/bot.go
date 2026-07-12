@@ -5,6 +5,7 @@ package bot
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -306,7 +307,10 @@ func (b *Bot) handleWithProgress(ctx context.Context, s messageSender, query str
 	answer, err := handler(ctx, query)
 	if err != nil {
 		lg.Error("handle "+kind, zap.Error(err))
-		answer = index.Answer{Text: "Sorry, something went wrong handling that request."}
+		answer = index.Answer{Text: contextFailureMessage(err)}
+	}
+	if answer.Debug != nil {
+		answer.Text = strings.TrimSpace(answer.Text) + "\n\n" + debugMarkdown(answer.Debug)
 	}
 	lg.Info("replying", zap.String("answer", answer.Text), zap.Int("buttons", len(answer.Links)))
 	b.sendOrEditAnswer(ctx, s, answer, msgID, lg, kind)
@@ -469,7 +473,7 @@ func (b *Bot) investigateAsync(ctx context.Context, s messageSender, description
 	if err != nil {
 		b.logger.Error("handle investigate", zap.Error(err))
 		if !b.silent {
-			b.sendTextReply(ctx, s, "Sorry, investigation failed.")
+			b.sendTextReply(ctx, s, investigateFailureMessage(err))
 		}
 		return
 	}
@@ -501,6 +505,31 @@ func (b *Bot) sendAnswer(ctx context.Context, s messageSender, answer index.Answ
 			lg.Error(kind+" send failed", zap.Error(err), zap.Int("chunk", i))
 			return
 		}
+	}
+}
+
+// contextFailureMessage picks a user-facing message for a failed /context
+// (or /search) request, distinguishing a timeout from other failures instead
+// of one generic "something went wrong" for every cause.
+func contextFailureMessage(err error) string {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "Sorry, that took too long to answer. Try a narrower question."
+	}
+	return "Sorry, something went wrong handling that request."
+}
+
+// investigateFailureMessage picks a user-facing message for a failed
+// /investigate request, distinguishing a timeout and iteration exhaustion
+// from other failures instead of one generic "investigation failed" for
+// every cause.
+func investigateFailureMessage(err error) string {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "Sorry, the investigation timed out before reaching a conclusion."
+	case errors.Is(err, agent.ErrMaxIterations):
+		return "Sorry, the investigation used too many steps without reaching a conclusion. Try narrowing the question."
+	default:
+		return "Sorry, investigation failed."
 	}
 }
 

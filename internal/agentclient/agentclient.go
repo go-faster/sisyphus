@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-faster/errors"
 	"github.com/google/uuid"
 
 	"github.com/go-faster/sisyphus/internal/agent"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 // Client wraps HTTP requests to ssagent.
@@ -90,9 +92,13 @@ type jobResponse struct {
 	Actions    []string      `json:"actions,omitempty"`
 	Iterations int           `json:"iterations,omitempty"`
 	ToolsUsed  int           `json:"tools_used,omitempty"`
+	Debug      *index.Debug  `json:"debug,omitempty"`
 	Error      string        `json:"error,omitempty"`
 }
 
+// report converts the wire response into an agent.Report. It previously
+// dropped Debug (iterations/tool calls/tokens/trace ID) silently; a caller
+// (e.g. internal/bot) needs it to render debug info.
 func (r jobResponse) report() agent.Report {
 	return agent.Report{
 		Problem:  r.Problem,
@@ -101,6 +107,7 @@ func (r jobResponse) report() agent.Report {
 		Findings: r.Findings,
 		Sources:  r.Sources,
 		Actions:  r.Actions,
+		Debug:    r.Debug,
 	}
 }
 
@@ -132,7 +139,7 @@ func (c *Client) Investigate(ctx context.Context, description string) (agent.Rep
 		case "done":
 			return job.report(), nil
 		case "error":
-			return agent.Report{}, errors.Errorf("investigation failed: %s", job.Error)
+			return agent.Report{}, classifyJobError(job.Error)
 		}
 
 		select {
@@ -140,6 +147,22 @@ func (c *Client) Investigate(ctx context.Context, description string) (agent.Rep
 			return agent.Report{}, errors.Wrap(ctx.Err(), "wait for investigation")
 		case <-ticker.C:
 		}
+	}
+}
+
+// classifyJobError turns a failed job's plain-text error message back into a
+// typed error the caller can errors.Is against. The server-side error's type
+// (agent.ErrMaxIterations, context.DeadlineExceeded) doesn't survive the
+// HTTP/JSON boundary as-is — only job.Error's rendered string does — so this
+// matches on the known error text to recover it client-side.
+func classifyJobError(msg string) error {
+	switch {
+	case strings.Contains(msg, agent.ErrMaxIterations.Error()):
+		return errors.Wrap(agent.ErrMaxIterations, msg)
+	case strings.Contains(msg, context.DeadlineExceeded.Error()):
+		return errors.Wrap(context.DeadlineExceeded, msg)
+	default:
+		return errors.Errorf("investigation failed: %s", msg)
 	}
 }
 

@@ -5,11 +5,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-faster/errors"
 	"github.com/gotd/td/tg"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
+	"github.com/go-faster/sisyphus/internal/agent"
 	"github.com/go-faster/sisyphus/internal/index"
 	"github.com/go-faster/sisyphus/internal/indextest"
 )
@@ -23,6 +25,20 @@ func (c *captureQueryAnswerer) Answer(ctx context.Context, q index.Query, _ []in
 	c.query = q
 	c.deadline, _ = ctx.Deadline()
 	return index.Answer{Text: "direct answer"}, nil
+}
+
+func TestInvestigateFailureMessage_DistinguishesCauses(t *testing.T) {
+	require.Contains(t, investigateFailureMessage(context.DeadlineExceeded), "timed out")
+	require.Contains(t, investigateFailureMessage(agent.ErrMaxIterations), "too many steps")
+	require.Equal(t, "Sorry, investigation failed.", investigateFailureMessage(errors.New("boom")))
+	// Errors wrapped along the way (HTTP round trip, ctx propagation) must
+	// still classify correctly via errors.Is, not just bare sentinels.
+	require.Contains(t, investigateFailureMessage(errors.Wrap(context.DeadlineExceeded, "wait for investigation")), "timed out")
+}
+
+func TestContextFailureMessage_DistinguishesTimeout(t *testing.T) {
+	require.Contains(t, contextFailureMessage(context.DeadlineExceeded), "took too long")
+	require.Equal(t, "Sorry, something went wrong handling that request.", contextFailureMessage(errors.New("boom")))
 }
 
 func TestHandleKeepsAnswerLinks(t *testing.T) {
