@@ -227,7 +227,7 @@ func (f *Fetcher) CheckAuth(ctx context.Context) error {
 		return err
 	}
 
-	_, err = f.doRequest(req, "gitlab auth check")
+	_, err = f.doRequest(req, "fetcher.CheckAuth")
 	return err
 }
 
@@ -302,7 +302,7 @@ func (f *Fetcher) fetchProjectIssues(ctx context.Context, project string, page i
 		return nil, "", err
 	}
 
-	body, err := f.doRequest(req, "gitlab fetch issues")
+	body, err := f.doRequest(req, "fetcher.FetchProjectIssues")
 	if err != nil {
 		return nil, "", err
 	}
@@ -370,7 +370,7 @@ func (f *Fetcher) fetchIssueDiscussions(ctx context.Context, project string, iid
 		return nil, err
 	}
 
-	body, err := f.doRequest(req, "gitlab fetch issue discussions")
+	body, err := f.doRequest(req, "fetcher.FetchIssueDiscussions")
 	if err != nil {
 		return nil, err
 	}
@@ -438,7 +438,7 @@ func (f *Fetcher) fetchIssueLinks(ctx context.Context, project string, iid int) 
 		return nil, err
 	}
 
-	body, err := f.doRequest(req, "gitlab fetch issue links")
+	body, err := f.doRequest(req, "fetcher.FetchIssueLinks")
 	if err != nil {
 		// Non-fatal error: log and return nil
 		zctx.From(ctx).Warn("failed to fetch issue links",
@@ -526,7 +526,7 @@ func (f *Fetcher) fetchProjectMergeRequests(ctx context.Context, project string,
 		return nil, "", err
 	}
 
-	body, err := f.doRequest(req, "gitlab fetch merge requests")
+	body, err := f.doRequest(req, "fetcher.FetchProjectMergeRequests")
 	if err != nil {
 		return nil, "", err
 	}
@@ -594,7 +594,7 @@ func (f *Fetcher) fetchMRDiscussions(ctx context.Context, project string, iid in
 		return nil, err
 	}
 
-	body, err := f.doRequest(req, "gitlab fetch mr discussions")
+	body, err := f.doRequest(req, "fetcher.FetchMRDiscussions")
 	if err != nil {
 		return nil, err
 	}
@@ -662,7 +662,7 @@ func (f *Fetcher) fetchMRClosesIssues(ctx context.Context, project string, iid i
 		return nil, err
 	}
 
-	body, err := f.doRequest(req, "gitlab fetch mr closes issues")
+	body, err := f.doRequest(req, "fetcher.FetchMRClosesIssues")
 	if err != nil {
 		// Non-fatal error: log and return nil
 		zctx.From(ctx).Warn("failed to fetch mr closes issues",
@@ -745,7 +745,7 @@ func (f *Fetcher) fetchProjectReleases(ctx context.Context, project string, page
 		return nil, "", err
 	}
 
-	body, err := f.doRequest(req, "gitlab fetch releases")
+	body, err := f.doRequest(req, "fetcher.FetchReleases")
 	if err != nil {
 		return nil, "", err
 	}
