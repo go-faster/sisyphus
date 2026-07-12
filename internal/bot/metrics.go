@@ -14,6 +14,10 @@ type botMetrics struct {
 
 	investigateReqs metric.Int64Counter
 	investigateDur  metric.Float64Histogram
+
+	searchReqs    metric.Int64Counter
+	searchDur     metric.Float64Histogram
+	searchResults metric.Int64Counter
 }
 
 func newBotMetrics(mp metric.MeterProvider) (*botMetrics, error) {
@@ -55,12 +59,37 @@ func newBotMetrics(mp metric.MeterProvider) (*botMetrics, error) {
 	if err != nil {
 		return nil, err
 	}
+	searchReqs, err := meter.Int64Counter(
+		"sisyphus.bot.search.requests",
+		metric.WithDescription("Count of Telegram search requests by status"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	searchDur, err := meter.Float64Histogram(
+		"sisyphus.bot.search.duration",
+		metric.WithDescription("Duration of Telegram search requests"),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	searchResults, err := meter.Int64Counter(
+		"sisyphus.bot.search.results",
+		metric.WithDescription("Count of retrieval results returned by Telegram search requests"),
+	)
+	if err != nil {
+		return nil, err
+	}
 	return &botMetrics{
 		requests:        requests,
 		duration:        duration,
 		results:         results,
 		investigateReqs: investigateReqs,
 		investigateDur:  investigateDur,
+		searchReqs:      searchReqs,
+		searchDur:       searchDur,
+		searchResults:   searchResults,
 	}, nil
 }
 
@@ -74,6 +103,19 @@ func (m *botMetrics) recordContext(ctx context.Context, durSeconds float64, resu
 	m.duration.Record(ctx, durSeconds, attrs)
 	if err == nil {
 		m.results.Add(ctx, int64(resultCount))
+	}
+}
+
+func (m *botMetrics) recordSearch(ctx context.Context, durSeconds float64, resultCount int, err error) {
+	status := "ok"
+	if err != nil {
+		status = "error"
+	}
+	attrs := metric.WithAttributes(attribute.String("status", status))
+	m.searchReqs.Add(ctx, 1, attrs)
+	m.searchDur.Record(ctx, durSeconds, attrs)
+	if err == nil {
+		m.searchResults.Add(ctx, int64(resultCount))
 	}
 }
 

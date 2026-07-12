@@ -31,6 +31,7 @@ import (
 // helpText is sent in reply to /start and /help.
 const helpText = `Available commands:
 /context <question> — search indexed knowledge and answer a question
+/search <query> — raw ranked search results, no summary
 /investigate <description> — run an on-demand investigation
 /help — show this message`
 
@@ -254,6 +255,28 @@ func (b *Bot) Run(ctx context.Context) error {
 					}
 				}
 			}
+		case "search":
+			lg.Info("search command", zap.String("query", rest))
+			answer, err := b.handleSearch(ctx, rest)
+			if err != nil {
+				lg.Error("handle search", zap.Error(err))
+				answer = index.Answer{Text: "Sorry, something went wrong handling that request."}
+			}
+			lg.Info("replying", zap.String("answer", answer.Text), zap.Int("buttons", len(answer.Links)))
+			if !b.silent {
+				req := sender.Reply(e, u)
+				if kb := linksMarkup(answer.Links); kb != nil {
+					req = req.Markup(kb)
+				}
+				if _, err := req.StyledText(ctx, styling.Custom(func(eb *entity.Builder) error {
+					return renderMarkdown(eb, answer.Text)
+				})); err != nil {
+					lg.Warn("styled search reply failed, falling back to plain text", zap.Error(err))
+					if _, err := req.Text(ctx, answer.Text); err != nil {
+						return errors.Wrap(err, "reply fallback")
+					}
+				}
+			}
 		case "investigate":
 			lg.Info("investigate command", zap.String("description", rest))
 			if b.investigator == nil {
@@ -279,7 +302,7 @@ func (b *Bot) Run(ctx context.Context) error {
 		if _, err := client.Auth().Bot(ctx, b.cred.BotToken); err != nil {
 			return errors.Wrap(err, "bot auth")
 		}
-		b.logger.Info("bot authenticated, serving /context, /investigate, /start, /help")
+		b.logger.Info("bot authenticated, serving /context, /search, /investigate, /start, /help")
 		<-ctx.Done()
 		return ctx.Err()
 	})
@@ -332,6 +355,51 @@ func (b *Bot) handle(ctx context.Context, query string) (index.Answer, error) {
 		return index.Answer{}, rerr
 	}
 	return answer, nil
+}
+
+// handleSearch runs raw retrieval (no LLM/answerer) and formats results for
+// the /search command.
+func (b *Bot) handleSearch(ctx context.Context, query string) (index.Answer, error) {
+	start := time.Now()
+	ctx, span := b.tracer.Start(ctx, "bot.search",
+		trace.WithAttributes(attribute.Int("query.length", len(query))),
+	)
+	if b.answerTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, b.answerTimeout)
+		defer cancel()
+	}
+	var (
+		resultCount int
+		rerr        error
+	)
+	defer func() {
+		if b.metrics != nil {
+			b.metrics.recordSearch(ctx, time.Since(start).Seconds(), resultCount, rerr)
+		}
+		span.SetAttributes(attribute.Int("results.count", resultCount))
+		if rerr != nil {
+			span.RecordError(rerr)
+			span.SetStatus(codes.Error, rerr.Error())
+		}
+		span.End()
+	}()
+	if b.retriever == nil {
+		rerr = errors.New("bot retriever is not configured")
+		return index.Answer{}, rerr
+	}
+
+	results, err := b.retriever.Retrieve(ctx, index.Query{Text: query, Limit: 12})
+	if err != nil {
+		rerr = errors.Wrap(err, "retrieve")
+		return index.Answer{}, rerr
+	}
+	resultCount = len(results)
+
+	return index.Answer{
+		Text:  searchResultsText(results),
+		Links: searchLinks(results),
+	}, nil
 }
 
 // investigateAsync runs an investigation in the background and delivers the

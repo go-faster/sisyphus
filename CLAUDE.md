@@ -28,7 +28,7 @@ Never store only embeddings — always keep Documents+Chunks in Postgres so we c
 ```
 cmd/ssapi              owns Postgres/ent + migrations; serves the HTTP API
                         (bearer-token auth on /search, /context; /health public)
-cmd/ssbot              thin Telegram /context bot; talks to ssapi via internal/apiclient
+cmd/ssbot              Exposes system as Telegram bot; talks to ssapi via internal/apiclient
 cmd/ssagent            HTTP service for /investigate: an async, Postgres-backed job
                         queue (internal/agentstore) over agent.Investigator's LLM
                         tool-calling loop. POST /investigate persists a job and returns
