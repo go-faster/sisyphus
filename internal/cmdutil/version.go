@@ -1,3 +1,4 @@
+// Package cmdutil holds small helpers shared by the CLI command entrypoints.
 package cmdutil
 
 import (
