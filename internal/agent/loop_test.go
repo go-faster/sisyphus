@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/go-faster/errors"
@@ -16,13 +17,13 @@ type fakeLLM struct {
 	calls     int
 }
 
-func (f *fakeLLM) CompleteWithTools(ctx context.Context, model string, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolUnionParam) (openai.ChatCompletionMessage, error) {
+func (f *fakeLLM) CompleteWithTools(ctx context.Context, model string, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolUnionParam) (openai.ChatCompletionMessage, Usage, error) {
 	if f.calls >= len(f.responses) {
-		return openai.ChatCompletionMessage{}, errors.New("no more mock responses")
+		return openai.ChatCompletionMessage{}, Usage{}, errors.New("no more mock responses")
 	}
 	resp := f.responses[f.calls]
 	f.calls++
-	return resp, nil
+	return resp, Usage{}, nil
 }
 
 type fakeToolSource struct {
@@ -215,4 +216,39 @@ func TestLoop_Shorten(t *testing.T) {
 	shortened, err := loop.Shorten(context.Background(), res, 10)
 	require.NoError(t, err)
 	require.Equal(t, "short", shortened.Report.Findings)
+}
+
+// TestLoop_Shorten_RespectsIterationBudget verifies Shorten no longer
+// hardcodes a 3-iteration budget for its continuation regardless of the
+// operator's configured MaxIterations: with a tight budget of 1, the
+// continuation must exhaust after 1 iteration (min(3, 1)), not 3.
+func TestLoop_Shorten_RespectsIterationBudget(t *testing.T) {
+	responses := []openai.ChatCompletionMessage{
+		{
+			ToolCalls: []openai.ChatCompletionMessageToolCallUnion{
+				submitReportCall("call_1", Report{Problem: "p", Verdict: VerdictSolved, Findings: "a very long finding indeed"}),
+			},
+		},
+	}
+	// The model never calls submit_report again during Shorten, so the
+	// continuation always exhausts its iteration budget.
+	for i := range 5 {
+		responses = append(responses, openai.ChatCompletionMessage{
+			ToolCalls: []openai.ChatCompletionMessageToolCallUnion{toolCall(fmt.Sprintf("call_tool_%d", i), "test_tool", "{}")},
+		})
+	}
+	llm := &fakeLLM{responses: responses}
+	ts := &fakeToolSource{
+		tools: []openai.ChatCompletionToolUnionParam{
+			{OfFunction: &openai.ChatCompletionFunctionToolParam{Function: openai.FunctionDefinitionParam{Name: "test_tool"}}},
+		},
+	}
+
+	loop := NewLoop(llm, ts, "test-model", 1, zaptest.NewLogger(t))
+	res, err := loop.Run(context.Background(), "system", "user")
+	require.NoError(t, err)
+
+	_, err = loop.Shorten(context.Background(), res, 10)
+	require.ErrorIs(t, err, ErrMaxIterations)
+	require.EqualError(t, err, "continue loop: exceeded max iterations (1)")
 }

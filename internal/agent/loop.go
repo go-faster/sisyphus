@@ -10,9 +10,15 @@ import (
 	"go.uber.org/zap"
 )
 
+// Usage carries token usage for a single chat completion.
+type Usage struct {
+	PromptTokens     int64
+	CompletionTokens int64
+}
+
 // LLM provides chat completion with tools.
 type LLM interface {
-	CompleteWithTools(ctx context.Context, model string, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolUnionParam) (openai.ChatCompletionMessage, error)
+	CompleteWithTools(ctx context.Context, model string, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolUnionParam) (openai.ChatCompletionMessage, Usage, error)
 }
 
 // ToolSource provides MCP tools and executes them.
@@ -69,6 +75,11 @@ func (l *Loop) Run(ctx context.Context, systemPrompt, userInput string) (Result,
 	return toResult(er), nil
 }
 
+// shortenMaxIterations is the default iteration budget for a Shorten
+// continuation; it's capped by the engine's configured MaxIterations so
+// shortening never exceeds the operator's real ceiling (see Shorten).
+const shortenMaxIterations = 3
+
 // Shorten continues a prior Result's conversation, asking the model to
 // resubmit a shorter report. limitChars is the character budget to ask for.
 func (l *Loop) Shorten(ctx context.Context, res Result, limitChars int) (Result, error) {
@@ -77,7 +88,8 @@ func (l *Loop) Shorten(ctx context.Context, res Result, limitChars int) (Result,
 			"essential facts and stay under %d characters total across all fields.",
 		submitReportToolName, limitChars,
 	))
-	er, err := l.engine.Continue(ctx, res.engineResult, extra, 3)
+	iterations := max(min(shortenMaxIterations, l.engine.MaxIterations()), 1)
+	er, err := l.engine.Continue(ctx, res.engineResult, extra, iterations)
 	if err != nil {
 		return Result{}, errors.Wrap(err, "continue loop")
 	}

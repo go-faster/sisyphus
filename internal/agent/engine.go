@@ -23,10 +23,14 @@ type TerminalSpec[T any] struct {
 
 // EngineResult is an Engine.Run/Continue result.
 type EngineResult[T any] struct {
-	Value          T
-	Iterations     int
-	ToolsUsed      int
-	DiscoveredURLs map[string]struct{}
+	Value            T
+	Iterations       int
+	ToolsUsed        int
+	DiscoveredURLs   map[string]struct{}
+	TraceID          string
+	DurationMS       int64
+	PromptTokens     int64
+	CompletionTokens int64
 
 	// conversation and tools carry the exchange that produced Value, so a
 	// caller can hand the result back to Engine.Continue rather than
@@ -61,6 +65,11 @@ func NewEngine[T any](llm LLM, toolSource ToolSource, model string, maxIteration
 		logger:        logger,
 		spec:          spec,
 	}
+}
+
+// MaxIterations returns the engine's configured iteration budget.
+func (e *Engine[T]) MaxIterations() int {
+	return e.maxIterations
 }
 
 // Run fetches tools from the toolSource, appends the terminal tool, and
@@ -101,15 +110,27 @@ func (e *Engine[T]) run(ctx context.Context, messages []openai.ChatCompletionMes
 		ErrMsg:     errMsg,
 	}, maxIterations, e.logger)
 	if err != nil {
-		return EngineResult[T]{Iterations: coreRes.Iterations, ToolsUsed: coreRes.ToolsUsed, DiscoveredURLs: coreRes.DiscoveredURLs}, err
+		return EngineResult[T]{
+			Iterations:       coreRes.Iterations,
+			ToolsUsed:        coreRes.ToolsUsed,
+			DiscoveredURLs:   coreRes.DiscoveredURLs,
+			TraceID:          coreRes.TraceID,
+			DurationMS:       coreRes.DurationMS,
+			PromptTokens:     coreRes.PromptTokens,
+			CompletionTokens: coreRes.CompletionTokens,
+		}, err
 	}
 
 	res := EngineResult[T]{
-		Iterations:     coreRes.Iterations,
-		ToolsUsed:      coreRes.ToolsUsed,
-		DiscoveredURLs: coreRes.DiscoveredURLs,
-		conversation:   coreRes.Conversation,
-		tools:          coreRes.Tools,
+		Iterations:       coreRes.Iterations,
+		ToolsUsed:        coreRes.ToolsUsed,
+		DiscoveredURLs:   coreRes.DiscoveredURLs,
+		TraceID:          coreRes.TraceID,
+		DurationMS:       coreRes.DurationMS,
+		PromptTokens:     coreRes.PromptTokens,
+		CompletionTokens: coreRes.CompletionTokens,
+		conversation:     coreRes.Conversation,
+		tools:            coreRes.Tools,
 	}
 	if coreRes.TerminalArgs != "" {
 		val, err := e.spec.Parse(coreRes.TerminalArgs)
