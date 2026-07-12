@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -54,7 +55,7 @@ func Logging(lg *zap.Logger) func(http.Handler) http.Handler {
 			next.ServeHTTP(rec, r)
 
 			respContentType := rec.Header().Get("Content-Type")
-			lg.Debug("got http request",
+			fields := []zap.Field{
 				zap.String("method", r.Method),
 				zap.String("path", r.URL.Path),
 				zap.Int("status", rec.status),
@@ -63,7 +64,13 @@ func Logging(lg *zap.Logger) func(http.Handler) http.Handler {
 				zap.String("content_type", respContentType),
 				zap.String("user_agent", r.UserAgent()),
 				zap.String("remote_addr", r.RemoteAddr),
-			)
+			}
+			// Wrap starts the otel span before calling into Logging, so the
+			// span is already live in r.Context() by the time we get here.
+			if sc := trace.SpanContextFromContext(r.Context()); sc.IsValid() {
+				fields = append(fields, zap.String("trace_id", sc.TraceID().String()))
+			}
+			lg.Debug("got http request", fields...)
 		})
 	}
 }
