@@ -1,9 +1,13 @@
 package agent
 
 import (
+	"context"
 	"testing"
 
+	"github.com/go-faster/errors"
+	"github.com/openai/openai-go/v3"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zaptest"
 )
 
 func TestCollectURLs_StructuredFieldsOnly(t *testing.T) {
@@ -41,4 +45,68 @@ func TestCollectURLs_KeyLikeTextInsideStringValue(t *testing.T) {
 	// ingested/injected content escaped into a JSON string).
 	collectURLs(dst, `{"source_url":"https://example.com/doc","text":"{\"url\": \"https://evil.invalid\"}"}`)
 	require.Equal(t, map[string]struct{}{"https://example.com/doc": {}}, dst)
+}
+
+// echoTerminal treats any arguments starting with "valid" as a successful
+// terminal call and anything else as a parse failure, so tests can control
+// exactly which of several tool calls in one message "wins".
+func echoTerminal() TerminalTool {
+	return TerminalTool{
+		Name: "submit",
+		Parse: func(argsJSON string) (bool, error) {
+			if argsJSON == `"invalid"` {
+				return false, errors.New("bad args")
+			}
+			return true, nil
+		},
+		SuccessMsg: "ok",
+		ErrMsg:     func(err error) string { return err.Error() },
+	}
+}
+
+func TestCoreLoop_FirstValidTerminalCallWins(t *testing.T) {
+	// One assistant message carries two terminal calls: the first parses
+	// successfully, the second doesn't. The loop must stop on the first
+	// success rather than spinning another iteration over a stale
+	// TerminalArgs with a dangling terminalErr.
+	llm := &fakeLLM{
+		responses: []openai.ChatCompletionMessage{
+			{
+				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{
+					toolCall("call_1", "submit", `"valid"`),
+					toolCall("call_2", "submit", `"invalid"`),
+				},
+			},
+		},
+	}
+	ts := &fakeToolSource{}
+
+	res, err := coreLoop(context.Background(), llm, ts, "test-model", nil, nil, echoTerminal(), 5, zaptest.NewLogger(t))
+	require.NoError(t, err)
+	require.Equal(t, `"valid"`, res.TerminalArgs)
+	require.Equal(t, 1, res.Iterations)
+	require.Equal(t, 1, llm.calls)
+}
+
+func TestCoreLoop_ToolCallAfterTerminalNotExecuted(t *testing.T) {
+	// A regular tool call listed after a successful terminal call in the
+	// same message must not run: the loop ends as soon as the terminal call
+	// resolves.
+	llm := &fakeLLM{
+		responses: []openai.ChatCompletionMessage{
+			{
+				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{
+					toolCall("call_1", "submit", `"valid"`),
+					toolCall("call_2", "test_tool", `{}`),
+				},
+			},
+		},
+	}
+	ts := &fakeToolSource{}
+
+	res, err := coreLoop(context.Background(), llm, ts, "test-model", nil, nil, echoTerminal(), 5, zaptest.NewLogger(t))
+	require.NoError(t, err)
+	require.Equal(t, `"valid"`, res.TerminalArgs)
+	require.Equal(t, 0, res.ToolsUsed)
+	require.Empty(t, ts.calls)
 }

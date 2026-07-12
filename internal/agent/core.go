@@ -72,35 +72,33 @@ func coreLoop(ctx context.Context, llm LLM, toolSource ToolSource, model string,
 			return res, nil
 		}
 
-		var (
-			done        bool
-			terminalErr error
-		)
+		// First valid terminal call wins and ends the loop immediately: any
+		// further tool calls in the same message (terminal or not) are left
+		// unexecuted rather than risk an incoherent state (e.g. a second,
+		// unparseable terminal call overwriting a captured TerminalArgs).
+		var done bool
 		for _, tc := range msg.ToolCalls {
 			if tc.Type != "function" {
 				continue
 			}
 
 			if tc.Function.Name == terminal.Name {
+				called := true
 				if terminal.Parse != nil {
-					called, err := terminal.Parse(tc.Function.Arguments)
+					var err error
+					called, err = terminal.Parse(tc.Function.Arguments)
 					if err != nil {
-						terminalErr = err
 						messages = append(messages, openai.ToolMessage(terminal.ErrMsg(err), tc.ID))
 						continue
 					}
-					done = called
-				} else {
-					done = true
 				}
-				if done {
-					terminalErr = nil
+				if !called {
+					continue
 				}
-				if done {
-					res.TerminalArgs = tc.Function.Arguments
-					messages = append(messages, openai.ToolMessage(terminal.SuccessMsg, tc.ID))
-				}
-				continue
+				res.TerminalArgs = tc.Function.Arguments
+				messages = append(messages, openai.ToolMessage(terminal.SuccessMsg, tc.ID))
+				done = true
+				break
 			}
 
 			res.ToolsUsed++
@@ -116,7 +114,7 @@ func coreLoop(ctx context.Context, llm LLM, toolSource ToolSource, model string,
 			messages = append(messages, openai.ToolMessage(toolRes, tc.ID))
 		}
 
-		if done && terminalErr == nil {
+		if done {
 			res.Conversation = messages
 			span.AddEvent("agent." + terminal.Name)
 			return res, nil
