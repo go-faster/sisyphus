@@ -46,6 +46,10 @@ func TestCompleteWithTools(t *testing.T) {
 					},
 				},
 			},
+			Usage: openai.CompletionUsage{
+				PromptTokens:     10,
+				CompletionTokens: 5,
+			},
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
@@ -53,7 +57,7 @@ func TestCompleteWithTools(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	c := newClient(t, srv)
-	msg, err := c.CompleteWithTools(context.Background(), "test-model", []openai.ChatCompletionMessageParamUnion{
+	msg, usage, err := c.CompleteWithTools(context.Background(), "test-model", []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("test request"),
 	}, []openai.ChatCompletionToolUnionParam{
 		{
@@ -69,4 +73,6 @@ func TestCompleteWithTools(t *testing.T) {
 	require.Len(t, msg.ToolCalls, 1)
 	require.Equal(t, "call_123", msg.ToolCalls[0].ID)
 	require.Equal(t, "test_tool", msg.ToolCalls[0].Function.Name)
+	require.Equal(t, int64(10), usage.PromptTokens)
+	require.Equal(t, int64(5), usage.CompletionTokens)
 }

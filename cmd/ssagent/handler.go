@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-faster/sisyphus/internal/agent"
 	"github.com/go-faster/sisyphus/internal/agentstore"
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 // jobStore is the subset of *agentstore.Store the HTTP handlers need,
@@ -59,6 +60,7 @@ type InvestigateJobResponse struct {
 	Actions    []string      `json:"actions,omitempty"`
 	Iterations int           `json:"iterations,omitempty"`
 	ToolsUsed  int           `json:"tools_used,omitempty"`
+	Debug      *index.Debug  `json:"debug,omitempty"`
 	Error      string        `json:"error,omitempty"`
 }
 
@@ -97,6 +99,7 @@ func jobResponse(jobID uuid.UUID, job agentstore.Job) InvestigateJobResponse {
 		resp.Actions = job.Report.Actions
 		resp.Iterations = job.Iterations
 		resp.ToolsUsed = job.ToolsUsed
+		resp.Debug = job.Report.Debug
 	}
 	return resp
 }

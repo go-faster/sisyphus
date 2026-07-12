@@ -221,6 +221,23 @@ func (l Link) Valid() bool {
 type Answer struct {
 	Text  string
 	Links []Link
+	// Debug carries agent-loop diagnostics (trace ID, duration, tool calls,
+	// token usage). Only populated when the operator has opted into debug
+	// info via config (context.show_debug_info / agent.show_debug_info);
+	// nil otherwise, so the JSON/wire shape is unaffected when disabled.
+	Debug *Debug
+}
+
+// Debug carries agent-loop diagnostics for an answer/report, surfaced only
+// when the operator has opted into it via a config-level toggle. It's meant
+// for debugging, not end-user consumption.
+type Debug struct {
+	TraceID          string `json:"trace_id,omitempty"`
+	DurationMS       int64  `json:"duration_ms,omitempty"`
+	Iterations       int    `json:"iterations,omitempty"`
+	ToolCalls        int    `json:"tool_calls,omitempty"`
+	PromptTokens     int64  `json:"prompt_tokens,omitempty"`
+	CompletionTokens int64  `json:"completion_tokens,omitempty"`
 }
 
 // Hash returns the hex sha256 of normalized text. Normalization trims surrounding

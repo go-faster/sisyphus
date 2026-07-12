@@ -244,6 +244,31 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SearchResult"
+        debug:
+          description: |
+            Agent-loop diagnostics (trace ID, duration, tool calls, token
+            usage), present only when the operator has opted into
+            context.show_debug_info.
+          $ref: "#/components/schemas/Debug"
+    Debug:
+      type: object
+      description: Agent-loop diagnostics, for debugging only.
+      properties:
+        trace_id:
+          type: string
+        duration_ms:
+          type: integer
+          format: int64
+        iterations:
+          type: integer
+        tool_calls:
+          type: integer
+        prompt_tokens:
+          type: integer
+          format: int64
+        completion_tokens:
+          type: integer
+          format: int64
     Link:
       type: object
       required: [text, url]

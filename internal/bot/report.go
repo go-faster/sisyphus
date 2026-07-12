@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/gotd/td/telegram/message/entity"
@@ -78,7 +79,29 @@ func reportMarkdown(r agent.Report) string {
 		}
 	}
 
+	if r.Debug != nil {
+		sb.WriteString("\n")
+		sb.WriteString(debugMarkdown(r.Debug))
+	}
+
 	return strings.TrimSpace(sb.String())
+}
+
+// debugMarkdown formats agent-loop diagnostics for delivery, opted into via
+// a config-level toggle (context.show_debug_info / agent.show_debug_info).
+func debugMarkdown(d *index.Debug) string {
+	var sb strings.Builder
+	sb.WriteString("**Debug**\n")
+	if d.TraceID != "" {
+		fmt.Fprintf(&sb, "- trace_id: `%s`\n", d.TraceID)
+	}
+	fmt.Fprintf(&sb, "- duration: %dms\n", d.DurationMS)
+	fmt.Fprintf(&sb, "- iterations: %d\n", d.Iterations)
+	fmt.Fprintf(&sb, "- tool_calls: %d\n", d.ToolCalls)
+	if d.PromptTokens > 0 || d.CompletionTokens > 0 {
+		fmt.Fprintf(&sb, "- tokens: %d prompt / %d completion\n", d.PromptTokens, d.CompletionTokens)
+	}
+	return sb.String()
 }
 
 // linksMarkup builds a vertical inline keyboard of URL buttons, one per link,

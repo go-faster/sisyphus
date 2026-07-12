@@ -81,7 +81,7 @@ func (a *Answerer) Answer(ctx context.Context, q index.Query, results []index.Re
 			"from the context above. Omit `buttons` entirely if no source has a useful URL.",
 	))
 
-	msg, err := a.client.CompleteWithTools(ctx, a.model, msgs, []openai.ChatCompletionToolUnionParam{submitAnswerTool()})
+	msg, _, err := a.client.CompleteWithTools(ctx, a.model, msgs, []openai.ChatCompletionToolUnionParam{submitAnswerTool()})
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())

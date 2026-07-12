@@ -195,6 +195,7 @@ func (h *Handler) Context(ctx context.Context, req *oas.ContextRequest) (*oas.Co
 		Confidence: oas.NewOptString("low"),
 		Buttons:    toLinks(answer.Links),
 		Results:    toSearchResults(results),
+		Debug:      toDebug(answer.Debug),
 	}, nil
 }
 
@@ -208,6 +209,22 @@ func toLinks(links []index.Link) []oas.Link {
 		out = append(out, oas.Link{Text: l.Text, URL: l.URL})
 	}
 	return out
+}
+
+// toDebug maps index.Debug to its oas representation; absent from the
+// response unless the operator has opted into debug info.
+func toDebug(d *index.Debug) oas.OptDebug {
+	if d == nil {
+		return oas.OptDebug{}
+	}
+	return oas.NewOptDebug(oas.Debug{
+		TraceID:          oas.NewOptString(d.TraceID),
+		DurationMs:       oas.NewOptInt64(d.DurationMS),
+		Iterations:       oas.NewOptInt(d.Iterations),
+		ToolCalls:        oas.NewOptInt(d.ToolCalls),
+		PromptTokens:     oas.NewOptInt64(d.PromptTokens),
+		CompletionTokens: oas.NewOptInt64(d.CompletionTokens),
+	})
 }
 
 func answeredQuestionDocument(question, answer string) index.Document {

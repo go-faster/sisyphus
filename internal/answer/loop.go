@@ -33,10 +33,14 @@ func NewContextLoop(llm agent.LLM, toolSource agent.ToolSource, model string, ma
 }
 
 type ContextResult struct {
-	Answer         index.Answer
-	Iterations     int
-	ToolsUsed      int
-	DiscoveredURLs map[string]struct{}
+	Answer           index.Answer
+	Iterations       int
+	ToolsUsed        int
+	DiscoveredURLs   map[string]struct{}
+	TraceID          string
+	DurationMS       int64
+	PromptTokens     int64
+	CompletionTokens int64
 }
 
 func (l *ContextLoop) Run(ctx context.Context, systemPrompt, userInput string, seedResults []index.Result) (ContextResult, error) {
@@ -47,7 +51,15 @@ func (l *ContextLoop) Run(ctx context.Context, systemPrompt, userInput string, s
 
 	er, err := l.engine.Run(ctx, messages)
 	if err != nil {
-		return ContextResult{Iterations: er.Iterations, ToolsUsed: er.ToolsUsed, DiscoveredURLs: er.DiscoveredURLs}, err
+		return ContextResult{
+			Iterations:       er.Iterations,
+			ToolsUsed:        er.ToolsUsed,
+			DiscoveredURLs:   er.DiscoveredURLs,
+			TraceID:          er.TraceID,
+			DurationMS:       er.DurationMS,
+			PromptTokens:     er.PromptTokens,
+			CompletionTokens: er.CompletionTokens,
+		}, err
 	}
 
 	urls := make(map[string]struct{}, len(seedURLs)+len(er.DiscoveredURLs))
@@ -59,9 +71,13 @@ func (l *ContextLoop) Run(ctx context.Context, systemPrompt, userInput string, s
 	}
 
 	return ContextResult{
-		Iterations:     er.Iterations,
-		ToolsUsed:      er.ToolsUsed,
-		DiscoveredURLs: urls,
+		Iterations:       er.Iterations,
+		ToolsUsed:        er.ToolsUsed,
+		DiscoveredURLs:   urls,
+		TraceID:          er.TraceID,
+		DurationMS:       er.DurationMS,
+		PromptTokens:     er.PromptTokens,
+		CompletionTokens: er.CompletionTokens,
 		Answer: index.Answer{
 			Text:  er.Value.Text,
 			Links: filterButtons(er.Value.Links, urls),

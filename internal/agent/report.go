@@ -43,6 +43,9 @@ type Report struct {
 	Sources  []string     `json:"sources,omitempty"`
 	Actions  []string     `json:"actions,omitempty"`
 	Links    []index.Link `json:"links,omitempty"`
+	// Debug carries agent-loop diagnostics, populated only when
+	// agent.show_debug_info is enabled (see internal/agent.Investigate).
+	Debug *index.Debug `json:"debug,omitempty"`
 }
 
 // hasActionableVerdict reports whether v is a verdict that can legitimately

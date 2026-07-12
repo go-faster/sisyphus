@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 
+	"github.com/go-faster/sisyphus/internal/agent"
 	"github.com/go-faster/sisyphus/internal/index"
 )
 
@@ -19,14 +20,14 @@ type fakeLLM struct {
 	captured  [][]openai.ChatCompletionMessageParamUnion
 }
 
-func (f *fakeLLM) CompleteWithTools(ctx context.Context, model string, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolUnionParam) (openai.ChatCompletionMessage, error) {
+func (f *fakeLLM) CompleteWithTools(ctx context.Context, model string, messages []openai.ChatCompletionMessageParamUnion, tools []openai.ChatCompletionToolUnionParam) (openai.ChatCompletionMessage, agent.Usage, error) {
 	f.captured = append(f.captured, append([]openai.ChatCompletionMessageParamUnion(nil), messages...))
 	if f.calls >= len(f.responses) {
-		return openai.ChatCompletionMessage{}, errors.New("no more mock responses")
+		return openai.ChatCompletionMessage{}, agent.Usage{}, errors.New("no more mock responses")
 	}
 	resp := f.responses[f.calls]
 	f.calls++
-	return resp, nil
+	return resp, agent.Usage{}, nil
 }
 
 type fakeToolSource struct {

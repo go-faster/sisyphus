@@ -128,7 +128,7 @@ func (c *Client) Answer(ctx context.Context, q index.Query, results []index.Resu
 		rerr = errors.Wrap(err, "get context")
 		return index.Answer{}, rerr
 	}
-	answer = index.Answer{Text: resp.Answer, Links: fromLinks(resp.Buttons)}
+	answer = index.Answer{Text: resp.Answer, Links: fromLinks(resp.Buttons), Debug: fromDebug(resp.Debug)}
 	span.SetAttributes(
 		attribute.Int("answer.length", len(answer.Text)),
 		attribute.Int("answer.links", len(answer.Links)),
@@ -150,6 +150,23 @@ func fromLinks(links []oas.Link) []index.Link {
 		}
 	}
 	return out
+}
+
+// fromDebug maps the oas optional Debug field to index.Debug, nil if absent
+// (the server omits it unless context.show_debug_info is enabled).
+func fromDebug(d oas.OptDebug) *index.Debug {
+	if !d.Set {
+		return nil
+	}
+	v := d.Value
+	return &index.Debug{
+		TraceID:          v.TraceID.Or(""),
+		DurationMS:       v.DurationMs.Or(0),
+		Iterations:       v.Iterations.Or(0),
+		ToolCalls:        v.ToolCalls.Or(0),
+		PromptTokens:     v.PromptTokens.Or(0),
+		CompletionTokens: v.CompletionTokens.Or(0),
+	}
 }
 
 // Retrieve implements the Retriever interface.

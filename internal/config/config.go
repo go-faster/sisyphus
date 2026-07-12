@@ -79,6 +79,10 @@ type AgentConfig struct {
 	MaxReportChars        int
 	MaxConcurrent         int
 	MaxBodyBytes          int64
+	// ShowDebugInfo attaches agent-loop diagnostics (trace ID, duration,
+	// tool calls, token usage) to Report.Debug, for operators debugging
+	// /investigate. Off by default.
+	ShowDebugInfo bool
 }
 
 // ContextConfig holds configuration for the agentic /context workflow.
@@ -92,6 +96,10 @@ type ContextConfig struct {
 	SandboxMachine string
 	PreSearch      bool
 	PreSearchLimit int
+	// ShowDebugInfo attaches agent-loop diagnostics (trace ID, duration,
+	// tool calls, token usage) to Answer.Debug, for operators debugging
+	// /context. Off by default.
+	ShowDebugInfo bool
 }
 
 // JiraConfig holds Jira REST API configuration for ingestion.
@@ -260,6 +268,7 @@ type fileAgentConfig struct {
 	MaxReportChars        int    `yaml:"max_report_chars"`
 	MaxConcurrent         int    `yaml:"max_concurrent"`
 	MaxBodyBytes          int64  `yaml:"max_body_bytes"`
+	ShowDebugInfo         bool   `yaml:"show_debug_info"`
 }
 
 type fileContextConfig struct {
@@ -272,6 +281,7 @@ type fileContextConfig struct {
 	SandboxMachine string            `yaml:"sandbox_machine"`
 	PreSearch      bool              `yaml:"pre_search"`
 	PreSearchLimit int               `yaml:"pre_search_limit"`
+	ShowDebugInfo  bool              `yaml:"show_debug_info"`
 }
 
 // FetchConfig configures the URL fetcher allowlist.
@@ -790,6 +800,7 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			MaxReportChars:        c.Agent.MaxReportChars,
 			MaxConcurrent:         c.Agent.MaxConcurrent,
 			MaxBodyBytes:          c.Agent.MaxBodyBytes,
+			ShowDebugInfo:         c.Agent.ShowDebugInfo,
 		},
 		Context: ContextConfig{
 			Agentic:        c.Context.Agentic,
@@ -801,6 +812,7 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			SandboxMachine: c.Context.SandboxMachine,
 			PreSearch:      c.Context.PreSearch,
 			PreSearchLimit: c.Context.PreSearchLimit,
+			ShowDebugInfo:  c.Context.ShowDebugInfo,
 		},
 		Ingest: IngestConfig{
 			Addr:                        c.Ingest.Addr,

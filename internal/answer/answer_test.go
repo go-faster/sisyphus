@@ -99,13 +99,13 @@ type capturingLLM struct {
 	response     openai.ChatCompletionMessage
 }
 
-func (c *capturingLLM) CompleteWithTools(_ context.Context, _ string, messages []openai.ChatCompletionMessageParamUnion, _ []openai.ChatCompletionToolUnionParam) (openai.ChatCompletionMessage, error) {
+func (c *capturingLLM) CompleteWithTools(_ context.Context, _ string, messages []openai.ChatCompletionMessageParamUnion, _ []openai.ChatCompletionToolUnionParam) (openai.ChatCompletionMessage, agent.Usage, error) {
 	if len(messages) > 0 {
 		if sys := messages[0].OfSystem; sys != nil && sys.Content.OfString.Valid() {
 			c.systemPrompt = sys.Content.OfString.Value
 		}
 	}
-	return c.response, nil
+	return c.response, agent.Usage{}, nil
 }
 
 func TestAnswer_SandboxDisabledNotedInPrompt(t *testing.T) {

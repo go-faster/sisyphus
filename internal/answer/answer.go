@@ -35,6 +35,9 @@ type AgenticOptions struct {
 	SandboxMachine string
 	SandboxEnabled bool
 	Tracer         trace.Tracer
+	// ShowDebugInfo attaches loop diagnostics (trace ID, duration, tool
+	// calls, token usage) to the returned Answer.Debug. Off by default.
+	ShowDebugInfo bool
 }
 
 func (opts *AgenticOptions) setDefaults() {
@@ -77,6 +80,7 @@ type AgenticAnswerer struct {
 	sandboxMachine string
 	sandboxEnabled bool
 	tracer         trace.Tracer
+	showDebugInfo  bool
 }
 
 func NewAgenticAnswerer(llm agent.LLM, toolSource agent.ToolSource, model string, opts AgenticOptions) *AgenticAnswerer {
@@ -97,6 +101,7 @@ func NewAgenticAnswerer(llm agent.LLM, toolSource agent.ToolSource, model string
 		sandboxMachine: opts.SandboxMachine,
 		sandboxEnabled: opts.SandboxEnabled,
 		tracer:         opts.Tracer,
+		showDebugInfo:  opts.ShowDebugInfo,
 	}
 }
 
@@ -157,7 +162,18 @@ func (a *AgenticAnswerer) Answer(ctx context.Context, q index.Query, results []i
 		attribute.Int("answer.len", len(loopRes.Answer.Text)),
 		attribute.Int("answer.links", len(loopRes.Answer.Links)),
 	)
-	return loopRes.Answer, nil
+	ans := loopRes.Answer
+	if a.showDebugInfo {
+		ans.Debug = &index.Debug{
+			TraceID:          loopRes.TraceID,
+			DurationMS:       loopRes.DurationMS,
+			Iterations:       loopRes.Iterations,
+			ToolCalls:        loopRes.ToolsUsed,
+			PromptTokens:     loopRes.PromptTokens,
+			CompletionTokens: loopRes.CompletionTokens,
+		}
+	}
+	return ans, nil
 }
 
 var _ index.Answerer = (*AgenticAnswerer)(nil)

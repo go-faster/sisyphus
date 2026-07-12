@@ -118,7 +118,12 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry, info cli
 		model = cfg.OpenRouter.Model
 	}
 
-	inv := agent.NewInvestigator(llm, mClient, model, cfg.Agent.MaxToolIterations, cfg.Agent.MaxReportChars, lg)
+	inv := agent.NewInvestigator(llm, mClient, model, agent.InvestigatorOptions{
+		MaxIterations:  cfg.Agent.MaxToolIterations,
+		MaxReportChars: cfg.Agent.MaxReportChars,
+		ShowDebugInfo:  cfg.Agent.ShowDebugInfo,
+		Logger:         lg,
+	})
 
 	mux := http.NewServeMux()
 	mcpserver.InstallHealth(mux, info.Short(), mClient)
