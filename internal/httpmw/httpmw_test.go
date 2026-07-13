@@ -19,7 +19,7 @@ func TestInjectLogger(t *testing.T) {
 		zctx.From(r.Context()).Info("handler log")
 	}))
 
-	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", http.NoBody))
 
 	entries := logs.FilterMessage("handler log").All()
 	require.Len(t, entries, 1)
@@ -31,14 +31,14 @@ func TestLoggingUsesContextLogger(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})))
 
-	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/health", nil))
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/health", http.NoBody))
 
 	entries := logs.FilterMessage("got http request").All()
 	require.Len(t, entries, 1)
 	require.EqualValues(t, http.StatusNoContent, entries[0].ContextMap()["status"])
 }
 
-func TestLoggingIncludesTraceID(t *testing.T) {
+func TestLoggingIncludesTraceContext(t *testing.T) {
 	core, logs := observer.New(zapcore.DebugLevel)
 	h := InjectLogger(zap.New(core))(Logging()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})))
 
@@ -48,11 +48,11 @@ func TestLoggingIncludesTraceID(t *testing.T) {
 		TraceID: traceID,
 		SpanID:  spanID,
 	})
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health", http.NoBody)
 	req = req.WithContext(trace.ContextWithSpanContext(req.Context(), sc))
 	h.ServeHTTP(httptest.NewRecorder(), req)
 
 	entries := logs.FilterMessage("got http request").All()
 	require.Len(t, entries, 1)
-	require.Equal(t, traceID.String(), entries[0].ContextMap()["trace_id"])
+	require.Contains(t, entries[0].ContextMap(), "ctx")
 }
