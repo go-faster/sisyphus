@@ -35,6 +35,7 @@ import (
 	ingestgit "github.com/go-faster/sisyphus/internal/ingest/git"
 	"github.com/go-faster/sisyphus/internal/llm/openrouter"
 	"github.com/go-faster/sisyphus/internal/llm/stub"
+	"github.com/go-faster/sisyphus/internal/mcpclient"
 	"github.com/go-faster/sisyphus/internal/netclient"
 	"github.com/go-faster/sisyphus/internal/pipeline"
 	"github.com/go-faster/sisyphus/internal/retrieval"
@@ -206,10 +207,10 @@ func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trac
 func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, error) {
 	opts.setDefaults()
 	lg := zctx.From(ctx)
-	var sshCleanup func()
+	var gatewayCleanup func()
 	cleanup := func() {
-		if sshCleanup != nil {
-			sshCleanup()
+		if gatewayCleanup != nil {
+			gatewayCleanup()
 		}
 	}
 
@@ -304,23 +305,34 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 
 	if cfg.OpenRouter.Enabled() && cfg.Context.Agentic {
 		knowledgeTools := answer.NewKnowledgeToolSource(retr, urlFetcher, contentResolver, opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/answer/tools"))
-		var sshTools agent.ToolSource
-		if cfg.Context.SSHMCPURL != "" {
-			connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			toolSource, closeFn, err := answer.NewSSHToolSource(connectCtx, cfg.Context.SSHMCPURL, cfg.Context.SSHMCPHeaders, answer.SSHToolSourceOptions{
+		var gatewayTools agent.ToolSource
+		if cfg.Context.GatewayURL != "" {
+			gatewayHTTPClient, err := netclient.HTTPClient(ctx, "mcp-gateway", "", netclient.HTTPClientOptions{
 				TracerProvider: opts.TracerProvider,
 				MeterProvider:  opts.MeterProvider,
 				UserAgent:      opts.UserAgent,
 			})
+			if err != nil {
+				cleanup()
+				svcs.Close()
+				return Components{}, errors.Wrap(err, "mcp gateway http client")
+			}
+			connectCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			gatewayClient, err := mcpclient.New(connectCtx, mcpclient.Options{
+				URL:           cfg.Context.GatewayURL,
+				Headers:       cfg.Context.GatewayHeaders,
+				HTTPClient:    gatewayHTTPClient,
+				MeterProvider: opts.MeterProvider,
+			})
 			cancel()
 			if err != nil {
-				lg.Warn("ssh-mcp unavailable, sandbox tools disabled", zap.Error(err))
+				lg.Warn("mcp gateway unavailable, gateway tools disabled", zap.Error(err))
 			} else {
-				sshTools = toolSource
-				sshCleanup = closeFn
+				gatewayTools = gatewayClient
+				gatewayCleanup = func() { _ = gatewayClient.Close() }
 			}
 		}
-		toolSource := answer.NewMultiToolSource(knowledgeTools, sshTools)
+		toolSource := answer.NewMultiToolSource(knowledgeTools, gatewayTools)
 		answerer = answer.NewAgenticAnswerer(orClient, toolSource, cfg.OpenRouter.Model, answer.AgenticOptions{
 			Logger:         lg,
 			Retriever:      retr,
@@ -330,16 +342,16 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 			TimeoutSeconds: cfg.Context.TimeoutSeconds,
 			MaxAnswerChars: cfg.Context.MaxAnswerChars,
 			SandboxMachine: cfg.Context.SandboxMachine,
-			SandboxEnabled: sshTools != nil,
+			SandboxEnabled: gatewayTools != nil,
 			Tracer:         opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/answer"),
 			ShowDebugInfo:  cfg.Context.ShowDebugInfo,
 		})
 	}
 
 	closeDB := svcs.closeDB
-	if sshCleanup != nil {
+	if gatewayCleanup != nil {
 		closeDB = func() {
-			sshCleanup()
+			gatewayCleanup()
 			svcs.closeDB()
 		}
 	}

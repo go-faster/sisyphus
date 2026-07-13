@@ -91,8 +91,8 @@ type ContextConfig struct {
 	MaxIterations  int
 	TimeoutSeconds int
 	MaxAnswerChars int
-	SSHMCPURL      string
-	SSHMCPHeaders  map[string]string
+	GatewayURL     string
+	GatewayHeaders map[string]string
 	SandboxMachine string
 	PreSearch      bool
 	PreSearchLimit int
@@ -276,6 +276,11 @@ type fileContextConfig struct {
 	MaxIterations  int               `yaml:"max_iterations"`
 	TimeoutSeconds int               `yaml:"timeout_seconds"`
 	MaxAnswerChars int               `yaml:"max_answer_chars"`
+	GatewayURL     string            `yaml:"gateway_url"`
+	GatewayHeaders map[string]string `yaml:"gateway_headers"`
+	// SSHMCPURL/SSHMCPHeaders are deprecated in favor of GatewayURL/GatewayHeaders:
+	// sisyphus now talks to the shared mcpgateway (which fronts ssh-mcp among other
+	// upstreams) instead of dialing ssh-mcp directly.
 	SSHMCPURL      string            `yaml:"ssh_mcp_url"`
 	SSHMCPHeaders  map[string]string `yaml:"ssh_mcp_headers"`
 	SandboxMachine string            `yaml:"sandbox_machine"`
@@ -654,6 +659,14 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	gatewayURL, err := resolveDeprecatedAddr(&warnings, "context.ssh_mcp_url", c.Context.SSHMCPURL, "context.gateway_url", c.Context.GatewayURL, "")
+	if err != nil {
+		return Config{}, err
+	}
+	gatewayHeaders, err := resolveDeprecatedHeaders(&warnings, "context.ssh_mcp_headers", c.Context.SSHMCPHeaders, "context.gateway_headers", c.Context.GatewayHeaders)
+	if err != nil {
+		return Config{}, err
+	}
 
 	dsn, err := dsnSecret.Resolve(baseDir)
 	if err != nil {
@@ -807,8 +820,8 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			MaxIterations:  c.Context.MaxIterations,
 			TimeoutSeconds: c.Context.TimeoutSeconds,
 			MaxAnswerChars: c.Context.MaxAnswerChars,
-			SSHMCPURL:      c.Context.SSHMCPURL,
-			SSHMCPHeaders:  c.Context.SSHMCPHeaders,
+			GatewayURL:     gatewayURL,
+			GatewayHeaders: gatewayHeaders,
 			SandboxMachine: c.Context.SandboxMachine,
 			PreSearch:      c.Context.PreSearch,
 			PreSearchLimit: c.Context.PreSearchLimit,
@@ -965,6 +978,20 @@ func resolveDeprecatedAddr(warnings *[]string, deprecatedKey, deprecatedValue, n
 	}
 	*warnings = append(*warnings, deprecatedKey+" is deprecated, use "+newKey+" instead")
 	return deprecatedValue, nil
+}
+
+// resolveDeprecatedHeaders is resolveDeprecatedAddr for map[string]string
+// fields, which have no meaningful "default" to compare against: any
+// non-empty value in both places is a conflict.
+func resolveDeprecatedHeaders(warnings *[]string, deprecatedKey string, deprecated map[string]string, newKey string, current map[string]string) (map[string]string, error) {
+	if len(deprecated) == 0 {
+		return current, nil
+	}
+	if len(current) != 0 {
+		return nil, errors.Errorf("%s is deprecated in favor of %s; set only %s", deprecatedKey, newKey, newKey)
+	}
+	*warnings = append(*warnings, deprecatedKey+" is deprecated, use "+newKey+" instead")
+	return deprecated, nil
 }
 
 // resolveDeprecatedSecret is resolveDeprecatedAddr for Secret fields, which
