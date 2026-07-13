@@ -14,9 +14,6 @@
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
-secret.yml
-secret.yaml
-!deploy/helm/sisyphus/templates/secret.yaml
 deploy/config.yaml
 
 /ssbot
