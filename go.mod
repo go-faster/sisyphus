@@ -5,7 +5,7 @@ go 1.26.4
 require (
 	ariga.io/atlas v1.2.3
 	entgo.io/ent v0.14.6
-	github.com/XSAM/otelsql v0.42.0
+	github.com/XSAM/otelsql v0.43.0
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/go-faster/errors v0.7.1
