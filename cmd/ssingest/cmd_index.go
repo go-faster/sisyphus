@@ -60,7 +60,7 @@ func newIndexCleanCmd(deps *ingestDeps) *cobra.Command {
 				if err := resetSource(cmd.Context(), deps.services.DB, deps.services.Vectors, src); err != nil {
 					return errors.Wrap(err, "clean "+string(src))
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "cleaned %s\n", src)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "cleaned %s\n", src)
 			}
 			return nil
 		},
@@ -85,9 +85,9 @@ func listIndexSources(ctx context.Context, w io.Writer, deps *ingestDeps) error 
 		return errors.Wrap(err, "list indexed sources")
 	}
 
-	fmt.Fprintln(w, "SOURCE\tDOCUMENTS")
+	_, _ = fmt.Fprintln(w, "SOURCE\tDOCUMENTS")
 	for _, r := range rows {
-		fmt.Fprintf(w, "%s\t%d\n", r.Source, r.Count)
+		_, _ = fmt.Fprintf(w, "%s\t%d\n", r.Source, r.Count)
 	}
 	return nil
 }
