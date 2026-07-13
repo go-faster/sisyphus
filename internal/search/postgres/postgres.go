@@ -69,10 +69,11 @@ func (s *Searcher) Search(ctx context.Context, q index.Query) ([]index.Result, e
 			chunkType  string
 			title      string
 			text       string
+			textHash   string
 			metadataB  []byte
 			rank       float64
 		)
-		err := rows.Scan(&id, &documentID, &chunkType, &title, &text, &metadataB, &rank)
+		err := rows.Scan(&id, &documentID, &chunkType, &title, &text, &textHash, &metadataB, &rank)
 		if err != nil {
 			return nil, errors.Wrap(err, "scan row")
 		}
@@ -92,6 +93,7 @@ func (s *Searcher) Search(ctx context.Context, q index.Query) ([]index.Result, e
 				Type:       index.ChunkType(chunkType),
 				Title:      title,
 				Text:       text,
+				TextHash:   textHash,
 				Metadata:   metadata,
 			},
 			Score:  rank,
@@ -125,6 +127,7 @@ func (s *Searcher) FetchChunks(ctx context.Context, ids []uuid.UUID) (map[uuid.U
 		out[c.ID] = index.Chunk{
 			ID:         c.ID,
 			Text:       c.Text,
+			TextHash:   c.TextHash,
 			TokenCount: c.TokenCount,
 		}
 	}
@@ -147,7 +150,7 @@ func buildQuery(q index.Query) (query string, args []any) {
 	// matches surface; ts_rank still orders by how many/how heavily terms match,
 	// and RRF fuses the result with vector search.
 	queryStr.WriteString(`
-		SELECT id, document_id, chunk_type, coalesce(title,''), text, metadata,
+		SELECT id, document_id, chunk_type, coalesce(title,''), text, text_hash, metadata,
 		       ts_rank(search_vector, replace(plainto_tsquery('simple', $1)::text, ' & ', ' | ')::tsquery) AS rank
 		FROM chunks
 		WHERE search_vector @@ replace(plainto_tsquery('simple', $1)::text, ' & ', ' | ')::tsquery

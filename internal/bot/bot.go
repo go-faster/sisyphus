@@ -14,6 +14,7 @@ import (
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/message"
 	"github.com/gotd/td/tg"
+	"github.com/gotd/td/tgerr"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -276,6 +277,10 @@ func (b *Bot) Run(ctx context.Context) error {
 		s := newInlineSender(ib)
 		_, err = s.setInline(ctx, searchInlineResults(results)...)
 		if err != nil {
+			if isStaleInlineQueryError(err) {
+				lg.Debug("inline search query expired", zap.Error(err))
+				return nil
+			}
 			rerr = err
 			lg.Error("inline search set results", zap.Error(err))
 		}
@@ -293,6 +298,10 @@ func (b *Bot) Run(ctx context.Context) error {
 		<-ctx.Done()
 		return ctx.Err()
 	})
+}
+
+func isStaleInlineQueryError(err error) bool {
+	return tgerr.Is(err, "QUERY_ID_INVALID")
 }
 
 func (b *Bot) sendTextReply(ctx context.Context, s messageSender, answer string) {

@@ -134,6 +134,55 @@ func TestRetrieveServiceBoost(t *testing.T) {
 	}
 }
 
+func TestRetrieveDedupesSameContent(t *testing.T) {
+	keep := uuid.New()
+	dupe := uuid.New()
+	other := uuid.New()
+	hash := index.Hash("same content")
+	lexical := fakeSearcher{results: []index.Result{
+		{
+			Chunk: index.Chunk{ID: keep, Text: "same content", TextHash: hash},
+			Score: 1.0,
+		},
+		{
+			Chunk: index.Chunk{ID: dupe, Text: "same content", TextHash: hash},
+			Score: 0.9,
+		},
+		{
+			Chunk: index.Chunk{ID: other, Text: "different content", TextHash: index.Hash("different content")},
+			Score: 0.8,
+		},
+	}}
+	svc, err := New(lexical, nil, nil, ServiceOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := svc.Retrieve(t.Context(), index.Query{Text: "content", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("want 2 deduped results, got %d", len(got))
+	}
+	if got[0].Chunk.ID != keep {
+		t.Fatalf("highest-ranked duplicate should survive, got %v", got[0].Chunk.ID)
+	}
+	for _, r := range got {
+		if r.Chunk.ID == dupe {
+			t.Fatal("duplicate content survived")
+		}
+	}
+}
+
+func TestContentKeyNormalizesWhitespace(t *testing.T) {
+	a := contentKey(index.Chunk{Text: "Same\n\tcontent"})
+	b := contentKey(index.Chunk{Text: "same content"})
+	if a == "" || a != b {
+		t.Fatalf("normalized keys differ: %q != %q", a, b)
+	}
+}
+
 func TestRetrieveSurvivesBackendError(t *testing.T) {
 	ok := uuid.New()
 	lexical := fakeSearcher{err: context.DeadlineExceeded}

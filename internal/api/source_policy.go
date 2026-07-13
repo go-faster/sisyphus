@@ -11,7 +11,6 @@ const (
 
 var sourceTierPrefixes = map[string][]string{
 	sourceTierCurated: {
-		string(index.SourceAnswer),
 		index.SourceContextFilesPrefix,
 		index.SourceGitDocsPrefix,
 		index.SourceGitManifestPrefix,

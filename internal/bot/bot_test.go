@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-faster/errors"
 	"github.com/gotd/td/tg"
+	"github.com/gotd/td/tgerr"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
@@ -58,6 +59,12 @@ func TestHandleKeepsAnswerLinks(t *testing.T) {
 	got, err := b.handle(context.Background(), "why is prod red?")
 	require.NoError(t, err)
 	require.Equal(t, want, got)
+}
+
+func TestIsStaleInlineQueryError(t *testing.T) {
+	err := errors.Wrap(tgerr.New(400, "QUERY_ID_INVALID"), "set inline results")
+	require.True(t, isStaleInlineQueryError(err))
+	require.False(t, isStaleInlineQueryError(tgerr.New(400, "MESSAGE_EMPTY")))
 }
 
 func TestLinksMarkup(t *testing.T) {

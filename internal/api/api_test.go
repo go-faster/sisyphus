@@ -198,6 +198,18 @@ func TestHandler_Context_IndexesAnsweredQuestion(t *testing.T) {
 	require.Equal(t, string(index.AuthorityLow), idx.doc.Metadata["authority"])
 }
 
+func TestSourcePrefixes_CuratedExcludesAnsweredQuestions(t *testing.T) {
+	got := sourcePrefixes(nil, sourceTierCurated, nil)
+	for _, prefix := range got {
+		if prefix == string(index.SourceAnswer) {
+			t.Fatal("curated tier should not include answered questions by default")
+		}
+	}
+
+	explicit := sourcePrefixes(nil, "", []string{string(index.SourceAnswer)})
+	require.Equal(t, []string{string(index.SourceAnswer)}, explicit)
+}
+
 func TestHandler_Context_StructuredAnswerWithButtons(t *testing.T) {
 	h := New(&captureRetriever{}, stubAnswerer{answer: index.Answer{
 		Text:  "text",

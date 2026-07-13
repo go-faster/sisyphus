@@ -5,6 +5,8 @@ package retrieval
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"slices"
 	"strings"
@@ -221,6 +223,7 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) (_ []index.Result
 		}
 		return cmp.Compare(a.Chunk.ID.String(), b.Chunk.ID.String())
 	})
+	out = dedupeResults(out)
 	if topScore := out[0].Score; topScore > 0 {
 		threshold := topScore * minScoreFraction
 		cut := len(out)
@@ -297,6 +300,7 @@ func (s *Service) hydrate(ctx context.Context, rs []index.Result) {
 			continue
 		}
 		rs[i].Chunk.Text = chunk.Text
+		rs[i].Chunk.TextHash = chunk.TextHash
 		rs[i].Chunk.TokenCount = chunk.TokenCount
 		found++
 	}
@@ -305,6 +309,34 @@ func (s *Service) hydrate(ctx context.Context, rs []index.Result) {
 		attribute.Int("chunks.requested", len(ids)),
 		attribute.Int("chunks.found", found),
 	))
+}
+
+func dedupeResults(rs []index.Result) []index.Result {
+	seen := make(map[string]bool, len(rs))
+	out := rs[:0]
+	for _, r := range rs {
+		key := contentKey(r.Chunk)
+		if key != "" {
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+func contentKey(c index.Chunk) string {
+	if c.TextHash != "" {
+		return "hash:" + c.TextHash
+	}
+	text := strings.Join(strings.Fields(strings.ToLower(c.Text)), " ")
+	if text == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(text))
+	return "text:" + hex.EncodeToString(sum[:])
 }
 
 // boost applies authority and exact-match boosts to a result's score (plan §11).

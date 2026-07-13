@@ -240,6 +240,7 @@ func chunkToPayload(chunk index.Chunk) map[string]*qdrant.Value {
 	addPayloadValue(payload, "document_id", chunk.DocumentID.String())
 	addPayloadValue(payload, "chunk_type", string(chunk.Type))
 	addPayloadValue(payload, "title", chunk.Title)
+	addPayloadValue(payload, "text_hash", chunk.TextHash)
 
 	// If metadata exists, merge its fields into the payload
 	if chunk.Metadata != nil {
@@ -307,6 +308,9 @@ func payloadToChunk(_ *qdrant.PointId, payload map[string]*qdrant.Value) index.C
 	if v, ok := payload["title"]; ok {
 		chunk.Title = v.GetStringValue()
 	}
+	if v, ok := payload["text_hash"]; ok {
+		chunk.TextHash = v.GetStringValue()
+	}
 
 	// Remaining fields become metadata
 	knownKeys := map[string]bool{
@@ -314,6 +318,7 @@ func payloadToChunk(_ *qdrant.PointId, payload map[string]*qdrant.Value) index.C
 		"document_id": true,
 		"chunk_type":  true,
 		"title":       true,
+		"text_hash":   true,
 	}
 
 	for k, v := range payload {
