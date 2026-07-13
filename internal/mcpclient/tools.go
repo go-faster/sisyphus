@@ -22,7 +22,9 @@ func (c *Client) Tools(ctx context.Context) ([]openai.ChatCompletionToolUnionPar
 			req.Cursor = cursor
 		}
 
-		res, err := c.session.ListTools(ctx, &req)
+		res, err := withSession(ctx, c, func(session *mcp.ClientSession) (*mcp.ListToolsResult, error) {
+			return session.ListTools(ctx, &req)
+		})
 		if err != nil {
 			return nil, errors.Wrap(err, "list tools")
 		}

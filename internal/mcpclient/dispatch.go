@@ -31,7 +31,9 @@ func (c *Client) Call(ctx context.Context, name string, argsJSON json.RawMessage
 	req.Name = name
 	req.Arguments = args
 
-	res, err := c.session.CallTool(ctx, &req)
+	res, err := withSession(ctx, c, func(session *mcp.ClientSession) (*mcp.CallToolResult, error) {
+		return session.CallTool(ctx, &req)
+	})
 	if err != nil {
 		return "", errors.Wrap(err, "call tool")
 	}
