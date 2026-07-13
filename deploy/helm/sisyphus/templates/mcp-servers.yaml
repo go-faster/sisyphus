@@ -1,0 +1,112 @@
+{{- /*
+  One Deployment + Service per entry in .Values.mcp.servers. The gateway upstream
+  for each is generated from the same entry (see configmap-gateway.yaml), so
+  adding a VictoriaLogs/Grafana/whatever MCP server is a values-only change.
+*/ -}}
+{{- $root := . }}
+{{- $full := include "sisyphus.fullname" . }}
+{{- range $name, $srv := .Values.mcp.servers }}
+{{- if $srv.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $full }}-mcp-{{ $name }}
+  labels:
+    {{- include "sisyphus.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: mcp-{{ $name }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ $srv.port }}
+      targetPort: http
+  selector:
+    {{- include "sisyphus.selectorLabels" (dict "root" $root "component" (printf "mcp-%s" $name)) | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $full }}-mcp-{{ $name }}
+  labels:
+    {{- include "sisyphus.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: mcp-{{ $name }}
+spec:
+  replicas: {{ default 1 $srv.replicas }}
+  selector:
+    matchLabels:
+      {{- include "sisyphus.selectorLabels" (dict "root" $root "component" (printf "mcp-%s" $name)) | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/secret: {{ include (print $root.Template.BasePath "/secret.yaml") $root | sha256sum }}
+        {{- with $srv.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "sisyphus.labels" $root | nindent 8 }}
+        {{- include "sisyphus.selectorLabels" (dict "root" $root "component" (printf "mcp-%s" $name)) | nindent 8 }}
+    spec:
+      {{- include "sisyphus.imagePullSecrets" $root | nindent 6 }}
+      serviceAccountName: {{ include "sisyphus.serviceAccountName" $root }}
+      containers:
+        - name: mcp
+          image: {{ $srv.image | quote }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          {{- with $srv.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $srv.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml (default (dict "allowPrivilegeEscalation" false "capabilities" (dict "drop" (list "ALL"))) $srv.securityContext) | nindent 12 }}
+          env:
+            {{- /* secretEnv first: plain env values may reference them with $(VAR). */}}
+            {{- range $env, $key := $srv.secretEnv }}
+            - name: {{ $env }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sisyphus.secretName" $root }}
+                  key: {{ $key }}
+            {{- end }}
+            {{- range $env, $val := $srv.env }}
+            - name: {{ $env }}
+              value: {{ $val | quote }}
+            {{- end }}
+            {{- if $srv.proxy }}
+            {{- include "sisyphus.proxyEnv" $root | nindent 12 }}
+            {{- end }}
+            {{- include "sisyphus.otelEnv" $root | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ $srv.port }}
+          {{- if eq (default "tcp" $srv.probe) "http" }}
+          readinessProbe:
+            httpGet: {path: {{ default "/health" $srv.probePath }}, port: http}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          {{- else }}
+          readinessProbe:
+            tcpSocket: {port: http}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          {{- end }}
+          resources:
+            {{- toYaml $srv.resources | nindent 12 }}
+      {{- with $srv.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $srv.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $srv.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- end }}

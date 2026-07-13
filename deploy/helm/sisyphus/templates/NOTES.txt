@@ -1,0 +1,46 @@
+{{ .Chart.Name }} {{ .Chart.AppVersion }} installed as {{ .Release.Name }} in {{ .Release.Namespace }}.
+
+Endpoints (cluster-internal):
+{{- if .Values.ssapi.enabled }}
+  api      http://{{ include "sisyphus.fullname" . }}-ssapi:{{ .Values.ssapi.service.port }}       (bearer: SISYPHUS_API_AUTH_TOKEN)
+{{- end }}
+{{- if .Values.ssmcp.enabled }}
+  mcp      http://{{ include "sisyphus.fullname" . }}-ssmcp:{{ .Values.ssmcp.port }}/mcp
+{{- end }}
+{{- if .Values.mcp.gateway.enabled }}
+  gateway  {{ include "sisyphus.gateway.url" . }}
+{{- end }}
+{{- if .Values.ssingest.enabled }}
+  webhooks http://{{ include "sisyphus.fullname" . }}-ssingest:{{ .Values.ssingest.port }}/webhooks/{gitlab,jira}
+{{- end }}
+
+Check it:
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "sisyphus.fullname" . }}-ssapi
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "sisyphus.fullname" . }}-ssapi {{ .Values.ssapi.service.port }}:{{ .Values.ssapi.service.port }}
+
+{{- if not .Values.secrets.existingSecret }}
+{{- if not .Values.secrets.values.SISYPHUS_API_AUTH_TOKEN }}
+
+WARNING: secrets.values.SISYPHUS_API_AUTH_TOKEN is empty — ssapi will refuse to start.
+{{- end }}
+{{- if and .Values.config.context .Values.config.context.agentic (not .Values.secrets.values.SISYPHUS_OPENROUTER_API_KEY) }}
+
+WARNING: context.agentic is on but SISYPHUS_OPENROUTER_API_KEY is empty — the agentic
+         path silently falls back to the non-agentic answerer.
+{{- end }}
+{{- end }}
+{{- if and .Values.ssbot.enabled (not (dig "telegram" "app_id" 0 .Values.config)) }}
+
+WARNING: ssbot is enabled but config.telegram.app_id is unset. Also make sure
+         config.telegram.allowed_chats / allowed_user_ids are non-empty — the bot
+         fails closed and ignores every message otherwise.
+{{- end }}
+{{- if and .Values.sandbox.enabled (not .Values.networkPolicy.enabled) }}
+
+WARNING: networkPolicy.enabled=false — the sandbox has unrestricted network access.
+{{- end }}
+{{- if and .Values.gitWorkdir.enabled .Values.gitWorkdir.shared (not (has "ReadWriteMany" .Values.gitWorkdir.accessModes)) }}
+
+WARNING: gitWorkdir.shared=true needs a ReadWriteMany volume (ssingest writes it,
+         ssapi and the sandbox read it). Set gitWorkdir.shared=false on RWO-only clusters.
+{{- end }}

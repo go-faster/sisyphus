@@ -113,6 +113,10 @@ internal/wire           shared wiring for cmd/ssapi and cmd/ssingest (Services +
 internal/oas            ogen generated code
 api/openapi.yaml        OpenAPI spec (source for ogen)
 deploy/                 docker-compose + configs + .env.example
+deploy/helm/sisyphus    Helm chart: the whole stack on Kubernetes (datastores, app,
+                        mcpgateway + `mcp.servers` upstreams, sandbox, otelcol).
+                        `values.config` IS config.yaml, merged over chart-computed
+                        in-cluster endpoints. See deploy/helm/README.md.
 ```
 
 Service routing is currently inert: retrieval's `service` boost falls back to
@@ -367,3 +371,11 @@ docs and commits sources.
 
 `docker compose -f deploy/docker-compose.yml up` starts postgres + qdrant + ollama + the app.
 Config via env (see `deploy/.env.example`).
+
+Kubernetes: `helm upgrade --install sisyphus deploy/helm/sisyphus -f my-values.yaml`.
+The chart mirrors the compose stack. Two invariants it encodes: `ssingest`/`ssbot` are
+single-replica with a `Recreate` strategy (two schedulers race on source rows, two bots
+double-answer), and the sandbox is egress-denied by NetworkPolicy with ingress only from
+its MCP front-end. Adding an MCP upstream (VictoriaLogs, Grafana, ...) is a values-only
+change under `mcp.servers` — Deployment, Service and the `gateway.toml` `[[upstream]]`
+are all generated from one entry.

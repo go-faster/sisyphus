@@ -1,0 +1,41 @@
+{{- /*
+  config.yaml = chart-computed defaults (in-cluster endpoints, listen addresses,
+  secret indirections) with .Values.config merged on top, so anything the user
+  sets wins.
+*/ -}}
+{{- $full := include "sisyphus.fullname" . -}}
+{{- $defaults := dict
+  "database" (dict "dsn" (dict "env" "SISYPHUS_DATABASE_DSN"))
+  "api" (dict
+    "http_addr" (printf ":%v" .Values.ssapi.service.port)
+    "base_url" (printf "http://%s-ssapi:%v" $full .Values.ssapi.service.port)
+    "auth_token" (dict "env" "SISYPHUS_API_AUTH_TOKEN"))
+  "mcp" (dict
+    "addr" (printf ":%v" .Values.ssmcp.port)
+    "auth_token" (dict "env" "SISYPHUS_MCP_AUTH_TOKEN"))
+  "ingest" (dict "addr" (printf ":%v" .Values.ssingest.port))
+  "agent" (dict
+    "addr" (printf ":%v" .Values.ssagent.port)
+    "base_url" (printf "http://%s-ssagent:%v" $full .Values.ssagent.port)
+    "auth_token" (dict "env" "SISYPHUS_AGENT_AUTH_TOKEN")
+    "gateway_url" (include "sisyphus.gateway.url" .))
+  "context" (dict "gateway_url" (include "sisyphus.gateway.url" .))
+  "qdrant" (dict
+    "addr" (include "sisyphus.qdrant.addr" .)
+    "collection" .Values.qdrant.collection)
+  "ollama" (dict "url" (include "sisyphus.ollama.url" .))
+  "telegram" (dict
+    "addr" (printf ":%v" .Values.ssbot.port)
+    "session_dir" .Values.session.mountPath)
+  "git" (dict "work_dir" .Values.gitWorkdir.mountPath)
+-}}
+{{- $config := mergeOverwrite $defaults (deepCopy .Values.config) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $full }}-config
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    {{- toYaml $config | nindent 4 }}

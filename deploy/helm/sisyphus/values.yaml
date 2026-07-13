@@ -1,0 +1,681 @@
+# Default values for the sisyphus chart.
+#
+# The chart deploys, by default:
+#   datastores : postgres, qdrant, ollama          (in-chart StatefulSets)
+#   app        : ssapi, ssingest, ssbot, ssagent, ssmcp
+#   mcp        : mcpgateway + the MCP servers listed under `mcp.servers`
+#                (vmlogs-*, grafana, jira) + the sandbox
+#   telemetry  : otelcol                            (alertmanager/vmalert are opt-in)
+#
+# Everything under `config` is the sisyphus app config (config.yaml) verbatim.
+# The chart injects in-cluster endpoints (database DSN, qdrant, ollama, base URLs,
+# gateway URL) underneath it — anything you set here wins.
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  repository: ghcr.io/go-faster/sisyphus
+  tag: "" # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# Used by init containers that just poll an endpoint. The sisyphus image is
+# distroless: no shell, no wget — it cannot do the waiting itself.
+waitImage: busybox:1.37
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+# ---------------------------------------------------------------------------
+# Secrets
+# ---------------------------------------------------------------------------
+# Keys are the env var names the app (and MCP servers) read. Either set them
+# here (chart renders a Secret) or pre-create a Secret with the same keys and
+# point `existingSecret` at it — then `values` below is ignored entirely.
+secrets:
+  existingSecret: ""
+  annotations: {}
+  values:
+    SISYPHUS_API_AUTH_TOKEN: ""
+    SISYPHUS_AGENT_AUTH_TOKEN: ""
+    SISYPHUS_MCP_AUTH_TOKEN: ""
+    SISYPHUS_OPENROUTER_API_KEY: ""
+    SISYPHUS_GITLAB_TOKEN: ""
+    SISYPHUS_GITLAB_WEBHOOK_SECRET: ""
+    SISYPHUS_JIRA_PASSWORD: ""
+    SISYPHUS_JIRA_WEBHOOK_SECRET: ""
+    SISYPHUS_TELEGRAM_APP_HASH: ""
+    SISYPHUS_TELEGRAM_BOT_TOKEN: ""
+    GRAFANA_SERVICE_ACCOUNT_TOKEN: ""
+  # SISYPHUS_DATABASE_DSN is derived from `postgres.*` when postgres.enabled and
+  # `postgres.external.dsn` is empty. Set it here to override.
+
+# ---------------------------------------------------------------------------
+# Egress proxy (corporate SOCKS5/HTTP proxy for Jira/GitLab/Grafana traffic)
+# ---------------------------------------------------------------------------
+# Components with `proxy: true` get HTTP_PROXY/HTTPS_PROXY/ALL_PROXY/NO_PROXY.
+# In-cluster hostnames are always appended to NO_PROXY (see _helpers.tpl), so a
+# proxied pod can still reach chart services directly.
+proxy:
+  enabled: false
+  url: "" # e.g. socks5h://proxy.internal.example:1080
+  noProxy: "localhost,127.0.0.1,.svc,.svc.cluster.local,.cluster.local"
+
+# ---------------------------------------------------------------------------
+# Shared storage
+# ---------------------------------------------------------------------------
+# git-workdir holds the git clones. ssingest writes it; ssapi (file-content
+# resolver) and the sandbox (/repos) read it — so it must be ReadWriteMany.
+# On a cluster without RWX, set `shared: false`: only ssingest mounts it, ssapi
+# falls back to reading document bodies from Postgres and the sandbox gets no
+# /repos.
+gitWorkdir:
+  enabled: true
+  shared: true
+  storageClass: ""
+  accessModes: ["ReadWriteMany"]
+  size: 10Gi
+  mountPath: /data/scp/git
+
+# Telegram session files. ssbot (bot session) and ssingest (user session) each
+# get their own RWO volume — they write different session files.
+session:
+  storageClass: ""
+  size: 128Mi
+  mountPath: /data/scp/session
+
+# ---------------------------------------------------------------------------
+# Datastores
+# ---------------------------------------------------------------------------
+postgres:
+  enabled: true
+  # Point the app at an existing Postgres instead: set `external.dsn` (or put
+  # SISYPHUS_DATABASE_DSN in the secret) and `enabled: false`.
+  external:
+    dsn: ""
+  image: postgres:17-alpine
+  auth:
+    username: sisyphus
+    database: sisyphus
+    password: sisyphus # moved into the chart Secret as POSTGRES_PASSWORD
+  sslmode: disable
+  persistence:
+    storageClass: ""
+    size: 20Gi
+  resources:
+    limits: {cpu: "2", memory: 1Gi}
+    requests: {cpu: 500m, memory: 512Mi}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+qdrant:
+  enabled: true
+  external:
+    addr: "" # host:port of an existing Qdrant gRPC endpoint
+  image: qdrant/qdrant:v1.18.2-unprivileged
+  collection: corp_chunks
+  persistence:
+    storageClass: ""
+    size: 20Gi
+  resources:
+    limits: {cpu: "2", memory: 2Gi}
+    requests: {cpu: 500m, memory: 1Gi}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+ollama:
+  enabled: true
+  external:
+    url: ""
+  image: ollama/ollama:0.30.11
+  # Models pulled by a post-install/post-upgrade Job before the app starts
+  # embedding. Keep in sync with `config.embed.model`.
+  pullModels: ["bge-m3"]
+  gpu:
+    enabled: false
+    count: 1
+    resourceName: nvidia.com/gpu
+  persistence:
+    storageClass: ""
+    size: 20Gi
+  resources:
+    limits: {cpu: "4", memory: 8Gi}
+    requests: {cpu: "2", memory: 4Gi}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ---------------------------------------------------------------------------
+# Sisyphus components
+# ---------------------------------------------------------------------------
+ssapi:
+  enabled: true
+  replicas: 1 # >1 is fine (migrations run per-pod but are guarded by schema_migrations)
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    limits: {cpu: "2", memory: 512Mi}
+    requests: {cpu: 500m, memory: 256Mi}
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# `ssingest serve`: the only ingestion scheduler. Single replica by design —
+# two would race on the same source rows.
+ssingest:
+  enabled: true
+  port: 8084
+  webhooks:
+    # Expose /webhooks/gitlab and /webhooks/jira. Pair with `ingress.ingest`.
+    service:
+      type: ClusterIP
+  resources:
+    limits: {cpu: "2", memory: 512Mi}
+    requests: {cpu: 500m, memory: 256Mi}
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+ssbot:
+  enabled: true
+  port: 8083
+  resources:
+    limits: {cpu: "1", memory: 256Mi}
+    requests: {cpu: 250m, memory: 128Mi}
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+ssagent:
+  enabled: true
+  replicas: 1
+  port: 8082
+  resources:
+    limits: {cpu: "2", memory: 512Mi}
+    requests: {cpu: 500m, memory: 256Mi}
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+ssmcp:
+  enabled: true
+  replicas: 1
+  port: 8081
+  resources:
+    limits: {cpu: "1", memory: 256Mi}
+    requests: {cpu: 250m, memory: 128Mi}
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ---------------------------------------------------------------------------
+# Sandbox: the shell environment the agent runs commands in.
+# ---------------------------------------------------------------------------
+# mode: ssh — sandbox runs sshd; a separate ssh-mcp pod bridges it to MCP.
+# mode: mcp — sandbox image speaks MCP itself; ssh-mcp is not deployed.
+#             Flip `mode` and set `sandbox.mcp.*` once such an image exists;
+#             nothing else in the chart changes (the gateway upstream URL
+#             follows the mode).
+#
+# In both modes the sandbox pod is denied all egress by a NetworkPolicy and only
+# accepts traffic from its MCP front-end.
+sandbox:
+  enabled: true
+  mode: ssh # ssh | mcp
+
+  image: ghcr.io/go-faster/sisyphus-sandbox:0.1.0
+  resources:
+    limits: {cpu: "1", memory: 512Mi}
+    requests: {cpu: 100m, memory: 128Mi}
+  tmpfs:
+    tmp: 64Mi
+    run: 8Mi
+    repos: 1Mi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  ssh:
+    port: 2222
+    user: sandbox
+    # Leave these empty to use the keys baked into the sandbox image. Set them
+    # (or `existingSecret`) to mount your own keypair — recommended, since it
+    # keeps private keys out of the image.
+    existingSecret: "" # keys: ssh_host_ed25519_key, ssh_host_ed25519_key.pub, authorized_keys, id_ed25519, known_hosts
+    hostKey: ""
+    hostKeyPub: ""
+    authorizedKeys: ""
+    privateKey: ""
+    knownHosts: ""
+
+  # mode: mcp
+  mcp:
+    image: ""
+    port: 8090
+    path: /mcp
+    args: []
+    env: {}
+
+sshMcp:
+  image: ghcr.io/go-faster/gooners/ssh-mcp:0.4.1
+  port: 8090
+  path: /mcp
+  commandTimeout: 10s
+  disableSudo: true
+  resources:
+    limits: {cpu: 500m, memory: 128Mi}
+    requests: {cpu: 100m, memory: 64Mi}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Deny sandbox egress / restrict its ingress. Requires a CNI that enforces
+# NetworkPolicy (calico, cilium, ...). If yours does not, the sandbox is NOT
+# network-isolated — turn it off entirely or run it on an isolated node.
+networkPolicy:
+  enabled: true
+
+# ---------------------------------------------------------------------------
+# MCP gateway + upstream MCP servers
+# ---------------------------------------------------------------------------
+mcp:
+  gateway:
+    enabled: true
+    image: ghcr.io/go-faster/gooners/mcpgateway:0.4.1
+    port: 8080
+    path: /mcp
+    proxy: false # set true if a stdio upstream (e.g. glab) needs the corporate proxy
+    service:
+      type: ClusterIP
+    resources:
+      limits: {cpu: 500m, memory: 128Mi}
+      requests: {cpu: 100m, memory: 64Mi}
+    server:
+      name: sisyphus-gateway
+      instructions: "Gateway to internal MCP servers."
+    # Tools exposed from the chart's own ssmcp (knowledge base).
+    ssmcp:
+      enabled: true
+      prefix: "ssmcp."
+      allow: ["*"]
+    # Tools exposed from the sandbox, whatever mode it runs in.
+    sandbox:
+      enabled: true
+      prefix: "sandbox."
+      allow:
+        - ssh_once_exec
+        - ssh_open
+        - ssh_exec
+        - ssh_close
+        - ssh_ping
+        - ssh_cat
+        - ssh_grep
+        - ssh_find
+        - ssh_ls
+        - ssh_stat
+        - ssh_du
+        - ssh_read_output
+        - ssh_save_output
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+
+  # stdio upstreams are exec'd by the gateway inside its own container, so the
+  # binary must exist in the gateway image (see deploy/helm/README.md).
+  # Disabled by default: the stock mcpgateway image has no glab.
+  stdioUpstreams:
+    gitlab:
+      enabled: false
+      command: ["glab", "mcp", "serve"]
+      env:
+        GITLAB_HOST: ""
+        GITLAB_URI: ""
+        GL_HOST: ""
+      # env values of the form {secret: KEY} are wired through the gateway's
+      # [[secret]] mechanism, reading KEY from the chart Secret.
+      secretEnv:
+        GITLAB_TOKEN: SISYPHUS_GITLAB_TOKEN
+      prefix: "gitlab."
+      # Read-only subset. Never add glab_api — it is a raw HTTP passthrough.
+      allow:
+        - glab_issue_list
+        - glab_issue_view
+        - glab_mr_list
+        - glab_mr_view
+        - glab_mr_diff
+        - glab_mr_issues
+        - glab_mr_approvers
+        - glab_release_list
+        - glab_release_view
+        - glab_repo_view
+        - glab_repo_list
+        - glab_repo_search
+        - glab_repo_contributors
+        - glab_label_list
+        - glab_label_get
+        - glab_ci_list
+        - glab_ci_get
+        - glab_ci_status
+        - glab_ci_trace
+        - glab_ci_lint
+        - glab_ci_config_compile
+        - glab_ci_artifact
+        - glab_job_artifact
+        - glab_search_semantic
+
+  # Upstreams that are neither chart-deployed nor stdio: raw URLs.
+  extraUpstreams: []
+  # - name: something
+  #   url: http://something.other-ns.svc:8000/mcp
+  #   prefix: "something."
+  #   allow: ["*"]
+
+  # Each entry becomes a Deployment + Service + a gateway [[upstream]].
+  # Add a Grafana / VictoriaLogs / anything-MCP server by adding an entry here —
+  # no template changes needed.
+  servers:
+    jira:
+      enabled: false
+      image: ghcr.io/sooperset/mcp-atlassian:0.22.1
+      port: 9000
+      args: ["--transport", "streamable-http", "--port", "9000"]
+      path: /mcp
+      proxy: true # Jira usually lives on the corporate network
+      probe: tcp # tcp | http
+      env:
+        JIRA_URL: ""
+        JIRA_USERNAME: ""
+        READ_ONLY_MODE: "true"
+        ENABLED_TOOLS: "jira_get_issue,jira_search,jira_search_fields,jira_get_transitions,jira_get_all_projects,jira_search_assignable_users"
+      secretEnv:
+        JIRA_API_TOKEN: SISYPHUS_JIRA_PASSWORD
+      gateway:
+        prefix: "jira."
+        allow:
+          - jira_get_issue
+          - jira_search
+          - jira_search_fields
+          - jira_get_transitions
+          - jira_get_all_projects
+          - jira_search_assignable_users
+      resources:
+        limits: {cpu: 500m, memory: 256Mi}
+        requests: {cpu: 100m, memory: 128Mi}
+
+    grafana:
+      enabled: false
+      image: grafana/mcp-grafana:0.16.0
+      port: 8000
+      path: /mcp
+      proxy: true
+      probe: tcp
+      args:
+        - "-t"
+        - "streamable-http"
+        - "-address"
+        - ":8000"
+        - "-disable-write"
+        - "-disable-admin"
+        - "-disable-alerting"
+        - "-disable-annotations"
+        - "-disable-api"
+        - "-disable-config"
+        - "-disable-folder"
+        - "-disable-incident"
+        - "-disable-loki"
+        - "-disable-oncall"
+        - "-disable-plugin"
+        - "-disable-provisioning"
+        - "-disable-pyroscope"
+        - "-disable-rendering"
+        - "-disable-sift"
+        - "-disable-snapshot"
+      env:
+        GRAFANA_URL: "" # https://grafana.example.com
+      secretEnv:
+        GRAFANA_SERVICE_ACCOUNT_TOKEN: GRAFANA_SERVICE_ACCOUNT_TOKEN
+      gateway:
+        prefix: "grafana."
+        allow:
+          - search_dashboards
+          - get_dashboard_by_uid
+          - get_dashboard_panel_queries
+          - get_dashboard_property
+          - get_dashboard_summary
+          - list_datasources
+          - get_datasource
+          - query_prometheus
+          - query_prometheus_histogram
+          - list_prometheus_label_names
+          - list_prometheus_label_values
+          - list_prometheus_metric_metadata
+          - list_prometheus_metric_names
+          - generate_deeplink
+      resources:
+        limits: {cpu: 500m, memory: 128Mi}
+        requests: {cpu: 100m, memory: 64Mi}
+
+    # VictoriaLogs MCP. One entry per logs datasource/environment. Copy the
+    # block, change the name, VL_INSTANCE_ENTRYPOINT and the gateway prefix.
+    vmlogs:
+      enabled: false
+      image: ghcr.io/victoriametrics/mcp-victorialogs:v1.9.0
+      port: 8000
+      path: /mcp
+      proxy: true
+      probe: http
+      probePath: /health/liveness
+      env:
+        MCP_SERVER_MODE: http
+        MCP_LISTEN_ADDR: ":8000"
+        VL_INSTANCE_ENTRYPOINT: "" # e.g. https://grafana.example.com/api/datasources/proxy/uid/<uid>
+        # The upstream default tenant (0:0) returns nothing on a Grafana
+        # datasource proxy — set the real tenant.
+        VL_DEFAULT_TENANT_ID: "1:1"
+        # $(VAR) is expanded by kubelet from the secretEnv var defined above it.
+        VL_INSTANCE_HEADERS: "Authorization=Bearer $(GRAFANA_SERVICE_ACCOUNT_TOKEN)"
+      secretEnv:
+        GRAFANA_SERVICE_ACCOUNT_TOKEN: GRAFANA_SERVICE_ACCOUNT_TOKEN
+      gateway:
+        prefix: "vmlogs."
+        allow: ["*"]
+      resources:
+        limits: {cpu: 500m, memory: 128Mi}
+        requests: {cpu: 100m, memory: 64Mi}
+
+# ---------------------------------------------------------------------------
+# Telemetry
+# ---------------------------------------------------------------------------
+otelcol:
+  enabled: true
+  image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.150.1
+  # OTLP/gRPC endpoint traces+metrics+logs are forwarded to.
+  exporter:
+    endpoint: "" # e.g. telemetry.example.com:4317 — empty: collector only debug-logs
+    insecure: true
+  scrape:
+    postgres: true
+    qdrant: true
+  serviceNamespace: scp
+  persistence:
+    storageClass: ""
+    size: 5Gi
+  resources:
+    limits: {cpu: "2", memory: 512Mi}
+    requests: {cpu: 500m, memory: 256Mi}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+alertmanager:
+  enabled: false
+  image: prom/alertmanager:v0.28.1
+  port: 9093
+  persistence:
+    storageClass: ""
+    size: 1Gi
+  # Verbatim alertmanager.yml. Default routes everything to a no-op receiver.
+  config:
+    route:
+      receiver: blackhole
+      group_by: [alertname]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+    receivers:
+      - name: blackhole
+  resources:
+    limits: {cpu: 250m, memory: 64Mi}
+    requests: {cpu: 50m, memory: 32Mi}
+
+vmalert:
+  enabled: false
+  image: victoriametrics/vmalert:v1.130.0
+  port: 8880
+  proxy: true
+  datasource:
+    url: "" # e.g. https://grafana.example.com/api/datasources/proxy/uid/<uid>
+    bearerTokenSecretKey: GRAFANA_SERVICE_ACCOUNT_TOKEN
+  evaluationInterval: 30s
+  # filename -> rule group YAML. Rendered into a ConfigMap and loaded by glob.
+  rules: {}
+  # Or point at ConfigMaps you manage yourself (keys become *.yaml rule files).
+  extraRuleConfigMaps: []
+  resources:
+    limits: {cpu: 500m, memory: 128Mi}
+    requests: {cpu: 100m, memory: 64Mi}
+
+# ---------------------------------------------------------------------------
+# Ingress (optional; one host per exposed endpoint)
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  tls: []
+  api:
+    enabled: false
+    host: ""
+    path: /
+  mcp:
+    enabled: false
+    host: ""
+    path: /
+  gateway:
+    enabled: false
+    host: ""
+    path: /
+  # GitLab/Jira webhooks -> ssingest. Needed only if webhook-driven ingestion is on.
+  ingest:
+    enabled: false
+    host: ""
+    path: /webhooks
+
+# ---------------------------------------------------------------------------
+# App config (config.yaml)
+# ---------------------------------------------------------------------------
+# Merged on top of chart-computed defaults (listen addresses, database DSN env,
+# qdrant/ollama endpoints, api/agent base URLs, gateway URL). Set only what is
+# actually yours: data sources, models, allowed chats.
+config:
+  agent:
+    model: deepseek/deepseek-v4-flash
+    max_tool_iterations: 100
+    request_timeout_seconds: 180
+    show_debug_info: true
+  context:
+    agentic: true
+    max_iterations: 50
+    timeout_seconds: 180
+    max_answer_chars: 2000
+    sandbox_machine: sandbox
+    pre_search: true
+    pre_search_limit: 12
+    show_debug_info: true
+  embed:
+    provider: ollama
+    model: bge-m3
+    dim: 1024
+  openrouter:
+    api_key:
+      env: SISYPHUS_OPENROUTER_API_KEY
+    model: deepseek/deepseek-v4-flash
+  ingest:
+    git:
+      poll:
+        interval_seconds: 300
+    files:
+      poll:
+        interval_seconds: 0
+    telegram:
+      poll:
+        interval_seconds: 0
+  fetch:
+    sites:
+      - name: githubusercontent
+        url_patterns:
+          - "https://raw.githubusercontent.com/**"
+          - "https://gist.githubusercontent.com/**"
+        methods: [GET, HEAD]
+        credentials:
+          type: none
+        max_bytes: 1048576
+        timeout: 30s
+  # git:
+  #   token: {env: SISYPHUS_GITLAB_TOKEN}
+  #   repos:
+  #     - url: https://gitlab.example.com/group/docs.git
+  #       repo: group/docs
+  #       branch: main
+  #       base_url: https://gitlab.example.com/group/docs/-/blob/main
+  # gitlab:
+  #   base_url: https://gitlab.example.com
+  #   token: {env: SISYPHUS_GITLAB_TOKEN}
+  #   projects: [{ref: group/docs}]
+  #   issues: true
+  #   merge_requests: true
+  #   releases: true
+  #   poll: {interval_seconds: 300}
+  # jira:
+  #   base_url: https://jira.example.com
+  #   username: user
+  #   password: {env: SISYPHUS_JIRA_PASSWORD}
+  #   projects: [{key: IDP}]
+  #   poll: {interval_seconds: 300}
+  # telegram is required for ssbot: app_id must be a literal int.
+  # telegram:
+  #   app_id: 0
+  #   app_hash: {env: SISYPHUS_TELEGRAM_APP_HASH}
+  #   bot_token: {env: SISYPHUS_TELEGRAM_BOT_TOKEN}
+  #   allowed_chats: []
+  #   allowed_user_ids: []
+  # proxies:
+  #   git: socks5h://10.0.0.1:1080
+  #   gitlab: socks5h://10.0.0.1:1080
+  #   jira: socks5h://10.0.0.1:1080

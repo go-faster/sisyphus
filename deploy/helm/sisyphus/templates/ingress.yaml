@@ -1,0 +1,49 @@
+{{- if .Values.ingress.enabled }}
+{{- $full := include "sisyphus.fullname" . }}
+{{- $routes := list }}
+{{- if and .Values.ingress.api.enabled .Values.ssapi.enabled }}
+{{- $routes = append $routes (dict "host" .Values.ingress.api.host "path" .Values.ingress.api.path "svc" (printf "%s-ssapi" $full) "port" .Values.ssapi.service.port) }}
+{{- end }}
+{{- if and .Values.ingress.mcp.enabled .Values.ssmcp.enabled }}
+{{- $routes = append $routes (dict "host" .Values.ingress.mcp.host "path" .Values.ingress.mcp.path "svc" (printf "%s-ssmcp" $full) "port" .Values.ssmcp.port) }}
+{{- end }}
+{{- if and .Values.ingress.gateway.enabled .Values.mcp.gateway.enabled }}
+{{- $routes = append $routes (dict "host" .Values.ingress.gateway.host "path" .Values.ingress.gateway.path "svc" (printf "%s-mcpgateway" $full) "port" .Values.mcp.gateway.port) }}
+{{- end }}
+{{- if and .Values.ingress.ingest.enabled .Values.ssingest.enabled }}
+{{- $routes = append $routes (dict "host" .Values.ingress.ingest.host "path" .Values.ingress.ingest.path "svc" (printf "%s-ssingest" $full) "port" .Values.ssingest.port) }}
+{{- end }}
+{{- if $routes }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $full }}
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range $routes }}
+    - host: {{ required "ingress host is required for every enabled ingress route" .host | quote }}
+      http:
+        paths:
+          - path: {{ .path }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .svc }}
+                port:
+                  number: {{ .port }}
+    {{- end }}
+{{- end }}
+{{- end }}

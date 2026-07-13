@@ -1,0 +1,90 @@
+{{- if .Values.ssagent.enabled }}
+{{- $full := include "sisyphus.fullname" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $full }}-ssagent
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ssagent
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.ssagent.port }}
+      targetPort: http
+  selector:
+    {{- include "sisyphus.selectorLabels" (dict "root" . "component" "ssagent") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $full }}-ssagent
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ssagent
+spec:
+  replicas: {{ .Values.ssagent.replicas }}
+  selector:
+    matchLabels:
+      {{- include "sisyphus.selectorLabels" (dict "root" . "component" "ssagent") | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-config.yaml") . | sha256sum }}
+        {{- with .Values.ssagent.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "sisyphus.labels" . | nindent 8 }}
+        {{- include "sisyphus.selectorLabels" (dict "root" . "component" "ssagent") | nindent 8 }}
+    spec:
+      {{- include "sisyphus.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "sisyphus.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: ssagent
+          image: {{ include "sisyphus.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/usr/local/bin/ssagent"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            {{- include "sisyphus.appEnv" . | nindent 12 }}
+          envFrom:
+            {{- include "sisyphus.appEnvFrom" . | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.ssagent.port }}
+          readinessProbe:
+            httpGet: {path: /ready, port: http}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.ssagent.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "sisyphus.configMount" . | nindent 12 }}
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        {{- include "sisyphus.configVolume" . | nindent 8 }}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.ssagent.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ssagent.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ssagent.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
