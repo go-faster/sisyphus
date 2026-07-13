@@ -1,0 +1,20 @@
+apiVersion: v2
+name: sisyphus
+description: |
+  Sisyphus — internal support/dev assistant: ingests knowledge sources (git, GitLab,
+  Jira, Telegram) into Postgres FTS + Qdrant vectors, answers via Telegram bot,
+  HTTP API and MCP, and investigates incidents through an MCP tool gateway
+  (VictoriaLogs, Grafana, Jira, GitLab, sandbox shell).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - sisyphus
+  - rag
+  - mcp
+  - telegram
+home: https://github.com/go-faster/sisyphus
+sources:
+  - https://github.com/go-faster/sisyphus
+maintainers:
+  - name: go-faster

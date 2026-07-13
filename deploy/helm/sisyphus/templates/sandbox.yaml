@@ -1,0 +1,181 @@
+{{- if .Values.sandbox.enabled }}
+{{- $full := include "sisyphus.fullname" . }}
+{{- $ssh := eq .Values.sandbox.mode "ssh" }}
+{{- $port := ternary (.Values.sandbox.ssh.port | int) (.Values.sandbox.mcp.port | int) $ssh }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $full }}-sandbox
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox
+spec:
+  type: ClusterIP
+  ports:
+    - name: {{ ternary "ssh" "http" $ssh }}
+      port: {{ $port }}
+      targetPort: {{ ternary "ssh" "http" $ssh }}
+  selector:
+    {{- include "sisyphus.selectorLabels" (dict "root" . "component" "sandbox") | nindent 4 }}
+{{- if and $ssh (not .Values.sandbox.ssh.existingSecret) (or .Values.sandbox.ssh.hostKey .Values.sandbox.ssh.authorizedKeys .Values.sandbox.ssh.privateKey) }}
+---
+{{- /* SSH material for the sandbox <-> ssh-mcp pair, from your own inline
+       values. If you leave all of sandbox.ssh.* empty, sshKeygenJob renders
+       this same secret name instead (see ssh-keygen-job.yaml). */}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $full }}-sandbox-ssh
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox
+type: Opaque
+stringData:
+  {{- with .Values.sandbox.ssh.hostKey }}
+  ssh_host_ed25519_key: |
+    {{- . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.sandbox.ssh.hostKeyPub }}
+  ssh_host_ed25519_key.pub: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.sandbox.ssh.authorizedKeys }}
+  authorized_keys: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.sandbox.ssh.privateKey }}
+  id_ed25519: |
+    {{- . | nindent 4 }}
+  {{- end }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $full }}-sandbox
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "sisyphus.selectorLabels" (dict "root" . "component" "sandbox") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "sisyphus.labels" . | nindent 8 }}
+        {{- include "sisyphus.selectorLabels" (dict "root" . "component" "sandbox") | nindent 8 }}
+    spec:
+      {{- include "sisyphus.imagePullSecrets" . | nindent 6 }}
+      automountServiceAccountToken: false
+      {{- /* No service account token, no egress (see networkpolicy.yaml): the
+             sandbox executes model-chosen shell commands. */}}
+      containers:
+        - name: sandbox
+          {{- if $ssh }}
+          image: {{ .Values.sandbox.image | quote }}
+          {{- else }}
+          image: {{ required "sandbox.mcp.image is required when sandbox.mode=mcp" .Values.sandbox.mcp.image | quote }}
+          {{- end }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if not $ssh }}
+          {{- with .Values.sandbox.mcp.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            {{- if $ssh }}
+            {{- /* sshd needs root to authenticate and privilege-separate. */}}
+            runAsUser: 0
+            capabilities:
+              drop: ["ALL"]
+              add: ["SETUID", "SETGID", "SYS_CHROOT", "CHOWN", "DAC_OVERRIDE"]
+            {{- else }}
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+            {{- end }}
+          env:
+            {{- range $k, $v := .Values.sandbox.mcp.env }}
+            {{- if not $ssh }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- end }}
+          ports:
+            {{- if $ssh }}
+            - name: ssh
+              containerPort: {{ .Values.sandbox.ssh.port }}
+            {{- else }}
+            - name: http
+              containerPort: {{ .Values.sandbox.mcp.port }}
+            {{- end }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ ternary "ssh" "http" $ssh }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.sandbox.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: run
+              mountPath: /run
+            - name: repos
+              mountPath: /repos
+            {{- if and .Values.gitWorkdir.enabled .Values.gitWorkdir.shared }}
+            - name: git-workdir
+              mountPath: /mnt/git
+              readOnly: true
+            {{- end }}
+            {{- if $ssh }}
+            - name: ssh-host-key
+              mountPath: /etc/ssh/ssh_host_ed25519_key
+              subPath: ssh_host_ed25519_key
+              readOnly: true
+            - name: ssh-host-key
+              mountPath: /home/{{ .Values.sandbox.ssh.user }}/.ssh/authorized_keys
+              subPath: authorized_keys
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.sandbox.tmpfs.tmp }}
+        - name: run
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.sandbox.tmpfs.run }}
+        - name: repos
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.sandbox.tmpfs.repos }}
+        {{- if and .Values.gitWorkdir.enabled .Values.gitWorkdir.shared }}
+        - name: git-workdir
+          persistentVolumeClaim:
+            claimName: {{ $full }}-git-workdir
+            readOnly: true
+        {{- end }}
+        {{- if $ssh }}
+        - name: ssh-host-key
+          secret:
+            secretName: {{ default (printf "%s-sandbox-ssh" $full) .Values.sandbox.ssh.existingSecret }}
+            defaultMode: 0400
+        {{- end }}
+      {{- with .Values.sandbox.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.sandbox.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.sandbox.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

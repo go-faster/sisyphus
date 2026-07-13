@@ -1,0 +1,99 @@
+{{- if .Values.ssbot.enabled }}
+{{- $full := include "sisyphus.fullname" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $full }}-ssbot
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ssbot
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.ssbot.port }}
+      targetPort: http
+  selector:
+    {{- include "sisyphus.selectorLabels" (dict "root" . "component" "ssbot") | nindent 4 }}
+---
+{{- /* One replica: a second bot process would double-answer every Telegram
+       update and fight over the session file (RWO). */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $full }}-ssbot
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ssbot
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "sisyphus.selectorLabels" (dict "root" . "component" "ssbot") | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-config.yaml") . | sha256sum }}
+        {{- with .Values.ssbot.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "sisyphus.labels" . | nindent 8 }}
+        {{- include "sisyphus.selectorLabels" (dict "root" . "component" "ssbot") | nindent 8 }}
+    spec:
+      {{- include "sisyphus.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "sisyphus.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: ssbot
+          image: {{ include "sisyphus.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/usr/local/bin/ssbot"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            {{- include "sisyphus.appEnv" . | nindent 12 }}
+          envFrom:
+            {{- include "sisyphus.appEnvFrom" . | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.ssbot.port }}
+          readinessProbe:
+            httpGet: {path: /ready, port: http}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.ssbot.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "sisyphus.configMount" . | nindent 12 }}
+            - name: tmp
+              mountPath: /tmp
+            - name: session
+              mountPath: {{ .Values.session.mountPath }}
+      volumes:
+        {{- include "sisyphus.configVolume" . | nindent 8 }}
+        - name: tmp
+          emptyDir: {}
+        - name: session
+          persistentVolumeClaim:
+            claimName: {{ $full }}-ssbot-session
+      {{- with .Values.ssbot.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ssbot.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ssbot.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

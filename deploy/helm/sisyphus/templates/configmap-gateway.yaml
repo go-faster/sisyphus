@@ -1,0 +1,79 @@
+{{- if .Values.mcp.gateway.enabled }}
+{{- $full := include "sisyphus.fullname" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $full }}-gateway
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcpgateway
+data:
+  gateway.toml: |
+    [server]
+    name = {{ .Values.mcp.gateway.server.name | quote }}
+    instructions = {{ .Values.mcp.gateway.server.instructions | quote }}
+    {{- if and .Values.mcp.gateway.ssmcp.enabled .Values.ssmcp.enabled }}
+
+    # sisyphus knowledge base (search/answer/file/fetch)
+    [[upstream]]
+    name = "ssmcp"
+    kind = "http"
+    url = "http://{{ $full }}-ssmcp:{{ .Values.ssmcp.port }}/mcp"
+    tools.prefix = {{ .Values.mcp.gateway.ssmcp.prefix | quote }}
+    tools.allow = {{ toJson .Values.mcp.gateway.ssmcp.allow }}
+    {{- end }}
+    {{- if and .Values.mcp.gateway.sandbox.enabled .Values.sandbox.enabled }}
+
+    # shell sandbox ({{ .Values.sandbox.mode }} mode)
+    [[upstream]]
+    name = "sandbox"
+    kind = "http"
+    url = "{{ include "sisyphus.sandbox.mcpURL" . }}"
+    tools.prefix = {{ .Values.mcp.gateway.sandbox.prefix | quote }}
+    tools.allow = {{ toJson .Values.mcp.gateway.sandbox.allow }}
+    {{- end }}
+    {{- range $name, $srv := .Values.mcp.servers }}
+    {{- if $srv.enabled }}
+
+    [[upstream]]
+    name = {{ $name | quote }}
+    kind = "http"
+    url = "http://{{ $full }}-mcp-{{ $name }}:{{ $srv.port }}{{ default "/mcp" $srv.path }}"
+    tools.prefix = {{ $srv.gateway.prefix | quote }}
+    tools.allow = {{ toJson $srv.gateway.allow }}
+    {{- end }}
+    {{- end }}
+    {{- range .Values.mcp.extraUpstreams }}
+
+    [[upstream]]
+    name = {{ .name | quote }}
+    kind = {{ default "http" .kind | quote }}
+    url = {{ .url | quote }}
+    tools.prefix = {{ .prefix | quote }}
+    tools.allow = {{ toJson .allow }}
+    {{- end }}
+    {{- $secretKeys := list }}
+    {{- range $name, $up := .Values.mcp.stdioUpstreams }}
+    {{- if $up.enabled }}
+    {{- $parts := list }}
+    {{- range $k, $v := $up.env }}{{ $parts = append $parts (printf "%s = %s" $k ($v | quote)) }}{{ end }}
+    {{- range $k, $v := $up.secretEnv }}{{ $parts = append $parts (printf "%s = \"{secret:%s}\"" $k $v) }}{{ $secretKeys = append $secretKeys $v }}{{ end }}
+
+    # stdio upstream: the gateway execs this binary inside its own container,
+    # so it must exist in the gateway image.
+    [[upstream]]
+    name = {{ $name | quote }}
+    kind = "stdio"
+    command = {{ toJson $up.command }}
+    env = { {{ join ", " $parts }} }
+    tools.prefix = {{ $up.prefix | quote }}
+    tools.allow = {{ toJson $up.allow }}
+    {{- end }}
+    {{- end }}
+    {{- range $key := uniq $secretKeys }}
+
+    [[secret]]
+    name = {{ $key | quote }}
+    env = {{ $key | quote }}
+    {{- end }}
+{{- end }}

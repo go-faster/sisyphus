@@ -1,0 +1,151 @@
+{{- $full := include "sisyphus.fullname" . }}
+{{- $anyInline := or .Values.sandbox.ssh.hostKey .Values.sandbox.ssh.authorizedKeys .Values.sandbox.ssh.privateKey }}
+{{- if and .Values.sandbox.enabled (eq .Values.sandbox.mode "ssh") .Values.sshKeygenJob.enabled (not .Values.sandbox.ssh.existingSecret) (not $anyInline) }}
+{{- /* Generates sandbox.ssh's keypair once, the first time nobody supplied
+       one. The Job checks the K8s API for an existing Secret before doing
+       anything, so re-running `helm upgrade` never rotates it — matching the
+       README's claim that a running deployment's keys are stable across
+       upgrades. The generated Secret is created directly via the API, not by
+       a Helm-templated manifest, so it is NOT part of the release: `helm
+       uninstall` leaves it behind (by design — you don't want a redeploy to
+       silently lock you out of the sandbox), delete it yourself if you want
+       a fresh keypair on the next install. */}}
+{{- $secretName := printf "%s-sandbox-ssh" $full }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $full }}-ssh-keygen
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ssh-keygen
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-6"
+    helm.sh/hook-delete-policy: before-hook-creation
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $full }}-ssh-keygen
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ssh-keygen
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-6"
+    helm.sh/hook-delete-policy: before-hook-creation
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: [{{ $secretName }}]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    # RBAC can't scope "create" by resourceName — the Role only covers this
+    # one namespace, and the Job's own script targets exactly $secretName.
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $full }}-ssh-keygen
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ssh-keygen
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-6"
+    helm.sh/hook-delete-policy: before-hook-creation
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $full }}-ssh-keygen
+subjects:
+  - kind: ServiceAccount
+    name: {{ $full }}-ssh-keygen
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $full }}-ssh-keygen
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ssh-keygen
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "sisyphus.labels" . | nindent 8 }}
+        app.kubernetes.io/component: ssh-keygen
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ $full }}-ssh-keygen
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ssh-keygen
+          image: {{ .Values.sshKeygenJob.image | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            - name: SECRET_NAME
+              value: {{ $secretName | quote }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              apk add --no-cache openssh-keygen curl jq coreutils >/tmp/apk.log 2>&1
+
+              TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+              CA=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              API=https://kubernetes.default.svc
+              SECRETS_URL="$API/api/v1/namespaces/$NAMESPACE/secrets"
+
+              existing=$(curl -sS -o /dev/null -w '%{http_code}' --cacert "$CA" \
+                -H "Authorization: Bearer $TOKEN" "$SECRETS_URL/$SECRET_NAME")
+              if [ "$existing" = "200" ]; then
+                echo "secret $SECRET_NAME already exists, leaving it alone"
+                exit 0
+              fi
+
+              mkdir -p /tmp/keys && cd /tmp/keys
+              ssh-keygen -t ed25519 -N '' -C '' -f host_key >/dev/null
+              ssh-keygen -t ed25519 -N '' -C '' -f client_key >/dev/null
+
+              body=$(jq -n \
+                --arg name "$SECRET_NAME" \
+                --arg hostKey "$(base64 -w0 host_key)" \
+                --arg authKeys "$(base64 -w0 client_key.pub)" \
+                --arg clientKey "$(base64 -w0 client_key)" \
+                '{apiVersion:"v1",kind:"Secret",metadata:{name:$name},type:"Opaque",
+                  data:{ssh_host_ed25519_key:$hostKey,authorized_keys:$authKeys,id_ed25519:$clientKey}}')
+
+              status=$(curl -sS -o /tmp/resp.json -w '%{http_code}' --cacert "$CA" \
+                -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+                -X POST "$SECRETS_URL" -d "$body")
+              case "$status" in
+                201) echo "created secret $SECRET_NAME" ;;
+                409) echo "secret $SECRET_NAME was created by a concurrent run, leaving it alone" ;;
+                *)
+                  echo "failed to create secret $SECRET_NAME: HTTP $status"
+                  cat /tmp/resp.json
+                  exit 1
+                  ;;
+              esac
+{{- end }}

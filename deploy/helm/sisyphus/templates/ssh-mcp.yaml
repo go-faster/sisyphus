@@ -1,0 +1,147 @@
+{{- if and .Values.sandbox.enabled (eq .Values.sandbox.mode "ssh") }}
+{{- $full := include "sisyphus.fullname" . }}
+{{- $sshSecret := default (printf "%s-sandbox-ssh" $full) .Values.sandbox.ssh.existingSecret }}
+{{- $anyInline := or .Values.sandbox.ssh.hostKey .Values.sandbox.ssh.authorizedKeys .Values.sandbox.ssh.privateKey }}
+{{- if and $anyInline (not .Values.sandbox.ssh.existingSecret) (not .Values.sandbox.ssh.privateKey) }}
+{{- fail "sandbox.mode=ssh: hostKey/authorizedKeys given without sandbox.ssh.privateKey — set it too, or clear all three sandbox.ssh.* fields to let sshKeygenJob generate a keypair" }}
+{{- end }}
+{{- if and (not .Values.sandbox.ssh.existingSecret) (not $anyInline) (not .Values.sshKeygenJob.enabled) }}
+{{- fail "sandbox.mode=ssh needs a client key: set sandbox.ssh.privateKey (+ authorizedKeys/hostKey), sandbox.ssh.existingSecret, or leave sshKeygenJob.enabled: true" }}
+{{- end }}
+{{- $machine := default "sandbox" (dig "context" "sandbox_machine" "sandbox" .Values.config) }}
+{{- $strict := or .Values.sandbox.ssh.knownHosts .Values.sandbox.ssh.hostKeyPub }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $full }}-ssh-mcp
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ssh-mcp
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.sshMcp.port }}
+      targetPort: http
+  selector:
+    {{- include "sisyphus.selectorLabels" (dict "root" . "component" "ssh-mcp") | nindent 4 }}
+---
+{{- /* The Host alias must equal context.sandbox_machine — that is the name the
+       agent passes to the ssh_* tools. HostName is the sandbox Service. */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $full }}-ssh-mcp
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ssh-mcp
+data:
+  config: |
+    Host {{ $machine }}
+      HostName {{ $full }}-sandbox
+      Port {{ .Values.sandbox.ssh.port }}
+      User {{ .Values.sandbox.ssh.user }}
+      IdentityFile /home/mcp/.ssh/id_ed25519
+      IdentitiesOnly yes
+      BatchMode yes
+    {{- if $strict }}
+      UserKnownHostsFile /home/mcp/.ssh/known_hosts
+      StrictHostKeyChecking yes
+    {{- else }}
+      UserKnownHostsFile /dev/null
+      StrictHostKeyChecking no
+    {{- end }}
+  {{- if $strict }}
+  known_hosts: |
+    {{- with .Values.sandbox.ssh.knownHosts }}
+    {{- . | nindent 4 }}
+    {{- else }}
+    [{{ $full }}-sandbox]:{{ .Values.sandbox.ssh.port }} {{ .Values.sandbox.ssh.hostKeyPub }}
+    {{- end }}
+  {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $full }}-ssh-mcp
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ssh-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "sisyphus.selectorLabels" (dict "root" . "component" "ssh-mcp") | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/ssh: {{ printf "%s|%s" (toYaml .Values.sandbox.ssh) $machine | sha256sum }}
+      labels:
+        {{- include "sisyphus.labels" . | nindent 8 }}
+        {{- include "sisyphus.selectorLabels" (dict "root" . "component" "ssh-mcp") | nindent 8 }}
+    spec:
+      {{- include "sisyphus.imagePullSecrets" . | nindent 6 }}
+      automountServiceAccountToken: false
+      containers:
+        - name: ssh-mcp
+          image: {{ .Values.sshMcp.image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "-transport"
+            - "streamable-http"
+            - "-addr"
+            - ":{{ .Values.sshMcp.port }}"
+            - "-log-format"
+            - "json"
+            {{- if .Values.sshMcp.disableSudo }}
+            - "-disable-sudo"
+            {{- end }}
+            - "-command-timeout"
+            - {{ .Values.sshMcp.commandTimeout | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: HOME
+              value: /home/mcp
+            {{- include "sisyphus.otelEnv" . | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.sshMcp.port }}
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.sshMcp.resources | nindent 12 }}
+          volumeMounts:
+            - name: ssh
+              mountPath: /home/mcp/.ssh
+              readOnly: true
+      volumes:
+        - name: ssh
+          projected:
+            defaultMode: 0400
+            sources:
+              - secret:
+                  name: {{ $sshSecret }}
+                  items:
+                    - key: id_ed25519
+                      path: id_ed25519
+              - configMap:
+                  name: {{ $full }}-ssh-mcp
+      {{- with .Values.sshMcp.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.sshMcp.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.sshMcp.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -1,0 +1,204 @@
+{{- if .Values.otelcol.enabled }}
+{{- $full := include "sisyphus.fullname" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $full }}-otelcol
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otelcol
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+      {{- if and .Values.otelcol.scrape.postgres .Values.postgres.enabled }}
+      postgresql:
+        endpoint: {{ include "sisyphus.postgres.host" . }}:5432
+        transport: tcp
+        username: {{ .Values.postgres.auth.username }}
+        password: ${env:POSTGRES_PASSWORD}
+        databases:
+          - {{ .Values.postgres.auth.database }}
+        collection_interval: 10s
+        tls:
+          insecure: true
+      {{- end }}
+      {{- if and .Values.otelcol.scrape.qdrant .Values.qdrant.enabled }}
+      prometheus/qdrant:
+        config:
+          scrape_configs:
+            - job_name: qdrant
+              scrape_interval: 10s
+              static_configs:
+                - targets:
+                    - {{ $full }}-qdrant:6333
+      {{- end }}
+
+    processors:
+      batch:
+        timeout: 5s
+        send_batch_size: 10000
+        send_batch_max_size: 150000
+      resource/ns:
+        attributes:
+          - key: service.namespace
+            value: {{ .Values.otelcol.serviceNamespace }}
+            action: insert
+
+    exporters:
+      debug:
+        verbosity: basic
+      {{- if .Values.otelcol.exporter.endpoint }}
+      otlp:
+        endpoint: {{ .Values.otelcol.exporter.endpoint | quote }}
+        tls:
+          insecure: {{ .Values.otelcol.exporter.insecure }}
+        sending_queue:
+          storage: file_storage
+          queue_size: 15000
+        retry_on_failure:
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 30m
+      {{- end }}
+
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+      file_storage:
+        directory: /var/lib/otelcol/storage
+        create_directory: true
+
+    service:
+      extensions: [health_check, file_storage]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [resource/ns, batch]
+          exporters: [{{ if .Values.otelcol.exporter.endpoint }}otlp{{ else }}debug{{ end }}]
+        metrics:
+          receivers: [otlp{{ if and .Values.otelcol.scrape.postgres .Values.postgres.enabled }}, postgresql{{ end }}{{ if and .Values.otelcol.scrape.qdrant .Values.qdrant.enabled }}, prometheus/qdrant{{ end }}]
+          processors: [resource/ns, batch]
+          exporters: [{{ if .Values.otelcol.exporter.endpoint }}otlp{{ else }}debug{{ end }}]
+        logs:
+          receivers: [otlp]
+          processors: [resource/ns, batch]
+          exporters: [{{ if .Values.otelcol.exporter.endpoint }}otlp{{ else }}debug{{ end }}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $full }}-otelcol
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otelcol
+spec:
+  type: ClusterIP
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+    - name: otlp-http
+      port: 4318
+      targetPort: otlp-http
+  selector:
+    {{- include "sisyphus.selectorLabels" (dict "root" . "component" "otelcol") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $full }}-otelcol
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otelcol
+spec:
+  serviceName: {{ $full }}-otelcol
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "sisyphus.selectorLabels" (dict "root" . "component" "otelcol") | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ toYaml .Values.otelcol | sha256sum }}
+      labels:
+        {{- include "sisyphus.labels" . | nindent 8 }}
+        {{- include "sisyphus.selectorLabels" (dict "root" . "component" "otelcol") | nindent 8 }}
+    spec:
+      {{- include "sisyphus.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: otelcol
+          image: {{ .Values.otelcol.image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["--config", "/conf/config.yaml"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          {{- if .Values.postgres.enabled }}
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sisyphus.secretName" . }}
+                  key: POSTGRES_PASSWORD
+          {{- end }}
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+            - name: otlp-http
+              containerPort: 4318
+            - name: health
+              containerPort: 13133
+          readinessProbe:
+            httpGet: {path: /, port: health}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.otelcol.resources | nindent 12 }}
+          volumeMounts:
+            - name: conf
+              mountPath: /conf
+              readOnly: true
+            - name: storage
+              mountPath: /var/lib/otelcol
+      volumes:
+        - name: conf
+          configMap:
+            name: {{ $full }}-otelcol
+      {{- with .Values.otelcol.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.otelcol.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.otelcol.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: storage
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.otelcol.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.otelcol.persistence.size }}
+{{- end }}

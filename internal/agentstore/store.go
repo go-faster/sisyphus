@@ -138,7 +138,10 @@ func (s *Store) ReapStale(ctx context.Context) (int, error) {
 		SetErrorMessage("interrupted by ssagent restart").
 		SetCompletedAt(time.Now()).
 		Save(ctx)
-	return n, errors.Wrap(err, "reap stale jobs")
+	if err != nil {
+		return n, errors.Wrap(err, "reap stale jobs")
+	}
+	return n, nil
 }
 
 func toJob(m *ent.InvestigationJob) (Job, error) {
