@@ -44,9 +44,14 @@ reads: `SISYPHUS_API_AUTH_TOKEN`, `SISYPHUS_AGENT_AUTH_TOKEN`,
 `SISYPHUS_TELEGRAM_BOT_TOKEN`, `GRAFANA_SERVICE_ACCOUNT_TOKEN`, plus the webhook
 secrets.
 
-With `existingSecret` the chart cannot derive the database DSN — the Secret must
-also carry `SISYPHUS_DATABASE_DSN` and, if the chart runs postgres,
-`POSTGRES_PASSWORD`.
+The three bearer tokens the app itself checks —  `SISYPHUS_API_AUTH_TOKEN`,
+`SISYPHUS_AGENT_AUTH_TOKEN`, `SISYPHUS_MCP_AUTH_TOKEN` — are random-generated at
+install time if left blank, and pinned to their existing value on every upgrade
+(via `lookup`, so it never rotates a token a client is still using). Everything
+else (GitLab/Jira/Telegram/OpenRouter/Grafana creds) has nothing to generate —
+those come from you. With `existingSecret` none of this applies: the chart cannot
+derive the database DSN either — the Secret must also carry
+`SISYPHUS_DATABASE_DSN` and, if the chart runs postgres, `POSTGRES_PASSWORD`.
 
 ## Adding an MCP server (VictoriaLogs, Grafana, anything)
 
@@ -107,7 +112,19 @@ mode and set `sandbox.mcp.image`/`port`/`path`. `ssh-mcp` is no longer deployed,
 the gateway's `sandbox` upstream points straight at the sandbox Service, and the
 NetworkPolicy follows. Nothing else changes.
 
-Keys (ssh mode) — pass the files, don't paste them:
+### Keys (ssh mode)
+
+Leave `sandbox.ssh.*` untouched and the chart generates a keypair for you —
+`sshKeygenJob` (on by default) runs a pre-install/upgrade Job that checks the
+`<release>-sandbox-ssh` Secret via the K8s API and, if it's not there yet, runs
+`ssh-keygen` and creates it. Idempotent: it never touches an existing Secret, so
+upgrades don't rotate a keypair a running deployment is still using. The Secret
+it creates isn't part of the Helm release (it's created directly via the API, not
+templated) so `helm uninstall` leaves it behind on purpose — delete it yourself if
+you want a fresh keypair next install. Set `sshKeygenJob.enabled: false` to turn
+this off and fall back to the old fail-fast behavior instead.
+
+To bring your own keypair instead, pass the files, don't paste them:
 
 ```
 --set-file sandbox.ssh.privateKey=ssh/id_ed25519 \
@@ -117,7 +134,10 @@ Keys (ssh mode) — pass the files, don't paste them:
 ```
 
 `hostKeyPub` is what turns on `StrictHostKeyChecking yes` (the chart builds
-`known_hosts` from it). Without it the client accepts any host key.
+`known_hosts` from it). Without it the client accepts any host key — including
+the auto-generated keypair above, which never sets `hostKeyPub` for the same
+chart-render-vs-Job-runtime-ordering reason it can't inject its own known_hosts
+line either.
 
 The sandbox image is built from `deploy/sandbox` — push it somewhere and set
 `sandbox.image`.

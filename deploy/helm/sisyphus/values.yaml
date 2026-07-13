@@ -264,9 +264,13 @@ sandbox:
   ssh:
     port: 2222
     user: sandbox
-    # Leave these empty to use the keys baked into the sandbox image. Set them
-    # (or `existingSecret`) to mount your own keypair — recommended, since it
-    # keeps private keys out of the image.
+    # The sandbox image only generates its own host keys at build time (no
+    # client keypair is baked in) — sandbox.mode=ssh always needs a client
+    # keypair. Leave existingSecret/hostKey/authorizedKeys/privateKey all
+    # empty and the chart generates one for you via a pre-install/upgrade Job
+    # (see sshKeygenJob below and deploy/helm/README.md "Sandbox"). Set
+    # privateKey (+ authorizedKeys/hostKey) or existingSecret yourself to
+    # bring your own keypair instead — the chart never overwrites either.
     existingSecret: "" # keys: ssh_host_ed25519_key, ssh_host_ed25519_key.pub, authorized_keys, id_ed25519, known_hosts
     hostKey: ""
     hostKeyPub: ""
@@ -281,6 +285,15 @@ sandbox:
     path: /mcp
     args: []
     env: {}
+
+# Generates sandbox.ssh's keypair with a pre-install/upgrade hook Job when
+# you haven't supplied one yourself (all of sandbox.ssh.* left empty).
+# Idempotent across upgrades: the Job checks for an existing Secret via the
+# K8s API before generating anything, so a running deployment's keys are
+# never rotated out from under it. Only takes effect for sandbox.mode=ssh.
+sshKeygenJob:
+  enabled: true
+  image: alpine:3.20
 
 sshMcp:
   image: ghcr.io/go-faster/gooners/ssh-mcp:0.4.1

@@ -16,6 +16,7 @@
 
 secret.yml
 secret.yaml
+!deploy/helm/sisyphus/templates/secret.yaml
 deploy/config.yaml
 
 /ssbot

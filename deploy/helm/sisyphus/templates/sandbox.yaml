@@ -19,8 +19,9 @@ spec:
     {{- include "sisyphus.selectorLabels" (dict "root" . "component" "sandbox") | nindent 4 }}
 {{- if and $ssh (not .Values.sandbox.ssh.existingSecret) (or .Values.sandbox.ssh.hostKey .Values.sandbox.ssh.authorizedKeys .Values.sandbox.ssh.privateKey) }}
 ---
-{{- /* SSH material for the sandbox <-> ssh-mcp pair. Leave the values empty to
-       fall back on whatever keys are baked into the sandbox image. */}}
+{{- /* SSH material for the sandbox <-> ssh-mcp pair, from your own inline
+       values. If you leave all of sandbox.ssh.* empty, sshKeygenJob renders
+       this same secret name instead (see ssh-keygen-job.yaml). */}}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -130,13 +131,11 @@ spec:
               mountPath: /mnt/git
               readOnly: true
             {{- end }}
-            {{- if and $ssh (or .Values.sandbox.ssh.existingSecret .Values.sandbox.ssh.hostKey) }}
+            {{- if $ssh }}
             - name: ssh-host-key
               mountPath: /etc/ssh/ssh_host_ed25519_key
               subPath: ssh_host_ed25519_key
               readOnly: true
-            {{- end }}
-            {{- if and $ssh (or .Values.sandbox.ssh.existingSecret .Values.sandbox.ssh.authorizedKeys) }}
             - name: ssh-host-key
               mountPath: /home/{{ .Values.sandbox.ssh.user }}/.ssh/authorized_keys
               subPath: authorized_keys
@@ -161,7 +160,7 @@ spec:
             claimName: {{ $full }}-git-workdir
             readOnly: true
         {{- end }}
-        {{- if and $ssh (or .Values.sandbox.ssh.existingSecret .Values.sandbox.ssh.hostKey .Values.sandbox.ssh.authorizedKeys) }}
+        {{- if $ssh }}
         - name: ssh-host-key
           secret:
             secretName: {{ default (printf "%s-sandbox-ssh" $full) .Values.sandbox.ssh.existingSecret }}

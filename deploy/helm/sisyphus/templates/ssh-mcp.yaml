@@ -1,8 +1,12 @@
 {{- if and .Values.sandbox.enabled (eq .Values.sandbox.mode "ssh") }}
 {{- $full := include "sisyphus.fullname" . }}
 {{- $sshSecret := default (printf "%s-sandbox-ssh" $full) .Values.sandbox.ssh.existingSecret }}
-{{- if and (not .Values.sandbox.ssh.existingSecret) (not .Values.sandbox.ssh.privateKey) }}
-{{- fail "sandbox.mode=ssh needs a client key: set sandbox.ssh.privateKey (+ authorizedKeys/hostKey) or sandbox.ssh.existingSecret" }}
+{{- $anyInline := or .Values.sandbox.ssh.hostKey .Values.sandbox.ssh.authorizedKeys .Values.sandbox.ssh.privateKey }}
+{{- if and $anyInline (not .Values.sandbox.ssh.existingSecret) (not .Values.sandbox.ssh.privateKey) }}
+{{- fail "sandbox.mode=ssh: hostKey/authorizedKeys given without sandbox.ssh.privateKey — set it too, or clear all three sandbox.ssh.* fields to let sshKeygenJob generate a keypair" }}
+{{- end }}
+{{- if and (not .Values.sandbox.ssh.existingSecret) (not $anyInline) (not .Values.sshKeygenJob.enabled) }}
+{{- fail "sandbox.mode=ssh needs a client key: set sandbox.ssh.privateKey (+ authorizedKeys/hostKey), sandbox.ssh.existingSecret, or leave sshKeygenJob.enabled: true" }}
 {{- end }}
 {{- $machine := default "sandbox" (dig "context" "sandbox_machine" "sandbox" .Values.config) }}
 {{- $strict := or .Values.sandbox.ssh.knownHosts .Values.sandbox.ssh.hostKeyPub }}

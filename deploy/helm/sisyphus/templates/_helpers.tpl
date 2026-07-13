@@ -135,6 +135,8 @@ http://{{ $full }}-ssh-mcp:{{ .Values.sshMcp.port }}{{ .Values.sshMcp.path }}
   value: /data/scp/config.yaml
 - name: OTEL_LOG_LEVEL
   value: info
+- name: USER
+  value: sisyphus
 {{- include "sisyphus.otelEnv" . }}
 {{- end }}
 
