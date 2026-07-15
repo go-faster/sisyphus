@@ -35,6 +35,7 @@ type Issue struct {
 	Updated     time.Time
 	Resolved    time.Time
 	Comments    []Comment
+	WebURL      string // canonical browse URL, e.g. https://jira.example.com/browse/IDP-1080
 }
 
 // DocumentFromIssue builds a normalized index.Document from a Jira Issue.
@@ -52,6 +53,7 @@ func DocumentFromIssue(iss Issue) index.Document {
 		ID:       uuid.New(),
 		Source:   index.SourceJira,
 		SourceID: iss.Key,
+		URL:      iss.WebURL,
 		Title:    iss.Title,
 		Body:     body,
 		Metadata: map[string]any{

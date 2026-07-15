@@ -193,6 +193,29 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 		if chunks[i].TextHash == "" {
 			chunks[i].TextHash = index.Hash(chunks[i].Text)
 		}
+		// Every chunk must carry its document's source in metadata: source-tier
+		// and source-prefix filtering (both the Postgres FTS WHERE clause and the
+		// Qdrant payload filter) key on metadata.source, and the default "curated"
+		// tier lists jira/gitlab. Git/files/telegram chunkers set it, but the
+		// jira/gitlab chunkers copy only the document metadata — which itself
+		// omits source — so their chunks were silently unreachable through normal
+		// search. Inject it centrally so no chunker can regress this.
+		if chunks[i].Metadata == nil {
+			chunks[i].Metadata = make(map[string]any, 2)
+		}
+		if _, ok := chunks[i].Metadata["source"]; !ok {
+			chunks[i].Metadata["source"] = string(doc.Source)
+		}
+		// Likewise propagate the document's canonical URL as source_url so search
+		// results and answers can render a "Source" link button. Only when absent:
+		// git/files chunkers set a richer per-chunk source_url with line anchors
+		// (#L10-20), which must win over the document-level URL. jira/gitlab set
+		// neither on the chunk, so they inherit doc.URL here.
+		if doc.URL != "" {
+			if _, ok := chunks[i].Metadata["source_url"]; !ok {
+				chunks[i].Metadata["source_url"] = doc.URL
+			}
+		}
 	}
 
 	// Load existing chunks for this document.

@@ -474,6 +474,9 @@ func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions, cursor Cursor) (
 			)
 			continue
 		}
+		if f.baseURL != "" && chunkIssue.Key != "" {
+			chunkIssue.WebURL = f.baseURL + "/browse/" + chunkIssue.Key
+		}
 		docs = append(docs, chunkjira.DocumentFromIssue(chunkIssue))
 	}
 
