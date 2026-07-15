@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-faster/sisyphus/internal/agent"
 	"github.com/go-faster/sisyphus/internal/agentstore"
+	"github.com/go-faster/sisyphus/internal/index"
 	"github.com/go-faster/sisyphus/internal/mcpserver"
 )
 
@@ -67,7 +68,7 @@ func (s *fakeJobStore) Submit(_ context.Context, key, _ string) (agentstore.Job,
 		return s.jobs[id], false, nil
 	}
 	id := uuid.New()
-	job := agentstore.Job{ID: id, Status: agentstore.StatusPending}
+	job := agentstore.Job{ID: id, Status: agentstore.StatusPending, CreatedAt: time.Now()}
 	s.jobs[id] = job
 	s.byKey[key] = id
 	return job, true, nil
@@ -78,6 +79,8 @@ func (s *fakeJobStore) MarkRunning(_ context.Context, id uuid.UUID) error {
 	defer s.mu.Unlock()
 	job := s.jobs[id]
 	job.Status = agentstore.StatusRunning
+	now := time.Now()
+	job.StartedAt = &now
 	s.jobs[id] = job
 	return nil
 }
@@ -89,6 +92,8 @@ func (s *fakeJobStore) Complete(_ context.Context, id uuid.UUID, res agent.Resul
 	job.Report = res.Report
 	job.Iterations = res.Iterations
 	job.ToolsUsed = res.ToolsUsed
+	now := time.Now()
+	job.CompletedAt = &now
 	s.jobs[id] = job
 	notify := s.notify
 	s.mu.Unlock()
@@ -103,6 +108,8 @@ func (s *fakeJobStore) Fail(_ context.Context, id uuid.UUID, cause error) error 
 	job := s.jobs[id]
 	job.Status = agentstore.StatusError
 	job.ErrorMessage = cause.Error()
+	now := time.Now()
+	job.CompletedAt = &now
 	s.jobs[id] = job
 	notify := s.notify
 	s.mu.Unlock()
@@ -182,6 +189,72 @@ func TestInvestigate_SubmitAndPoll_HappyPath(t *testing.T) {
 	require.Equal(t, agent.VerdictSolved, job.Verdict)
 	require.Equal(t, 2, job.Iterations)
 	require.Equal(t, 1, job.ToolsUsed)
+}
+
+// TestJobResponse_QueuedAndTotalDuration verifies that jobResponse fills in
+// QueuedMS/TotalMS from the job's CreatedAt/StartedAt/CompletedAt timestamps,
+// since Report.Debug.DurationMS alone only covers the LLM loop and misses
+// time spent waiting for a free worker slot (the reported bug: a Telegram
+// user seeing a much shorter "duration" than the actual wait).
+func TestJobResponse_QueuedAndTotalDuration(t *testing.T) {
+	base := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
+	started := base.Add(90 * time.Second) // queued for 90s behind the concurrency limit
+	completed := started.Add(23 * time.Second)
+
+	cases := []struct {
+		name       string
+		job        agentstore.Job
+		wantQueued int64
+		wantTotal  int64
+		wantNilDbg bool
+	}{
+		{
+			name: "done with timestamps",
+			job: agentstore.Job{
+				Status:      agentstore.StatusDone,
+				Report:      agent.Report{Debug: &index.Debug{DurationMS: 23000}},
+				CreatedAt:   base,
+				StartedAt:   &started,
+				CompletedAt: &completed,
+			},
+			wantQueued: 90_000,
+			wantTotal:  113_000,
+		},
+		{
+			name: "done but missing timestamps leaves debug untouched",
+			job: agentstore.Job{
+				Status: agentstore.StatusDone,
+				Report: agent.Report{Debug: &index.Debug{DurationMS: 23000}},
+			},
+			wantQueued: 0,
+			wantTotal:  0,
+		},
+		{
+			name: "no debug info configured",
+			job: agentstore.Job{
+				Status:      agentstore.StatusDone,
+				Report:      agent.Report{},
+				CreatedAt:   base,
+				StartedAt:   &started,
+				CompletedAt: &completed,
+			},
+			wantNilDbg: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := jobResponse(uuid.New(), tc.job)
+			if tc.wantNilDbg {
+				require.Nil(t, resp.Debug)
+				return
+			}
+			require.NotNil(t, resp.Debug)
+			require.Equal(t, tc.wantQueued, resp.Debug.QueuedMS)
+			require.Equal(t, tc.wantTotal, resp.Debug.TotalMS)
+			require.Equal(t, int64(23000), resp.Debug.DurationMS)
+		})
+	}
 }
 
 func TestInvestigate_SubmitRetryWithSameIdempotencyKey_ReturnsSameJob(t *testing.T) {

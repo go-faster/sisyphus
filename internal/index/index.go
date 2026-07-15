@@ -232,12 +232,18 @@ type Answer struct {
 // when the operator has opted into it via a config-level toggle. It's meant
 // for debugging, not end-user consumption.
 type Debug struct {
-	TraceID          string `json:"trace_id,omitempty"`
-	DurationMS       int64  `json:"duration_ms,omitempty"`
-	Iterations       int    `json:"iterations,omitempty"`
-	ToolCalls        int    `json:"tool_calls,omitempty"`
-	PromptTokens     int64  `json:"prompt_tokens,omitempty"`
-	CompletionTokens int64  `json:"completion_tokens,omitempty"`
+	TraceID string `json:"trace_id,omitempty"`
+	// DurationMS covers only the LLM tool-calling loop itself. For an async
+	// job (e.g. /investigate) this excludes any time spent queued behind a
+	// concurrency limit before the loop started — see QueuedMS/TotalMS for
+	// the true end-to-end figure.
+	DurationMS       int64 `json:"duration_ms,omitempty"`
+	QueuedMS         int64 `json:"queued_ms,omitempty"`
+	TotalMS          int64 `json:"total_ms,omitempty"`
+	Iterations       int   `json:"iterations,omitempty"`
+	ToolCalls        int   `json:"tool_calls,omitempty"`
+	PromptTokens     int64 `json:"prompt_tokens,omitempty"`
+	CompletionTokens int64 `json:"completion_tokens,omitempty"`
 }
 
 // Hash returns the hex sha256 of normalized text. Normalization trims surrounding
