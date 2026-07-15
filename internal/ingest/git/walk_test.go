@@ -50,6 +50,26 @@ func TestWalkAll(t *testing.T) {
 		}
 	})
 
+	t.Run("mdx doc", func(t *testing.T) {
+		dir := t.TempDir()
+		requireWrite(t, dir, "guide.mdx", "# Guide\nContent")
+
+		docs, err := WalkAll(context.Background(), []Source{{
+			Root:   dir,
+			Repo:   "test/repo",
+			Branch: "main",
+		}}, WalkOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(docs) != 1 {
+			t.Fatalf("want 1 doc, got %d", len(docs))
+		}
+		if docs[0].SourceID != "test/repo:guide.mdx" {
+			t.Fatalf("unexpected SourceID %q", docs[0].SourceID)
+		}
+	})
+
 	t.Run("multi source", func(t *testing.T) {
 		dir1 := t.TempDir()
 		requireWrite(t, dir1, "a.md", "# A")
