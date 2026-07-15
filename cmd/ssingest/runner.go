@@ -98,7 +98,7 @@ func (r *runner) runGit(ctx context.Context, reset bool, limit int, dry, prune b
 		}
 
 		// Walk all enabled content types in one pass
-		allDocs, err := gitingest.WalkAll(ctx, []gitingest.Source{s}, gitingest.WalkOptions{})
+		allDocs, err := gitingest.WalkAll(ctx, []gitingest.Source{s}, gitingest.WalkOptions{MeterProvider: r.mp})
 		if err != nil {
 			lg.Error("git walk failed", zap.Error(err), zap.String("repo", s.Repo))
 			anyErr = true

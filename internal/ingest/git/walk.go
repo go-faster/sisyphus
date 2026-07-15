@@ -17,6 +17,9 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	"github.com/go-faster/sisyphus/internal/index"
@@ -32,7 +35,11 @@ const (
 )
 
 // docExtensions are the file types treated as docs.
-var docExtensions = map[string]bool{".md": true, ".markdown": true}
+var docExtensions = map[string]bool{
+	".md": true, ".markdown": true, ".mdx": true,
+	".mkd": true, ".mkdn": true, ".mdown": true,
+	".rst": true, ".adoc": true, ".asciidoc": true,
+}
 
 // manifestExtensions are YAML file types.
 var manifestExtensions = map[string]bool{".yaml": true, ".yml": true}
@@ -119,7 +126,32 @@ type Source struct {
 }
 
 // WalkOptions configures WalkAll.
-type WalkOptions struct{}
+type WalkOptions struct {
+	// MeterProvider records per-repo walk counters. Defaults to the global provider.
+	MeterProvider metric.MeterProvider
+}
+
+func (opts *WalkOptions) setDefaults() {
+	if opts.MeterProvider == nil {
+		opts.MeterProvider = otel.GetMeterProvider()
+	}
+}
+
+// walkOutcome is the per-file result recorded in the "sisyphus.ingest.git.walk.files" counter.
+type walkOutcome string
+
+const (
+	outcomeDoc               walkOutcome = "doc"
+	outcomeManifest          walkOutcome = "manifest"
+	outcomeCode              walkOutcome = "code"
+	outcomeSkipUnclassified  walkOutcome = "skip_unclassified_ext"
+	outcomeSkipExclude       walkOutcome = "skip_exclude"
+	outcomeSkipOversize      walkOutcome = "skip_oversize"
+	outcomeSkipGeneratedCode walkOutcome = "skip_generated"
+)
+
+// walkCounts tallies outcomes for a single source, for the end-of-walk summary log.
+type walkCounts map[walkOutcome]int
 
 // classifyFile determines the file kind based on extension and enabled source toggles.
 func classifyFile(rel string, s Source) fileKind {
@@ -201,9 +233,15 @@ func Walk(ctx context.Context, s Source) ([]index.Document, error) {
 // (git_docs:, git_manifest:, or git_code:).
 // Missing or empty roots are logged as a warning but do not fail the walk.
 // Documents are returned in source order.
-func WalkAll(ctx context.Context, sources []Source, _ WalkOptions) ([]index.Document, error) {
+func WalkAll(ctx context.Context, sources []Source, opts WalkOptions) ([]index.Document, error) {
+	opts.setDefaults()
 	lg := zctx.From(ctx)
 	maxBytes := getMaxFileBytes()
+
+	wm, err := newWalkMetrics(opts.MeterProvider)
+	if err != nil {
+		return nil, errors.Wrap(err, "walk metrics")
+	}
 
 	var docs []index.Document
 	for _, s := range sources {
@@ -211,6 +249,14 @@ func WalkAll(ctx context.Context, sources []Source, _ WalkOptions) ([]index.Docu
 			lg.Warn("git: skipping empty root",
 				zap.String("repo", s.Repo))
 			continue
+		}
+		counts := make(walkCounts)
+		record := func(outcome walkOutcome) {
+			counts[outcome]++
+			wm.files.Add(ctx, 1, metric.WithAttributes(
+				attribute.String("repo", s.Repo),
+				attribute.String("outcome", string(outcome)),
+			))
 		}
 		err := filepath.WalkDir(s.Root, func(p string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -230,10 +276,12 @@ func WalkAll(ctx context.Context, sources []Source, _ WalkOptions) ([]index.Docu
 
 			kind := classifyFile(rel, s)
 			if kind < 0 {
+				record(outcomeSkipUnclassified)
 				return nil
 			}
 
 			if !keepFile(s, rel) {
+				record(outcomeSkipExclude)
 				return nil
 			}
 
@@ -242,11 +290,13 @@ func WalkAll(ctx context.Context, sources []Source, _ WalkOptions) ([]index.Docu
 			case kindManifest:
 				for _, pattern := range s.ManifestExclude {
 					if match, _ := doublestar.Match(pattern, rel); match {
+						record(outcomeSkipExclude)
 						return nil
 					}
 				}
 			case kindCode:
 				if !keepCodeFile(s, rel) {
+					record(outcomeSkipExclude)
 					return nil
 				}
 			}
@@ -261,6 +311,7 @@ func WalkAll(ctx context.Context, sources []Source, _ WalkOptions) ([]index.Docu
 					zap.String("path", rel),
 					zap.Int64("size", info.Size()),
 					zap.Int64("max", maxBytes))
+				record(outcomeSkipOversize)
 				return nil
 			}
 
@@ -272,17 +323,40 @@ func WalkAll(ctx context.Context, sources []Source, _ WalkOptions) ([]index.Docu
 			// Generated-header sniff for code files
 			if kind == kindCode && isGeneratedGo(string(body)) {
 				lg.Debug("skipping generated Go file", zap.String("path", rel))
+				record(outcomeSkipGeneratedCode)
 				return nil
 			}
 
 			docs = append(docs, newDocumentForKind(s, rel, string(body), info.ModTime(), kind))
+			record(walkOutcomeForKind(kind))
 			return nil
 		})
 		if err != nil {
 			return nil, errors.Wrap(err, "walk docs")
 		}
+		lg.Info("git walk summary",
+			zap.String("repo", s.Repo),
+			zap.Int("docs", counts[outcomeDoc]),
+			zap.Int("manifests", counts[outcomeManifest]),
+			zap.Int("code", counts[outcomeCode]),
+			zap.Int("skipped_unclassified_ext", counts[outcomeSkipUnclassified]),
+			zap.Int("skipped_exclude", counts[outcomeSkipExclude]),
+			zap.Int("skipped_oversize", counts[outcomeSkipOversize]),
+			zap.Int("skipped_generated", counts[outcomeSkipGeneratedCode]),
+		)
 	}
 	return docs, nil
+}
+
+func walkOutcomeForKind(kind fileKind) walkOutcome {
+	switch kind {
+	case kindManifest:
+		return outcomeManifest
+	case kindCode:
+		return outcomeCode
+	default:
+		return outcomeDoc
+	}
 }
 
 func newDocumentForKind(s Source, rel, body string, mod time.Time, kind fileKind) index.Document {
