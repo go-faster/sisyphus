@@ -9,6 +9,12 @@ coverage:
 test_fast:
 	go test ./...
 
+# Integration tests (testcontainers-backed, needs a Docker daemon). Includes the
+# cross-source search smoke test in internal/smoke.
+test_integration:
+	go test -tags integration ./...
+.PHONY: test_integration
+
 tidy:
 	go mod tidy
 
