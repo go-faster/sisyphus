@@ -100,6 +100,13 @@ func jobResponse(jobID uuid.UUID, job agentstore.Job) InvestigateJobResponse {
 		resp.Iterations = job.Iterations
 		resp.ToolsUsed = job.ToolsUsed
 		resp.Debug = job.Report.Debug
+		// Report.Debug.DurationMS only covers the LLM loop; fill in the
+		// queue wait (submit -> loop start) and true end-to-end time
+		// (submit -> done), which is what the user actually experiences.
+		if resp.Debug != nil && job.StartedAt != nil && job.CompletedAt != nil {
+			resp.Debug.QueuedMS = job.StartedAt.Sub(job.CreatedAt).Milliseconds()
+			resp.Debug.TotalMS = job.CompletedAt.Sub(job.CreatedAt).Milliseconds()
+		}
 	}
 	return resp
 }

@@ -96,6 +96,12 @@ func debugMarkdown(d *index.Debug) string {
 		fmt.Fprintf(&sb, "- trace_id: `%s`\n", d.TraceID)
 	}
 	fmt.Fprintf(&sb, "- duration: %dms\n", d.DurationMS)
+	if d.QueuedMS > 0 {
+		fmt.Fprintf(&sb, "- queued: %dms\n", d.QueuedMS)
+	}
+	if d.TotalMS > 0 {
+		fmt.Fprintf(&sb, "- total: %dms\n", d.TotalMS)
+	}
 	fmt.Fprintf(&sb, "- iterations: %d\n", d.Iterations)
 	fmt.Fprintf(&sb, "- tool_calls: %d\n", d.ToolCalls)
 	if d.PromptTokens > 0 || d.CompletionTokens > 0 {

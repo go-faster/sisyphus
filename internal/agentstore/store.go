@@ -31,7 +31,10 @@ const (
 // ErrNotFound is returned by Get when no job matches the given ID.
 var ErrNotFound = errors.New("job not found")
 
-// Job is the persisted state of one /investigate request.
+// Job is the persisted state of one /investigate request. CreatedAt/StartedAt/
+// CompletedAt let callers report true end-to-end timing (submit -> done),
+// as opposed to agent.Report.Debug.DurationMS, which only covers the LLM
+// loop itself and misses time spent waiting for a free worker slot.
 type Job struct {
 	ID           uuid.UUID
 	Status       Status
@@ -39,6 +42,9 @@ type Job struct {
 	Iterations   int
 	ToolsUsed    int
 	ErrorMessage string
+	CreatedAt    time.Time
+	StartedAt    *time.Time
+	CompletedAt  *time.Time
 }
 
 // Store persists InvestigationJob rows via ent.
@@ -156,6 +162,9 @@ func toJob(m *ent.InvestigationJob) (Job, error) {
 		Iterations:   m.Iterations,
 		ToolsUsed:    m.ToolsUsed,
 		ErrorMessage: m.ErrorMessage,
+		CreatedAt:    m.CreatedAt,
+		StartedAt:    m.StartedAt,
+		CompletedAt:  m.CompletedAt,
 	}, nil
 }
 
