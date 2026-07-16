@@ -23,7 +23,6 @@ import (
 
 	"github.com/go-faster/sisyphus/internal/agent"
 	"github.com/go-faster/sisyphus/internal/answer"
-	chunkmd "github.com/go-faster/sisyphus/internal/chunk/markdown"
 	"github.com/go-faster/sisyphus/internal/cliversion"
 	"github.com/go-faster/sisyphus/internal/config"
 	"github.com/go-faster/sisyphus/internal/content"
@@ -79,7 +78,6 @@ type Components struct {
 
 	Retriever       Retriever
 	Answerer        index.Answerer
-	Answers         *pipeline.Pipeline
 	ContentResolver index.ContentResolver
 	URLFetcher      index.URLFetcher
 	Health          HealthChecker
@@ -255,15 +253,6 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		lg.Warn("openrouter not configured, using stub answerer")
 		answerer = stub.NewAnswerer()
 	}
-	answerPipe, err := pipeline.New(svcs.DB, chunkmd.New(chunkmd.ChunkerOptions{}), svcs.Embedder, svcs.Vectors, pipeline.PipelineOptions{
-		TracerProvider: opts.TracerProvider,
-		MeterProvider:  opts.MeterProvider,
-	})
-	if err != nil {
-		cleanup()
-		svcs.Close()
-		return Components{}, errors.Wrap(err, "answer pipeline")
-	}
 
 	repoMap := make(content.RepoResolverMap)
 	for _, src := range cfg.Git.Repos {
@@ -362,7 +351,6 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		Vectors:         svcs.Vectors,
 		Retriever:       retr,
 		Answerer:        answerer,
-		Answers:         answerPipe,
 		ContentResolver: contentResolver,
 		URLFetcher:      urlFetcher,
 		Health:          &healthChecker{db: svcs.SQLDB, vectors: svcs.VectorHealth},

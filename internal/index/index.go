@@ -26,7 +26,6 @@ const (
 
 	SourceJira     Source = "jira"
 	SourceTelegram Source = "telegram"
-	SourceAnswer   Source = "answered_question"
 )
 
 // Per-repo git source prefixes. The repo name is appended to build the concrete

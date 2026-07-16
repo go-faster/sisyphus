@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	stderrors "errors"
 	"net/http"
-	"strings"
-	"time"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
@@ -24,11 +22,6 @@ type Retriever interface {
 	Retrieve(ctx context.Context, q index.Query) ([]index.Result, error)
 }
 
-// AnswerIndexer persists answered questions back into the shared index.
-type AnswerIndexer interface {
-	Index(ctx context.Context, doc index.Document) error
-}
-
 // Option customizes Handler.
 type Option func(*Handler)
 
@@ -36,7 +29,6 @@ type Option func(*Handler)
 type Handler struct {
 	retriever Retriever
 	answerer  index.Answerer
-	answers   AnswerIndexer
 	content   index.ContentResolver
 	fetcher   index.URLFetcher
 	version   string
@@ -51,13 +43,6 @@ func New(r Retriever, a index.Answerer, version string, opts ...Option) *Handler
 		opt(h)
 	}
 	return h
-}
-
-// WithAnswerIndexer enables saving answered questions as indexed documents.
-func WithAnswerIndexer(p AnswerIndexer) Option {
-	return func(h *Handler) {
-		h.answers = p
-	}
 }
 
 // WithContentResolver sets the file content resolver.
@@ -185,11 +170,6 @@ func (h *Handler) Context(ctx context.Context, req *oas.ContextRequest) (*oas.Co
 		return nil, errors.Wrap(err, "answer")
 	}
 
-	if h.answers != nil {
-		if err := h.answers.Index(ctx, answeredQuestionDocument(req.Question, answer.Text)); err != nil {
-			zctx.From(ctx).Warn("index answered question failed", zap.Error(err))
-		}
-	}
 	return &oas.ContextResponse{
 		Answer:     answer.Text,
 		Confidence: oas.NewOptString("low"),
@@ -225,30 +205,6 @@ func toDebug(d *index.Debug) oas.OptDebug {
 		PromptTokens:     oas.NewOptInt64(d.PromptTokens),
 		CompletionTokens: oas.NewOptInt64(d.CompletionTokens),
 	})
-}
-
-func answeredQuestionDocument(question, answer string) index.Document {
-	now := time.Now()
-	question = strings.TrimSpace(question)
-	body := "# " + question + "\n\n## Answer\n\n" + strings.TrimSpace(answer) + "\n"
-	title := question
-	if runes := []rune(title); len(runes) > 120 {
-		title = string(runes[:120])
-	}
-	return index.Document{
-		ID:       index.NewID(),
-		Source:   index.SourceAnswer,
-		SourceID: index.Hash(question),
-		Title:    title,
-		Body:     body,
-		BodyHash: index.Hash(body),
-		Metadata: map[string]any{
-			"source":    string(index.SourceAnswer),
-			"authority": string(index.AuthorityLow),
-		},
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
 }
 
 // NewError maps a handler error to the default error response.

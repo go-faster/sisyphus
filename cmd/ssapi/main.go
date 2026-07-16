@@ -73,7 +73,6 @@ func run(ctx context.Context, cfg config.Config, telemetry *app.Telemetry) error
 	}
 
 	handler := api.New(comp.Retriever, comp.Answerer, info.Short(),
-		api.WithAnswerIndexer(comp.Answers),
 		api.WithContentResolver(comp.ContentResolver),
 		api.WithURLFetcher(comp.URLFetcher),
 	)

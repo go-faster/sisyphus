@@ -34,15 +34,6 @@ func (s stubAnswerer) Answer(_ context.Context, _ index.Query, _ []index.Result)
 	return s.answer, nil
 }
 
-type captureAnswerIndexer struct {
-	doc index.Document
-}
-
-func (c *captureAnswerIndexer) Index(_ context.Context, doc index.Document) error {
-	c.doc = doc
-	return nil
-}
-
 func TestHandler_GetHealth(t *testing.T) {
 	h := New(&captureRetriever{}, stubAnswerer{}, "test")
 
@@ -183,31 +174,9 @@ func TestHandler_Context_Filters(t *testing.T) {
 	}
 }
 
-func TestHandler_Context_IndexesAnsweredQuestion(t *testing.T) {
-	idx := &captureAnswerIndexer{}
-	h := New(&captureRetriever{}, stubAnswerer{}, "test", WithAnswerIndexer(idx))
-
-	_, err := h.Context(t.Context(), &oas.ContextRequest{Question: "How to deploy?"})
-	require.NoError(t, err)
-	require.Equal(t, index.SourceAnswer, idx.doc.Source)
-	require.Equal(t, index.Hash("How to deploy?"), idx.doc.SourceID)
-	require.Equal(t, "How to deploy?", idx.doc.Title)
-	require.Contains(t, idx.doc.Body, "# How to deploy?")
-	require.Contains(t, idx.doc.Body, "## Answer")
-	require.Equal(t, string(index.SourceAnswer), idx.doc.Metadata["source"])
-	require.Equal(t, string(index.AuthorityLow), idx.doc.Metadata["authority"])
-}
-
-func TestSourcePrefixes_CuratedExcludesAnsweredQuestions(t *testing.T) {
-	got := sourcePrefixes(nil, sourceTierCurated, nil)
-	for _, prefix := range got {
-		if prefix == string(index.SourceAnswer) {
-			t.Fatal("curated tier should not include answered questions by default")
-		}
-	}
-
-	explicit := sourcePrefixes(nil, "", []string{string(index.SourceAnswer)})
-	require.Equal(t, []string{string(index.SourceAnswer)}, explicit)
+func TestSourcePrefixes_ExplicitOverridesTier(t *testing.T) {
+	explicit := sourcePrefixes(nil, "", []string{index.SourceGitCodePrefix})
+	require.Equal(t, []string{index.SourceGitCodePrefix}, explicit)
 }
 
 func TestHandler_Context_StructuredAnswerWithButtons(t *testing.T) {

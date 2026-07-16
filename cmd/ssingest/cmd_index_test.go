@@ -9,16 +9,14 @@ import (
 
 func TestCleanSources(t *testing.T) {
 	tests := []struct {
-		name    string
-		answers bool
-		repo    string
-		source  string
-		want    []index.Source
+		name   string
+		repo   string
+		source string
+		want   []index.Source
 	}{
 		{
-			name:    "answers",
-			answers: true,
-			want:    []index.Source{index.SourceAnswer},
+			name: "none",
+			want: nil,
 		},
 		{
 			name: "repo",
@@ -32,15 +30,26 @@ func TestCleanSources(t *testing.T) {
 			},
 		},
 		{
-			name:    "dedupe",
-			answers: true,
-			source:  string(index.SourceAnswer),
-			want:    []index.Source{index.SourceAnswer},
+			name:   "source",
+			source: "telegram",
+			want:   []index.Source{index.SourceTelegram},
+		},
+		{
+			name:   "dedupe",
+			repo:   "docs",
+			source: string(index.SourceGitDocs("docs")),
+			want: []index.Source{
+				index.SourceGitDocs("docs"),
+				index.SourceGitManifest("docs"),
+				index.SourceGitCode("docs"),
+				index.SourceGitCommit("docs"),
+				index.SourceGitTag("docs"),
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := cleanSources(tt.answers, tt.repo, tt.source)
+			got := cleanSources(tt.repo, tt.source)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Fatalf("cleanSources() = %#v, want %#v", got, tt.want)
 			}

@@ -39,10 +39,9 @@ func newIndexListCmd(deps *ingestDeps) *cobra.Command {
 
 func newIndexCleanCmd(deps *ingestDeps) *cobra.Command {
 	var (
-		yes     bool
-		answers bool
-		repo    string
-		source  string
+		yes    bool
+		repo   string
+		source string
 	)
 	cmd := &cobra.Command{
 		Use:   "clean",
@@ -52,9 +51,9 @@ func newIndexCleanCmd(deps *ingestDeps) *cobra.Command {
 			if !yes {
 				return errors.New("refusing to clean index without --yes")
 			}
-			sources := cleanSources(answers, repo, source)
+			sources := cleanSources(repo, source)
 			if len(sources) == 0 {
-				return errors.New("select at least one of --answers, --repo, or --source")
+				return errors.New("select at least one of --repo or --source")
 			}
 			for _, src := range sources {
 				if err := resetSource(cmd.Context(), deps.services.DB, deps.services.Vectors, src); err != nil {
@@ -66,7 +65,6 @@ func newIndexCleanCmd(deps *ingestDeps) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&yes, "yes", false, "confirm deletion")
-	cmd.Flags().BoolVar(&answers, "answers", false, "delete indexed answered questions")
 	cmd.Flags().StringVar(&repo, "repo", "", "delete all git-derived sources for a repo")
 	cmd.Flags().StringVar(&source, "source", "", "delete one exact source, e.g. git_docs:repo")
 	return cmd
@@ -92,7 +90,7 @@ func listIndexSources(ctx context.Context, w io.Writer, deps *ingestDeps) error 
 	return nil
 }
 
-func cleanSources(answers bool, repo, source string) []index.Source {
+func cleanSources(repo, source string) []index.Source {
 	seen := map[index.Source]bool{}
 	var out []index.Source
 	add := func(src index.Source) {
@@ -103,9 +101,6 @@ func cleanSources(answers bool, repo, source string) []index.Source {
 		out = append(out, src)
 	}
 
-	if answers {
-		add(index.SourceAnswer)
-	}
 	if repo = strings.TrimSpace(repo); repo != "" {
 		add(index.SourceGitDocs(repo))
 		add(index.SourceGitManifest(repo))
