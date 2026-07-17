@@ -75,6 +75,10 @@ type Pipeline struct {
 
 	vectorDeleteTries    uint
 	vectorDeleteInterval time.Duration
+
+	// chunkerVersion is the output version of this pipeline's chunker, recorded
+	// on every document it indexes so a later version change can re-chunk them.
+	chunkerVersion int
 }
 
 // New builds a Pipeline. vectors may be nil to skip vector indexing.
@@ -95,6 +99,8 @@ func New(db *ent.Client, chunker index.Chunker, embedder index.Embedder, vectors
 
 		vectorDeleteTries:    opts.VectorDeleteTries,
 		vectorDeleteInterval: opts.VectorDeleteInterval,
+
+		chunkerVersion: chunkerVersion(chunker),
 	}, nil
 }
 
@@ -140,8 +146,9 @@ type chunkKey struct {
 	textHash string
 }
 
-// Index processes a single Document idempotently: it skips work when the body
-// hash is unchanged, otherwise (re)chunks, embeds, and upserts (plan §9).
+// Index processes a single Document idempotently: it skips work when nothing
+// that shapes the output has changed (see unchanged), otherwise (re)chunks,
+// embeds, and upserts (plan §9).
 func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 	if doc.BodyHash == "" {
 		doc.BodyHash = index.Hash(doc.Body)
@@ -181,8 +188,8 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 		return errors.Wrap(err, "query document")
 	default:
 		doc.ID = existing.ID // reuse the existing row's identity so chunk queries below operate on the right document_id
-		if existing.BodyHash == doc.BodyHash {
-			// unchanged — keep the existing skip-fast-path behavior
+		if p.unchanged(existing, doc) {
+			// nothing that shapes this document's output has changed
 			span.SetAttributes(attribute.Bool("document.unchanged", true))
 			span.AddEvent("document.unchanged")
 			zctx.From(ctx).Debug("document unchanged, skipping",
@@ -435,6 +442,7 @@ func (p *Pipeline) persist(ctx context.Context, doc index.Document, chunks []ind
 			SetTitle(doc.Title).
 			SetBody(doc.Body).
 			SetBodyHash(doc.BodyHash).
+			SetChunkerVersion(p.chunkerVersion).
 			SetMetadata(doc.Metadata).
 			SetCreatedAt(doc.CreatedAt).
 			SetUpdatedAt(doc.UpdatedAt).

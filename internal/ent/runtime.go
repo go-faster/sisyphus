@@ -59,8 +59,12 @@ func init() {
 	documentDescMetadata := documentFields[7].Descriptor()
 	// document.DefaultMetadata holds the default value on creation for the metadata field.
 	document.DefaultMetadata = documentDescMetadata.Default.(map[string]interface{})
+	// documentDescChunkerVersion is the schema descriptor for chunker_version field.
+	documentDescChunkerVersion := documentFields[8].Descriptor()
+	// document.DefaultChunkerVersion holds the default value on creation for the chunker_version field.
+	document.DefaultChunkerVersion = documentDescChunkerVersion.Default.(int)
 	// documentDescCapturedAt is the schema descriptor for captured_at field.
-	documentDescCapturedAt := documentFields[10].Descriptor()
+	documentDescCapturedAt := documentFields[11].Descriptor()
 	// document.DefaultCapturedAt holds the default value on creation for the captured_at field.
 	document.DefaultCapturedAt = documentDescCapturedAt.Default.(func() time.Time)
 	// documentDescID is the schema descriptor for id field.

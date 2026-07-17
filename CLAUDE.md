@@ -75,6 +75,11 @@ internal/webhook        debounced Trigger (coalesces a webhook + a poll tick rac
 internal/pipeline       Pipeline.Index: idempotent doc+chunk upsert (ent) + embed (Ollama)
                         + vector Upsert/Delete (Qdrant). Per-chunk embedding skip (preserves
                         unchanged chunks' qdrant_point_id) and stale-point cleanup on changed docs.
+                        The document-level skip (skip.go's `unchanged`) must cover EVERY input
+                        that shapes the output: body hash, doc.URL (propagated onto chunks as
+                        source_url), and the chunker version. Anything left out is a field that
+                        can change while indexing says "unchanged" forever — a document's body is
+                        the only thing that normally moves, so nothing else ever forces a revisit.
                         VectorStore interface: Upsert + Delete. The stale-point delete runs
                         AFTER the ent tx commits, so it cannot be rolled back: it retries
                         (deleteStaleVectors), and on final failure leaks orphaned points that
@@ -271,6 +276,13 @@ query that would also drop the caller's service/source-tier filters.
 - File structure: split logical sections into separate files instead of separating them with `//` comments using `--` dividers. Even if a file seems large, prefer multiple focused files over in-file section markers.
 - Logging: `*zap.Logger` passed in; no global loggers, no `log` package.
 - Content hashing: `internal/index.Hash` (sha256 of normalized text). Skip re-embedding when hash is unchanged.
+- Changing a chunker's output for input it already handled (different boundaries, text, or
+  chunk types)? Implement/bump `index.VersionedChunker.ChunkerVersion()` on it. The body hash
+  cannot see a chunker change — same body, different code — so without a bump, documents
+  already indexed keep chunks built by the old code until someone runs a full `--reset`.
+  Bumping re-chunks only that chunker's documents; chunks whose text is unchanged still reuse
+  their embeddings, so a bump is cheap. A chunker that declares no version reports 0 and is
+  never re-chunked.
 - IDs: `github.com/google/uuid`.
 - Document identity: unique on `(source, source_id)` — not `body_hash`. Re-ingesting the
   same `source_id` with changed content updates the existing row and its chunks in place

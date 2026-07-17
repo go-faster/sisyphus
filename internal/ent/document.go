@@ -33,6 +33,8 @@ type Document struct {
 	BodyHash string `json:"body_hash,omitempty"`
 	// Metadata holds the value of the "metadata" field.
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	// ChunkerVersion holds the value of the "chunker_version" field.
+	ChunkerVersion int `json:"chunker_version,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -70,6 +72,8 @@ func (*Document) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case document.FieldMetadata:
 			values[i] = new([]byte)
+		case document.FieldChunkerVersion:
+			values[i] = new(sql.NullInt64)
 		case document.FieldSource, document.FieldSourceID, document.FieldSourceURL, document.FieldTitle, document.FieldBody, document.FieldBodyHash:
 			values[i] = new(sql.NullString)
 		case document.FieldCreatedAt, document.FieldUpdatedAt, document.FieldCapturedAt:
@@ -140,6 +144,12 @@ func (_m *Document) assignValues(columns []string, values []any) error {
 				if err := json.Unmarshal(*value, &_m.Metadata); err != nil {
 					return fmt.Errorf("unmarshal field metadata: %w", err)
 				}
+			}
+		case document.FieldChunkerVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field chunker_version", values[i])
+			} else if value.Valid {
+				_m.ChunkerVersion = int(value.Int64)
 			}
 		case document.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -220,6 +230,9 @@ func (_m *Document) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("metadata=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Metadata))
+	builder.WriteString(", ")
+	builder.WriteString("chunker_version=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ChunkerVersion))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

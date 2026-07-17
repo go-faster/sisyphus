@@ -27,6 +27,12 @@ func (Document) Fields() []ent.Field {
 		field.String("body_hash").NotEmpty(),
 		field.JSON("metadata", map[string]any{}).Default(map[string]any{}).
 			Annotations(entsql.Default("{}")),
+		// chunker_version records which version of the chunker produced this
+		// document's chunks. The body hash cannot detect a chunker change — the
+		// body is identical, the code that splits it is not — so without this a
+		// chunking change can never reach documents already indexed. 0 means the
+		// chunker reports no version, which is the pre-existing behavior.
+		field.Int("chunker_version").Default(0),
 		field.Time("created_at").Optional(),
 		field.Time("updated_at").Optional(),
 		field.Time("captured_at").Default(time.Now),

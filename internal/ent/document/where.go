@@ -86,6 +86,11 @@ func BodyHash(v string) predicate.Document {
 	return predicate.Document(sql.FieldEQ(FieldBodyHash, v))
 }
 
+// ChunkerVersion applies equality check predicate on the "chunker_version" field. It's identical to ChunkerVersionEQ.
+func ChunkerVersion(v int) predicate.Document {
+	return predicate.Document(sql.FieldEQ(FieldChunkerVersion, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Document {
 	return predicate.Document(sql.FieldEQ(FieldCreatedAt, v))
@@ -519,6 +524,46 @@ func BodyHashEqualFold(v string) predicate.Document {
 // BodyHashContainsFold applies the ContainsFold predicate on the "body_hash" field.
 func BodyHashContainsFold(v string) predicate.Document {
 	return predicate.Document(sql.FieldContainsFold(FieldBodyHash, v))
+}
+
+// ChunkerVersionEQ applies the EQ predicate on the "chunker_version" field.
+func ChunkerVersionEQ(v int) predicate.Document {
+	return predicate.Document(sql.FieldEQ(FieldChunkerVersion, v))
+}
+
+// ChunkerVersionNEQ applies the NEQ predicate on the "chunker_version" field.
+func ChunkerVersionNEQ(v int) predicate.Document {
+	return predicate.Document(sql.FieldNEQ(FieldChunkerVersion, v))
+}
+
+// ChunkerVersionIn applies the In predicate on the "chunker_version" field.
+func ChunkerVersionIn(vs ...int) predicate.Document {
+	return predicate.Document(sql.FieldIn(FieldChunkerVersion, vs...))
+}
+
+// ChunkerVersionNotIn applies the NotIn predicate on the "chunker_version" field.
+func ChunkerVersionNotIn(vs ...int) predicate.Document {
+	return predicate.Document(sql.FieldNotIn(FieldChunkerVersion, vs...))
+}
+
+// ChunkerVersionGT applies the GT predicate on the "chunker_version" field.
+func ChunkerVersionGT(v int) predicate.Document {
+	return predicate.Document(sql.FieldGT(FieldChunkerVersion, v))
+}
+
+// ChunkerVersionGTE applies the GTE predicate on the "chunker_version" field.
+func ChunkerVersionGTE(v int) predicate.Document {
+	return predicate.Document(sql.FieldGTE(FieldChunkerVersion, v))
+}
+
+// ChunkerVersionLT applies the LT predicate on the "chunker_version" field.
+func ChunkerVersionLT(v int) predicate.Document {
+	return predicate.Document(sql.FieldLT(FieldChunkerVersion, v))
+}
+
+// ChunkerVersionLTE applies the LTE predicate on the "chunker_version" field.
+func ChunkerVersionLTE(v int) predicate.Document {
+	return predicate.Document(sql.FieldLTE(FieldChunkerVersion, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

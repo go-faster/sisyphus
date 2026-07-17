@@ -29,6 +29,8 @@ const (
 	FieldBodyHash = "body_hash"
 	// FieldMetadata holds the string denoting the metadata field in the database.
 	FieldMetadata = "metadata"
+	// FieldChunkerVersion holds the string denoting the chunker_version field in the database.
+	FieldChunkerVersion = "chunker_version"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -58,6 +60,7 @@ var Columns = []string{
 	FieldBody,
 	FieldBodyHash,
 	FieldMetadata,
+	FieldChunkerVersion,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 	FieldCapturedAt,
@@ -82,6 +85,8 @@ var (
 	BodyHashValidator func(string) error
 	// DefaultMetadata holds the default value on creation for the "metadata" field.
 	DefaultMetadata map[string]interface{}
+	// DefaultChunkerVersion holds the default value on creation for the "chunker_version" field.
+	DefaultChunkerVersion int
 	// DefaultCapturedAt holds the default value on creation for the "captured_at" field.
 	DefaultCapturedAt func() time.Time
 	// DefaultID holds the default value on creation for the "id" field.
@@ -124,6 +129,11 @@ func ByBody(opts ...sql.OrderTermOption) OrderOption {
 // ByBodyHash orders the results by the body_hash field.
 func ByBodyHash(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBodyHash, opts...).ToFunc()
+}
+
+// ByChunkerVersion orders the results by the chunker_version field.
+func ByChunkerVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldChunkerVersion, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

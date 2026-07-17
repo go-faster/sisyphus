@@ -989,26 +989,28 @@ func (m *ChunkMutation) ResetEdge(name string) error {
 // DocumentMutation represents an operation that mutates the Document nodes in the graph.
 type DocumentMutation struct {
 	config
-	op            Op
-	typ           string
-	id            *uuid.UUID
-	source        *string
-	source_id     *string
-	source_url    *string
-	title         *string
-	body          *string
-	body_hash     *string
-	metadata      *map[string]interface{}
-	created_at    *time.Time
-	updated_at    *time.Time
-	captured_at   *time.Time
-	clearedFields map[string]struct{}
-	chunks        map[uuid.UUID]struct{}
-	removedchunks map[uuid.UUID]struct{}
-	clearedchunks bool
-	done          bool
-	oldValue      func(context.Context) (*Document, error)
-	predicates    []predicate.Document
+	op                 Op
+	typ                string
+	id                 *uuid.UUID
+	source             *string
+	source_id          *string
+	source_url         *string
+	title              *string
+	body               *string
+	body_hash          *string
+	metadata           *map[string]interface{}
+	chunker_version    *int
+	addchunker_version *int
+	created_at         *time.Time
+	updated_at         *time.Time
+	captured_at        *time.Time
+	clearedFields      map[string]struct{}
+	chunks             map[uuid.UUID]struct{}
+	removedchunks      map[uuid.UUID]struct{}
+	clearedchunks      bool
+	done               bool
+	oldValue           func(context.Context) (*Document, error)
+	predicates         []predicate.Document
 }
 
 var _ ent.Mutation = (*DocumentMutation)(nil)
@@ -1406,6 +1408,62 @@ func (m *DocumentMutation) ResetMetadata() {
 	m.metadata = nil
 }
 
+// SetChunkerVersion sets the "chunker_version" field.
+func (m *DocumentMutation) SetChunkerVersion(i int) {
+	m.chunker_version = &i
+	m.addchunker_version = nil
+}
+
+// ChunkerVersion returns the value of the "chunker_version" field in the mutation.
+func (m *DocumentMutation) ChunkerVersion() (r int, exists bool) {
+	v := m.chunker_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChunkerVersion returns the old "chunker_version" field's value of the Document entity.
+// If the Document object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *DocumentMutation) OldChunkerVersion(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChunkerVersion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChunkerVersion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChunkerVersion: %w", err)
+	}
+	return oldValue.ChunkerVersion, nil
+}
+
+// AddChunkerVersion adds i to the "chunker_version" field.
+func (m *DocumentMutation) AddChunkerVersion(i int) {
+	if m.addchunker_version != nil {
+		*m.addchunker_version += i
+	} else {
+		m.addchunker_version = &i
+	}
+}
+
+// AddedChunkerVersion returns the value that was added to the "chunker_version" field in this mutation.
+func (m *DocumentMutation) AddedChunkerVersion() (r int, exists bool) {
+	v := m.addchunker_version
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetChunkerVersion resets all changes to the "chunker_version" field.
+func (m *DocumentMutation) ResetChunkerVersion() {
+	m.chunker_version = nil
+	m.addchunker_version = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *DocumentMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -1628,7 +1686,7 @@ func (m *DocumentMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *DocumentMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 11)
 	if m.source != nil {
 		fields = append(fields, document.FieldSource)
 	}
@@ -1649,6 +1707,9 @@ func (m *DocumentMutation) Fields() []string {
 	}
 	if m.metadata != nil {
 		fields = append(fields, document.FieldMetadata)
+	}
+	if m.chunker_version != nil {
+		fields = append(fields, document.FieldChunkerVersion)
 	}
 	if m.created_at != nil {
 		fields = append(fields, document.FieldCreatedAt)
@@ -1681,6 +1742,8 @@ func (m *DocumentMutation) Field(name string) (ent.Value, bool) {
 		return m.BodyHash()
 	case document.FieldMetadata:
 		return m.Metadata()
+	case document.FieldChunkerVersion:
+		return m.ChunkerVersion()
 	case document.FieldCreatedAt:
 		return m.CreatedAt()
 	case document.FieldUpdatedAt:
@@ -1710,6 +1773,8 @@ func (m *DocumentMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldBodyHash(ctx)
 	case document.FieldMetadata:
 		return m.OldMetadata(ctx)
+	case document.FieldChunkerVersion:
+		return m.OldChunkerVersion(ctx)
 	case document.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case document.FieldUpdatedAt:
@@ -1774,6 +1839,13 @@ func (m *DocumentMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetMetadata(v)
 		return nil
+	case document.FieldChunkerVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChunkerVersion(v)
+		return nil
 	case document.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -1802,13 +1874,21 @@ func (m *DocumentMutation) SetField(name string, value ent.Value) error {
 // AddedFields returns all numeric fields that were incremented/decremented during
 // this mutation.
 func (m *DocumentMutation) AddedFields() []string {
-	return nil
+	var fields []string
+	if m.addchunker_version != nil {
+		fields = append(fields, document.FieldChunkerVersion)
+	}
+	return fields
 }
 
 // AddedField returns the numeric value that was incremented/decremented on a field
 // with the given name. The second boolean return value indicates that this field
 // was not set, or was not defined in the schema.
 func (m *DocumentMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case document.FieldChunkerVersion:
+		return m.AddedChunkerVersion()
+	}
 	return nil, false
 }
 
@@ -1817,6 +1897,13 @@ func (m *DocumentMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *DocumentMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case document.FieldChunkerVersion:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddChunkerVersion(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Document numeric field %s", name)
 }
@@ -1897,6 +1984,9 @@ func (m *DocumentMutation) ResetField(name string) error {
 		return nil
 	case document.FieldMetadata:
 		m.ResetMetadata()
+		return nil
+	case document.FieldChunkerVersion:
+		m.ResetChunkerVersion()
 		return nil
 	case document.FieldCreatedAt:
 		m.ResetCreatedAt()

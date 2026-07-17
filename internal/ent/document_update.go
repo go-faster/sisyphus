@@ -138,6 +138,27 @@ func (_u *DocumentUpdate) SetMetadata(v map[string]interface{}) *DocumentUpdate 
 	return _u
 }
 
+// SetChunkerVersion sets the "chunker_version" field.
+func (_u *DocumentUpdate) SetChunkerVersion(v int) *DocumentUpdate {
+	_u.mutation.ResetChunkerVersion()
+	_u.mutation.SetChunkerVersion(v)
+	return _u
+}
+
+// SetNillableChunkerVersion sets the "chunker_version" field if the given value is not nil.
+func (_u *DocumentUpdate) SetNillableChunkerVersion(v *int) *DocumentUpdate {
+	if v != nil {
+		_u.SetChunkerVersion(*v)
+	}
+	return _u
+}
+
+// AddChunkerVersion adds value to the "chunker_version" field.
+func (_u *DocumentUpdate) AddChunkerVersion(v int) *DocumentUpdate {
+	_u.mutation.AddChunkerVersion(v)
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *DocumentUpdate) SetCreatedAt(v time.Time) *DocumentUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -321,6 +342,12 @@ func (_u *DocumentUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Metadata(); ok {
 		_spec.SetField(document.FieldMetadata, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.ChunkerVersion(); ok {
+		_spec.SetField(document.FieldChunkerVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedChunkerVersion(); ok {
+		_spec.AddField(document.FieldChunkerVersion, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(document.FieldCreatedAt, field.TypeTime, value)
@@ -507,6 +534,27 @@ func (_u *DocumentUpdateOne) SetNillableBodyHash(v *string) *DocumentUpdateOne {
 // SetMetadata sets the "metadata" field.
 func (_u *DocumentUpdateOne) SetMetadata(v map[string]interface{}) *DocumentUpdateOne {
 	_u.mutation.SetMetadata(v)
+	return _u
+}
+
+// SetChunkerVersion sets the "chunker_version" field.
+func (_u *DocumentUpdateOne) SetChunkerVersion(v int) *DocumentUpdateOne {
+	_u.mutation.ResetChunkerVersion()
+	_u.mutation.SetChunkerVersion(v)
+	return _u
+}
+
+// SetNillableChunkerVersion sets the "chunker_version" field if the given value is not nil.
+func (_u *DocumentUpdateOne) SetNillableChunkerVersion(v *int) *DocumentUpdateOne {
+	if v != nil {
+		_u.SetChunkerVersion(*v)
+	}
+	return _u
+}
+
+// AddChunkerVersion adds value to the "chunker_version" field.
+func (_u *DocumentUpdateOne) AddChunkerVersion(v int) *DocumentUpdateOne {
+	_u.mutation.AddChunkerVersion(v)
 	return _u
 }
 
@@ -723,6 +771,12 @@ func (_u *DocumentUpdateOne) sqlSave(ctx context.Context) (_node *Document, err 
 	}
 	if value, ok := _u.mutation.Metadata(); ok {
 		_spec.SetField(document.FieldMetadata, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.ChunkerVersion(); ok {
+		_spec.SetField(document.FieldChunkerVersion, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedChunkerVersion(); ok {
+		_spec.AddField(document.FieldChunkerVersion, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(document.FieldCreatedAt, field.TypeTime, value)
