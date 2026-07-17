@@ -7,8 +7,18 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/go-faster/sisyphus/internal/ent/chunk"
+	"github.com/go-faster/sisyphus/internal/ent/document"
+	"github.com/go-faster/sisyphus/internal/ent/predicate"
 	"github.com/go-faster/sisyphus/internal/index"
 )
+
+// ourChunks scopes a chunk query to one test's document. The DB-backed suites
+// share a database, so an unscoped Chunk.Query() sees other packages' fixtures
+// -- vectorrepair's, for instance, are deliberately mismatched, which is exactly
+// what these tests assert against.
+func ourChunks(sourceID string) predicate.Chunk {
+	return chunk.HasDocumentWith(document.SourceID(sourceID))
+}
 
 // TestPipeline_ChunkIDMatchesPointIDAfterUnembeddedFirstPass is a regression
 // test for chunk rows whose id and qdrant_point_id diverged.
@@ -77,7 +87,7 @@ func TestPipeline_ChunkIDMatchesPointIDAfterUnembeddedFirstPass(t *testing.T) {
 		t.Fatalf("online index: %v", err)
 	}
 
-	rows, err = client.Chunk.Query().All(ctx)
+	rows, err = client.Chunk.Query().Where(ourChunks("test/identity")).All(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +160,7 @@ func TestPipeline_StaleRowWithoutPointIsDeleted(t *testing.T) {
 		t.Fatalf("second index: %v", err)
 	}
 
-	rows, err := client.Chunk.Query().All(ctx)
+	rows, err := client.Chunk.Query().Where(ourChunks("test/stalerow")).All(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +199,9 @@ func TestPipeline_StaleDeleteUsesRecordedPointID(t *testing.T) {
 
 	// Simulate a row written before the id/point invariant was enforced.
 	legacyPoint := uuid.New()
-	stale, err := client.Chunk.Query().Where(chunk.Text("delete me")).Only(ctx)
+	stale, err := client.Chunk.Query().
+		Where(ourChunks("test/legacy"), chunk.Text("delete me")).
+		Only(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
