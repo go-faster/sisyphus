@@ -104,6 +104,13 @@ dockers_v2:
       - "{{ .Version }}"
       - "latest"
     dockerfile: deploy/Dockerfile.goreleaser
+    # Registry-backed buildx cache: unlike GitHub Actions' cache, it isn't scoped
+    # to a ref, so it's actually reusable across releases (each git tag is a
+    # brand-new, single-use ref and can never hit a GH Actions cache saved
+    # under a different ref).
+    flags:
+      - "--cache-from=type=registry,ref=ghcr.io/go-faster/sisyphus:buildcache"
+      - "--cache-to=type=registry,ref=ghcr.io/go-faster/sisyphus:buildcache,mode=max"
 
 release:
   github:
