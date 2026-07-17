@@ -60,5 +60,8 @@ func (c *Client) CompleteWithTools(
 		attribute.Int64("tokens.completion", completionTokens),
 	)
 
-	return resp.Choices[0].Message, agent.Usage{PromptTokens: promptTokens, CompletionTokens: completionTokens}, nil
+	msg := resp.Choices[0].Message
+	usage := agent.Usage{PromptTokens: promptTokens, CompletionTokens: completionTokens}
+	logCompletion(ctx, model, msg, usage)
+	return msg, usage, nil
 }
