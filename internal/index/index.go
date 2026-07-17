@@ -150,6 +150,27 @@ type Chunker interface {
 	Chunk(ctx context.Context, doc Document) ([]Chunk, error)
 }
 
+// VersionedChunker is an optional Chunker capability: reporting a version that
+// changes whenever the chunker's output would change for the same Document.
+//
+// Indexing skips a document whose body hash is unchanged, which is what keeps
+// re-ingestion cheap. That check cannot see a chunker change: the body is
+// identical, the code that splits it is not, so documents already indexed keep
+// chunks built by the old code forever and only a full --reset reaches them.
+// A chunker that reports a version gets its documents re-chunked when that
+// version changes, and nothing else re-chunked when it does not.
+//
+// Bump the version when the chunker's output changes for input it already
+// handled: different boundaries, different chunk text, different chunk types.
+// A chunker that does not implement this reports version 0, which never
+// triggers a re-chunk — the behavior before this existed.
+type VersionedChunker interface {
+	Chunker
+
+	// ChunkerVersion identifies this chunker's output format.
+	ChunkerVersion() int
+}
+
 // Embedder produces embedding vectors for texts. All returned vectors have Dim()
 // length, in the same order as the input.
 type Embedder interface {
