@@ -91,6 +91,20 @@ func (_c *DocumentCreate) SetMetadata(v map[string]interface{}) *DocumentCreate 
 	return _c
 }
 
+// SetChunkerVersion sets the "chunker_version" field.
+func (_c *DocumentCreate) SetChunkerVersion(v int) *DocumentCreate {
+	_c.mutation.SetChunkerVersion(v)
+	return _c
+}
+
+// SetNillableChunkerVersion sets the "chunker_version" field if the given value is not nil.
+func (_c *DocumentCreate) SetNillableChunkerVersion(v *int) *DocumentCreate {
+	if v != nil {
+		_c.SetChunkerVersion(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *DocumentCreate) SetCreatedAt(v time.Time) *DocumentCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -201,6 +215,10 @@ func (_c *DocumentCreate) defaults() {
 		v := document.DefaultMetadata
 		_c.mutation.SetMetadata(v)
 	}
+	if _, ok := _c.mutation.ChunkerVersion(); !ok {
+		v := document.DefaultChunkerVersion
+		_c.mutation.SetChunkerVersion(v)
+	}
 	if _, ok := _c.mutation.CapturedAt(); !ok {
 		v := document.DefaultCapturedAt()
 		_c.mutation.SetCapturedAt(v)
@@ -239,6 +257,9 @@ func (_c *DocumentCreate) check() error {
 	}
 	if _, ok := _c.mutation.Metadata(); !ok {
 		return &ValidationError{Name: "metadata", err: errors.New(`ent: missing required field "Document.metadata"`)}
+	}
+	if _, ok := _c.mutation.ChunkerVersion(); !ok {
+		return &ValidationError{Name: "chunker_version", err: errors.New(`ent: missing required field "Document.chunker_version"`)}
 	}
 	if _, ok := _c.mutation.CapturedAt(); !ok {
 		return &ValidationError{Name: "captured_at", err: errors.New(`ent: missing required field "Document.captured_at"`)}
@@ -306,6 +327,10 @@ func (_c *DocumentCreate) createSpec() (*Document, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Metadata(); ok {
 		_spec.SetField(document.FieldMetadata, field.TypeJSON, value)
 		_node.Metadata = value
+	}
+	if value, ok := _c.mutation.ChunkerVersion(); ok {
+		_spec.SetField(document.FieldChunkerVersion, field.TypeInt, value)
+		_node.ChunkerVersion = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(document.FieldCreatedAt, field.TypeTime, value)
@@ -486,6 +511,24 @@ func (u *DocumentUpsert) SetMetadata(v map[string]interface{}) *DocumentUpsert {
 // UpdateMetadata sets the "metadata" field to the value that was provided on create.
 func (u *DocumentUpsert) UpdateMetadata() *DocumentUpsert {
 	u.SetExcluded(document.FieldMetadata)
+	return u
+}
+
+// SetChunkerVersion sets the "chunker_version" field.
+func (u *DocumentUpsert) SetChunkerVersion(v int) *DocumentUpsert {
+	u.Set(document.FieldChunkerVersion, v)
+	return u
+}
+
+// UpdateChunkerVersion sets the "chunker_version" field to the value that was provided on create.
+func (u *DocumentUpsert) UpdateChunkerVersion() *DocumentUpsert {
+	u.SetExcluded(document.FieldChunkerVersion)
+	return u
+}
+
+// AddChunkerVersion adds v to the "chunker_version" field.
+func (u *DocumentUpsert) AddChunkerVersion(v int) *DocumentUpsert {
+	u.Add(document.FieldChunkerVersion, v)
 	return u
 }
 
@@ -701,6 +744,27 @@ func (u *DocumentUpsertOne) SetMetadata(v map[string]interface{}) *DocumentUpser
 func (u *DocumentUpsertOne) UpdateMetadata() *DocumentUpsertOne {
 	return u.Update(func(s *DocumentUpsert) {
 		s.UpdateMetadata()
+	})
+}
+
+// SetChunkerVersion sets the "chunker_version" field.
+func (u *DocumentUpsertOne) SetChunkerVersion(v int) *DocumentUpsertOne {
+	return u.Update(func(s *DocumentUpsert) {
+		s.SetChunkerVersion(v)
+	})
+}
+
+// AddChunkerVersion adds v to the "chunker_version" field.
+func (u *DocumentUpsertOne) AddChunkerVersion(v int) *DocumentUpsertOne {
+	return u.Update(func(s *DocumentUpsert) {
+		s.AddChunkerVersion(v)
+	})
+}
+
+// UpdateChunkerVersion sets the "chunker_version" field to the value that was provided on create.
+func (u *DocumentUpsertOne) UpdateChunkerVersion() *DocumentUpsertOne {
+	return u.Update(func(s *DocumentUpsert) {
+		s.UpdateChunkerVersion()
 	})
 }
 
@@ -1091,6 +1155,27 @@ func (u *DocumentUpsertBulk) SetMetadata(v map[string]interface{}) *DocumentUpse
 func (u *DocumentUpsertBulk) UpdateMetadata() *DocumentUpsertBulk {
 	return u.Update(func(s *DocumentUpsert) {
 		s.UpdateMetadata()
+	})
+}
+
+// SetChunkerVersion sets the "chunker_version" field.
+func (u *DocumentUpsertBulk) SetChunkerVersion(v int) *DocumentUpsertBulk {
+	return u.Update(func(s *DocumentUpsert) {
+		s.SetChunkerVersion(v)
+	})
+}
+
+// AddChunkerVersion adds v to the "chunker_version" field.
+func (u *DocumentUpsertBulk) AddChunkerVersion(v int) *DocumentUpsertBulk {
+	return u.Update(func(s *DocumentUpsert) {
+		s.AddChunkerVersion(v)
+	})
+}
+
+// UpdateChunkerVersion sets the "chunker_version" field to the value that was provided on create.
+func (u *DocumentUpsertBulk) UpdateChunkerVersion() *DocumentUpsertBulk {
+	return u.Update(func(s *DocumentUpsert) {
+		s.UpdateChunkerVersion()
 	})
 }
 

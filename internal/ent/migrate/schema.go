@@ -61,6 +61,7 @@ var (
 		{Name: "body", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "body_hash", Type: field.TypeString},
 		{Name: "metadata", Type: field.TypeJSON, Default: "{}"},
+		{Name: "chunker_version", Type: field.TypeInt, Default: 0},
 		{Name: "created_at", Type: field.TypeTime, Nullable: true},
 		{Name: "updated_at", Type: field.TypeTime, Nullable: true},
 		{Name: "captured_at", Type: field.TypeTime},
