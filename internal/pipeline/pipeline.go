@@ -35,7 +35,18 @@ type VectorStore interface {
 type PipelineOptions struct {
 	TracerProvider trace.TracerProvider
 	MeterProvider  metric.MeterProvider
+	// VectorDeleteTries bounds attempts at the post-commit stale-point delete
+	// (see deleteStaleVectors). Zero uses the default.
+	VectorDeleteTries uint
+	// VectorDeleteInterval is the first backoff step between those attempts.
+	// Zero uses the default.
+	VectorDeleteInterval time.Duration
 }
+
+const (
+	defaultVectorDeleteTries    = 3
+	defaultVectorDeleteInterval = 500 * time.Millisecond
+)
 
 func (opts *PipelineOptions) setDefaults() {
 	if opts.TracerProvider == nil {
@@ -43,6 +54,12 @@ func (opts *PipelineOptions) setDefaults() {
 	}
 	if opts.MeterProvider == nil {
 		opts.MeterProvider = otel.GetMeterProvider()
+	}
+	if opts.VectorDeleteTries == 0 {
+		opts.VectorDeleteTries = defaultVectorDeleteTries
+	}
+	if opts.VectorDeleteInterval == 0 {
+		opts.VectorDeleteInterval = defaultVectorDeleteInterval
 	}
 }
 
@@ -55,6 +72,9 @@ type Pipeline struct {
 	tracer   trace.Tracer
 	metrics  *pipelineMetrics
 	docLocks *keyLocker
+
+	vectorDeleteTries    uint
+	vectorDeleteInterval time.Duration
 }
 
 // New builds a Pipeline. vectors may be nil to skip vector indexing.
@@ -72,6 +92,9 @@ func New(db *ent.Client, chunker index.Chunker, embedder index.Embedder, vectors
 		tracer:   opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/pipeline"),
 		metrics:  m,
 		docLocks: newKeyLocker(),
+
+		vectorDeleteTries:    opts.VectorDeleteTries,
+		vectorDeleteInterval: opts.VectorDeleteInterval,
 	}, nil
 }
 
@@ -330,12 +353,15 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 				attribute.Int("chunks.stale", len(staleIDs)),
 			),
 		)
-		if err := p.vectors.Delete(deleteCtx, staleIDs); err != nil {
+		if err := p.deleteStaleVectors(deleteCtx, staleIDs); err != nil {
 			p.metrics.recordPhase(ctx, string(doc.Source), "vector_delete", time.Since(phaseStart).Seconds(), err)
 			deleteSpan.RecordError(err)
 			deleteSpan.SetStatus(codes.Error, err.Error())
 			deleteSpan.End()
-			zctx.From(ctx).Error("failed to delete stale vector points",
+			// Non-fatal: the document is indexed correctly regardless, and these
+			// points are now orphaned with no chunk row to find them from.
+			// `ssingest gc` reclaims them.
+			zctx.From(ctx).Error("failed to delete stale vector points, leaking orphans until gc",
 				zap.Error(err),
 				zap.Int("count", len(staleIDs)),
 			)
