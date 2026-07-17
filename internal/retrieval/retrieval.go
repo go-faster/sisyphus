@@ -36,6 +36,28 @@ const rrfK = 60.0
 // mean anything across queries; a fraction of the top score does.
 const minScoreFraction = 0.2
 
+// Backends are asked for candidateLimit results, not q.Limit. A backend's own
+// ordering is only a coarse prefilter: Postgres ts_rank has no IDF term, so for
+// a question naming one ticket key, a chunk matching only the query's common
+// project prefix outranks the chunk matching the rare number that identifies the
+// ticket, and the OR-rewrite in the lexical query means thousands of chunks
+// match on stopwords alone. The ranking that decides the answer — RRF fusion,
+// authority/identifier boosts, and the IDF anchor rerank — all run here, in Go.
+// Passing q.Limit straight through let the weakest ranker in the pipeline pick
+// the candidate set, so the exact-key chunks were cut inside Postgres before
+// anything downstream could promote them.
+const (
+	candidateFactor = 10
+	minCandidates   = 200
+	maxCandidates   = 500
+)
+
+// candidateLimit returns how many results to pull from each backend to rerank
+// down to limit.
+func candidateLimit(limit int) int {
+	return min(max(limit*candidateFactor, minCandidates), maxCandidates)
+}
+
 // authorityWeight maps a source authority to a multiplicative boost (plan §11).
 var authorityWeight = map[index.Authority]float64{
 	index.AuthorityHigh:       1.4,
@@ -134,6 +156,11 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) (_ []index.Result
 		q.Limit = 30
 	}
 
+	// Over-fetch: backends rank coarsely, this package ranks for real.
+	cq := q
+	cq.Limit = candidateLimit(q.Limit)
+	span.SetAttributes(attribute.Int("query.candidate_limit", cq.Limit))
+
 	var (
 		wg            sync.WaitGroup
 		lexicalResult []index.Result
@@ -141,12 +168,12 @@ func (s *Service) Retrieve(ctx context.Context, q index.Query) (_ []index.Result
 	)
 	if s.lexical != nil {
 		wg.Go(func() {
-			lexicalResult = s.searchBackend(ctx, "lexical", s.lexical, q)
+			lexicalResult = s.searchBackend(ctx, "lexical", s.lexical, cq)
 		})
 	}
 	if s.vector != nil {
 		wg.Go(func() {
-			rs := s.searchBackend(ctx, "vector", s.vector, q)
+			rs := s.searchBackend(ctx, "vector", s.vector, cq)
 			if rs == nil {
 				return
 			}
