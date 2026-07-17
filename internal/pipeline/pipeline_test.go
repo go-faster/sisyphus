@@ -102,6 +102,10 @@ func (testChunker) Chunk(_ context.Context, doc index.Document) ([]index.Chunk, 
 	return chunks, nil
 }
 
+// testSourcePrefix scopes this suite's fixtures so cleanDB can delete its own
+// rows without touching another package's.
+const testSourcePrefix = "test/"
+
 func openTestDB(t *testing.T) *ent.Client {
 	t.Helper()
 	dsn := os.Getenv("SISYPHUS_TEST_DB")
@@ -125,11 +129,16 @@ func openTestDB(t *testing.T) *ent.Client {
 	return client
 }
 
+// cleanDB removes this suite's own documents (and their chunks, via cascade
+// through the chunk delete below). It deliberately does not wipe the tables: the
+// DB-backed suites share one database in CI, so deleting every row would delete
+// another package's fixtures mid-test.
 func cleanDB(t *testing.T, client *ent.Client) {
 	t.Helper()
 	ctx := context.Background()
-	_, _ = client.Chunk.Delete().Exec(ctx)
-	_, _ = client.Document.Delete().Exec(ctx)
+	ours := document.SourceIDHasPrefix(testSourcePrefix)
+	_, _ = client.Chunk.Delete().Where(chunk.HasDocumentWith(ours)).Exec(ctx)
+	_, _ = client.Document.Delete().Where(ours).Exec(ctx)
 }
 
 func newTestPipeline(t *testing.T, client *ent.Client, store *fakeVectorStore) *Pipeline {

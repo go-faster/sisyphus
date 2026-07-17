@@ -6,8 +6,38 @@ import (
 	"os"
 	"testing"
 
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
+	_ "github.com/jackc/pgx/v5/stdlib"
+
+	"github.com/go-faster/sisyphus/internal/ent"
 	"github.com/go-faster/sisyphus/internal/index"
 )
+
+// openTestDB opens the shared test database and ensures the base schema exists.
+// ent owns the tables; migrations.sql layers the FTS column and index on top.
+func openTestDB(t *testing.T) (*sql.DB, *ent.Client) {
+	t.Helper()
+	dsn := os.Getenv("SISYPHUS_TEST_DB")
+	if dsn == "" {
+		t.Skip("set SISYPHUS_TEST_DB to run DB tests")
+	}
+	// The pgx driver registers itself via the blank import above; without it
+	// sql.Open fails with `unknown driver "pgx"`.
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("failed to open database: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := db.Ping(); err != nil {
+		t.Fatalf("failed to ping database: %v", err)
+	}
+	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))
+	if err := client.Schema.Create(t.Context()); err != nil {
+		t.Fatalf("failed to create schema: %v", err)
+	}
+	return db, client
+}
 
 // TestBuildQuery tests the pure query-building function.
 func TestBuildQuery(t *testing.T) {
@@ -207,32 +237,22 @@ func TestBuildQuery(t *testing.T) {
 	}
 }
 
-// TestSearchSkipWithoutDB skips if SISYPHUS_TEST_DSN is not set.
+// TestSearchSkipWithoutDB skips if SISYPHUS_TEST_DB is not set.
 func TestSearchSkipWithoutDB(t *testing.T) {
-	dsn := os.Getenv("SISYPHUS_TEST_DSN")
-	if dsn == "" {
-		t.Skip("set SISYPHUS_TEST_DSN to run DB tests")
-	}
+	db, client := openTestDB(t)
 
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatalf("failed to open database: %v", err)
-	}
-	defer db.Close()
-
-	// Test connection
-	if err := db.Ping(); err != nil {
-		t.Fatalf("failed to ping database: %v", err)
-	}
-
-	s := New(db, nil)
+	s := New(db, client)
 	if s == nil {
 		t.Fatal("New() returned nil")
 	}
+	if err := s.Migrate(t.Context()); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
 
-	// Test that Search returns empty results on empty DB
+	// A term no chunk contains must match nothing, whatever else the shared
+	// database happens to hold.
 	results, err := s.Search(t.Context(), index.Query{
-		Text:  "nonexistent",
+		Text:  "zzzznonexistentzzzz",
 		Limit: 10,
 	})
 	if err != nil {
@@ -240,27 +260,20 @@ func TestSearchSkipWithoutDB(t *testing.T) {
 	}
 
 	if len(results) != 0 {
-		t.Errorf("expected 0 results on empty db, got %d", len(results))
+		t.Errorf("expected 0 results for a term no chunk contains, got %d", len(results))
 	}
 }
 
 // TestMigrate tests that migrations run without error.
 func TestMigrateSkipWithoutDB(t *testing.T) {
-	dsn := os.Getenv("SISYPHUS_TEST_DSN")
-	if dsn == "" {
-		t.Skip("set SISYPHUS_TEST_DSN to run DB tests")
-	}
+	db, client := openTestDB(t)
 
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatalf("failed to open database: %v", err)
-	}
-	defer db.Close()
-
-	s := New(db, nil)
-	err = s.Migrate(t.Context())
-	if err != nil {
-		t.Errorf("Migrate failed: %v", err)
+	s := New(db, client)
+	// Migrate must be idempotent: it runs on every ssapi start.
+	for range 2 {
+		if err := s.Migrate(t.Context()); err != nil {
+			t.Errorf("Migrate failed: %v", err)
+		}
 	}
 }
 
