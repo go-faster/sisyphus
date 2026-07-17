@@ -20,6 +20,16 @@ func (f fakeSearcher) Search(_ context.Context, _ index.Query) ([]index.Result, 
 	return f.results, f.err
 }
 
+// recordingSearcher captures the Query each backend was actually handed.
+type recordingSearcher struct {
+	got *index.Query
+}
+
+func (r recordingSearcher) Search(_ context.Context, q index.Query) ([]index.Result, error) {
+	*r.got = q
+	return nil, nil
+}
+
 type fakeChunkFetcher struct {
 	chunks map[uuid.UUID]index.Chunk
 	err    error
@@ -271,6 +281,69 @@ func TestRetrieveHydratesVectorOnlyText(t *testing.T) {
 	}
 	if got[0].Chunk.TokenCount != 42 {
 		t.Fatalf("token count: expected 42, got %d", got[0].Chunk.TokenCount)
+	}
+}
+
+func TestRetrieveOverFetchesCandidates(t *testing.T) {
+	// Regression test: backends must be asked for a candidate pool, not the
+	// caller's limit. Truncating to q.Limit inside Postgres decided the answer
+	// with ts_rank (which has no IDF term), so an exact-key chunk sitting at
+	// lexical rank ~60 was cut before the anchor rerank could promote it.
+	var lexGot, vecGot index.Query
+	svc, err := New(recordingSearcher{got: &lexGot}, recordingSearcher{got: &vecGot}, nil, ServiceOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Retrieve(t.Context(), index.Query{Text: "q", Limit: 12}); err != nil {
+		t.Fatal(err)
+	}
+	if want := candidateLimit(12); lexGot.Limit != want {
+		t.Errorf("lexical backend limit: got %d, want %d", lexGot.Limit, want)
+	}
+	if want := candidateLimit(12); vecGot.Limit != want {
+		t.Errorf("vector backend limit: got %d, want %d", vecGot.Limit, want)
+	}
+	if lexGot.Text != "q" {
+		t.Errorf("query text must pass through unchanged, got %q", lexGot.Text)
+	}
+}
+
+func TestCandidateLimit(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		limit int
+		want  int
+	}{
+		{"small limit floors at minCandidates", 12, minCandidates},
+		{"default limit scales by factor", 30, 300},
+		{"mid limit scales by factor", 40, 400},
+		{"large limit caps at maxCandidates", 200, maxCandidates},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := candidateLimit(tt.limit); got != tt.want {
+				t.Errorf("candidateLimit(%d): got %d, want %d", tt.limit, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestRetrieveStillHonorsCallerLimit guards the other half of the over-fetch:
+// a wider candidate pool must not widen what the caller gets back.
+func TestRetrieveStillHonorsCallerLimit(t *testing.T) {
+	var results []index.Result
+	for i := range 50 {
+		results = append(results, result(uuid.New(), float64(50-i), false, nil))
+	}
+	svc, err := New(fakeSearcher{results: results}, nil, nil, ServiceOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.Retrieve(t.Context(), index.Query{Text: "q", Limit: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) > 5 {
+		t.Fatalf("expected at most 5 results, got %d", len(got))
 	}
 }
 
