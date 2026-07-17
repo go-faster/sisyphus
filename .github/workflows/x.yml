@@ -47,7 +47,11 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: stable
+          # Must match release.yml's go-version-file so both land on the
+          # same setup-go cache key (which embeds the exact installed Go
+          # version) — otherwise release.yml's cache never hits, even with
+          # matching ref scope.
+          go-version-file: go.mod
           cache: true
 
       # -p 1: five packages share this one database and each runs ent's
