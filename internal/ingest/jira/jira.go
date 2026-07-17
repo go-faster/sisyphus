@@ -12,7 +12,15 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	// JQL bounds are rendered in the Jira user's timezone (see buildJQL), which
+	// means time.LoadLocation must work wherever this runs. The runtime image
+	// ships no /usr/share/zoneinfo, and LoadLocation's failure mode here is a
+	// silent fall back to UTC — i.e. a wrong query bound that skips issues — so
+	// embed the database rather than depend on the base image carrying it.
+	_ "time/tzdata"
 	"unicode/utf8"
 
 	"github.com/go-faster/errors"
@@ -97,6 +105,12 @@ type Fetcher struct {
 	httpClient *http.Client
 	pageSize   int
 	userAgent  string
+
+	// tz is the authenticated user's timezone, used to render JQL date bounds.
+	// Resolved at most once via tzOnce, from CheckAuth's /myself response when
+	// available and lazily by location otherwise; never nil after tzOnce runs.
+	tzOnce sync.Once
+	tz     *time.Location
 }
 
 // New creates a new Fetcher. Returns an error if no credentials are configured.
@@ -131,6 +145,7 @@ type jiraUserResponse struct {
 	Key          string `json:"key"`
 	DisplayName  string `json:"displayName"`
 	EmailAddress string `json:"emailAddress"`
+	TimeZone     string `json:"timeZone"`
 }
 
 type jiraIssue struct {
@@ -280,7 +295,19 @@ func convertIssue(jiraIss jiraIssue) (chunkjira.Issue, error) {
 // "updated" field: "yyyy-MM-dd HH:mm" (no seconds, no timezone offset).
 const jqlDateFormat = "2006-01-02 15:04"
 
-func buildJQL(projects []string, cursor Cursor, opts FetchOptions) string {
+// buildJQL renders the incremental query. loc must be the authenticated user's
+// timezone: a JQL date literal carries no offset and Jira evaluates it in that
+// zone, so the cursor (held in UTC) has to be converted to wall-clock time
+// there. Rendering the UTC clock instead shifts the bound by the zone's offset
+// — harmlessly widening the window east of UTC, but moving it *forward* west of
+// UTC, which silently skips every issue updated inside the gap.
+//
+// Truncation to whole minutes only ever rounds the bound down, so the window
+// stays inclusive of the cursor.
+func buildJQL(projects []string, cursor Cursor, opts FetchOptions, loc *time.Location) string {
+	if loc == nil {
+		loc = time.UTC
+	}
 	quoted := make([]string, len(projects))
 	for i, p := range projects {
 		quoted[i] = `"` + p + `"`
@@ -296,7 +323,7 @@ func buildJQL(projects []string, cursor Cursor, opts FetchOptions) string {
 		updatedAfter = opts.UpdatedAfter
 	}
 	if !updatedAfter.IsZero() {
-		jql += ` AND updated >= "` + updatedAfter.UTC().Format(jqlDateFormat) + `"`
+		jql += ` AND updated >= "` + updatedAfter.In(loc).Format(jqlDateFormat) + `"`
 	}
 
 	jql += " ORDER BY updated ASC"
@@ -368,7 +395,16 @@ func (f *Fetcher) CheckAuth(ctx context.Context, projects []string) (AuthStatus,
 	if err := json.Unmarshal(body, &user); err != nil {
 		return AuthStatus{}, errors.Wrap(err, "parse jira auth check")
 	}
-	status := AuthStatus(user)
+	// This response also carries the timezone JQL bounds are rendered in; seed
+	// it here so Fetch does not request /myself a second time.
+	f.cacheLocation(ctx, user.TimeZone)
+	status := AuthStatus{
+		AccountID:    user.AccountID,
+		Name:         user.Name,
+		Key:          user.Key,
+		DisplayName:  user.DisplayName,
+		EmailAddress: user.EmailAddress,
+	}
 
 	for _, project := range projects {
 		project = strings.TrimSpace(project)
@@ -442,9 +478,11 @@ func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions, cursor Cursor) (
 		fields = strings.Join(opts.Fields, ",")
 	}
 
-	jql := buildJQL(opts.Projects, cursor, opts)
+	loc := f.location(ctx)
+	jql := buildJQL(opts.Projects, cursor, opts, loc)
 	zctx.From(ctx).Debug("jira fetch",
 		zap.String("jql", jql),
+		zap.String("timezone", loc.String()),
 		zap.Int("start_at", cursor.StartAt),
 		zap.Int("page_size", pageSize),
 		zap.String("fields", fields),
