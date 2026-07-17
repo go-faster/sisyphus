@@ -45,6 +45,8 @@ cmd/ssingest           ingestion CLI + daemon: git|files|gitlab|jira|telegram|al
                         own interval), so no external cron is needed. ssingest is the only
                         webhook/poll owner — ssapi does not run ingestion. Wires its dependencies
                         inline (does NOT reuse internal/wire, only internal/wire.NewServices).
+                        `gc` is the odd one out: not ingestion, but a one-shot sweep of
+                        vector-store points no chunk references (internal/vectorgc).
 internal/index          SHARED CONTRACT: Document, Chunk, Chunker, Embedder, Searcher, constants. Do not add deps here.
 internal/chunk/markdown heading-aware Markdown chunker (implements index.Chunker)
 internal/chunk/git      git commit message / tag -> chunks (implements index.Chunker)
@@ -73,7 +75,17 @@ internal/webhook        debounced Trigger (coalesces a webhook + a poll tick rac
 internal/pipeline       Pipeline.Index: idempotent doc+chunk upsert (ent) + embed (Ollama)
                         + vector Upsert/Delete (Qdrant). Per-chunk embedding skip (preserves
                         unchanged chunks' qdrant_point_id) and stale-point cleanup on changed docs.
-                        VectorStore interface: Upsert + Delete.
+                        VectorStore interface: Upsert + Delete. The stale-point delete runs
+                        AFTER the ent tx commits, so it cannot be rolled back: it retries
+                        (deleteStaleVectors), and on final failure leaks orphaned points that
+                        only `ssingest gc` can reclaim. Non-fatal by design — the document is
+                        indexed correctly either way.
+internal/vectorgc       `ssingest gc`: deletes vector points no chunk references (Postgres is
+                        the source of truth). Two passes separated by Grace: Index upserts
+                        points BEFORE committing chunk rows, so a doc mid-index looks exactly
+                        like an orphan, and deleting one is unrecoverable (the row lands with
+                        qdrant_point_id set, so it is never re-embedded and vector search can
+                        never reach it). Never collapse this into a single pass.
 internal/bot            gotd bot, /context handler
 internal/ent            ent schema + generated code (Document, Chunk, SupportRequest,
                         TelegramMessage, SyncState)

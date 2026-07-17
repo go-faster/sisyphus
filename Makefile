@@ -60,4 +60,11 @@ ingest-telegram:
 ingest-serve:
 	go run ./cmd/ssingest serve
 
-.PHONY: lint fmt codegen migrate-diff run run-bot run-agent ingest ingest-git ingest-gitlab ingest-jira ingest-telegram ingest-serve
+# Reclaim vector points no chunk references. Dry run first: gc deletes.
+gc-dry-run:
+	go run ./cmd/ssingest gc --dry-run
+
+gc:
+	go run ./cmd/ssingest gc
+
+.PHONY: lint fmt codegen migrate-diff run run-bot run-agent ingest ingest-git ingest-gitlab ingest-jira ingest-telegram ingest-serve gc gc-dry-run
