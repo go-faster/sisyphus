@@ -67,4 +67,11 @@ gc-dry-run:
 gc:
 	go run ./cmd/ssingest gc
 
-.PHONY: lint fmt codegen migrate-diff run run-bot run-agent ingest ingest-git ingest-gitlab ingest-jira ingest-telegram ingest-serve gc gc-dry-run
+# Rebind chunks whose vector point is keyed by the wrong ID. Dry run first.
+repair-dry-run:
+	go run ./cmd/ssingest repair --dry-run
+
+repair:
+	go run ./cmd/ssingest repair
+
+.PHONY: lint fmt codegen migrate-diff run run-bot run-agent ingest ingest-git ingest-gitlab ingest-jira ingest-telegram ingest-serve gc gc-dry-run repair repair-dry-run

@@ -258,9 +258,14 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 	}
 
 	var (
-		toEmbed   []index.Chunk
-		staleIDs  []uuid.UUID
-		qdrantIDs = make(map[uuid.UUID]uuid.UUID) // chunk.ID → qdrant_point_id to preserve
+		toEmbed []index.Chunk
+		// Stale rows and stale points are tracked separately: a row can exist
+		// without a point (indexed while the vector store was down), and a
+		// point's ID is whatever the row recorded, which is not necessarily the
+		// row's own ID on data written before that invariant was enforced.
+		staleRowIDs   []uuid.UUID
+		stalePointIDs []uuid.UUID
+		qdrantIDs     = make(map[uuid.UUID]uuid.UUID) // chunk.ID → qdrant_point_id to preserve
 	)
 
 	newChunkKeys := make(map[chunkKey]bool)
@@ -270,20 +275,41 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 		newChunkKeys[key] = true
 
 		ec, ok := existingByKey[key]
-		if ok && ec.QdrantPointID != nil {
-			// Already embedded — reuse existing IDs so qdrant_point_id
-			// stays valid.
+		if ok {
+			// Adopt the existing row's identity whether or not it has been
+			// embedded yet. persist upserts on (document_id, chunk_index,
+			// text_hash) with UpdateNewValues, which excludes the id column, so
+			// the row keeps the id it already has. Embedding under the chunker's
+			// fresh UUID would therefore write a point keyed by an id no row
+			// holds, while the row records that id as its qdrant_point_id — and
+			// vector hits hydrate their text by chunk id, so the point resolves
+			// to nothing forever after.
 			c.ID = ec.ID
-			qdrantIDs[ec.ID] = *ec.QdrantPointID
-			continue
+			if ec.QdrantPointID != nil {
+				// Already embedded — keep the point it is bound to.
+				qdrantIDs[ec.ID] = *ec.QdrantPointID
+				continue
+			}
+			// Row exists but was never embedded (e.g. indexed while the vector
+			// store was down). Re-embed it below, now under its own id.
 		}
 		toEmbed = append(toEmbed, *c)
 	}
 
 	for _, ec := range existingChunks {
 		key := chunkKey{index: ec.ChunkIndex, textHash: ec.TextHash}
-		if !newChunkKeys[key] && ec.QdrantPointID != nil {
-			staleIDs = append(staleIDs, ec.ID)
+		if newChunkKeys[key] {
+			continue
+		}
+		// The chunker no longer produces this chunk, so the row goes regardless
+		// of whether it was ever embedded. Gating the row delete on having a
+		// point left never-embedded rows behind forever — invisible to vector
+		// search but still returned by Postgres FTS, which reads every chunk row.
+		staleRowIDs = append(staleRowIDs, ec.ID)
+		if ec.QdrantPointID != nil {
+			// Delete the point the row actually recorded. Deleting ec.ID instead
+			// misses the real point whenever the two diverge, stranding it.
+			stalePointIDs = append(stalePointIDs, *ec.QdrantPointID)
 		}
 	}
 	span.SetAttributes(
@@ -291,13 +317,13 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 		attribute.Int("chunks.total", len(chunks)),
 		attribute.Int("chunks.to_embed", len(toEmbed)),
 		attribute.Int("chunks.reused", len(chunks)-len(toEmbed)),
-		attribute.Int("chunks.stale", len(staleIDs)),
+		attribute.Int("chunks.stale", len(staleRowIDs)),
 	)
 	span.AddEvent("chunks.planned", trace.WithAttributes(
 		attribute.Int("chunks.total", len(chunks)),
 		attribute.Int("chunks.to_embed", len(toEmbed)),
 		attribute.Int("chunks.reused", len(chunks)-len(toEmbed)),
-		attribute.Int("chunks.stale", len(staleIDs)),
+		attribute.Int("chunks.stale", len(staleRowIDs)),
 	))
 
 	// Embed before touching Postgres: if embedding or the vector upsert fails,
@@ -328,7 +354,7 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 			attribute.Int("chunks.total", len(chunks)),
 		),
 	)
-	if err := p.persist(persistCtx, doc, chunks, qdrantIDs, staleIDs); err != nil {
+	if err := p.persist(persistCtx, doc, chunks, qdrantIDs, staleRowIDs); err != nil {
 		p.metrics.recordPhase(ctx, string(doc.Source), "persist", time.Since(phaseStart).Seconds(), err)
 		persistSpan.RecordError(err)
 		persistSpan.SetStatus(codes.Error, err.Error())
@@ -345,15 +371,15 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 	persistSpan.AddEvent("persist.done")
 	persistSpan.End()
 
-	if p.vectors != nil && len(staleIDs) > 0 {
+	if p.vectors != nil && len(stalePointIDs) > 0 {
 		phaseStart = time.Now()
 		deleteCtx, deleteSpan := p.tracer.Start(ctx, "pipeline.vector_delete",
 			trace.WithAttributes(
 				attribute.String("source", string(doc.Source)),
-				attribute.Int("chunks.stale", len(staleIDs)),
+				attribute.Int("points.stale", len(stalePointIDs)),
 			),
 		)
-		if err := p.deleteStaleVectors(deleteCtx, staleIDs); err != nil {
+		if err := p.deleteStaleVectors(deleteCtx, stalePointIDs); err != nil {
 			p.metrics.recordPhase(ctx, string(doc.Source), "vector_delete", time.Since(phaseStart).Seconds(), err)
 			deleteSpan.RecordError(err)
 			deleteSpan.SetStatus(codes.Error, err.Error())
@@ -363,7 +389,7 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 			// `ssingest gc` reclaims them.
 			zctx.From(ctx).Error("failed to delete stale vector points, leaking orphans until gc",
 				zap.Error(err),
-				zap.Int("count", len(staleIDs)),
+				zap.Int("count", len(stalePointIDs)),
 			)
 		} else {
 			p.metrics.recordPhase(ctx, string(doc.Source), "vector_delete", time.Since(phaseStart).Seconds(), nil)
@@ -395,11 +421,11 @@ func (p *Pipeline) Index(ctx context.Context, doc index.Document) (rerr error) {
 		zap.Int("chunks", len(chunks)),
 		zap.Int("embedded_chunks", len(toEmbed)),
 		zap.Int("reused_chunks", len(chunks)-len(toEmbed)),
-		zap.Int("stale_chunks", len(staleIDs)))
+		zap.Int("stale_chunks", len(staleRowIDs)))
 	return nil
 }
 
-func (p *Pipeline) persist(ctx context.Context, doc index.Document, chunks []index.Chunk, qdrantIDs map[uuid.UUID]uuid.UUID, staleIDs []uuid.UUID) error {
+func (p *Pipeline) persist(ctx context.Context, doc index.Document, chunks []index.Chunk, qdrantIDs map[uuid.UUID]uuid.UUID, staleRowIDs []uuid.UUID) error {
 	return withTx(ctx, p.db, func(tx *ent.Tx) error {
 		err := tx.Document.Create().
 			SetID(doc.ID).
@@ -463,8 +489,8 @@ func (p *Pipeline) persist(ctx context.Context, doc index.Document, chunks []ind
 		}
 
 		// Delete stale chunks (no longer present in the new chunk set)
-		if len(staleIDs) > 0 {
-			if _, err := tx.Chunk.Delete().Where(chunk.IDIn(staleIDs...)).Exec(ctx); err != nil {
+		if len(staleRowIDs) > 0 {
+			if _, err := tx.Chunk.Delete().Where(chunk.IDIn(staleRowIDs...)).Exec(ctx); err != nil {
 				return errors.Wrap(err, "delete stale chunks")
 			}
 		}

@@ -80,12 +80,28 @@ internal/pipeline       Pipeline.Index: idempotent doc+chunk upsert (ent) + embe
                         (deleteStaleVectors), and on final failure leaks orphaned points that
                         only `ssingest gc` can reclaim. Non-fatal by design — the document is
                         indexed correctly either way.
+                        INVARIANT: a chunk's vector point is keyed by the chunk's own ID
+                        (chunks.id == chunks.qdrant_point_id). Retrieval hydrates a vector hit's
+                        text from Postgres BY CHUNK ID, so a point under any other ID resolves to
+                        empty text forever. Index enforces this by adopting the existing row's ID
+                        when a chunk matches (index, text_hash) — persist's upsert keeps the row's
+                        ID on conflict, so embedding under the chunker's fresh UUID would break it.
+                        The stale cleanup deletes the point ID the row RECORDED (not the row's own
+                        ID, which misses the real point on rows that drifted before this was
+                        enforced) and drops stale rows whether or not they were ever embedded
+                        (never-embedded leftovers stay visible to Postgres FTS otherwise).
+                        internal/vectorrepair repairs rows that already drifted.
 internal/vectorgc       `ssingest gc`: deletes vector points no chunk references (Postgres is
                         the source of truth). Two passes separated by Grace: Index upserts
                         points BEFORE committing chunk rows, so a doc mid-index looks exactly
                         like an orphan, and deleting one is unrecoverable (the row lands with
                         qdrant_point_id set, so it is never re-embedded and vector search can
                         never reach it). Never collapse this into a single pass.
+internal/vectorrepair   `ssingest repair`: re-embeds chunks whose point is keyed by the wrong
+                        ID (chunks.id != qdrant_point_id) so vector hits can hydrate again.
+                        Writes the new point BEFORE rebinding the row and deletes the old one
+                        after, so an interrupted run leaves an orphan (gc's job), never a row
+                        pointing at nothing.
 internal/bot            gotd bot, /context handler
 internal/ent            ent schema + generated code (Document, Chunk, SupportRequest,
                         TelegramMessage, SyncState)
