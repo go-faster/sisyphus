@@ -2,18 +2,51 @@ package telegram
 
 import (
 	"context"
+	stdsql "database/sql"
 	"os"
 	"testing"
 	"time"
+
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
+	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/go-faster/sisyphus/internal/ent"
 	"github.com/go-faster/sisyphus/internal/index"
 )
 
-// fakeFetcher implements MessageFetcher with canned data for tests.
+// fakeFetcher implements MessageFetcher with canned data for tests. It serves
+// pages in call order and ignores chatID, so it is only valid for single-chat
+// requests; use chatFetcher for more than one chat.
 type fakeFetcher struct {
 	pages [][]RawMessage // each call returns the next page; last page hasMore=false
 	call  int
+}
+
+// chatFetcher implements MessageFetcher with per-chat pages, the way the real
+// fetcher behaves: a request for a chat only ever yields that chat's messages.
+type chatFetcher struct {
+	pages map[int64][][]RawMessage
+	calls map[int64]int
+}
+
+func (f *chatFetcher) FetchHistory(_ context.Context, chatID int64, _, _, limit int) ([]RawMessage, bool, error) {
+	if f.calls == nil {
+		f.calls = make(map[int64]int)
+	}
+	pages := f.pages[chatID]
+	i := f.calls[chatID]
+	if i >= len(pages) {
+		return nil, false, nil
+	}
+	f.calls[chatID]++
+
+	page := pages[i]
+	hasMore := f.calls[chatID] < len(pages)
+	if len(page) > limit {
+		page = page[:limit]
+	}
+	return page, hasMore, nil
 }
 
 func (f *fakeFetcher) FetchHistory(_ context.Context, chatID int64, minID, offsetID, limit int) ([]RawMessage, bool, error) {
@@ -177,15 +210,19 @@ func TestBackfill_MultiChat(t *testing.T) {
 		t.Skip("set SISYPHUS_TEST_DB to run ent-backed tests")
 	}
 
-	fetcher := &fakeFetcher{
-		pages: [][]RawMessage{
-			{
+	// Pages are keyed by chat: Backfill sorts chats by ID before fetching, so a
+	// fetcher that hands out pages in call order (ignoring chatID, as the real
+	// one never would) gives every page to whichever chat sorts first and
+	// starves the rest.
+	fetcher := &chatFetcher{
+		pages: map[int64][][]RawMessage{
+			-1001: {{
 				{ChatID: -1001, MessageID: 1, Date: time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC), Text: "a", SenderID: 1},
 				{ChatID: -1001, MessageID: 2, Date: time.Date(2026, 6, 1, 10, 5, 0, 0, time.UTC), Text: "b", SenderID: 1},
-			},
-			{
+			}},
+			-1002: {{
 				{ChatID: -1002, MessageID: 10, Date: time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC), Text: "c", SenderID: 2},
-			},
+			}},
 		},
 	}
 
@@ -412,10 +449,26 @@ func testDB(t *testing.T) *ent.Client {
 		return nil
 	}
 
-	db, err := ent.Open("pgx", dsn)
+	// ent.Open takes a dialect, not a driver name: passing "pgx" always failed
+	// with `unsupported driver`, so these tests could not run at all. Open the
+	// driver directly and hand ent the dialect, as the other DB-backed suites do.
+	db, err := stdsql.Open("pgx", dsn)
 	if err != nil {
 		t.Fatalf("open test db: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
-	return db
+	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))
+	t.Cleanup(func() { _ = client.Close() })
+
+	ctx := context.Background()
+	if err := client.Schema.Create(ctx); err != nil {
+		t.Fatalf("migrate test db: %v", err)
+	}
+	// Own only this suite's tables, so a shared database stays usable.
+	cleanup := func() {
+		_, _ = client.SupportRequest.Delete().Exec(context.Background())
+		_, _ = client.TelegramMessage.Delete().Exec(context.Background())
+	}
+	cleanup()
+	t.Cleanup(cleanup)
+	return client
 }

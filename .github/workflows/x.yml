@@ -14,6 +14,51 @@ jobs:
       enable-arm64: false
       # submodules: true
       go: stable
+  # DB-backed tests skip themselves unless SISYPHUS_TEST_DB is set, so they run
+  # nowhere without this job. The shared test job above cannot host them: its
+  # matrix spans macOS and Windows, and the reusable workflow exposes no way to
+  # attach a service container.
+  #
+  # This runs the whole suite rather than only today's DB-backed packages, so a
+  # DB-backed test added to a new package is covered without touching CI.
+  test-db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: sisyphus
+          POSTGRES_PASSWORD: sisyphus
+          POSTGRES_DB: sisyphus_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sisyphus"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          cache: true
+
+      # -p 1: five packages share this one database and each runs ent's
+      # Schema.Create against it, so serialising them removes any chance of
+      # concurrent DDL or fixture interference. Costs ~15s here and keeps the
+      # job deterministic; the matrix job above still runs the suite in parallel.
+      - name: Run tests against Postgres
+        env:
+          SISYPHUS_TEST_DB: postgres://sisyphus:sisyphus@localhost:5432/sisyphus_test?sslmode=disable
+        run: go test -p 1 ./...
+
   lint:
     uses: go-faster/x/.github/workflows/lint.yml@main
     with:

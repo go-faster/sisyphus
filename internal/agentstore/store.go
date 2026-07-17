@@ -87,11 +87,13 @@ func (s *Store) Submit(ctx context.Context, idempotencyKey, description string) 
 // MarkRunning transitions a job to StatusRunning.
 func (s *Store) MarkRunning(ctx context.Context, id uuid.UUID) error {
 	now := time.Now()
-	err := s.db.InvestigationJob.UpdateOneID(id).
+	if err := s.db.InvestigationJob.UpdateOneID(id).
 		SetStatus(string(StatusRunning)).
 		SetStartedAt(now).
-		Exec(ctx)
-	return errors.Wrap(err, "mark job running")
+		Exec(ctx); err != nil {
+		return errors.Wrap(err, "mark job running")
+	}
+	return nil
 }
 
 // Complete records a successful investigation result and transitions the job
@@ -101,24 +103,28 @@ func (s *Store) Complete(ctx context.Context, id uuid.UUID, res agent.Result) er
 	if err != nil {
 		return errors.Wrap(err, "encode report")
 	}
-	err = s.db.InvestigationJob.UpdateOneID(id).
+	if err := s.db.InvestigationJob.UpdateOneID(id).
 		SetStatus(string(StatusDone)).
 		SetReport(data).
 		SetIterations(res.Iterations).
 		SetToolsUsed(res.ToolsUsed).
 		SetCompletedAt(time.Now()).
-		Exec(ctx)
-	return errors.Wrap(err, "complete job")
+		Exec(ctx); err != nil {
+		return errors.Wrap(err, "complete job")
+	}
+	return nil
 }
 
 // Fail records an investigation failure and transitions the job to StatusError.
 func (s *Store) Fail(ctx context.Context, id uuid.UUID, cause error) error {
-	err := s.db.InvestigationJob.UpdateOneID(id).
+	if err := s.db.InvestigationJob.UpdateOneID(id).
 		SetStatus(string(StatusError)).
 		SetErrorMessage(cause.Error()).
 		SetCompletedAt(time.Now()).
-		Exec(ctx)
-	return errors.Wrap(err, "fail job")
+		Exec(ctx); err != nil {
+		return errors.Wrap(err, "fail job")
+	}
+	return nil
 }
 
 // Get returns the job with the given ID, or ErrNotFound.

@@ -54,6 +54,7 @@ func TestDatabaseReaderResolveContent(t *testing.T) {
 			SetSourceID("myrepo:test.md").
 			SetTitle("Test Document").
 			SetBody(testContent).
+			SetBodyHash(index.Hash(testContent)).
 			Save(ctx)
 		require.NoError(t, err)
 
@@ -78,6 +79,7 @@ func TestDatabaseReaderResolveContent(t *testing.T) {
 			SetSourceID("myrepo:main.go").
 			SetTitle("Main File").
 			SetBody(testContent).
+			SetBodyHash(index.Hash(testContent)).
 			Save(ctx)
 		require.NoError(t, err)
 
@@ -102,6 +104,7 @@ func TestDatabaseReaderResolveContent(t *testing.T) {
 			SetSourceID("myrepo:docker-compose.yml").
 			SetTitle("Docker Compose").
 			SetBody(testContent).
+			SetBodyHash(index.Hash(testContent)).
 			Save(ctx)
 		require.NoError(t, err)
 
@@ -135,6 +138,7 @@ func TestDatabaseReaderResolveContent(t *testing.T) {
 			SetSourceID("myrepo:lines.txt").
 			SetTitle("Lines").
 			SetBody(testContent).
+			SetBodyHash(index.Hash(testContent)).
 			Save(ctx)
 		require.NoError(t, err)
 
@@ -161,6 +165,7 @@ func TestDatabaseReaderResolveContent(t *testing.T) {
 			SetSourceID("myrepo:single.txt").
 			SetTitle("Single").
 			SetBody(testContent).
+			SetBodyHash(index.Hash(testContent)).
 			Save(ctx)
 		require.NoError(t, err)
 
@@ -187,6 +192,7 @@ func TestDatabaseReaderResolveContent(t *testing.T) {
 			SetSourceID("myrepo:beyond.txt").
 			SetTitle("Beyond").
 			SetBody(testContent).
+			SetBodyHash(index.Hash(testContent)).
 			Save(ctx)
 		require.NoError(t, err)
 
@@ -213,6 +219,7 @@ func TestDatabaseReaderResolveContent(t *testing.T) {
 			SetSourceID("myrepo:reverse.txt").
 			SetTitle("Reverse").
 			SetBody(testContent).
+			SetBodyHash(index.Hash(testContent)).
 			Save(ctx)
 		require.NoError(t, err)
 
@@ -240,6 +247,7 @@ func TestDatabaseReaderResolveContent(t *testing.T) {
 			SetSourceID("myrepo:alllines.txt").
 			SetTitle("AllLines").
 			SetBody(testContent).
+			SetBodyHash(index.Hash(testContent)).
 			Save(ctx)
 		require.NoError(t, err)
 
@@ -266,6 +274,7 @@ func TestDatabaseReaderResolveContent(t *testing.T) {
 			SetSourceID("myrepo:fromstart.txt").
 			SetTitle("FromStart").
 			SetBody(testContent).
+			SetBodyHash(index.Hash(testContent)).
 			Save(ctx)
 		require.NoError(t, err)
 

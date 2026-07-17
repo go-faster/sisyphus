@@ -304,7 +304,10 @@ Down`-style comment will actually execute.
 - Format: `golangci-lint fmt ./...` (do not hand-format).
 - Lint: `golangci-lint run --fix ./...` (`--fix` can automatically fix some issues).
 - Test: `make test` (or `make test_fast` = `go test ./...`).
-- Tests must be hermetic, fast (no real sleeps), non-flaky, cross-platform. DB-backed tests use testcontainers or are skipped when no DB is available — convention: skip when `SISYPHUS_TEST_DB` (postgres DSN) is unset.
+- Tests must be hermetic, fast (no real sleeps), non-flaky, cross-platform. DB-backed tests use testcontainers or are skipped when no DB is available — convention: skip when `SISYPHUS_TEST_DB` (postgres DSN) is unset. That name is the ONLY gate: a suite gated on anything else runs nowhere.
+- CI's `test-db` job (`.github/workflows/x.yml`) sets `SISYPHUS_TEST_DB` against a Postgres service and runs the whole suite with `-p 1`. The shared `test` job cannot: its matrix spans macOS/Windows and the reusable workflow takes no service container. So a DB-backed test is only really covered if it skips on that one variable.
+- The DB-backed suites share one database, so a suite must delete only its own fixtures on cleanup (scope by source prefix or table). Wiping a table deletes another package's rows mid-test.
+- Locally: `docker run --rm -e POSTGRES_PASSWORD=test -e POSTGRES_USER=test -e POSTGRES_DB=test -p 5433:5432 postgres:17-alpine`, then `SISYPHUS_TEST_DB="postgres://test:test@127.0.0.1:5433/test?sslmode=disable" go test ./...`.
 
 ## Ingestion
 
