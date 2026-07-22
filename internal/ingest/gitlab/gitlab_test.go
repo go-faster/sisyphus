@@ -11,9 +11,17 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/go-faster/sisyphus/internal/index"
 )
+
+// fetchIssuesErr discards FetchIssues' refs/cursor/hasMore, for tests that
+// only care whether the call errored.
+func fetchIssuesErr(f *Fetcher, cursor Cursor) error {
+	refs, next, hasMore, err := f.FetchIssues(context.Background(), 1, cursor)
+	_ = refs
+	_ = next
+	_ = hasMore
+	return err
+}
 
 func TestNew(t *testing.T) {
 	t.Run("no token", func(t *testing.T) {
@@ -272,21 +280,21 @@ func TestFetchIssuesBasic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := f.FetchIssues(context.Background(), 1, Cursor{})
+	refs, _, _, err := f.FetchIssues(context.Background(), 1, Cursor{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if len(result.Documents) != 3 {
-		t.Fatalf("expected 3 docs, got %d", len(result.Documents))
+	if len(refs) != 3 {
+		t.Fatalf("expected 3 refs, got %d", len(refs))
 	}
 
-	for i, doc := range result.Documents {
-		if doc.Source != index.SourceGitLabIssue {
-			t.Errorf("doc[%d] Source: expected %q, got %q", i, index.SourceGitLabIssue, doc.Source)
+	for i, ref := range refs {
+		if ref.Project != "1" {
+			t.Errorf("ref[%d] Project: expected %q, got %q", i, "1", ref.Project)
 		}
-		if !strings.Contains(doc.SourceID, "issues/") {
-			t.Errorf("doc[%d] SourceID should contain 'issues/', got %q", i, doc.SourceID)
+		if ref.Issue.IID != i+1 {
+			t.Errorf("ref[%d] Issue.IID: expected %d, got %d", i, i+1, ref.Issue.IID)
 		}
 	}
 }
@@ -314,21 +322,21 @@ func TestFetchMergeRequestsBasic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := f.FetchMergeRequests(context.Background(), 1, Cursor{})
+	refs, _, _, err := f.FetchMergeRequests(context.Background(), 1, Cursor{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if len(result.Documents) != 3 {
-		t.Fatalf("expected 3 docs, got %d", len(result.Documents))
+	if len(refs) != 3 {
+		t.Fatalf("expected 3 refs, got %d", len(refs))
 	}
 
-	for i, doc := range result.Documents {
-		if doc.Source != index.SourceGitLabMR {
-			t.Errorf("doc[%d] Source: expected %q, got %q", i, index.SourceGitLabMR, doc.Source)
+	for i, ref := range refs {
+		if ref.Project != "1" {
+			t.Errorf("ref[%d] Project: expected %q, got %q", i, "1", ref.Project)
 		}
-		if !strings.Contains(doc.SourceID, "merge_requests/") {
-			t.Errorf("doc[%d] SourceID should contain 'merge_requests/', got %q", i, doc.SourceID)
+		if ref.MR.IID != i+1 {
+			t.Errorf("ref[%d] MR.IID: expected %d, got %d", i, i+1, ref.MR.IID)
 		}
 	}
 }
@@ -402,7 +410,7 @@ func TestPrivateTokenHeader(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = f.FetchIssues(context.Background(), 1, Cursor{})
+	err = fetchIssuesErr(f, Cursor{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -473,23 +481,35 @@ func TestDiscussionsAndLinksEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := f.FetchIssues(context.Background(), 1, Cursor{})
+	refs, _, _, err := f.FetchIssues(context.Background(), 1, Cursor{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if len(result.Documents) != 1 {
-		t.Fatalf("expected 1 doc, got %d", len(result.Documents))
+	if len(refs) != 1 {
+		t.Fatalf("expected 1 ref, got %d", len(refs))
 	}
 
-	doc := result.Documents[0]
+	iss := refs[0].Issue
 
-	// Check that assignees and links appear in the body
-	if !strings.Contains(doc.Body, "bob") {
-		t.Errorf("expected assignee bob in body")
+	assigned := false
+	for _, a := range iss.Assignees {
+		if a == "bob" {
+			assigned = true
+		}
 	}
-	if !strings.Contains(doc.Body, "relates_to") {
-		t.Errorf("expected link in body")
+	if !assigned {
+		t.Errorf("expected assignee bob, got %v", iss.Assignees)
+	}
+
+	relatesTo := false
+	for _, l := range iss.Links {
+		if l.Type == "relates_to" {
+			relatesTo = true
+		}
+	}
+	if !relatesTo {
+		t.Errorf("expected relates_to link, got %v", iss.Links)
 	}
 }
 
@@ -545,20 +565,21 @@ func TestSystemNotesFiltered(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := f.FetchIssues(context.Background(), 1, Cursor{})
+	refs, _, _, err := f.FetchIssues(context.Background(), 1, Cursor{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if len(result.Documents) != 1 {
-		t.Fatalf("expected 1 doc, got %d", len(result.Documents))
+	if len(refs) != 1 {
+		t.Fatalf("expected 1 ref, got %d", len(refs))
 	}
 
-	doc := result.Documents[0]
-	if rawIssue, ok := doc.Metadata["gitlab_issue"]; ok {
-		// Check that only the real comment is present
-		// This is verified in the chunker tests
-		_ = rawIssue
+	threads := refs[0].Issue.Threads
+	if len(threads) != 1 || len(threads[0].Comments) != 1 {
+		t.Fatalf("expected 1 thread with 1 (system-filtered) comment, got %+v", threads)
+	}
+	if threads[0].Comments[0].Body != "Real comment" {
+		t.Errorf("expected system note filtered out, got %q", threads[0].Comments[0].Body)
 	}
 }
 
@@ -582,7 +603,7 @@ func TestProjectURLEncoding(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = f.FetchIssues(context.Background(), 1, Cursor{})
+	err = fetchIssuesErr(f, Cursor{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -613,7 +634,7 @@ func TestBaseURLTrim(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = f.FetchIssues(context.Background(), 1, Cursor{})
+	err = fetchIssuesErr(f, Cursor{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -641,7 +662,7 @@ func TestEmptyProjects(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = f.FetchIssues(context.Background(), 1, Cursor{})
+	err = fetchIssuesErr(f, Cursor{})
 	if err == nil {
 		t.Fatal("expected error for empty projects")
 	}
@@ -671,7 +692,7 @@ func TestCursorUpdatedAfter(t *testing.T) {
 	}
 
 	cursor := Cursor{UpdatedAfter: "2026-06-01T05:00:00Z"}
-	_, err = f.FetchIssues(context.Background(), 1, cursor)
+	err = fetchIssuesErr(f, cursor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -708,7 +729,7 @@ func TestUserAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = f.FetchIssues(context.Background(), 1, Cursor{})
+	err = fetchIssuesErr(f, Cursor{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -755,7 +776,7 @@ func TestMultipleProjects(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := f.FetchIssues(context.Background(), 1, Cursor{})
+	refs, _, _, err := f.FetchIssues(context.Background(), 1, Cursor{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -765,8 +786,8 @@ func TestMultipleProjects(t *testing.T) {
 		t.Errorf("expected 3 issue requests, got %d", issueRequestCount)
 	}
 
-	// Should have 6 documents (2 issues per project)
-	if len(result.Documents) != 6 {
-		t.Fatalf("expected 6 docs, got %d", len(result.Documents))
+	// Should have 6 refs (2 issues per project)
+	if len(refs) != 6 {
+		t.Fatalf("expected 6 refs, got %d", len(refs))
 	}
 }

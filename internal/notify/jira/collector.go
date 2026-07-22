@@ -18,7 +18,7 @@ import (
 // Fetcher is the subset of *ingestjira.Fetcher the collector needs, kept as
 // an interface so tests can inject a fake instead of hitting Jira.
 type Fetcher interface {
-	FetchIssuesStructured(ctx context.Context, opts ingestjira.FetchOptions, cursor ingestjira.Cursor) ([]chunkjira.Issue, ingestjira.Cursor, bool, error)
+	FetchIssues(ctx context.Context, opts ingestjira.FetchOptions, cursor ingestjira.Cursor) ([]chunkjira.Issue, ingestjira.Cursor, bool, error)
 }
 
 // state is the collector's cursor, JSON-encoded into the notify_jira
@@ -58,7 +58,7 @@ func (c *Collector) Collect(ctx context.Context, cursor string) ([]notify.Event,
 
 	var events []notify.Event
 	for {
-		issues, nextCursor, hasMore, err := c.Fetcher.FetchIssuesStructured(ctx, opts, cur)
+		issues, nextCursor, hasMore, err := c.Fetcher.FetchIssues(ctx, opts, cur)
 		if err != nil {
 			return nil, "", errors.Wrap(err, "fetch jira issues")
 		}

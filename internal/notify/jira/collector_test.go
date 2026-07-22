@@ -20,7 +20,7 @@ type fakeFetcher struct {
 	pages map[string][]chunkjira.Issue
 }
 
-func (f *fakeFetcher) FetchIssuesStructured(_ context.Context, _ ingestjira.FetchOptions, cursor ingestjira.Cursor) ([]chunkjira.Issue, ingestjira.Cursor, bool, error) {
+func (f *fakeFetcher) FetchIssues(_ context.Context, _ ingestjira.FetchOptions, cursor ingestjira.Cursor) ([]chunkjira.Issue, ingestjira.Cursor, bool, error) {
 	issues := f.pages[cursor.LastUpdated]
 	var maxUpdated string
 	for _, iss := range issues {

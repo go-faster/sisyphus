@@ -18,7 +18,7 @@ import (
 // Fetcher is the subset of *ingestgitlab.Fetcher the collector needs, kept
 // as an interface so tests can inject a fake instead of hitting GitLab.
 type Fetcher interface {
-	FetchMergeRequestsStructured(ctx context.Context, page int, cursor ingestgitlab.Cursor) ([]ingestgitlab.MergeRequestRef, ingestgitlab.Cursor, bool, error)
+	FetchMergeRequests(ctx context.Context, page int, cursor ingestgitlab.Cursor) ([]ingestgitlab.MergeRequestRef, ingestgitlab.Cursor, bool, error)
 }
 
 // state is the collector's cursor, JSON-encoded into the notify_gitlab
@@ -64,7 +64,7 @@ func (c *Collector) Collect(ctx context.Context, cursor string) ([]notify.Event,
 	var events []notify.Event
 	page := 1
 	for {
-		refs, nextCursor, hasMore, err := c.Fetcher.FetchMergeRequestsStructured(ctx, page, startCursor)
+		refs, nextCursor, hasMore, err := c.Fetcher.FetchMergeRequests(ctx, page, startCursor)
 		if err != nil {
 			return nil, "", errors.Wrap(err, "fetch gitlab merge requests")
 		}

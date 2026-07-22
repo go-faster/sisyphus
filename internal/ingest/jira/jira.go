@@ -1,6 +1,12 @@
-// Package jira ingests Jira issues via the REST API into normalized Documents
-// (plan §5). It supports Jira Cloud (Basic auth with email + API token) and
-// Jira Server/DC (Basic auth with username + password, or PAT as Bearer token).
+// Package jira fetches Jira issues via the REST API, returning the
+// chunker's structured chunkjira.Issue type. It knows nothing about
+// index.Document or notifications: converting a fetched issue into an
+// index.Document is internal/chunk/jira's job (DocumentFromIssue), called by
+// whichever consumer needs it (internal/ingestrun for indexing,
+// internal/notify/jira for notifications) — so this package has exactly one
+// responsibility: talk to the Jira REST API. It supports Jira Cloud (Basic
+// auth with email + API token) and Jira Server/DC (Basic auth with username
+// + password, or PAT as Bearer token).
 package jira
 
 import (
@@ -29,7 +35,6 @@ import (
 
 	chunkjira "github.com/go-faster/sisyphus/internal/chunk/jira"
 	"github.com/go-faster/sisyphus/internal/cliversion"
-	"github.com/go-faster/sisyphus/internal/index"
 	"github.com/go-faster/sisyphus/internal/netclient"
 )
 
@@ -76,13 +81,6 @@ type FetchOptions struct {
 type Cursor struct {
 	LastUpdated string `json:"last_updated"` // RFC3339 timestamp
 	StartAt     int    `json:"start_at"`     // page offset within that bound
-}
-
-// FetchResult is returned by a single Fetch call.
-type FetchResult struct {
-	Documents  []index.Document
-	NextCursor Cursor
-	HasMore    bool
 }
 
 // AuthStatus describes the Jira identity used by the configured credentials.
@@ -463,33 +461,9 @@ func (f *Fetcher) doPreflight(req *http.Request, op string) ([]byte, error) {
 	return f.doRequest(req, op)
 }
 
-// Fetch performs ONE page of Jira's /rest/api/2/search endpoint, returning
-// the issues as index.Documents and an updated cursor.
-func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions, cursor Cursor) (FetchResult, error) {
-	issues, nextCursor, hasMore, err := f.fetchStructured(ctx, opts, cursor)
-	if err != nil {
-		return FetchResult{}, err
-	}
-
-	docs := make([]index.Document, 0, len(issues))
-	for _, iss := range issues {
-		docs = append(docs, chunkjira.DocumentFromIssue(iss))
-	}
-
-	return FetchResult{Documents: docs, NextCursor: nextCursor, HasMore: hasMore}, nil
-}
-
-// FetchIssuesStructured is Fetch without the index.Document conversion, for
-// callers (the notify collector) that need the raw Assignee/AssigneeAccountID
-// rather than a chunked document.
-func (f *Fetcher) FetchIssuesStructured(ctx context.Context, opts FetchOptions, cursor Cursor) ([]chunkjira.Issue, Cursor, bool, error) {
-	return f.fetchStructured(ctx, opts, cursor)
-}
-
-// fetchStructured performs ONE page of Jira's /rest/api/2/search endpoint and
-// advances the cursor. Shared by Fetch (ingestion) and FetchIssuesStructured
-// (notification collector).
-func (f *Fetcher) fetchStructured(ctx context.Context, opts FetchOptions, cursor Cursor) ([]chunkjira.Issue, Cursor, bool, error) {
+// FetchIssues performs ONE page of Jira's /rest/api/2/search endpoint,
+// returning the issues and an advanced cursor.
+func (f *Fetcher) FetchIssues(ctx context.Context, opts FetchOptions, cursor Cursor) ([]chunkjira.Issue, Cursor, bool, error) {
 	if len(opts.Projects) == 0 {
 		return nil, Cursor{}, false, errors.New("jira: empty projects list")
 	}
@@ -584,35 +558,4 @@ func (f *Fetcher) fetchStructured(ctx context.Context, opts FetchOptions, cursor
 	}
 
 	return issues, nextCursor, hasMore, nil
-}
-
-// FetchAll pages through all results starting at cursor, calling fn for each
-// batch of documents.  Stops when HasMore is false.  Returns the final cursor
-// (progressed past the last issue seen, with LastUpdated = last issue's
-// updated, StartAt = 0).  If fn returns an error, FetchAll stops and returns
-// errors.Wrap(err, "jira fetch batch").
-func (f *Fetcher) FetchAll(
-	ctx context.Context,
-	opts FetchOptions,
-	cursor Cursor,
-	fn func(ctx context.Context, docs []index.Document, cursor Cursor) error,
-) (Cursor, error) {
-	for {
-		result, err := f.Fetch(ctx, opts, cursor)
-		if err != nil {
-			return cursor, errors.Wrap(err, "jira fetch batch")
-		}
-
-		if len(result.Documents) > 0 {
-			if err := fn(ctx, result.Documents, result.NextCursor); err != nil {
-				return cursor, errors.Wrap(err, "jira fetch batch")
-			}
-		}
-
-		if !result.HasMore {
-			return result.NextCursor, nil
-		}
-
-		cursor = result.NextCursor
-	}
 }

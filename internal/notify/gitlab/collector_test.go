@@ -20,7 +20,7 @@ type fakeFetcher struct {
 	pages map[string][]ingestgitlab.MergeRequestRef
 }
 
-func (f *fakeFetcher) FetchMergeRequestsStructured(_ context.Context, _ int, cursor ingestgitlab.Cursor) ([]ingestgitlab.MergeRequestRef, ingestgitlab.Cursor, bool, error) {
+func (f *fakeFetcher) FetchMergeRequests(_ context.Context, _ int, cursor ingestgitlab.Cursor) ([]ingestgitlab.MergeRequestRef, ingestgitlab.Cursor, bool, error) {
 	refs := f.pages[cursor.UpdatedAfter]
 	var maxUpdated string
 	for _, r := range refs {

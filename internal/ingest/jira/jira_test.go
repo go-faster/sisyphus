@@ -15,8 +15,17 @@ import (
 	"unicode/utf8"
 
 	chunkjira "github.com/go-faster/sisyphus/internal/chunk/jira"
-	"github.com/go-faster/sisyphus/internal/index"
 )
+
+// fetchIssuesErr discards FetchIssues' issues/cursor/hasMore, for tests
+// that only care whether the call errored.
+func fetchIssuesErr(f *Fetcher, opts FetchOptions, cursor Cursor) error {
+	issues, next, hasMore, err := f.FetchIssues(context.Background(), opts, cursor)
+	_ = issues
+	_ = next
+	_ = hasMore
+	return err
+}
 
 func TestNew(t *testing.T) {
 	t.Run("no credentials", func(t *testing.T) {
@@ -183,40 +192,37 @@ func testSinglePagePartial(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := f.Fetch(context.Background(), FetchOptions{
+	got, nextCursor, hasMore, err := f.FetchIssues(context.Background(), FetchOptions{
 		Projects: []string{"TEST"},
 	}, Cursor{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if len(result.Documents) != 3 {
-		t.Fatalf("expected 3 docs, got %d", len(result.Documents))
+	if len(got) != 3 {
+		t.Fatalf("expected 3 issues, got %d", len(got))
 	}
 
 	lastUpdated := baseTime.Add(2 * time.Hour)
 	expectedLastStr := lastUpdated.Format(time.RFC3339)
-	if result.NextCursor.LastUpdated != expectedLastStr {
-		t.Errorf("expected LastUpdated %q, got %q", expectedLastStr, result.NextCursor.LastUpdated)
+	if nextCursor.LastUpdated != expectedLastStr {
+		t.Errorf("expected LastUpdated %q, got %q", expectedLastStr, nextCursor.LastUpdated)
 	}
-	if result.NextCursor.StartAt != 0 {
-		t.Errorf("expected StartAt=0, got %d", result.NextCursor.StartAt)
+	if nextCursor.StartAt != 0 {
+		t.Errorf("expected StartAt=0, got %d", nextCursor.StartAt)
 	}
-	if result.HasMore {
-		t.Error("expected HasMore=false")
+	if hasMore {
+		t.Error("expected hasMore=false")
 	}
 
-	// Verify document content
-	for i, d := range result.Documents {
-		if d.Source != index.SourceJira {
-			t.Errorf("doc[%d] Source: expected %q, got %q", i, index.SourceJira, d.Source)
-		}
+	// Verify issue content
+	for i, iss := range got {
 		expectedKey := fmt.Sprintf("TEST-%d", i+1)
-		if d.SourceID != expectedKey {
-			t.Errorf("doc[%d] SourceID: expected %q, got %q", i, expectedKey, d.SourceID)
+		if iss.Key != expectedKey {
+			t.Errorf("issue[%d] Key: expected %q, got %q", i, expectedKey, iss.Key)
 		}
-		if d.Title != "Issue "+expectedKey {
-			t.Errorf("doc[%d] Title: expected %q, got %q", i, "Issue "+expectedKey, d.Title)
+		if iss.Title != "Issue "+expectedKey {
+			t.Errorf("issue[%d] Title: expected %q, got %q", i, "Issue "+expectedKey, iss.Title)
 		}
 	}
 }
@@ -239,15 +245,20 @@ func testMultiPage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var batches [][]index.Document
-	_, err = f.FetchAll(context.Background(), FetchOptions{
-		Projects: []string{"TEST"},
-	}, Cursor{}, func(_ context.Context, docs []index.Document, _ Cursor) error {
-		batches = append(batches, docs)
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
+	var batches [][]chunkjira.Issue
+	cursor := Cursor{}
+	for {
+		got, nextCursor, hasMore, ferr := f.FetchIssues(context.Background(), FetchOptions{
+			Projects: []string{"TEST"},
+		}, cursor)
+		if ferr != nil {
+			t.Fatal(ferr)
+		}
+		batches = append(batches, got)
+		cursor = nextCursor
+		if !hasMore {
+			break
+		}
 	}
 
 	if len(batches) != 3 {
@@ -264,13 +275,13 @@ func testMultiPage(t *testing.T) {
 		t.Errorf("batch[2] length: expected 5, got %d", len(batches[2]))
 	}
 
-	// Verify documents span the full range
-	checkKeys := func(t *testing.T, docs []index.Document, startKey int) {
+	// Verify issues span the full range
+	checkKeys := func(t *testing.T, issues []chunkjira.Issue, startKey int) {
 		t.Helper()
-		for i, d := range docs {
+		for i, iss := range issues {
 			expectedKey := fmt.Sprintf("TEST-%d", startKey+i)
-			if d.SourceID != expectedKey {
-				t.Errorf("doc[%d] SourceID: expected %q, got %q", i, expectedKey, d.SourceID)
+			if iss.Key != expectedKey {
+				t.Errorf("issue[%d] Key: expected %q, got %q", i, expectedKey, iss.Key)
 			}
 		}
 	}
@@ -320,7 +331,7 @@ func testCursorResume(t *testing.T) {
 		StartAt:     100,
 	}
 
-	result, err := f.Fetch(context.Background(), FetchOptions{
+	got, nextCursor, _, err := f.FetchIssues(context.Background(), FetchOptions{
 		Projects: []string{"TEST"},
 	}, cursor)
 	if err != nil {
@@ -342,16 +353,16 @@ func testCursorResume(t *testing.T) {
 	}
 
 	// Should return 100 issues (100-199)
-	if len(result.Documents) != 100 {
-		t.Fatalf("expected 100 docs, got %d", len(result.Documents))
+	if len(got) != 100 {
+		t.Fatalf("expected 100 issues, got %d", len(got))
 	}
 
 	// Next cursor should have advanced
-	if result.NextCursor.StartAt != 200 {
-		t.Errorf("NextCursor.StartAt: expected 200, got %d", result.NextCursor.StartAt)
+	if nextCursor.StartAt != 200 {
+		t.Errorf("NextCursor.StartAt: expected 200, got %d", nextCursor.StartAt)
 	}
-	if result.NextCursor.LastUpdated != "2026-06-01T05:00:00Z" {
-		t.Errorf("NextCursor.LastUpdated should be unchanged: got %s", result.NextCursor.LastUpdated)
+	if nextCursor.LastUpdated != "2026-06-01T05:00:00Z" {
+		t.Errorf("NextCursor.LastUpdated should be unchanged: got %s", nextCursor.LastUpdated)
 	}
 }
 
@@ -381,7 +392,7 @@ func testCloudAuth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = f.Fetch(context.Background(), FetchOptions{
+	err = fetchIssuesErr(f, FetchOptions{
 		Projects: []string{"TEST"},
 	}, Cursor{})
 	if err != nil {
@@ -414,7 +425,7 @@ func testPAT(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = f.Fetch(context.Background(), FetchOptions{
+	err = fetchIssuesErr(f, FetchOptions{
 		Projects: []string{"TEST"},
 	}, Cursor{})
 	if err != nil {
@@ -453,7 +464,7 @@ func testUsernamePasswordAuth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = f.Fetch(context.Background(), FetchOptions{
+	err = fetchIssuesErr(f, FetchOptions{
 		Projects: []string{"TEST"},
 	}, Cursor{})
 	if err != nil {
@@ -591,7 +602,7 @@ func testErrorPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = f.Fetch(context.Background(), FetchOptions{
+	err = fetchIssuesErr(f, FetchOptions{
 		Projects: []string{"TEST"},
 	}, Cursor{})
 	if err == nil {
@@ -613,7 +624,7 @@ func testEmptyProjects(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = f.Fetch(context.Background(), FetchOptions{}, Cursor{})
+	err = fetchIssuesErr(f, FetchOptions{}, Cursor{})
 	if err == nil {
 		t.Fatal("expected error for empty projects")
 	}
@@ -672,37 +683,18 @@ func TestIssueMapping(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := f.Fetch(context.Background(), FetchOptions{
+	got, _, _, err := f.FetchIssues(context.Background(), FetchOptions{
 		Projects: []string{"BILL"},
 	}, Cursor{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if len(result.Documents) != 1 {
-		t.Fatalf("expected 1 document, got %d", len(result.Documents))
+	if len(got) != 1 {
+		t.Fatalf("expected 1 issue, got %d", len(got))
 	}
 
-	doc := result.Documents[0]
-	if doc.Source != index.SourceJira {
-		t.Errorf("Source: expected %q, got %q", index.SourceJira, doc.Source)
-	}
-	if doc.SourceID != "BILL-42" {
-		t.Errorf("SourceID: expected BILL-42, got %q", doc.SourceID)
-	}
-	if doc.Title != "Fix the thing" {
-		t.Errorf("Title: expected %q, got %q", "Fix the thing", doc.Title)
-	}
-
-	issRaw, ok := doc.Metadata["jira_issue"]
-	if !ok {
-		t.Fatal("metadata missing jira_issue")
-	}
-	iss, ok := issRaw.(chunkjira.Issue)
-	if !ok {
-		t.Fatalf("jira_issue has wrong type %T", issRaw)
-	}
-
+	iss := got[0]
 	if iss.Key != "BILL-42" {
 		t.Errorf("Issue.Key: expected BILL-42, got %q", iss.Key)
 	}
@@ -767,7 +759,7 @@ func TestBaseURLTrim(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = f.Fetch(context.Background(), FetchOptions{
+	err = fetchIssuesErr(f, FetchOptions{
 		Projects: []string{"TEST"},
 	}, Cursor{})
 	if err != nil {
@@ -779,7 +771,7 @@ func TestBaseURLTrim(t *testing.T) {
 	}
 }
 
-func TestFetchAllFinalCursor(t *testing.T) {
+func TestFetchFinalCursor(t *testing.T) {
 	t.Parallel()
 
 	issues := generateIssues(50, time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
@@ -794,28 +786,21 @@ func TestFetchAllFinalCursor(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var lastCursor Cursor
-	finalCursor, err := f.FetchAll(context.Background(), FetchOptions{
+	_, finalCursor, hasMore, err := f.FetchIssues(context.Background(), FetchOptions{
 		Projects: []string{"TEST"},
-	}, Cursor{}, func(_ context.Context, docs []index.Document, cursor Cursor) error {
-		lastCursor = cursor
-		return nil
-	})
+	}, Cursor{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	if hasMore {
+		t.Error("expected hasMore=false for a single page of 50 issues")
+	}
 
-	// Final cursor from the return value
 	if finalCursor.StartAt != 0 {
 		t.Errorf("final StartAt: expected 0, got %d", finalCursor.StartAt)
 	}
 	if finalCursor.LastUpdated == "" {
 		t.Error("final LastUpdated should not be empty")
-	}
-
-	// Both cursors should match (last batch's cursor = final cursor)
-	if lastCursor != finalCursor {
-		t.Errorf("lastCursor %+v != finalCursor %+v", lastCursor, finalCursor)
 	}
 }
 
@@ -839,7 +824,7 @@ func TestUpdatedAfterZero(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = f.Fetch(context.Background(), FetchOptions{
+	err = fetchIssuesErr(f, FetchOptions{
 		Projects: []string{"TEST"},
 		// UpdatedAfter is zero — no updated >= clause
 	}, Cursor{})
@@ -872,7 +857,7 @@ func TestUserAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = f.Fetch(context.Background(), FetchOptions{
+	err = fetchIssuesErr(f, FetchOptions{
 		Projects: []string{"TEST"},
 	}, Cursor{})
 	if err != nil {
@@ -904,7 +889,7 @@ func TestJQLURLEncoding(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = f.Fetch(context.Background(), FetchOptions{
+	err = fetchIssuesErr(f, FetchOptions{
 		Projects: []string{"BILL"},
 	}, Cursor{
 		LastUpdated: "2026-06-01T00:00:00Z",
@@ -972,7 +957,7 @@ func TestBadTimeSkipsIssue(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := f.Fetch(context.Background(), FetchOptions{
+	got, _, _, err := f.FetchIssues(context.Background(), FetchOptions{
 		Projects: []string{"TEST"},
 	}, Cursor{})
 	if err != nil {
@@ -980,10 +965,10 @@ func TestBadTimeSkipsIssue(t *testing.T) {
 	}
 
 	// The bad issue should be skipped, we should only have TEST-1
-	if len(result.Documents) != 1 {
-		t.Fatalf("expected 1 document (bad issue skipped), got %d", len(result.Documents))
+	if len(got) != 1 {
+		t.Fatalf("expected 1 issue (bad issue skipped), got %d", len(got))
 	}
-	if result.Documents[0].SourceID != "TEST-1" {
-		t.Errorf("expected TEST-1, got %s", result.Documents[0].SourceID)
+	if got[0].Key != "TEST-1" {
+		t.Errorf("expected TEST-1, got %s", got[0].Key)
 	}
 }

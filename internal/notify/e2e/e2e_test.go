@@ -41,7 +41,7 @@ type fakeGitLabFetcher struct {
 	refs []ingestgitlab.MergeRequestRef
 }
 
-func (f *fakeGitLabFetcher) FetchMergeRequestsStructured(_ context.Context, page int, cursor ingestgitlab.Cursor) ([]ingestgitlab.MergeRequestRef, ingestgitlab.Cursor, bool, error) {
+func (f *fakeGitLabFetcher) FetchMergeRequests(_ context.Context, page int, cursor ingestgitlab.Cursor) ([]ingestgitlab.MergeRequestRef, ingestgitlab.Cursor, bool, error) {
 	if page > 1 {
 		return nil, cursor, false, nil
 	}
