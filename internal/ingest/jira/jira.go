@@ -174,6 +174,7 @@ type jiraNamed struct {
 }
 
 type jiraUser struct {
+	AccountID   string `json:"accountId"`
 	DisplayName string `json:"displayName"`
 }
 
@@ -266,6 +267,7 @@ func convertIssue(jiraIss jiraIssue) (chunkjira.Issue, error) {
 
 	if jiraIss.Fields.Assignee != nil {
 		iss.Assignee = jiraIss.Fields.Assignee.DisplayName
+		iss.AssigneeAccountID = jiraIss.Fields.Assignee.AccountID
 	}
 	if jiraIss.Fields.Reporter != nil {
 		iss.Reporter = jiraIss.Fields.Reporter.DisplayName
@@ -464,8 +466,32 @@ func (f *Fetcher) doPreflight(req *http.Request, op string) ([]byte, error) {
 // Fetch performs ONE page of Jira's /rest/api/2/search endpoint, returning
 // the issues as index.Documents and an updated cursor.
 func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions, cursor Cursor) (FetchResult, error) {
+	issues, nextCursor, hasMore, err := f.fetchStructured(ctx, opts, cursor)
+	if err != nil {
+		return FetchResult{}, err
+	}
+
+	docs := make([]index.Document, 0, len(issues))
+	for _, iss := range issues {
+		docs = append(docs, chunkjira.DocumentFromIssue(iss))
+	}
+
+	return FetchResult{Documents: docs, NextCursor: nextCursor, HasMore: hasMore}, nil
+}
+
+// FetchIssuesStructured is Fetch without the index.Document conversion, for
+// callers (the notify collector) that need the raw Assignee/AssigneeAccountID
+// rather than a chunked document.
+func (f *Fetcher) FetchIssuesStructured(ctx context.Context, opts FetchOptions, cursor Cursor) ([]chunkjira.Issue, Cursor, bool, error) {
+	return f.fetchStructured(ctx, opts, cursor)
+}
+
+// fetchStructured performs ONE page of Jira's /rest/api/2/search endpoint and
+// advances the cursor. Shared by Fetch (ingestion) and FetchIssuesStructured
+// (notification collector).
+func (f *Fetcher) fetchStructured(ctx context.Context, opts FetchOptions, cursor Cursor) ([]chunkjira.Issue, Cursor, bool, error) {
 	if len(opts.Projects) == 0 {
-		return FetchResult{}, errors.New("jira: empty projects list")
+		return nil, Cursor{}, false, errors.New("jira: empty projects list")
 	}
 
 	pageSize := f.pageSize
@@ -489,20 +515,20 @@ func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions, cursor Cursor) (
 	)
 	req, err := f.buildRequest(ctx, jql, cursor.StartAt, pageSize, fields)
 	if err != nil {
-		return FetchResult{}, errors.Wrap(err, "build request")
+		return nil, Cursor{}, false, errors.Wrap(err, "build request")
 	}
 
 	body, err := f.doRequest(req, "jira search")
 	if err != nil {
-		return FetchResult{}, err
+		return nil, Cursor{}, false, err
 	}
 
 	var searchResp jiraSearchResponse
 	if err := json.Unmarshal(body, &searchResp); err != nil {
-		return FetchResult{}, errors.Wrap(err, "parse response")
+		return nil, Cursor{}, false, errors.Wrap(err, "parse response")
 	}
 
-	docs := make([]index.Document, 0, len(searchResp.Issues))
+	issues := make([]chunkjira.Issue, 0, len(searchResp.Issues))
 	for _, iss := range searchResp.Issues {
 		chunkIssue, err := convertIssue(iss)
 		if err != nil {
@@ -515,23 +541,19 @@ func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions, cursor Cursor) (
 		if f.baseURL != "" && chunkIssue.Key != "" {
 			chunkIssue.WebURL = f.baseURL + "/browse/" + chunkIssue.Key
 		}
-		docs = append(docs, chunkjira.DocumentFromIssue(chunkIssue))
+		issues = append(issues, chunkIssue)
 	}
 
-	result := FetchResult{
-		Documents:  docs,
-		NextCursor: cursor,
+	if len(issues) == 0 {
+		return issues, cursor, false, nil
 	}
 
-	if len(docs) == 0 {
-		result.HasMore = false
-		return result, nil
-	}
+	lastUpdatedStr := issues[len(issues)-1].Updated.Format(time.RFC3339)
 
-	lastDoc := docs[len(docs)-1]
-	lastUpdatedStr := lastDoc.UpdatedAt.Format(time.RFC3339)
+	var nextCursor Cursor
+	var hasMore bool
 
-	if len(docs) < pageSize {
+	if len(issues) < pageSize {
 		// Partial page: the current window may be exhausted.
 		//
 		// Mid-page ambiguous update race: if we are advancing by offset
@@ -540,28 +562,28 @@ func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions, cursor Cursor) (
 		// same issues).  Continue paging by offset until we see an issue
 		// with updated strictly greater than LastUpdated.
 		if cursor.StartAt > 0 && lastUpdatedStr == cursor.LastUpdated {
-			result.NextCursor = Cursor{
+			nextCursor = Cursor{
 				LastUpdated: cursor.LastUpdated,
-				StartAt:     cursor.StartAt + len(docs),
+				StartAt:     cursor.StartAt + len(issues),
 			}
-			result.HasMore = true
+			hasMore = true
 		} else {
-			result.NextCursor = Cursor{
+			nextCursor = Cursor{
 				LastUpdated: lastUpdatedStr,
 				StartAt:     0,
 			}
-			result.HasMore = false
+			hasMore = false
 		}
 	} else {
 		// Full page: advance offset within the same time window.
-		result.NextCursor = Cursor{
+		nextCursor = Cursor{
 			LastUpdated: cursor.LastUpdated,
 			StartAt:     cursor.StartAt + pageSize,
 		}
-		result.HasMore = true
+		hasMore = true
 	}
 
-	return result, nil
+	return issues, nextCursor, hasMore, nil
 }
 
 // FetchAll pages through all results starting at cursor, calling fn for each

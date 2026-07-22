@@ -510,6 +510,24 @@ func (f *Fetcher) FetchMergeRequests(
 }
 
 func (f *Fetcher) fetchProjectMergeRequests(ctx context.Context, project string, page int, cursor Cursor) ([]index.Document, string, error) {
+	mrs, maxUpdatedAt, err := f.fetchProjectMergeRequestsStructured(ctx, project, page, cursor)
+	if err != nil {
+		return nil, "", err
+	}
+
+	docs := make([]index.Document, 0, len(mrs))
+	for _, mr := range mrs {
+		docs = append(docs, chunkgitlab.DocumentFromMergeRequest(project, mr))
+	}
+
+	return docs, maxUpdatedAt, nil
+}
+
+// fetchProjectMergeRequestsStructured fetches one page of a project's merge
+// requests as chunkgitlab.MergeRequest, without building index.Documents.
+// Shared by fetchProjectMergeRequests (ingestion) and
+// FetchMergeRequestsStructured (notification collector, internal/notify/gitlab).
+func (f *Fetcher) fetchProjectMergeRequestsStructured(ctx context.Context, project string, page int, cursor Cursor) ([]chunkgitlab.MergeRequest, string, error) {
 	q := url.Values{}
 	q.Set("page", strconv.Itoa(page))
 	q.Set("per_page", strconv.Itoa(f.pageSize))
@@ -536,7 +554,7 @@ func (f *Fetcher) fetchProjectMergeRequests(ctx context.Context, project string,
 		return nil, "", errors.Wrap(err, "parse merge requests response")
 	}
 
-	var docs []index.Document
+	var out []chunkgitlab.MergeRequest
 	var maxUpdatedAt string
 
 	for _, mr := range mrs {
@@ -571,15 +589,49 @@ func (f *Fetcher) fetchProjectMergeRequests(ctx context.Context, project string,
 			continue
 		}
 
-		doc := chunkgitlab.DocumentFromMergeRequest(project, chunkMR)
-		docs = append(docs, doc)
+		out = append(out, chunkMR)
 
-		if doc.UpdatedAt.Format(time.RFC3339) > maxUpdatedAt {
-			maxUpdatedAt = doc.UpdatedAt.Format(time.RFC3339)
+		if updated := chunkMR.Updated.Format(time.RFC3339); updated > maxUpdatedAt {
+			maxUpdatedAt = updated
 		}
 	}
 
-	return docs, maxUpdatedAt, nil
+	return out, maxUpdatedAt, nil
+}
+
+// MergeRequestRef pairs a MergeRequest with the project it belongs to, since
+// a single Cursor spans every configured project.
+type MergeRequestRef struct {
+	Project string
+	MR      chunkgitlab.MergeRequest
+}
+
+// FetchMergeRequestsStructured is FetchMergeRequests without the
+// index.Document conversion, for callers (the notify collector) that need
+// the raw Assignees/Reviewers rather than a chunked document.
+func (f *Fetcher) FetchMergeRequestsStructured(ctx context.Context, page int, cursor Cursor) ([]MergeRequestRef, Cursor, bool, error) {
+	projects := projectRefs(f.projects)
+	if len(projects) == 0 {
+		return nil, Cursor{}, false, errors.New("gitlab: no projects configured")
+	}
+
+	var refs []MergeRequestRef
+	var maxUpdatedAt string
+
+	for _, project := range projects {
+		mrs, projectMaxUpdated, err := f.fetchProjectMergeRequestsStructured(ctx, project, page, cursor)
+		if err != nil {
+			return nil, Cursor{}, false, err
+		}
+		for _, mr := range mrs {
+			refs = append(refs, MergeRequestRef{Project: project, MR: mr})
+		}
+		if projectMaxUpdated > maxUpdatedAt {
+			maxUpdatedAt = projectMaxUpdated
+		}
+	}
+
+	return refs, Cursor{UpdatedAfter: maxUpdatedAt}, len(refs) >= f.pageSize, nil
 }
 
 func (f *Fetcher) fetchMRDiscussions(ctx context.Context, project string, iid int) ([]chunkgitlab.Thread, error) {

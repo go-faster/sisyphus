@@ -30,12 +30,16 @@ type Issue struct {
 	Components  []string
 	Labels      []string
 	Assignee    string
-	Reporter    string
-	Created     time.Time
-	Updated     time.Time
-	Resolved    time.Time
-	Comments    []Comment
-	WebURL      string // canonical browse URL, e.g. https://jira.example.com/browse/IDP-1080
+	// AssigneeAccountID is the assignee's stable Jira accountId, used to match
+	// against a NotifyUser's linked identity (DisplayName is not stable: it
+	// changes on rename and is not guaranteed unique).
+	AssigneeAccountID string
+	Reporter          string
+	Created           time.Time
+	Updated           time.Time
+	Resolved          time.Time
+	Comments          []Comment
+	WebURL            string // canonical browse URL, e.g. https://jira.example.com/browse/IDP-1080
 }
 
 // DocumentFromIssue builds a normalized index.Document from a Jira Issue.
