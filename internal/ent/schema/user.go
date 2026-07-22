@@ -10,13 +10,15 @@ import (
 	"github.com/google/uuid"
 )
 
-// NotifyUser links a Telegram identity to the GitLab/Jira identities the
-// notification system matches incoming events against.
-type NotifyUser struct {
+// User is the shared identity table: it links a Telegram identity to the
+// GitLab/Jira identities the notification system matches incoming events
+// against, and is the anchor point for other per-user concerns as they're
+// added (e.g. UserToken for MCP access; RBAC roles/permissions, deferred).
+type User struct {
 	ent.Schema
 }
 
-func (NotifyUser) Fields() []ent.Field {
+func (User) Fields() []ent.Field {
 	return []ent.Field{
 		field.UUID("id", uuid.UUID{}).Default(uuid.New),
 		field.Int64("telegram_user_id"),
@@ -30,14 +32,15 @@ func (NotifyUser) Fields() []ent.Field {
 	}
 }
 
-func (NotifyUser) Edges() []ent.Edge {
+func (User) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("subscriptions", NotifySubscription.Type),
 		edge.To("notifications", Notification.Type),
+		edge.To("tokens", UserToken.Type),
 	}
 }
 
-func (NotifyUser) Indexes() []ent.Index {
+func (User) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("telegram_user_id").Unique(),
 		index.Fields("gitlab_username").Unique(),

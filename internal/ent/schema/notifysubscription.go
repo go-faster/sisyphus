@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// NotifySubscription is one NotifyUser's opt-in to a source's event types,
+// NotifySubscription is one User's opt-in to a source's event types,
 // optionally narrowed by filters (e.g. specific projects).
 type NotifySubscription struct {
 	ent.Schema
@@ -33,7 +33,7 @@ func (NotifySubscription) Fields() []ent.Field {
 
 func (NotifySubscription) Edges() []ent.Edge {
 	return []ent.Edge{
-		edge.From("user", NotifyUser.Type).
+		edge.From("user", User.Type).
 			Ref("subscriptions").
 			Field("user_id").
 			Unique().

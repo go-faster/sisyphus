@@ -43,7 +43,7 @@ func (Notification) Fields() []ent.Field {
 
 func (Notification) Edges() []ent.Edge {
 	return []ent.Edge{
-		edge.From("user", NotifyUser.Type).
+		edge.From("user", User.Type).
 			Ref("notifications").
 			Field("user_id").
 			Unique().
