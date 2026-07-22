@@ -84,6 +84,7 @@ func (e *Engine[T]) Run(ctx context.Context, messages []openai.ChatCompletionMes
 	tools, err := e.toolSource.Tools(ctx)
 	if err != nil {
 		e.logger.Warn("list tools failed, continuing without them", zap.Error(err))
+		recordToolListFailure(ctx)
 		tools = nil
 	}
 	tools = append(tools, e.spec.Def)
