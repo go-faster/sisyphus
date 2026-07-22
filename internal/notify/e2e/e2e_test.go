@@ -28,6 +28,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/apiclient"
 	chunkgitlab "github.com/go-faster/sisyphus/internal/chunk/gitlab"
 	"github.com/go-faster/sisyphus/internal/ent"
+	"github.com/go-faster/sisyphus/internal/event"
 	ingestgitlab "github.com/go-faster/sisyphus/internal/ingest/gitlab"
 	"github.com/go-faster/sisyphus/internal/notify"
 	notifygitlab "github.com/go-faster/sisyphus/internal/notify/gitlab"
@@ -160,17 +161,25 @@ func TestE2E_GitLabMRAssignment_ToTelegramDelivery(t *testing.T) {
 	}}
 	collector := notifygitlab.New(fetcher)
 
-	// --- Real collector + real Dispatcher + real Postgres-backed outbox.
+	// --- Real collector + real event router + real projector + real
+	// Dispatcher + real Postgres-backed outbox.
 	events, cursor, err := collector.Collect(ctx, "")
 	require.NoError(t, err)
-	require.Len(t, events, 2, "one mr_assigned (alice) + one mr_review_requested (bob, not subscribed)")
+	require.Len(t, events, 1, "one canonical mr.updated event (fan-out to recipients happens in the projector)")
 
 	dispatcher := notify.NewDispatcher(store, store, notify.ChannelTelegram, nil)
-	enqueued, err := dispatcher.Dispatch(ctx, events)
-	require.NoError(t, err)
-	// Only alice is enrolled/linked/subscribed; bob has no User row,
-	// so only alice's mr_assigned event produces an outbox row.
-	require.Equal(t, 1, enqueued)
+	router := event.NewMux()
+	router.Subscribe(event.Subscription{
+		Name:    "notify-gitlab",
+		Sources: []event.Source{event.SourceGitLab},
+		Handler: notify.NewRouterSubscriber(notifygitlab.Projector{}, dispatcher),
+	})
+	for _, e := range events {
+		require.NoError(t, router.Route(ctx, e))
+	}
+	// The projector fans the MR out to alice (assignee) and bob (reviewer),
+	// but only alice is enrolled/linked/subscribed, so only her mr_assigned
+	// event produces an outbox row.
 
 	// --- Real ssapi HTTP handler + apiclient, backed by the same store.
 	handler := api.New(nil, nil, "v1.0.0-e2e", api.WithNotifyStore(store))
@@ -198,9 +207,15 @@ func TestE2E_GitLabMRAssignment_ToTelegramDelivery(t *testing.T) {
 	drainOnce(ctx, t, apiClient, sink)
 	require.Len(t, sink.messages(), 1)
 
-	// --- Re-running the collector with the advanced cursor against the same
-	// (unchanged) MR emits nothing new: idempotence at the collector layer too.
+	// --- Re-emitting the same MR event (the fake source ignores the cursor and
+	// returns it again) produces no new delivery: the outbox DedupKey — not a
+	// collector-side diff — is what guarantees idempotence now.
 	events2, _, err := collector.Collect(ctx, cursor)
 	require.NoError(t, err)
-	require.Empty(t, events2)
+	require.Len(t, events2, 1)
+	for _, e := range events2 {
+		require.NoError(t, router.Route(ctx, e))
+	}
+	drainOnce(ctx, t, apiClient, sink)
+	require.Len(t, sink.messages(), 1)
 }

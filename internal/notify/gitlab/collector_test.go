@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	chunkgitlab "github.com/go-faster/sisyphus/internal/chunk/gitlab"
+	"github.com/go-faster/sisyphus/internal/event"
 	ingestgitlab "github.com/go-faster/sisyphus/internal/ingest/gitlab"
-	"github.com/go-faster/sisyphus/internal/notify"
 )
 
 // fakeFetcher serves canned pages, keyed by the incoming cursor's
@@ -46,7 +46,10 @@ func mr(assignees, reviewers []string, updated time.Time) chunkgitlab.MergeReque
 	}
 }
 
-func TestCollector_EmitsAssignedAndReviewRequested(t *testing.T) {
+// The collector emits one canonical event per MR, carrying the current member
+// sets in its payload — not one event per recipient. The per-recipient fan-out
+// is the Projector's job (see projector_test.go).
+func TestCollector_EmitsMRUpdatedEvent(t *testing.T) {
 	t1 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	fetcher := &fakeFetcher{pages: map[string][]ingestgitlab.MergeRequestRef{
 		"": {{Project: "group/proj", MR: mr([]string{"alice"}, []string{"bob"}, t1)}},
@@ -56,59 +59,40 @@ func TestCollector_EmitsAssignedAndReviewRequested(t *testing.T) {
 	events, cursor, err := c.Collect(t.Context(), "")
 	require.NoError(t, err)
 	require.NotEmpty(t, cursor)
-	require.Len(t, events, 2)
+	require.Len(t, events, 1)
 
-	byType := map[notify.EventType]notify.Event{}
-	for _, e := range events {
-		byType[e.Type] = e
-	}
-	require.Equal(t, "alice", byType[notify.EventMRAssigned].Recipient.Key)
-	require.Equal(t, "bob", byType[notify.EventMRReviewRequested].Recipient.Key)
-	require.Equal(t, "carol", byType[notify.EventMRAssigned].Actor.Key)
-	require.Equal(t, "gitlab_mr_assign:group/proj!1:alice", byType[notify.EventMRAssigned].EventID)
-	require.Equal(t, "gitlab_mr_review:group/proj!1:bob", byType[notify.EventMRReviewRequested].EventID)
+	e := events[0]
+	require.Equal(t, event.SourceGitLab, e.Source)
+	require.Equal(t, event.TypeMRUpdated, e.Type)
+	require.Equal(t, "group/proj!1", e.Subject.ID)
+	require.Equal(t, "https://example.com/mr/1", e.Subject.URL)
+	require.Equal(t, "MR !1: Fix bug", e.Subject.Title)
+	require.Equal(t, "carol", e.Actor.Key)
+	require.Equal(t, t1, e.OccurredAt)
+	require.Equal(t, "group/proj", e.Attr("project"))
+
+	var p MRPayload
+	require.NoError(t, e.DecodePayload(&p))
+	require.Equal(t, []string{"alice"}, p.Assignees)
+	require.Equal(t, []string{"bob"}, p.Reviewers)
 }
 
-func TestCollector_ReRunWithAdvancedCursorEmitsNothingNew(t *testing.T) {
+// A re-poll with the advanced cursor fetches nothing new (the fetcher has no
+// page for it), so the collector emits nothing — the cursor bounds the fetch.
+func TestCollector_AdvancedCursorFetchesNothing(t *testing.T) {
 	t1 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	unchanged := mr([]string{"alice"}, []string{"bob"}, t1)
 	fetcher := &fakeFetcher{pages: map[string][]ingestgitlab.MergeRequestRef{
-		"": {{Project: "group/proj", MR: unchanged}},
+		"": {{Project: "group/proj", MR: mr([]string{"alice"}, []string{"bob"}, t1)}},
 	}}
 	c := New(fetcher)
 
 	_, cursor1, err := c.Collect(t.Context(), "")
 	require.NoError(t, err)
 
-	// Same MR, same assignee/reviewer set returned again for the next poll
-	// (keyed by the advanced cursor): idempotence — no new events.
-	fetcher.pages[cursorUpdatedAfter(t, cursor1)] = []ingestgitlab.MergeRequestRef{
-		{Project: "group/proj", MR: unchanged},
-	}
 	events, _, err := c.Collect(t.Context(), cursor1)
 	require.NoError(t, err)
 	require.Empty(t, events)
-}
-
-func TestCollector_OnlyNewlyAddedAssigneesFireEvents(t *testing.T) {
-	t1 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	t2 := t1.Add(time.Hour)
-	fetcher := &fakeFetcher{pages: map[string][]ingestgitlab.MergeRequestRef{
-		"": {{Project: "group/proj", MR: mr([]string{"alice"}, nil, t1)}},
-	}}
-	c := New(fetcher)
-
-	_, cursor1, err := c.Collect(t.Context(), "")
-	require.NoError(t, err)
-
-	// alice stays assigned, dave is newly added: only dave should fire.
-	fetcher.pages[cursorUpdatedAfter(t, cursor1)] = []ingestgitlab.MergeRequestRef{
-		{Project: "group/proj", MR: mr([]string{"alice", "dave"}, nil, t2)},
-	}
-	events, _, err := c.Collect(t.Context(), cursor1)
-	require.NoError(t, err)
-	require.Len(t, events, 1)
-	require.Equal(t, "dave", events[0].Recipient.Key)
+	require.NotEqual(t, "", cursorUpdatedAfter(t, cursor1))
 }
 
 // cursorUpdatedAfter extracts the state.UpdatedAfter a real cursor JSON
