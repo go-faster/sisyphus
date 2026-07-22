@@ -2,11 +2,14 @@ package bot
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"strings"
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
+	"github.com/google/uuid"
 	"github.com/gotd/td/telegram/message/entity"
 	"github.com/gotd/td/telegram/message/styling"
 	"github.com/gotd/td/tg"
@@ -60,7 +63,15 @@ func (b *Bot) captureNotifyIdentity(ctx context.Context, e tg.Entities, senderID
 // fallback if styling fails. This is the only send path in this package
 // that isn't a reply to an incoming update; used by ssbot's outbox drain
 // loop to deliver internal/notify notifications.
-func (b *Bot) SendTo(ctx context.Context, userID, accessHash int64, text string) error {
+//
+// notificationID sets the MTProto request's random_id (via
+// randomIDFor(notificationID)) instead of letting gotd pick a fresh random
+// one per call: messages.sendMessage's random_id is Telegram's own
+// idempotency token — retrying with the same value returns the
+// already-sent message instead of creating a duplicate. Without this, a
+// drain-loop retry of the same outbox row (e.g. ssbot crashes between
+// SendTo succeeding and the row being acked) would DM the user twice.
+func (b *Bot) SendTo(ctx context.Context, notificationID uuid.UUID, userID, accessHash int64, text string) error {
 	if b.silent {
 		return nil
 	}
@@ -69,14 +80,23 @@ func (b *Bot) SendTo(ctx context.Context, userID, accessHash int64, text string)
 		return errBotNotReady
 	}
 	peer := &tg.InputPeerUser{UserID: userID, AccessHash: accessHash}
-	_, err := sender.To(peer).StyledText(ctx, styling.Custom(func(eb *entity.Builder) error {
+	randomID := randomIDFor(notificationID)
+	_, err := sender.To(peer).RandomID(randomID).StyledText(ctx, styling.Custom(func(eb *entity.Builder) error {
 		return renderMarkdown(eb, text)
 	}))
 	if err == nil {
 		return nil
 	}
-	_, err = sender.To(peer).Text(ctx, text)
+	_, err = sender.To(peer).RandomID(randomID).Text(ctx, text)
 	return err
+}
+
+// randomIDFor deterministically derives a messages.sendMessage random_id
+// from a notification's outbox row ID, so every delivery attempt for the
+// same row (retries included) reuses the same value.
+func randomIDFor(notificationID uuid.UUID) int64 {
+	sum := sha256.Sum256(notificationID[:])
+	return int64(binary.BigEndian.Uint64(sum[:8]))
 }
 
 // Ready returns a channel closed once the bot session has authenticated and

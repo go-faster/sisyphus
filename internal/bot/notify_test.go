@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
@@ -109,8 +110,14 @@ func captureSend(t *testing.T) (stub *fakeSender, sent *string) {
 
 func TestSendTo_NotReadyBeforeRun(t *testing.T) {
 	b := newNotifyTestBot(nil)
-	err := b.SendTo(context.Background(), 1, 2, "hello")
+	err := b.SendTo(context.Background(), uuid.New(), 1, 2, "hello")
 	require.ErrorIs(t, err, errBotNotReady)
+}
+
+func TestRandomIDFor_DeterministicPerNotification(t *testing.T) {
+	id1, id2 := uuid.New(), uuid.New()
+	require.Equal(t, randomIDFor(id1), randomIDFor(id1), "same notification must reuse the same random_id on retry")
+	require.NotEqual(t, randomIDFor(id1), randomIDFor(id2))
 }
 
 func TestHandleLinkCmd_GitLab(t *testing.T) {

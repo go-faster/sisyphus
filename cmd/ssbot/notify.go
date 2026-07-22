@@ -92,7 +92,7 @@ func drainPendingNotifications(ctx context.Context, lg *zap.Logger, b *bot.Bot, 
 			text += "\n" + n.URL
 		}
 
-		sendErr := b.SendTo(ctx, n.TelegramUserID, n.TelegramAccessHash, text)
+		sendErr := b.SendTo(ctx, n.ID, n.TelegramUserID, n.TelegramAccessHash, text)
 		if sendErr != nil {
 			lg.Warn("deliver notification failed", zap.String("notification_id", n.ID.String()), zap.Error(sendErr))
 		}
