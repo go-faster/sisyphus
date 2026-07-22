@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -57,6 +58,14 @@ type Bot struct {
 	retriever    Retriever
 	answerer     index.Answerer
 	investigator Investigator
+	notifier     Notifier
+
+	// sender is nil until Run authenticates; SendTo (the only non-reply send
+	// path, used by ssbot's notification drain loop) returns errBotNotReady
+	// until then. ready is closed at the same point, for callers that want to
+	// wait rather than poll/retry.
+	sender atomic.Pointer[message.Sender]
+	ready  chan struct{}
 
 	tp            trace.TracerProvider
 	mp            metric.MeterProvider
@@ -82,6 +91,7 @@ type BotOptions struct {
 	AllowedChats   []int64
 	AllowedUserIDs []int64
 	Investigator   Investigator
+	Notifier       Notifier
 	AnswerTimeout  time.Duration
 }
 
@@ -126,6 +136,8 @@ func New(_ context.Context, r Retriever, a index.Answerer, cred BotCredentials, 
 		retriever:     r,
 		answerer:      a,
 		investigator:  opts.Investigator,
+		notifier:      opts.Notifier,
+		ready:         make(chan struct{}),
 		tp:            tp,
 		mp:            mp,
 		tracer:        tp.Tracer("github.com/go-faster/sisyphus/internal/bot"),
@@ -204,6 +216,8 @@ func (b *Bot) Run(ctx context.Context) error {
 				zap.Int64("chat_id", chatID), zap.Int64("sender_id", senderID))
 			return nil
 		}
+
+		b.captureNotifyIdentity(ctx, e, senderID)
 
 		cmd, rest, ok := parseCommand(msg.Message)
 		if !ok {
@@ -296,6 +310,10 @@ func (b *Bot) Run(ctx context.Context) error {
 		if err := b.commands.registerCommands(ctx, raw); err != nil {
 			b.logger.Warn("register bot commands failed", zap.Error(err))
 		}
+		// Only usable for proactive sends (SendTo) once authenticated;
+		// earlier, sending would fail against an unauthenticated session.
+		b.sender.Store(sender)
+		close(b.ready)
 		b.logger.Info("bot authenticated, serving /context, /search, /investigate, /start, /help")
 		<-ctx.Done()
 		return ctx.Err()

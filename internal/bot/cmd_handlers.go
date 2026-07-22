@@ -24,6 +24,10 @@ func (b *Bot) buildCommandRegistry(runCtx context.Context) *commandRegistry {
 			return b.handleInvestigateCmd(runCtx, ctx, s, rest)
 		},
 	)
+	reg.add("link", "<gitlab|jira> <identity> [display name]", "link your GitLab/Jira identity for notifications", false, b.handleLinkCmd)
+	reg.add("subscribe", "<gitlab|jira> [event_type ...]", "subscribe to GitLab/Jira notifications", false, b.handleSubscribeCmd)
+	reg.add("unsubscribe", "<gitlab|jira>", "unsubscribe from notifications", false, b.handleUnsubscribeCmd)
+	reg.add("notifications", "", "list your notification subscriptions", false, b.handleNotificationsCmd)
 	return reg
 }
 

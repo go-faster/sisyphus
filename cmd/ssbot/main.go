@@ -144,8 +144,11 @@ func run(ctx context.Context, cfg config.Config, telemetry *app.Telemetry) error
 			AllowedChats:   cfg.Telegram.AllowedChats,
 			AllowedUserIDs: cfg.Telegram.AllowedUserIDs,
 			Investigator:   investigator,
+			Notifier:       notifierAdapter{api: api},
 		},
 	)
+
+	go runNotifyDrainLoop(ctx, lg, b, api, time.Duration(cfg.Notify.PollIntervalSeconds)*time.Second)
 
 	botErr := b.Run(ctx)
 	if err := httpmw.Shutdown(healthSrv); err != nil {
