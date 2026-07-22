@@ -66,6 +66,8 @@ func runServe(ctx context.Context, deps *ingestDeps) error {
 	trigger.Register("telegram", ignoreNotConfigured(func(ctx context.Context) error {
 		return r.runTelegram(ctx, tgPipe, time.Time{}, false, 0, false, nil)
 	}))
+	notifyRun := deps.notifyRunner()
+	trigger.Register("notify", ignoreNotConfigured(notifyRun.RunOnce))
 
 	poller := webhook.NewPoller(trigger, lg)
 	poller.Start(ctx, "git", time.Duration(cfg.Ingest.GitPollIntervalSeconds)*time.Second)
@@ -73,6 +75,7 @@ func runServe(ctx context.Context, deps *ingestDeps) error {
 	poller.Start(ctx, "gitlab", time.Duration(cfg.GitLab.PollIntervalSeconds)*time.Second)
 	poller.Start(ctx, "jira", time.Duration(cfg.Jira.PollIntervalSeconds)*time.Second)
 	poller.Start(ctx, "telegram", time.Duration(cfg.Ingest.TelegramPollIntervalSeconds)*time.Second)
+	poller.Start(ctx, "notify", time.Duration(cfg.Notify.PollIntervalSeconds)*time.Second)
 
 	mux := http.NewServeMux()
 	mcpserver.InstallHealth(mux, deps.info.Short(), ingestHealthChecker{deps.services})

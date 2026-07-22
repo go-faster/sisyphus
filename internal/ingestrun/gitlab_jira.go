@@ -494,6 +494,21 @@ func LoadJiraCursor(ctx context.Context, db *ent.Client, src string) (jiraingest
 	return c, nil
 }
 
+// LoadRawCursor loads a SyncState row's opaque last_cursor string, for
+// callers (the notify collectors) whose cursor format isn't one of
+// gitlabingest.Cursor/jiraingest.Cursor and so can't use
+// LoadGitLabCursor/LoadJiraCursor.
+func LoadRawCursor(ctx context.Context, db *ent.Client, src string) (string, error) {
+	ss, err := db.SyncState.Query().Where(syncstate.Source(src)).Only(ctx)
+	if ent.IsNotFound(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", errors.Wrap(err, "query syncstate")
+	}
+	return ss.LastCursor, nil
+}
+
 // GitLabProjectRefs extracts non-empty GitLab project refs.
 func GitLabProjectRefs(projects []config.GitLabProject) []string {
 	out := make([]string, 0, len(projects))
