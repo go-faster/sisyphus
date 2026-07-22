@@ -45,6 +45,42 @@ func (f InvestigationJobFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.V
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.InvestigationJobMutation", m)
 }
 
+// The NotificationFunc type is an adapter to allow the use of ordinary
+// function as Notification mutator.
+type NotificationFunc func(context.Context, *ent.NotificationMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f NotificationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.NotificationMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.NotificationMutation", m)
+}
+
+// The NotifySubscriptionFunc type is an adapter to allow the use of ordinary
+// function as NotifySubscription mutator.
+type NotifySubscriptionFunc func(context.Context, *ent.NotifySubscriptionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f NotifySubscriptionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.NotifySubscriptionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.NotifySubscriptionMutation", m)
+}
+
+// The NotifyUserFunc type is an adapter to allow the use of ordinary
+// function as NotifyUser mutator.
+type NotifyUserFunc func(context.Context, *ent.NotifyUserMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f NotifyUserFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.NotifyUserMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.NotifyUserMutation", m)
+}
+
 // The SupportRequestFunc type is an adapter to allow the use of ordinary
 // function as SupportRequest mutator.
 type SupportRequestFunc func(context.Context, *ent.SupportRequestMutation) (ent.Value, error)

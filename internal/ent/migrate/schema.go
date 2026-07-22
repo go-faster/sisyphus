@@ -120,6 +120,126 @@ var (
 			},
 		},
 	}
+	// NotificationsColumns holds the columns for the "notifications" table.
+	NotificationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "dedup_key", Type: field.TypeString},
+		{Name: "channel", Type: field.TypeString},
+		{Name: "telegram_user_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "telegram_access_hash", Type: field.TypeInt64, Nullable: true},
+		{Name: "source", Type: field.TypeString},
+		{Name: "event_type", Type: field.TypeString},
+		{Name: "text", Type: field.TypeString, Size: 2147483647},
+		{Name: "url", Type: field.TypeString, Nullable: true},
+		{Name: "status", Type: field.TypeString, Default: "pending"},
+		{Name: "attempts", Type: field.TypeInt, Default: 0},
+		{Name: "error", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "delivered_at", Type: field.TypeTime, Nullable: true},
+		{Name: "user_id", Type: field.TypeUUID},
+	}
+	// NotificationsTable holds the schema information for the "notifications" table.
+	NotificationsTable = &schema.Table{
+		Name:       "notifications",
+		Columns:    NotificationsColumns,
+		PrimaryKey: []*schema.Column{NotificationsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "notifications_notify_users_notifications",
+				Columns:    []*schema.Column{NotificationsColumns[15]},
+				RefColumns: []*schema.Column{NotifyUsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "notification_dedup_key",
+				Unique:  true,
+				Columns: []*schema.Column{NotificationsColumns[1]},
+			},
+			{
+				Name:    "notification_status",
+				Unique:  false,
+				Columns: []*schema.Column{NotificationsColumns[9]},
+			},
+		},
+	}
+	// NotifySubscriptionsColumns holds the columns for the "notify_subscriptions" table.
+	NotifySubscriptionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "source", Type: field.TypeString},
+		{Name: "event_types", Type: field.TypeJSON},
+		{Name: "filters", Type: field.TypeJSON, Default: "{}"},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "user_id", Type: field.TypeUUID},
+	}
+	// NotifySubscriptionsTable holds the schema information for the "notify_subscriptions" table.
+	NotifySubscriptionsTable = &schema.Table{
+		Name:       "notify_subscriptions",
+		Columns:    NotifySubscriptionsColumns,
+		PrimaryKey: []*schema.Column{NotifySubscriptionsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "notify_subscriptions_notify_users_subscriptions",
+				Columns:    []*schema.Column{NotifySubscriptionsColumns[7]},
+				RefColumns: []*schema.Column{NotifyUsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "notifysubscription_user_id_source",
+				Unique:  true,
+				Columns: []*schema.Column{NotifySubscriptionsColumns[7], NotifySubscriptionsColumns[1]},
+			},
+			{
+				Name:    "notifysubscription_filters",
+				Unique:  false,
+				Columns: []*schema.Column{NotifySubscriptionsColumns[3]},
+				Annotation: &entsql.IndexAnnotation{
+					Type: "GIN",
+				},
+			},
+		},
+	}
+	// NotifyUsersColumns holds the columns for the "notify_users" table.
+	NotifyUsersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "telegram_user_id", Type: field.TypeInt64},
+		{Name: "telegram_access_hash", Type: field.TypeInt64, Nullable: true},
+		{Name: "gitlab_username", Type: field.TypeString, Nullable: true},
+		{Name: "jira_account_id", Type: field.TypeString, Nullable: true},
+		{Name: "jira_display_name", Type: field.TypeString, Nullable: true},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// NotifyUsersTable holds the schema information for the "notify_users" table.
+	NotifyUsersTable = &schema.Table{
+		Name:       "notify_users",
+		Columns:    NotifyUsersColumns,
+		PrimaryKey: []*schema.Column{NotifyUsersColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "notifyuser_telegram_user_id",
+				Unique:  true,
+				Columns: []*schema.Column{NotifyUsersColumns[1]},
+			},
+			{
+				Name:    "notifyuser_gitlab_username",
+				Unique:  true,
+				Columns: []*schema.Column{NotifyUsersColumns[3]},
+			},
+			{
+				Name:    "notifyuser_jira_account_id",
+				Unique:  true,
+				Columns: []*schema.Column{NotifyUsersColumns[4]},
+			},
+		},
+	}
 	// SupportRequestsColumns holds the columns for the "support_requests" table.
 	SupportRequestsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -221,6 +341,9 @@ var (
 		ChunksTable,
 		DocumentsTable,
 		InvestigationJobsTable,
+		NotificationsTable,
+		NotifySubscriptionsTable,
+		NotifyUsersTable,
 		SupportRequestsTable,
 		SyncStatesTable,
 		TelegramMessagesTable,
@@ -229,4 +352,6 @@ var (
 
 func init() {
 	ChunksTable.ForeignKeys[0].RefTable = DocumentsTable
+	NotificationsTable.ForeignKeys[0].RefTable = NotifyUsersTable
+	NotifySubscriptionsTable.ForeignKeys[0].RefTable = NotifyUsersTable
 }

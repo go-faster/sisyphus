@@ -15,6 +15,9 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/chunk"
 	"github.com/go-faster/sisyphus/internal/ent/document"
 	"github.com/go-faster/sisyphus/internal/ent/investigationjob"
+	"github.com/go-faster/sisyphus/internal/ent/notification"
+	"github.com/go-faster/sisyphus/internal/ent/notifysubscription"
+	"github.com/go-faster/sisyphus/internal/ent/notifyuser"
 	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 	"github.com/go-faster/sisyphus/internal/ent/telegrammessage"
@@ -78,12 +81,15 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			chunk.Table:            chunk.ValidColumn,
-			document.Table:         document.ValidColumn,
-			investigationjob.Table: investigationjob.ValidColumn,
-			supportrequest.Table:   supportrequest.ValidColumn,
-			syncstate.Table:        syncstate.ValidColumn,
-			telegrammessage.Table:  telegrammessage.ValidColumn,
+			chunk.Table:              chunk.ValidColumn,
+			document.Table:           document.ValidColumn,
+			investigationjob.Table:   investigationjob.ValidColumn,
+			notification.Table:       notification.ValidColumn,
+			notifysubscription.Table: notifysubscription.ValidColumn,
+			notifyuser.Table:         notifyuser.ValidColumn,
+			supportrequest.Table:     supportrequest.ValidColumn,
+			syncstate.Table:          syncstate.ValidColumn,
+			telegrammessage.Table:    telegrammessage.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)
