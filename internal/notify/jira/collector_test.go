@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	chunkjira "github.com/go-faster/sisyphus/internal/chunk/jira"
+	"github.com/go-faster/sisyphus/internal/event"
 	ingestjira "github.com/go-faster/sisyphus/internal/ingest/jira"
-	"github.com/go-faster/sisyphus/internal/notify"
 )
 
 // fakeFetcher serves canned pages keyed by the incoming cursor's
@@ -48,7 +48,9 @@ func issue(assigneeAccountID, assigneeName string, updated time.Time) chunkjira.
 	}
 }
 
-func TestCollector_EmitsIssueAssigned(t *testing.T) {
+// The collector emits one canonical event per issue (assigned or not); the
+// Projector decides whether it becomes a notification (see projector_test.go).
+func TestCollector_EmitsIssueUpdatedEvent(t *testing.T) {
 	t1 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	fetcher := &fakeFetcher{pages: map[string][]chunkjira.Issue{
 		"": {issue("acc-alice", "Alice", t1)},
@@ -61,51 +63,22 @@ func TestCollector_EmitsIssueAssigned(t *testing.T) {
 	require.Len(t, events, 1)
 
 	e := events[0]
-	require.Equal(t, notify.EventIssueAssigned, e.Type)
-	require.Equal(t, "acc-alice", e.Recipient.Key)
-	require.Equal(t, "Alice", e.Recipient.Display)
+	require.Equal(t, event.SourceJira, e.Source)
+	require.Equal(t, event.TypeIssueUpdated, e.Type)
+	require.Equal(t, issueKey, e.Subject.ID)
+	require.Equal(t, "IDP-1: Fix bug", e.Subject.Title)
 	require.Equal(t, "Rachel", e.Actor.Display)
-	require.Equal(t, "jira_assign:IDP-1:acc-alice", e.EventID)
+	require.Equal(t, t1, e.OccurredAt)
+
+	var p IssuePayload
+	require.NoError(t, e.DecodePayload(&p))
+	require.Equal(t, "acc-alice", p.AssigneeAccountID)
+	require.Equal(t, "Alice", p.AssigneeDisplay)
 }
 
-func TestCollector_ReRunWithAdvancedCursorEmitsNothingNew(t *testing.T) {
-	t1 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	unchanged := issue("acc-alice", "Alice", t1)
-	fetcher := &fakeFetcher{pages: map[string][]chunkjira.Issue{
-		"": {unchanged},
-	}}
-	c := New(fetcher, []string{"IDP"})
-
-	_, cursor1, err := c.Collect(t.Context(), "")
-	require.NoError(t, err)
-
-	fetcher.pages[cursorLastUpdated(t, cursor1)] = []chunkjira.Issue{unchanged}
-	events, _, err := c.Collect(t.Context(), cursor1)
-	require.NoError(t, err)
-	require.Empty(t, events)
-}
-
-func TestCollector_ReassignmentFiresNewEvent(t *testing.T) {
-	t1 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-	t2 := t1.Add(time.Hour)
-	fetcher := &fakeFetcher{pages: map[string][]chunkjira.Issue{
-		"": {issue("acc-alice", "Alice", t1)},
-	}}
-	c := New(fetcher, []string{"IDP"})
-
-	_, cursor1, err := c.Collect(t.Context(), "")
-	require.NoError(t, err)
-
-	fetcher.pages[cursorLastUpdated(t, cursor1)] = []chunkjira.Issue{
-		issue("acc-dave", "Dave", t2),
-	}
-	events, _, err := c.Collect(t.Context(), cursor1)
-	require.NoError(t, err)
-	require.Len(t, events, 1)
-	require.Equal(t, "acc-dave", events[0].Recipient.Key)
-}
-
-func TestCollector_UnassignedIssueEmitsNothing(t *testing.T) {
+// An unassigned issue is still a canonical occurrence: the collector emits an
+// event; only the Projector drops it.
+func TestCollector_UnassignedIssueStillEmitsEvent(t *testing.T) {
 	t1 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	fetcher := &fakeFetcher{pages: map[string][]chunkjira.Issue{
 		"": {issue("", "", t1)},
@@ -114,7 +87,27 @@ func TestCollector_UnassignedIssueEmitsNothing(t *testing.T) {
 
 	events, _, err := c.Collect(t.Context(), "")
 	require.NoError(t, err)
+	require.Len(t, events, 1)
+
+	var p IssuePayload
+	require.NoError(t, events[0].DecodePayload(&p))
+	require.Equal(t, "", p.AssigneeAccountID)
+}
+
+func TestCollector_AdvancedCursorFetchesNothing(t *testing.T) {
+	t1 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	fetcher := &fakeFetcher{pages: map[string][]chunkjira.Issue{
+		"": {issue("acc-alice", "Alice", t1)},
+	}}
+	c := New(fetcher, []string{"IDP"})
+
+	_, cursor1, err := c.Collect(t.Context(), "")
+	require.NoError(t, err)
+
+	events, _, err := c.Collect(t.Context(), cursor1)
+	require.NoError(t, err)
 	require.Empty(t, events)
+	require.NotEqual(t, "", cursorLastUpdated(t, cursor1))
 }
 
 func cursorLastUpdated(t *testing.T, cursor string) string {

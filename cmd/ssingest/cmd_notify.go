@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-faster/sisyphus/internal/config"
 	"github.com/go-faster/sisyphus/internal/ent"
+	"github.com/go-faster/sisyphus/internal/event"
 	gitlabingest "github.com/go-faster/sisyphus/internal/ingest/gitlab"
 	jiraingest "github.com/go-faster/sisyphus/internal/ingest/jira"
 	"github.com/go-faster/sisyphus/internal/ingestrun"
@@ -53,27 +54,56 @@ func (d *ingestDeps) notifyRunner() notifyRunner {
 	}
 }
 
-// RunOnce collects and dispatches both sources. A source with no
-// credentials configured is skipped, not an error; a real collection error
-// for one source does not prevent the other source from still running.
+// RunOnce collects each source's canonical events and routes them through the
+// event spine to the notification destination. A source with no credentials
+// configured is skipped, not an error; a real collection error for one source
+// does not prevent the other source from still running.
 func (r notifyRunner) RunOnce(ctx context.Context) error {
 	lg := zctx.From(ctx).Named("notify")
 	store := notifystore.New(r.db)
 	dispatcher := notify.NewDispatcher(store, store, notify.ChannelTelegram, nil)
 
+	// The event router with the notification gateway subscribed per source. A
+	// synchronous in-process Mux for now; a durable queue-backed Router can
+	// replace it without collectors or subscribers changing.
+	router := event.NewMux()
+	router.Subscribe(event.Subscription{
+		Name:    "notify-gitlab",
+		Sources: []event.Source{event.SourceGitLab},
+		Handler: notify.NewRouterSubscriber(notifygitlab.Projector{}, dispatcher),
+	})
+	router.Subscribe(event.Subscription{
+		Name:    "notify-jira",
+		Sources: []event.Source{event.SourceJira},
+		Handler: notify.NewRouterSubscriber(notifyjira.Projector{}, dispatcher),
+	})
+
 	var errs []error
-	if err := r.collectGitLab(ctx, lg, dispatcher); err != nil && !errors.Is(err, errNotConfigured) {
+	if err := r.collectGitLab(ctx, lg, router); err != nil && !errors.Is(err, errNotConfigured) {
 		lg.Error("gitlab notify collection failed", zap.Error(err))
 		errs = append(errs, err)
 	}
-	if err := r.collectJira(ctx, lg, dispatcher); err != nil && !errors.Is(err, errNotConfigured) {
+	if err := r.collectJira(ctx, lg, router); err != nil && !errors.Is(err, errNotConfigured) {
 		lg.Error("jira notify collection failed", zap.Error(err))
 		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
 }
 
-func (r notifyRunner) collectGitLab(ctx context.Context, lg *zap.Logger, dispatcher *notify.Dispatcher) error {
+// routeEvents fans every collected event through the router, advancing no
+// cursor until all have been routed. Handlers are idempotent (outbox
+// DedupKey), so re-routing after a partial failure never double-notifies.
+func routeEvents(ctx context.Context, router event.Router, events []event.Event) error {
+	var errs []error
+	for _, e := range events {
+		if err := router.Route(ctx, e); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (r notifyRunner) collectGitLab(ctx context.Context, lg *zap.Logger, router event.Router) error {
 	cfg := r.cfg.GitLab
 	projects := ingestrun.GitLabProjectRefs(cfg.Projects)
 	if cfg.BaseURL == "" || cfg.Token == "" || len(projects) == 0 {
@@ -116,20 +146,19 @@ func (r notifyRunner) collectGitLab(ctx context.Context, lg *zap.Logger, dispatc
 		return errors.Wrap(err, "collect gitlab events")
 	}
 
-	enqueued, err := dispatcher.Dispatch(ctx, events)
-	if err != nil {
+	if err := routeEvents(ctx, router, events); err != nil {
 		_ = ingestrun.UpsertSyncState(ctx, r.db, syncSourceNotifyGitLab, time.Now(), cursor, "error", 0)
-		return errors.Wrap(err, "dispatch gitlab events")
+		return errors.Wrap(err, "route gitlab events")
 	}
 
-	if err := ingestrun.UpsertSyncState(ctx, r.db, syncSourceNotifyGitLab, time.Now(), nextCursor, "ok", enqueued); err != nil {
+	if err := ingestrun.UpsertSyncState(ctx, r.db, syncSourceNotifyGitLab, time.Now(), nextCursor, "ok", len(events)); err != nil {
 		return errors.Wrap(err, "upsert gitlab notify syncstate")
 	}
-	lg.Info("gitlab notify collection done", zap.Int("events", len(events)), zap.Int("enqueued", enqueued))
+	lg.Info("gitlab notify collection done", zap.Int("events", len(events)))
 	return nil
 }
 
-func (r notifyRunner) collectJira(ctx context.Context, lg *zap.Logger, dispatcher *notify.Dispatcher) error {
+func (r notifyRunner) collectJira(ctx context.Context, lg *zap.Logger, router event.Router) error {
 	cfg := r.cfg.Jira
 	projects := ingestrun.JiraProjectKeys(cfg.Projects)
 	noCreds := cfg.PAT == "" && (cfg.Username == "" || cfg.Password == "") && (cfg.Email == "" || cfg.APIToken == "")
@@ -176,15 +205,14 @@ func (r notifyRunner) collectJira(ctx context.Context, lg *zap.Logger, dispatche
 		return errors.Wrap(err, "collect jira events")
 	}
 
-	enqueued, err := dispatcher.Dispatch(ctx, events)
-	if err != nil {
+	if err := routeEvents(ctx, router, events); err != nil {
 		_ = ingestrun.UpsertSyncState(ctx, r.db, syncSourceNotifyJira, time.Now(), cursor, "error", 0)
-		return errors.Wrap(err, "dispatch jira events")
+		return errors.Wrap(err, "route jira events")
 	}
 
-	if err := ingestrun.UpsertSyncState(ctx, r.db, syncSourceNotifyJira, time.Now(), nextCursor, "ok", enqueued); err != nil {
+	if err := ingestrun.UpsertSyncState(ctx, r.db, syncSourceNotifyJira, time.Now(), nextCursor, "ok", len(events)); err != nil {
 		return errors.Wrap(err, "upsert jira notify syncstate")
 	}
-	lg.Info("jira notify collection done", zap.Int("events", len(events)), zap.Int("enqueued", enqueued))
+	lg.Info("jira notify collection done", zap.Int("events", len(events)))
 	return nil
 }
