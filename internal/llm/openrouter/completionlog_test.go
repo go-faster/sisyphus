@@ -72,4 +72,3 @@ func TestCompleteWithTools_NoLogBelowDebug(t *testing.T) {
 	require.NoError(t, err)
 	require.Zero(t, logs.FilterMessage("llm completion").Len())
 }
-
