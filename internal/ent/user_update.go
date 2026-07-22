@@ -13,33 +13,34 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/go-faster/sisyphus/internal/ent/notification"
 	"github.com/go-faster/sisyphus/internal/ent/notifysubscription"
-	"github.com/go-faster/sisyphus/internal/ent/notifyuser"
 	"github.com/go-faster/sisyphus/internal/ent/predicate"
+	"github.com/go-faster/sisyphus/internal/ent/user"
+	"github.com/go-faster/sisyphus/internal/ent/usertoken"
 	"github.com/google/uuid"
 )
 
-// NotifyUserUpdate is the builder for updating NotifyUser entities.
-type NotifyUserUpdate struct {
+// UserUpdate is the builder for updating User entities.
+type UserUpdate struct {
 	config
 	hooks    []Hook
-	mutation *NotifyUserMutation
+	mutation *UserMutation
 }
 
-// Where appends a list predicates to the NotifyUserUpdate builder.
-func (_u *NotifyUserUpdate) Where(ps ...predicate.NotifyUser) *NotifyUserUpdate {
+// Where appends a list predicates to the UserUpdate builder.
+func (_u *UserUpdate) Where(ps ...predicate.User) *UserUpdate {
 	_u.mutation.Where(ps...)
 	return _u
 }
 
 // SetTelegramUserID sets the "telegram_user_id" field.
-func (_u *NotifyUserUpdate) SetTelegramUserID(v int64) *NotifyUserUpdate {
+func (_u *UserUpdate) SetTelegramUserID(v int64) *UserUpdate {
 	_u.mutation.ResetTelegramUserID()
 	_u.mutation.SetTelegramUserID(v)
 	return _u
 }
 
 // SetNillableTelegramUserID sets the "telegram_user_id" field if the given value is not nil.
-func (_u *NotifyUserUpdate) SetNillableTelegramUserID(v *int64) *NotifyUserUpdate {
+func (_u *UserUpdate) SetNillableTelegramUserID(v *int64) *UserUpdate {
 	if v != nil {
 		_u.SetTelegramUserID(*v)
 	}
@@ -47,20 +48,20 @@ func (_u *NotifyUserUpdate) SetNillableTelegramUserID(v *int64) *NotifyUserUpdat
 }
 
 // AddTelegramUserID adds value to the "telegram_user_id" field.
-func (_u *NotifyUserUpdate) AddTelegramUserID(v int64) *NotifyUserUpdate {
+func (_u *UserUpdate) AddTelegramUserID(v int64) *UserUpdate {
 	_u.mutation.AddTelegramUserID(v)
 	return _u
 }
 
 // SetTelegramAccessHash sets the "telegram_access_hash" field.
-func (_u *NotifyUserUpdate) SetTelegramAccessHash(v int64) *NotifyUserUpdate {
+func (_u *UserUpdate) SetTelegramAccessHash(v int64) *UserUpdate {
 	_u.mutation.ResetTelegramAccessHash()
 	_u.mutation.SetTelegramAccessHash(v)
 	return _u
 }
 
 // SetNillableTelegramAccessHash sets the "telegram_access_hash" field if the given value is not nil.
-func (_u *NotifyUserUpdate) SetNillableTelegramAccessHash(v *int64) *NotifyUserUpdate {
+func (_u *UserUpdate) SetNillableTelegramAccessHash(v *int64) *UserUpdate {
 	if v != nil {
 		_u.SetTelegramAccessHash(*v)
 	}
@@ -68,25 +69,25 @@ func (_u *NotifyUserUpdate) SetNillableTelegramAccessHash(v *int64) *NotifyUserU
 }
 
 // AddTelegramAccessHash adds value to the "telegram_access_hash" field.
-func (_u *NotifyUserUpdate) AddTelegramAccessHash(v int64) *NotifyUserUpdate {
+func (_u *UserUpdate) AddTelegramAccessHash(v int64) *UserUpdate {
 	_u.mutation.AddTelegramAccessHash(v)
 	return _u
 }
 
 // ClearTelegramAccessHash clears the value of the "telegram_access_hash" field.
-func (_u *NotifyUserUpdate) ClearTelegramAccessHash() *NotifyUserUpdate {
+func (_u *UserUpdate) ClearTelegramAccessHash() *UserUpdate {
 	_u.mutation.ClearTelegramAccessHash()
 	return _u
 }
 
 // SetGitlabUsername sets the "gitlab_username" field.
-func (_u *NotifyUserUpdate) SetGitlabUsername(v string) *NotifyUserUpdate {
+func (_u *UserUpdate) SetGitlabUsername(v string) *UserUpdate {
 	_u.mutation.SetGitlabUsername(v)
 	return _u
 }
 
 // SetNillableGitlabUsername sets the "gitlab_username" field if the given value is not nil.
-func (_u *NotifyUserUpdate) SetNillableGitlabUsername(v *string) *NotifyUserUpdate {
+func (_u *UserUpdate) SetNillableGitlabUsername(v *string) *UserUpdate {
 	if v != nil {
 		_u.SetGitlabUsername(*v)
 	}
@@ -94,19 +95,19 @@ func (_u *NotifyUserUpdate) SetNillableGitlabUsername(v *string) *NotifyUserUpda
 }
 
 // ClearGitlabUsername clears the value of the "gitlab_username" field.
-func (_u *NotifyUserUpdate) ClearGitlabUsername() *NotifyUserUpdate {
+func (_u *UserUpdate) ClearGitlabUsername() *UserUpdate {
 	_u.mutation.ClearGitlabUsername()
 	return _u
 }
 
 // SetJiraAccountID sets the "jira_account_id" field.
-func (_u *NotifyUserUpdate) SetJiraAccountID(v string) *NotifyUserUpdate {
+func (_u *UserUpdate) SetJiraAccountID(v string) *UserUpdate {
 	_u.mutation.SetJiraAccountID(v)
 	return _u
 }
 
 // SetNillableJiraAccountID sets the "jira_account_id" field if the given value is not nil.
-func (_u *NotifyUserUpdate) SetNillableJiraAccountID(v *string) *NotifyUserUpdate {
+func (_u *UserUpdate) SetNillableJiraAccountID(v *string) *UserUpdate {
 	if v != nil {
 		_u.SetJiraAccountID(*v)
 	}
@@ -114,19 +115,19 @@ func (_u *NotifyUserUpdate) SetNillableJiraAccountID(v *string) *NotifyUserUpdat
 }
 
 // ClearJiraAccountID clears the value of the "jira_account_id" field.
-func (_u *NotifyUserUpdate) ClearJiraAccountID() *NotifyUserUpdate {
+func (_u *UserUpdate) ClearJiraAccountID() *UserUpdate {
 	_u.mutation.ClearJiraAccountID()
 	return _u
 }
 
 // SetJiraDisplayName sets the "jira_display_name" field.
-func (_u *NotifyUserUpdate) SetJiraDisplayName(v string) *NotifyUserUpdate {
+func (_u *UserUpdate) SetJiraDisplayName(v string) *UserUpdate {
 	_u.mutation.SetJiraDisplayName(v)
 	return _u
 }
 
 // SetNillableJiraDisplayName sets the "jira_display_name" field if the given value is not nil.
-func (_u *NotifyUserUpdate) SetNillableJiraDisplayName(v *string) *NotifyUserUpdate {
+func (_u *UserUpdate) SetNillableJiraDisplayName(v *string) *UserUpdate {
 	if v != nil {
 		_u.SetJiraDisplayName(*v)
 	}
@@ -134,19 +135,19 @@ func (_u *NotifyUserUpdate) SetNillableJiraDisplayName(v *string) *NotifyUserUpd
 }
 
 // ClearJiraDisplayName clears the value of the "jira_display_name" field.
-func (_u *NotifyUserUpdate) ClearJiraDisplayName() *NotifyUserUpdate {
+func (_u *UserUpdate) ClearJiraDisplayName() *UserUpdate {
 	_u.mutation.ClearJiraDisplayName()
 	return _u
 }
 
 // SetEnabled sets the "enabled" field.
-func (_u *NotifyUserUpdate) SetEnabled(v bool) *NotifyUserUpdate {
+func (_u *UserUpdate) SetEnabled(v bool) *UserUpdate {
 	_u.mutation.SetEnabled(v)
 	return _u
 }
 
 // SetNillableEnabled sets the "enabled" field if the given value is not nil.
-func (_u *NotifyUserUpdate) SetNillableEnabled(v *bool) *NotifyUserUpdate {
+func (_u *UserUpdate) SetNillableEnabled(v *bool) *UserUpdate {
 	if v != nil {
 		_u.SetEnabled(*v)
 	}
@@ -154,19 +155,19 @@ func (_u *NotifyUserUpdate) SetNillableEnabled(v *bool) *NotifyUserUpdate {
 }
 
 // SetUpdatedAt sets the "updated_at" field.
-func (_u *NotifyUserUpdate) SetUpdatedAt(v time.Time) *NotifyUserUpdate {
+func (_u *UserUpdate) SetUpdatedAt(v time.Time) *UserUpdate {
 	_u.mutation.SetUpdatedAt(v)
 	return _u
 }
 
 // AddSubscriptionIDs adds the "subscriptions" edge to the NotifySubscription entity by IDs.
-func (_u *NotifyUserUpdate) AddSubscriptionIDs(ids ...uuid.UUID) *NotifyUserUpdate {
+func (_u *UserUpdate) AddSubscriptionIDs(ids ...uuid.UUID) *UserUpdate {
 	_u.mutation.AddSubscriptionIDs(ids...)
 	return _u
 }
 
 // AddSubscriptions adds the "subscriptions" edges to the NotifySubscription entity.
-func (_u *NotifyUserUpdate) AddSubscriptions(v ...*NotifySubscription) *NotifyUserUpdate {
+func (_u *UserUpdate) AddSubscriptions(v ...*NotifySubscription) *UserUpdate {
 	ids := make([]uuid.UUID, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
@@ -175,13 +176,13 @@ func (_u *NotifyUserUpdate) AddSubscriptions(v ...*NotifySubscription) *NotifyUs
 }
 
 // AddNotificationIDs adds the "notifications" edge to the Notification entity by IDs.
-func (_u *NotifyUserUpdate) AddNotificationIDs(ids ...uuid.UUID) *NotifyUserUpdate {
+func (_u *UserUpdate) AddNotificationIDs(ids ...uuid.UUID) *UserUpdate {
 	_u.mutation.AddNotificationIDs(ids...)
 	return _u
 }
 
 // AddNotifications adds the "notifications" edges to the Notification entity.
-func (_u *NotifyUserUpdate) AddNotifications(v ...*Notification) *NotifyUserUpdate {
+func (_u *UserUpdate) AddNotifications(v ...*Notification) *UserUpdate {
 	ids := make([]uuid.UUID, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
@@ -189,25 +190,40 @@ func (_u *NotifyUserUpdate) AddNotifications(v ...*Notification) *NotifyUserUpda
 	return _u.AddNotificationIDs(ids...)
 }
 
-// Mutation returns the NotifyUserMutation object of the builder.
-func (_u *NotifyUserUpdate) Mutation() *NotifyUserMutation {
+// AddTokenIDs adds the "tokens" edge to the UserToken entity by IDs.
+func (_u *UserUpdate) AddTokenIDs(ids ...uuid.UUID) *UserUpdate {
+	_u.mutation.AddTokenIDs(ids...)
+	return _u
+}
+
+// AddTokens adds the "tokens" edges to the UserToken entity.
+func (_u *UserUpdate) AddTokens(v ...*UserToken) *UserUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddTokenIDs(ids...)
+}
+
+// Mutation returns the UserMutation object of the builder.
+func (_u *UserUpdate) Mutation() *UserMutation {
 	return _u.mutation
 }
 
 // ClearSubscriptions clears all "subscriptions" edges to the NotifySubscription entity.
-func (_u *NotifyUserUpdate) ClearSubscriptions() *NotifyUserUpdate {
+func (_u *UserUpdate) ClearSubscriptions() *UserUpdate {
 	_u.mutation.ClearSubscriptions()
 	return _u
 }
 
 // RemoveSubscriptionIDs removes the "subscriptions" edge to NotifySubscription entities by IDs.
-func (_u *NotifyUserUpdate) RemoveSubscriptionIDs(ids ...uuid.UUID) *NotifyUserUpdate {
+func (_u *UserUpdate) RemoveSubscriptionIDs(ids ...uuid.UUID) *UserUpdate {
 	_u.mutation.RemoveSubscriptionIDs(ids...)
 	return _u
 }
 
 // RemoveSubscriptions removes "subscriptions" edges to NotifySubscription entities.
-func (_u *NotifyUserUpdate) RemoveSubscriptions(v ...*NotifySubscription) *NotifyUserUpdate {
+func (_u *UserUpdate) RemoveSubscriptions(v ...*NotifySubscription) *UserUpdate {
 	ids := make([]uuid.UUID, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
@@ -216,19 +232,19 @@ func (_u *NotifyUserUpdate) RemoveSubscriptions(v ...*NotifySubscription) *Notif
 }
 
 // ClearNotifications clears all "notifications" edges to the Notification entity.
-func (_u *NotifyUserUpdate) ClearNotifications() *NotifyUserUpdate {
+func (_u *UserUpdate) ClearNotifications() *UserUpdate {
 	_u.mutation.ClearNotifications()
 	return _u
 }
 
 // RemoveNotificationIDs removes the "notifications" edge to Notification entities by IDs.
-func (_u *NotifyUserUpdate) RemoveNotificationIDs(ids ...uuid.UUID) *NotifyUserUpdate {
+func (_u *UserUpdate) RemoveNotificationIDs(ids ...uuid.UUID) *UserUpdate {
 	_u.mutation.RemoveNotificationIDs(ids...)
 	return _u
 }
 
 // RemoveNotifications removes "notifications" edges to Notification entities.
-func (_u *NotifyUserUpdate) RemoveNotifications(v ...*Notification) *NotifyUserUpdate {
+func (_u *UserUpdate) RemoveNotifications(v ...*Notification) *UserUpdate {
 	ids := make([]uuid.UUID, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
@@ -236,14 +252,35 @@ func (_u *NotifyUserUpdate) RemoveNotifications(v ...*Notification) *NotifyUserU
 	return _u.RemoveNotificationIDs(ids...)
 }
 
+// ClearTokens clears all "tokens" edges to the UserToken entity.
+func (_u *UserUpdate) ClearTokens() *UserUpdate {
+	_u.mutation.ClearTokens()
+	return _u
+}
+
+// RemoveTokenIDs removes the "tokens" edge to UserToken entities by IDs.
+func (_u *UserUpdate) RemoveTokenIDs(ids ...uuid.UUID) *UserUpdate {
+	_u.mutation.RemoveTokenIDs(ids...)
+	return _u
+}
+
+// RemoveTokens removes "tokens" edges to UserToken entities.
+func (_u *UserUpdate) RemoveTokens(v ...*UserToken) *UserUpdate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveTokenIDs(ids...)
+}
+
 // Save executes the query and returns the number of nodes affected by the update operation.
-func (_u *NotifyUserUpdate) Save(ctx context.Context) (int, error) {
+func (_u *UserUpdate) Save(ctx context.Context) (int, error) {
 	_u.defaults()
 	return withHooks(ctx, _u.sqlSave, _u.mutation, _u.hooks)
 }
 
 // SaveX is like Save, but panics if an error occurs.
-func (_u *NotifyUserUpdate) SaveX(ctx context.Context) int {
+func (_u *UserUpdate) SaveX(ctx context.Context) int {
 	affected, err := _u.Save(ctx)
 	if err != nil {
 		panic(err)
@@ -252,28 +289,28 @@ func (_u *NotifyUserUpdate) SaveX(ctx context.Context) int {
 }
 
 // Exec executes the query.
-func (_u *NotifyUserUpdate) Exec(ctx context.Context) error {
+func (_u *UserUpdate) Exec(ctx context.Context) error {
 	_, err := _u.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_u *NotifyUserUpdate) ExecX(ctx context.Context) {
+func (_u *UserUpdate) ExecX(ctx context.Context) {
 	if err := _u.Exec(ctx); err != nil {
 		panic(err)
 	}
 }
 
 // defaults sets the default values of the builder before save.
-func (_u *NotifyUserUpdate) defaults() {
+func (_u *UserUpdate) defaults() {
 	if _, ok := _u.mutation.UpdatedAt(); !ok {
-		v := notifyuser.UpdateDefaultUpdatedAt()
+		v := user.UpdateDefaultUpdatedAt()
 		_u.mutation.SetUpdatedAt(v)
 	}
 }
 
-func (_u *NotifyUserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
-	_spec := sqlgraph.NewUpdateSpec(notifyuser.Table, notifyuser.Columns, sqlgraph.NewFieldSpec(notifyuser.FieldID, field.TypeUUID))
+func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
+	_spec := sqlgraph.NewUpdateSpec(user.Table, user.Columns, sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID))
 	if ps := _u.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
@@ -282,50 +319,50 @@ func (_u *NotifyUserUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 		}
 	}
 	if value, ok := _u.mutation.TelegramUserID(); ok {
-		_spec.SetField(notifyuser.FieldTelegramUserID, field.TypeInt64, value)
+		_spec.SetField(user.FieldTelegramUserID, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.AddedTelegramUserID(); ok {
-		_spec.AddField(notifyuser.FieldTelegramUserID, field.TypeInt64, value)
+		_spec.AddField(user.FieldTelegramUserID, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.TelegramAccessHash(); ok {
-		_spec.SetField(notifyuser.FieldTelegramAccessHash, field.TypeInt64, value)
+		_spec.SetField(user.FieldTelegramAccessHash, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.AddedTelegramAccessHash(); ok {
-		_spec.AddField(notifyuser.FieldTelegramAccessHash, field.TypeInt64, value)
+		_spec.AddField(user.FieldTelegramAccessHash, field.TypeInt64, value)
 	}
 	if _u.mutation.TelegramAccessHashCleared() {
-		_spec.ClearField(notifyuser.FieldTelegramAccessHash, field.TypeInt64)
+		_spec.ClearField(user.FieldTelegramAccessHash, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.GitlabUsername(); ok {
-		_spec.SetField(notifyuser.FieldGitlabUsername, field.TypeString, value)
+		_spec.SetField(user.FieldGitlabUsername, field.TypeString, value)
 	}
 	if _u.mutation.GitlabUsernameCleared() {
-		_spec.ClearField(notifyuser.FieldGitlabUsername, field.TypeString)
+		_spec.ClearField(user.FieldGitlabUsername, field.TypeString)
 	}
 	if value, ok := _u.mutation.JiraAccountID(); ok {
-		_spec.SetField(notifyuser.FieldJiraAccountID, field.TypeString, value)
+		_spec.SetField(user.FieldJiraAccountID, field.TypeString, value)
 	}
 	if _u.mutation.JiraAccountIDCleared() {
-		_spec.ClearField(notifyuser.FieldJiraAccountID, field.TypeString)
+		_spec.ClearField(user.FieldJiraAccountID, field.TypeString)
 	}
 	if value, ok := _u.mutation.JiraDisplayName(); ok {
-		_spec.SetField(notifyuser.FieldJiraDisplayName, field.TypeString, value)
+		_spec.SetField(user.FieldJiraDisplayName, field.TypeString, value)
 	}
 	if _u.mutation.JiraDisplayNameCleared() {
-		_spec.ClearField(notifyuser.FieldJiraDisplayName, field.TypeString)
+		_spec.ClearField(user.FieldJiraDisplayName, field.TypeString)
 	}
 	if value, ok := _u.mutation.Enabled(); ok {
-		_spec.SetField(notifyuser.FieldEnabled, field.TypeBool, value)
+		_spec.SetField(user.FieldEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
-		_spec.SetField(notifyuser.FieldUpdatedAt, field.TypeTime, value)
+		_spec.SetField(user.FieldUpdatedAt, field.TypeTime, value)
 	}
 	if _u.mutation.SubscriptionsCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   notifyuser.SubscriptionsTable,
-			Columns: []string{notifyuser.SubscriptionsColumn},
+			Table:   user.SubscriptionsTable,
+			Columns: []string{user.SubscriptionsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(notifysubscription.FieldID, field.TypeUUID),
@@ -337,8 +374,8 @@ func (_u *NotifyUserUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   notifyuser.SubscriptionsTable,
-			Columns: []string{notifyuser.SubscriptionsColumn},
+			Table:   user.SubscriptionsTable,
+			Columns: []string{user.SubscriptionsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(notifysubscription.FieldID, field.TypeUUID),
@@ -353,8 +390,8 @@ func (_u *NotifyUserUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   notifyuser.SubscriptionsTable,
-			Columns: []string{notifyuser.SubscriptionsColumn},
+			Table:   user.SubscriptionsTable,
+			Columns: []string{user.SubscriptionsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(notifysubscription.FieldID, field.TypeUUID),
@@ -369,8 +406,8 @@ func (_u *NotifyUserUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   notifyuser.NotificationsTable,
-			Columns: []string{notifyuser.NotificationsColumn},
+			Table:   user.NotificationsTable,
+			Columns: []string{user.NotificationsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(notification.FieldID, field.TypeUUID),
@@ -382,8 +419,8 @@ func (_u *NotifyUserUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   notifyuser.NotificationsTable,
-			Columns: []string{notifyuser.NotificationsColumn},
+			Table:   user.NotificationsTable,
+			Columns: []string{user.NotificationsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(notification.FieldID, field.TypeUUID),
@@ -398,8 +435,8 @@ func (_u *NotifyUserUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   notifyuser.NotificationsTable,
-			Columns: []string{notifyuser.NotificationsColumn},
+			Table:   user.NotificationsTable,
+			Columns: []string{user.NotificationsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(notification.FieldID, field.TypeUUID),
@@ -410,9 +447,54 @@ func (_u *NotifyUserUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.TokensCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TokensTable,
+			Columns: []string{user.TokensColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usertoken.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedTokensIDs(); len(nodes) > 0 && !_u.mutation.TokensCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TokensTable,
+			Columns: []string{user.TokensColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usertoken.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.TokensIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TokensTable,
+			Columns: []string{user.TokensColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usertoken.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
-			err = &NotFoundError{notifyuser.Label}
+			err = &NotFoundError{user.Label}
 		} else if sqlgraph.IsConstraintError(err) {
 			err = &ConstraintError{msg: err.Error(), wrap: err}
 		}
@@ -422,23 +504,23 @@ func (_u *NotifyUserUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	return _node, nil
 }
 
-// NotifyUserUpdateOne is the builder for updating a single NotifyUser entity.
-type NotifyUserUpdateOne struct {
+// UserUpdateOne is the builder for updating a single User entity.
+type UserUpdateOne struct {
 	config
 	fields   []string
 	hooks    []Hook
-	mutation *NotifyUserMutation
+	mutation *UserMutation
 }
 
 // SetTelegramUserID sets the "telegram_user_id" field.
-func (_u *NotifyUserUpdateOne) SetTelegramUserID(v int64) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) SetTelegramUserID(v int64) *UserUpdateOne {
 	_u.mutation.ResetTelegramUserID()
 	_u.mutation.SetTelegramUserID(v)
 	return _u
 }
 
 // SetNillableTelegramUserID sets the "telegram_user_id" field if the given value is not nil.
-func (_u *NotifyUserUpdateOne) SetNillableTelegramUserID(v *int64) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) SetNillableTelegramUserID(v *int64) *UserUpdateOne {
 	if v != nil {
 		_u.SetTelegramUserID(*v)
 	}
@@ -446,20 +528,20 @@ func (_u *NotifyUserUpdateOne) SetNillableTelegramUserID(v *int64) *NotifyUserUp
 }
 
 // AddTelegramUserID adds value to the "telegram_user_id" field.
-func (_u *NotifyUserUpdateOne) AddTelegramUserID(v int64) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) AddTelegramUserID(v int64) *UserUpdateOne {
 	_u.mutation.AddTelegramUserID(v)
 	return _u
 }
 
 // SetTelegramAccessHash sets the "telegram_access_hash" field.
-func (_u *NotifyUserUpdateOne) SetTelegramAccessHash(v int64) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) SetTelegramAccessHash(v int64) *UserUpdateOne {
 	_u.mutation.ResetTelegramAccessHash()
 	_u.mutation.SetTelegramAccessHash(v)
 	return _u
 }
 
 // SetNillableTelegramAccessHash sets the "telegram_access_hash" field if the given value is not nil.
-func (_u *NotifyUserUpdateOne) SetNillableTelegramAccessHash(v *int64) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) SetNillableTelegramAccessHash(v *int64) *UserUpdateOne {
 	if v != nil {
 		_u.SetTelegramAccessHash(*v)
 	}
@@ -467,25 +549,25 @@ func (_u *NotifyUserUpdateOne) SetNillableTelegramAccessHash(v *int64) *NotifyUs
 }
 
 // AddTelegramAccessHash adds value to the "telegram_access_hash" field.
-func (_u *NotifyUserUpdateOne) AddTelegramAccessHash(v int64) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) AddTelegramAccessHash(v int64) *UserUpdateOne {
 	_u.mutation.AddTelegramAccessHash(v)
 	return _u
 }
 
 // ClearTelegramAccessHash clears the value of the "telegram_access_hash" field.
-func (_u *NotifyUserUpdateOne) ClearTelegramAccessHash() *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) ClearTelegramAccessHash() *UserUpdateOne {
 	_u.mutation.ClearTelegramAccessHash()
 	return _u
 }
 
 // SetGitlabUsername sets the "gitlab_username" field.
-func (_u *NotifyUserUpdateOne) SetGitlabUsername(v string) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) SetGitlabUsername(v string) *UserUpdateOne {
 	_u.mutation.SetGitlabUsername(v)
 	return _u
 }
 
 // SetNillableGitlabUsername sets the "gitlab_username" field if the given value is not nil.
-func (_u *NotifyUserUpdateOne) SetNillableGitlabUsername(v *string) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) SetNillableGitlabUsername(v *string) *UserUpdateOne {
 	if v != nil {
 		_u.SetGitlabUsername(*v)
 	}
@@ -493,19 +575,19 @@ func (_u *NotifyUserUpdateOne) SetNillableGitlabUsername(v *string) *NotifyUserU
 }
 
 // ClearGitlabUsername clears the value of the "gitlab_username" field.
-func (_u *NotifyUserUpdateOne) ClearGitlabUsername() *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) ClearGitlabUsername() *UserUpdateOne {
 	_u.mutation.ClearGitlabUsername()
 	return _u
 }
 
 // SetJiraAccountID sets the "jira_account_id" field.
-func (_u *NotifyUserUpdateOne) SetJiraAccountID(v string) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) SetJiraAccountID(v string) *UserUpdateOne {
 	_u.mutation.SetJiraAccountID(v)
 	return _u
 }
 
 // SetNillableJiraAccountID sets the "jira_account_id" field if the given value is not nil.
-func (_u *NotifyUserUpdateOne) SetNillableJiraAccountID(v *string) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) SetNillableJiraAccountID(v *string) *UserUpdateOne {
 	if v != nil {
 		_u.SetJiraAccountID(*v)
 	}
@@ -513,19 +595,19 @@ func (_u *NotifyUserUpdateOne) SetNillableJiraAccountID(v *string) *NotifyUserUp
 }
 
 // ClearJiraAccountID clears the value of the "jira_account_id" field.
-func (_u *NotifyUserUpdateOne) ClearJiraAccountID() *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) ClearJiraAccountID() *UserUpdateOne {
 	_u.mutation.ClearJiraAccountID()
 	return _u
 }
 
 // SetJiraDisplayName sets the "jira_display_name" field.
-func (_u *NotifyUserUpdateOne) SetJiraDisplayName(v string) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) SetJiraDisplayName(v string) *UserUpdateOne {
 	_u.mutation.SetJiraDisplayName(v)
 	return _u
 }
 
 // SetNillableJiraDisplayName sets the "jira_display_name" field if the given value is not nil.
-func (_u *NotifyUserUpdateOne) SetNillableJiraDisplayName(v *string) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) SetNillableJiraDisplayName(v *string) *UserUpdateOne {
 	if v != nil {
 		_u.SetJiraDisplayName(*v)
 	}
@@ -533,19 +615,19 @@ func (_u *NotifyUserUpdateOne) SetNillableJiraDisplayName(v *string) *NotifyUser
 }
 
 // ClearJiraDisplayName clears the value of the "jira_display_name" field.
-func (_u *NotifyUserUpdateOne) ClearJiraDisplayName() *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) ClearJiraDisplayName() *UserUpdateOne {
 	_u.mutation.ClearJiraDisplayName()
 	return _u
 }
 
 // SetEnabled sets the "enabled" field.
-func (_u *NotifyUserUpdateOne) SetEnabled(v bool) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) SetEnabled(v bool) *UserUpdateOne {
 	_u.mutation.SetEnabled(v)
 	return _u
 }
 
 // SetNillableEnabled sets the "enabled" field if the given value is not nil.
-func (_u *NotifyUserUpdateOne) SetNillableEnabled(v *bool) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) SetNillableEnabled(v *bool) *UserUpdateOne {
 	if v != nil {
 		_u.SetEnabled(*v)
 	}
@@ -553,19 +635,19 @@ func (_u *NotifyUserUpdateOne) SetNillableEnabled(v *bool) *NotifyUserUpdateOne 
 }
 
 // SetUpdatedAt sets the "updated_at" field.
-func (_u *NotifyUserUpdateOne) SetUpdatedAt(v time.Time) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) SetUpdatedAt(v time.Time) *UserUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
 	return _u
 }
 
 // AddSubscriptionIDs adds the "subscriptions" edge to the NotifySubscription entity by IDs.
-func (_u *NotifyUserUpdateOne) AddSubscriptionIDs(ids ...uuid.UUID) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) AddSubscriptionIDs(ids ...uuid.UUID) *UserUpdateOne {
 	_u.mutation.AddSubscriptionIDs(ids...)
 	return _u
 }
 
 // AddSubscriptions adds the "subscriptions" edges to the NotifySubscription entity.
-func (_u *NotifyUserUpdateOne) AddSubscriptions(v ...*NotifySubscription) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) AddSubscriptions(v ...*NotifySubscription) *UserUpdateOne {
 	ids := make([]uuid.UUID, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
@@ -574,13 +656,13 @@ func (_u *NotifyUserUpdateOne) AddSubscriptions(v ...*NotifySubscription) *Notif
 }
 
 // AddNotificationIDs adds the "notifications" edge to the Notification entity by IDs.
-func (_u *NotifyUserUpdateOne) AddNotificationIDs(ids ...uuid.UUID) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) AddNotificationIDs(ids ...uuid.UUID) *UserUpdateOne {
 	_u.mutation.AddNotificationIDs(ids...)
 	return _u
 }
 
 // AddNotifications adds the "notifications" edges to the Notification entity.
-func (_u *NotifyUserUpdateOne) AddNotifications(v ...*Notification) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) AddNotifications(v ...*Notification) *UserUpdateOne {
 	ids := make([]uuid.UUID, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
@@ -588,25 +670,40 @@ func (_u *NotifyUserUpdateOne) AddNotifications(v ...*Notification) *NotifyUserU
 	return _u.AddNotificationIDs(ids...)
 }
 
-// Mutation returns the NotifyUserMutation object of the builder.
-func (_u *NotifyUserUpdateOne) Mutation() *NotifyUserMutation {
+// AddTokenIDs adds the "tokens" edge to the UserToken entity by IDs.
+func (_u *UserUpdateOne) AddTokenIDs(ids ...uuid.UUID) *UserUpdateOne {
+	_u.mutation.AddTokenIDs(ids...)
+	return _u
+}
+
+// AddTokens adds the "tokens" edges to the UserToken entity.
+func (_u *UserUpdateOne) AddTokens(v ...*UserToken) *UserUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddTokenIDs(ids...)
+}
+
+// Mutation returns the UserMutation object of the builder.
+func (_u *UserUpdateOne) Mutation() *UserMutation {
 	return _u.mutation
 }
 
 // ClearSubscriptions clears all "subscriptions" edges to the NotifySubscription entity.
-func (_u *NotifyUserUpdateOne) ClearSubscriptions() *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) ClearSubscriptions() *UserUpdateOne {
 	_u.mutation.ClearSubscriptions()
 	return _u
 }
 
 // RemoveSubscriptionIDs removes the "subscriptions" edge to NotifySubscription entities by IDs.
-func (_u *NotifyUserUpdateOne) RemoveSubscriptionIDs(ids ...uuid.UUID) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) RemoveSubscriptionIDs(ids ...uuid.UUID) *UserUpdateOne {
 	_u.mutation.RemoveSubscriptionIDs(ids...)
 	return _u
 }
 
 // RemoveSubscriptions removes "subscriptions" edges to NotifySubscription entities.
-func (_u *NotifyUserUpdateOne) RemoveSubscriptions(v ...*NotifySubscription) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) RemoveSubscriptions(v ...*NotifySubscription) *UserUpdateOne {
 	ids := make([]uuid.UUID, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
@@ -615,19 +712,19 @@ func (_u *NotifyUserUpdateOne) RemoveSubscriptions(v ...*NotifySubscription) *No
 }
 
 // ClearNotifications clears all "notifications" edges to the Notification entity.
-func (_u *NotifyUserUpdateOne) ClearNotifications() *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) ClearNotifications() *UserUpdateOne {
 	_u.mutation.ClearNotifications()
 	return _u
 }
 
 // RemoveNotificationIDs removes the "notifications" edge to Notification entities by IDs.
-func (_u *NotifyUserUpdateOne) RemoveNotificationIDs(ids ...uuid.UUID) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) RemoveNotificationIDs(ids ...uuid.UUID) *UserUpdateOne {
 	_u.mutation.RemoveNotificationIDs(ids...)
 	return _u
 }
 
 // RemoveNotifications removes "notifications" edges to Notification entities.
-func (_u *NotifyUserUpdateOne) RemoveNotifications(v ...*Notification) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) RemoveNotifications(v ...*Notification) *UserUpdateOne {
 	ids := make([]uuid.UUID, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
@@ -635,27 +732,48 @@ func (_u *NotifyUserUpdateOne) RemoveNotifications(v ...*Notification) *NotifyUs
 	return _u.RemoveNotificationIDs(ids...)
 }
 
-// Where appends a list predicates to the NotifyUserUpdate builder.
-func (_u *NotifyUserUpdateOne) Where(ps ...predicate.NotifyUser) *NotifyUserUpdateOne {
+// ClearTokens clears all "tokens" edges to the UserToken entity.
+func (_u *UserUpdateOne) ClearTokens() *UserUpdateOne {
+	_u.mutation.ClearTokens()
+	return _u
+}
+
+// RemoveTokenIDs removes the "tokens" edge to UserToken entities by IDs.
+func (_u *UserUpdateOne) RemoveTokenIDs(ids ...uuid.UUID) *UserUpdateOne {
+	_u.mutation.RemoveTokenIDs(ids...)
+	return _u
+}
+
+// RemoveTokens removes "tokens" edges to UserToken entities.
+func (_u *UserUpdateOne) RemoveTokens(v ...*UserToken) *UserUpdateOne {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveTokenIDs(ids...)
+}
+
+// Where appends a list predicates to the UserUpdate builder.
+func (_u *UserUpdateOne) Where(ps ...predicate.User) *UserUpdateOne {
 	_u.mutation.Where(ps...)
 	return _u
 }
 
 // Select allows selecting one or more fields (columns) of the returned entity.
 // The default is selecting all fields defined in the entity schema.
-func (_u *NotifyUserUpdateOne) Select(field string, fields ...string) *NotifyUserUpdateOne {
+func (_u *UserUpdateOne) Select(field string, fields ...string) *UserUpdateOne {
 	_u.fields = append([]string{field}, fields...)
 	return _u
 }
 
-// Save executes the query and returns the updated NotifyUser entity.
-func (_u *NotifyUserUpdateOne) Save(ctx context.Context) (*NotifyUser, error) {
+// Save executes the query and returns the updated User entity.
+func (_u *UserUpdateOne) Save(ctx context.Context) (*User, error) {
 	_u.defaults()
 	return withHooks(ctx, _u.sqlSave, _u.mutation, _u.hooks)
 }
 
 // SaveX is like Save, but panics if an error occurs.
-func (_u *NotifyUserUpdateOne) SaveX(ctx context.Context) *NotifyUser {
+func (_u *UserUpdateOne) SaveX(ctx context.Context) *User {
 	node, err := _u.Save(ctx)
 	if err != nil {
 		panic(err)
@@ -664,41 +782,41 @@ func (_u *NotifyUserUpdateOne) SaveX(ctx context.Context) *NotifyUser {
 }
 
 // Exec executes the query on the entity.
-func (_u *NotifyUserUpdateOne) Exec(ctx context.Context) error {
+func (_u *UserUpdateOne) Exec(ctx context.Context) error {
 	_, err := _u.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_u *NotifyUserUpdateOne) ExecX(ctx context.Context) {
+func (_u *UserUpdateOne) ExecX(ctx context.Context) {
 	if err := _u.Exec(ctx); err != nil {
 		panic(err)
 	}
 }
 
 // defaults sets the default values of the builder before save.
-func (_u *NotifyUserUpdateOne) defaults() {
+func (_u *UserUpdateOne) defaults() {
 	if _, ok := _u.mutation.UpdatedAt(); !ok {
-		v := notifyuser.UpdateDefaultUpdatedAt()
+		v := user.UpdateDefaultUpdatedAt()
 		_u.mutation.SetUpdatedAt(v)
 	}
 }
 
-func (_u *NotifyUserUpdateOne) sqlSave(ctx context.Context) (_node *NotifyUser, err error) {
-	_spec := sqlgraph.NewUpdateSpec(notifyuser.Table, notifyuser.Columns, sqlgraph.NewFieldSpec(notifyuser.FieldID, field.TypeUUID))
+func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
+	_spec := sqlgraph.NewUpdateSpec(user.Table, user.Columns, sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID))
 	id, ok := _u.mutation.ID()
 	if !ok {
-		return nil, &ValidationError{Name: "id", err: errors.New(`ent: missing "NotifyUser.id" for update`)}
+		return nil, &ValidationError{Name: "id", err: errors.New(`ent: missing "User.id" for update`)}
 	}
 	_spec.Node.ID.Value = id
 	if fields := _u.fields; len(fields) > 0 {
 		_spec.Node.Columns = make([]string, 0, len(fields))
-		_spec.Node.Columns = append(_spec.Node.Columns, notifyuser.FieldID)
+		_spec.Node.Columns = append(_spec.Node.Columns, user.FieldID)
 		for _, f := range fields {
-			if !notifyuser.ValidColumn(f) {
+			if !user.ValidColumn(f) {
 				return nil, &ValidationError{Name: f, err: fmt.Errorf("ent: invalid field %q for query", f)}
 			}
-			if f != notifyuser.FieldID {
+			if f != user.FieldID {
 				_spec.Node.Columns = append(_spec.Node.Columns, f)
 			}
 		}
@@ -711,50 +829,50 @@ func (_u *NotifyUserUpdateOne) sqlSave(ctx context.Context) (_node *NotifyUser, 
 		}
 	}
 	if value, ok := _u.mutation.TelegramUserID(); ok {
-		_spec.SetField(notifyuser.FieldTelegramUserID, field.TypeInt64, value)
+		_spec.SetField(user.FieldTelegramUserID, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.AddedTelegramUserID(); ok {
-		_spec.AddField(notifyuser.FieldTelegramUserID, field.TypeInt64, value)
+		_spec.AddField(user.FieldTelegramUserID, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.TelegramAccessHash(); ok {
-		_spec.SetField(notifyuser.FieldTelegramAccessHash, field.TypeInt64, value)
+		_spec.SetField(user.FieldTelegramAccessHash, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.AddedTelegramAccessHash(); ok {
-		_spec.AddField(notifyuser.FieldTelegramAccessHash, field.TypeInt64, value)
+		_spec.AddField(user.FieldTelegramAccessHash, field.TypeInt64, value)
 	}
 	if _u.mutation.TelegramAccessHashCleared() {
-		_spec.ClearField(notifyuser.FieldTelegramAccessHash, field.TypeInt64)
+		_spec.ClearField(user.FieldTelegramAccessHash, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.GitlabUsername(); ok {
-		_spec.SetField(notifyuser.FieldGitlabUsername, field.TypeString, value)
+		_spec.SetField(user.FieldGitlabUsername, field.TypeString, value)
 	}
 	if _u.mutation.GitlabUsernameCleared() {
-		_spec.ClearField(notifyuser.FieldGitlabUsername, field.TypeString)
+		_spec.ClearField(user.FieldGitlabUsername, field.TypeString)
 	}
 	if value, ok := _u.mutation.JiraAccountID(); ok {
-		_spec.SetField(notifyuser.FieldJiraAccountID, field.TypeString, value)
+		_spec.SetField(user.FieldJiraAccountID, field.TypeString, value)
 	}
 	if _u.mutation.JiraAccountIDCleared() {
-		_spec.ClearField(notifyuser.FieldJiraAccountID, field.TypeString)
+		_spec.ClearField(user.FieldJiraAccountID, field.TypeString)
 	}
 	if value, ok := _u.mutation.JiraDisplayName(); ok {
-		_spec.SetField(notifyuser.FieldJiraDisplayName, field.TypeString, value)
+		_spec.SetField(user.FieldJiraDisplayName, field.TypeString, value)
 	}
 	if _u.mutation.JiraDisplayNameCleared() {
-		_spec.ClearField(notifyuser.FieldJiraDisplayName, field.TypeString)
+		_spec.ClearField(user.FieldJiraDisplayName, field.TypeString)
 	}
 	if value, ok := _u.mutation.Enabled(); ok {
-		_spec.SetField(notifyuser.FieldEnabled, field.TypeBool, value)
+		_spec.SetField(user.FieldEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
-		_spec.SetField(notifyuser.FieldUpdatedAt, field.TypeTime, value)
+		_spec.SetField(user.FieldUpdatedAt, field.TypeTime, value)
 	}
 	if _u.mutation.SubscriptionsCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   notifyuser.SubscriptionsTable,
-			Columns: []string{notifyuser.SubscriptionsColumn},
+			Table:   user.SubscriptionsTable,
+			Columns: []string{user.SubscriptionsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(notifysubscription.FieldID, field.TypeUUID),
@@ -766,8 +884,8 @@ func (_u *NotifyUserUpdateOne) sqlSave(ctx context.Context) (_node *NotifyUser, 
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   notifyuser.SubscriptionsTable,
-			Columns: []string{notifyuser.SubscriptionsColumn},
+			Table:   user.SubscriptionsTable,
+			Columns: []string{user.SubscriptionsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(notifysubscription.FieldID, field.TypeUUID),
@@ -782,8 +900,8 @@ func (_u *NotifyUserUpdateOne) sqlSave(ctx context.Context) (_node *NotifyUser, 
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   notifyuser.SubscriptionsTable,
-			Columns: []string{notifyuser.SubscriptionsColumn},
+			Table:   user.SubscriptionsTable,
+			Columns: []string{user.SubscriptionsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(notifysubscription.FieldID, field.TypeUUID),
@@ -798,8 +916,8 @@ func (_u *NotifyUserUpdateOne) sqlSave(ctx context.Context) (_node *NotifyUser, 
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   notifyuser.NotificationsTable,
-			Columns: []string{notifyuser.NotificationsColumn},
+			Table:   user.NotificationsTable,
+			Columns: []string{user.NotificationsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(notification.FieldID, field.TypeUUID),
@@ -811,8 +929,8 @@ func (_u *NotifyUserUpdateOne) sqlSave(ctx context.Context) (_node *NotifyUser, 
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   notifyuser.NotificationsTable,
-			Columns: []string{notifyuser.NotificationsColumn},
+			Table:   user.NotificationsTable,
+			Columns: []string{user.NotificationsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(notification.FieldID, field.TypeUUID),
@@ -827,8 +945,8 @@ func (_u *NotifyUserUpdateOne) sqlSave(ctx context.Context) (_node *NotifyUser, 
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   notifyuser.NotificationsTable,
-			Columns: []string{notifyuser.NotificationsColumn},
+			Table:   user.NotificationsTable,
+			Columns: []string{user.NotificationsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(notification.FieldID, field.TypeUUID),
@@ -839,12 +957,57 @@ func (_u *NotifyUserUpdateOne) sqlSave(ctx context.Context) (_node *NotifyUser, 
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
-	_node = &NotifyUser{config: _u.config}
+	if _u.mutation.TokensCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TokensTable,
+			Columns: []string{user.TokensColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usertoken.FieldID, field.TypeUUID),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedTokensIDs(); len(nodes) > 0 && !_u.mutation.TokensCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TokensTable,
+			Columns: []string{user.TokensColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usertoken.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.TokensIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TokensTable,
+			Columns: []string{user.TokensColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usertoken.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	_node = &User{config: _u.config}
 	_spec.Assign = _node.assignValues
 	_spec.ScanValues = _node.scanValues
 	if err = sqlgraph.UpdateNode(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
-			err = &NotFoundError{notifyuser.Label}
+			err = &NotFoundError{user.Label}
 		} else if sqlgraph.IsConstraintError(err) {
 			err = &ConstraintError{msg: err.Error(), wrap: err}
 		}

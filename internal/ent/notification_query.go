@@ -12,8 +12,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/go-faster/sisyphus/internal/ent/notification"
-	"github.com/go-faster/sisyphus/internal/ent/notifyuser"
 	"github.com/go-faster/sisyphus/internal/ent/predicate"
+	"github.com/go-faster/sisyphus/internal/ent/user"
 	"github.com/google/uuid"
 )
 
@@ -24,7 +24,7 @@ type NotificationQuery struct {
 	order      []notification.OrderOption
 	inters     []Interceptor
 	predicates []predicate.Notification
-	withUser   *NotifyUserQuery
+	withUser   *UserQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -62,8 +62,8 @@ func (_q *NotificationQuery) Order(o ...notification.OrderOption) *NotificationQ
 }
 
 // QueryUser chains the current query on the "user" edge.
-func (_q *NotificationQuery) QueryUser() *NotifyUserQuery {
-	query := (&NotifyUserClient{config: _q.config}).Query()
+func (_q *NotificationQuery) QueryUser() *UserQuery {
+	query := (&UserClient{config: _q.config}).Query()
 	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
 		if err := _q.prepareQuery(ctx); err != nil {
 			return nil, err
@@ -74,7 +74,7 @@ func (_q *NotificationQuery) QueryUser() *NotifyUserQuery {
 		}
 		step := sqlgraph.NewStep(
 			sqlgraph.From(notification.Table, notification.FieldID, selector),
-			sqlgraph.To(notifyuser.Table, notifyuser.FieldID),
+			sqlgraph.To(user.Table, user.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, notification.UserTable, notification.UserColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
@@ -284,8 +284,8 @@ func (_q *NotificationQuery) Clone() *NotificationQuery {
 
 // WithUser tells the query-builder to eager-load the nodes that are connected to
 // the "user" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *NotificationQuery) WithUser(opts ...func(*NotifyUserQuery)) *NotificationQuery {
-	query := (&NotifyUserClient{config: _q.config}).Query()
+func (_q *NotificationQuery) WithUser(opts ...func(*UserQuery)) *NotificationQuery {
+	query := (&UserClient{config: _q.config}).Query()
 	for _, opt := range opts {
 		opt(query)
 	}
@@ -395,14 +395,14 @@ func (_q *NotificationQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 	}
 	if query := _q.withUser; query != nil {
 		if err := _q.loadUser(ctx, query, nodes, nil,
-			func(n *Notification, e *NotifyUser) { n.Edges.User = e }); err != nil {
+			func(n *Notification, e *User) { n.Edges.User = e }); err != nil {
 			return nil, err
 		}
 	}
 	return nodes, nil
 }
 
-func (_q *NotificationQuery) loadUser(ctx context.Context, query *NotifyUserQuery, nodes []*Notification, init func(*Notification), assign func(*Notification, *NotifyUser)) error {
+func (_q *NotificationQuery) loadUser(ctx context.Context, query *UserQuery, nodes []*Notification, init func(*Notification), assign func(*Notification, *User)) error {
 	ids := make([]uuid.UUID, 0, len(nodes))
 	nodeids := make(map[uuid.UUID][]*Notification)
 	for i := range nodes {
@@ -415,7 +415,7 @@ func (_q *NotificationQuery) loadUser(ctx context.Context, query *NotifyUserQuer
 	if len(ids) == 0 {
 		return nil
 	}
-	query.Where(notifyuser.IDIn(ids...))
+	query.Where(user.IDIn(ids...))
 	neighbors, err := query.All(ctx)
 	if err != nil {
 		return err

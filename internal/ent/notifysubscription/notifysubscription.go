@@ -35,9 +35,9 @@ const (
 	Table = "notify_subscriptions"
 	// UserTable is the table that holds the user relation/edge.
 	UserTable = "notify_subscriptions"
-	// UserInverseTable is the table name for the NotifyUser entity.
-	// It exists in this package in order to avoid circular dependency with the "notifyuser" package.
-	UserInverseTable = "notify_users"
+	// UserInverseTable is the table name for the User entity.
+	// It exists in this package in order to avoid circular dependency with the "user" package.
+	UserInverseTable = "users"
 	// UserColumn is the table column denoting the user relation/edge.
 	UserColumn = "user_id"
 )

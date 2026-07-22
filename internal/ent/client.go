@@ -21,10 +21,11 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/investigationjob"
 	"github.com/go-faster/sisyphus/internal/ent/notification"
 	"github.com/go-faster/sisyphus/internal/ent/notifysubscription"
-	"github.com/go-faster/sisyphus/internal/ent/notifyuser"
 	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 	"github.com/go-faster/sisyphus/internal/ent/telegrammessage"
+	"github.com/go-faster/sisyphus/internal/ent/user"
+	"github.com/go-faster/sisyphus/internal/ent/usertoken"
 )
 
 // Client is the client that holds all ent builders.
@@ -42,14 +43,16 @@ type Client struct {
 	Notification *NotificationClient
 	// NotifySubscription is the client for interacting with the NotifySubscription builders.
 	NotifySubscription *NotifySubscriptionClient
-	// NotifyUser is the client for interacting with the NotifyUser builders.
-	NotifyUser *NotifyUserClient
 	// SupportRequest is the client for interacting with the SupportRequest builders.
 	SupportRequest *SupportRequestClient
 	// SyncState is the client for interacting with the SyncState builders.
 	SyncState *SyncStateClient
 	// TelegramMessage is the client for interacting with the TelegramMessage builders.
 	TelegramMessage *TelegramMessageClient
+	// User is the client for interacting with the User builders.
+	User *UserClient
+	// UserToken is the client for interacting with the UserToken builders.
+	UserToken *UserTokenClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -66,10 +69,11 @@ func (c *Client) init() {
 	c.InvestigationJob = NewInvestigationJobClient(c.config)
 	c.Notification = NewNotificationClient(c.config)
 	c.NotifySubscription = NewNotifySubscriptionClient(c.config)
-	c.NotifyUser = NewNotifyUserClient(c.config)
 	c.SupportRequest = NewSupportRequestClient(c.config)
 	c.SyncState = NewSyncStateClient(c.config)
 	c.TelegramMessage = NewTelegramMessageClient(c.config)
+	c.User = NewUserClient(c.config)
+	c.UserToken = NewUserTokenClient(c.config)
 }
 
 type (
@@ -167,10 +171,11 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		InvestigationJob:   NewInvestigationJobClient(cfg),
 		Notification:       NewNotificationClient(cfg),
 		NotifySubscription: NewNotifySubscriptionClient(cfg),
-		NotifyUser:         NewNotifyUserClient(cfg),
 		SupportRequest:     NewSupportRequestClient(cfg),
 		SyncState:          NewSyncStateClient(cfg),
 		TelegramMessage:    NewTelegramMessageClient(cfg),
+		User:               NewUserClient(cfg),
+		UserToken:          NewUserTokenClient(cfg),
 	}, nil
 }
 
@@ -195,10 +200,11 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		InvestigationJob:   NewInvestigationJobClient(cfg),
 		Notification:       NewNotificationClient(cfg),
 		NotifySubscription: NewNotifySubscriptionClient(cfg),
-		NotifyUser:         NewNotifyUserClient(cfg),
 		SupportRequest:     NewSupportRequestClient(cfg),
 		SyncState:          NewSyncStateClient(cfg),
 		TelegramMessage:    NewTelegramMessageClient(cfg),
+		User:               NewUserClient(cfg),
+		UserToken:          NewUserTokenClient(cfg),
 	}, nil
 }
 
@@ -229,7 +235,7 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Chunk, c.Document, c.InvestigationJob, c.Notification, c.NotifySubscription,
-		c.NotifyUser, c.SupportRequest, c.SyncState, c.TelegramMessage,
+		c.SupportRequest, c.SyncState, c.TelegramMessage, c.User, c.UserToken,
 	} {
 		n.Use(hooks...)
 	}
@@ -240,7 +246,7 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Chunk, c.Document, c.InvestigationJob, c.Notification, c.NotifySubscription,
-		c.NotifyUser, c.SupportRequest, c.SyncState, c.TelegramMessage,
+		c.SupportRequest, c.SyncState, c.TelegramMessage, c.User, c.UserToken,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -259,14 +265,16 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Notification.mutate(ctx, m)
 	case *NotifySubscriptionMutation:
 		return c.NotifySubscription.mutate(ctx, m)
-	case *NotifyUserMutation:
-		return c.NotifyUser.mutate(ctx, m)
 	case *SupportRequestMutation:
 		return c.SupportRequest.mutate(ctx, m)
 	case *SyncStateMutation:
 		return c.SyncState.mutate(ctx, m)
 	case *TelegramMessageMutation:
 		return c.TelegramMessage.mutate(ctx, m)
+	case *UserMutation:
+		return c.User.mutate(ctx, m)
+	case *UserTokenMutation:
+		return c.UserToken.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -812,13 +820,13 @@ func (c *NotificationClient) GetX(ctx context.Context, id uuid.UUID) *Notificati
 }
 
 // QueryUser queries the user edge of a Notification.
-func (c *NotificationClient) QueryUser(_m *Notification) *NotifyUserQuery {
-	query := (&NotifyUserClient{config: c.config}).Query()
+func (c *NotificationClient) QueryUser(_m *Notification) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
 	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
 		id := _m.ID
 		step := sqlgraph.NewStep(
 			sqlgraph.From(notification.Table, notification.FieldID, id),
-			sqlgraph.To(notifyuser.Table, notifyuser.FieldID),
+			sqlgraph.To(user.Table, user.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, notification.UserTable, notification.UserColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
@@ -961,13 +969,13 @@ func (c *NotifySubscriptionClient) GetX(ctx context.Context, id uuid.UUID) *Noti
 }
 
 // QueryUser queries the user edge of a NotifySubscription.
-func (c *NotifySubscriptionClient) QueryUser(_m *NotifySubscription) *NotifyUserQuery {
-	query := (&NotifyUserClient{config: c.config}).Query()
+func (c *NotifySubscriptionClient) QueryUser(_m *NotifySubscription) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
 	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
 		id := _m.ID
 		step := sqlgraph.NewStep(
 			sqlgraph.From(notifysubscription.Table, notifysubscription.FieldID, id),
-			sqlgraph.To(notifyuser.Table, notifyuser.FieldID),
+			sqlgraph.To(user.Table, user.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, notifysubscription.UserTable, notifysubscription.UserColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
@@ -998,171 +1006,6 @@ func (c *NotifySubscriptionClient) mutate(ctx context.Context, m *NotifySubscrip
 		return (&NotifySubscriptionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown NotifySubscription mutation op: %q", m.Op())
-	}
-}
-
-// NotifyUserClient is a client for the NotifyUser schema.
-type NotifyUserClient struct {
-	config
-}
-
-// NewNotifyUserClient returns a client for the NotifyUser from the given config.
-func NewNotifyUserClient(c config) *NotifyUserClient {
-	return &NotifyUserClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `notifyuser.Hooks(f(g(h())))`.
-func (c *NotifyUserClient) Use(hooks ...Hook) {
-	c.hooks.NotifyUser = append(c.hooks.NotifyUser, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `notifyuser.Intercept(f(g(h())))`.
-func (c *NotifyUserClient) Intercept(interceptors ...Interceptor) {
-	c.inters.NotifyUser = append(c.inters.NotifyUser, interceptors...)
-}
-
-// Create returns a builder for creating a NotifyUser entity.
-func (c *NotifyUserClient) Create() *NotifyUserCreate {
-	mutation := newNotifyUserMutation(c.config, OpCreate)
-	return &NotifyUserCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of NotifyUser entities.
-func (c *NotifyUserClient) CreateBulk(builders ...*NotifyUserCreate) *NotifyUserCreateBulk {
-	return &NotifyUserCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *NotifyUserClient) MapCreateBulk(slice any, setFunc func(*NotifyUserCreate, int)) *NotifyUserCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &NotifyUserCreateBulk{err: fmt.Errorf("calling to NotifyUserClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*NotifyUserCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &NotifyUserCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for NotifyUser.
-func (c *NotifyUserClient) Update() *NotifyUserUpdate {
-	mutation := newNotifyUserMutation(c.config, OpUpdate)
-	return &NotifyUserUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *NotifyUserClient) UpdateOne(_m *NotifyUser) *NotifyUserUpdateOne {
-	mutation := newNotifyUserMutation(c.config, OpUpdateOne, withNotifyUser(_m))
-	return &NotifyUserUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneID returns an update builder for the given id.
-func (c *NotifyUserClient) UpdateOneID(id uuid.UUID) *NotifyUserUpdateOne {
-	mutation := newNotifyUserMutation(c.config, OpUpdateOne, withNotifyUserID(id))
-	return &NotifyUserUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for NotifyUser.
-func (c *NotifyUserClient) Delete() *NotifyUserDelete {
-	mutation := newNotifyUserMutation(c.config, OpDelete)
-	return &NotifyUserDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *NotifyUserClient) DeleteOne(_m *NotifyUser) *NotifyUserDeleteOne {
-	return c.DeleteOneID(_m.ID)
-}
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *NotifyUserClient) DeleteOneID(id uuid.UUID) *NotifyUserDeleteOne {
-	builder := c.Delete().Where(notifyuser.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &NotifyUserDeleteOne{builder}
-}
-
-// Query returns a query builder for NotifyUser.
-func (c *NotifyUserClient) Query() *NotifyUserQuery {
-	return &NotifyUserQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeNotifyUser},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a NotifyUser entity by its id.
-func (c *NotifyUserClient) Get(ctx context.Context, id uuid.UUID) (*NotifyUser, error) {
-	return c.Query().Where(notifyuser.ID(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *NotifyUserClient) GetX(ctx context.Context, id uuid.UUID) *NotifyUser {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// QuerySubscriptions queries the subscriptions edge of a NotifyUser.
-func (c *NotifyUserClient) QuerySubscriptions(_m *NotifyUser) *NotifySubscriptionQuery {
-	query := (&NotifySubscriptionClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(notifyuser.Table, notifyuser.FieldID, id),
-			sqlgraph.To(notifysubscription.Table, notifysubscription.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, notifyuser.SubscriptionsTable, notifyuser.SubscriptionsColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
-// QueryNotifications queries the notifications edge of a NotifyUser.
-func (c *NotifyUserClient) QueryNotifications(_m *NotifyUser) *NotificationQuery {
-	query := (&NotificationClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(notifyuser.Table, notifyuser.FieldID, id),
-			sqlgraph.To(notification.Table, notification.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, notifyuser.NotificationsTable, notifyuser.NotificationsColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
-// Hooks returns the client hooks.
-func (c *NotifyUserClient) Hooks() []Hook {
-	return c.hooks.NotifyUser
-}
-
-// Interceptors returns the client interceptors.
-func (c *NotifyUserClient) Interceptors() []Interceptor {
-	return c.inters.NotifyUser
-}
-
-func (c *NotifyUserClient) mutate(ctx context.Context, m *NotifyUserMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&NotifyUserCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&NotifyUserUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&NotifyUserUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&NotifyUserDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown NotifyUser mutation op: %q", m.Op())
 	}
 }
 
@@ -1565,14 +1408,344 @@ func (c *TelegramMessageClient) mutate(ctx context.Context, m *TelegramMessageMu
 	}
 }
 
+// UserClient is a client for the User schema.
+type UserClient struct {
+	config
+}
+
+// NewUserClient returns a client for the User from the given config.
+func NewUserClient(c config) *UserClient {
+	return &UserClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `user.Hooks(f(g(h())))`.
+func (c *UserClient) Use(hooks ...Hook) {
+	c.hooks.User = append(c.hooks.User, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `user.Intercept(f(g(h())))`.
+func (c *UserClient) Intercept(interceptors ...Interceptor) {
+	c.inters.User = append(c.inters.User, interceptors...)
+}
+
+// Create returns a builder for creating a User entity.
+func (c *UserClient) Create() *UserCreate {
+	mutation := newUserMutation(c.config, OpCreate)
+	return &UserCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of User entities.
+func (c *UserClient) CreateBulk(builders ...*UserCreate) *UserCreateBulk {
+	return &UserCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *UserClient) MapCreateBulk(slice any, setFunc func(*UserCreate, int)) *UserCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &UserCreateBulk{err: fmt.Errorf("calling to UserClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*UserCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &UserCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for User.
+func (c *UserClient) Update() *UserUpdate {
+	mutation := newUserMutation(c.config, OpUpdate)
+	return &UserUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UserClient) UpdateOne(_m *User) *UserUpdateOne {
+	mutation := newUserMutation(c.config, OpUpdateOne, withUser(_m))
+	return &UserUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *UserClient) UpdateOneID(id uuid.UUID) *UserUpdateOne {
+	mutation := newUserMutation(c.config, OpUpdateOne, withUserID(id))
+	return &UserUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for User.
+func (c *UserClient) Delete() *UserDelete {
+	mutation := newUserMutation(c.config, OpDelete)
+	return &UserDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *UserClient) DeleteOne(_m *User) *UserDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *UserClient) DeleteOneID(id uuid.UUID) *UserDeleteOne {
+	builder := c.Delete().Where(user.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &UserDeleteOne{builder}
+}
+
+// Query returns a query builder for User.
+func (c *UserClient) Query() *UserQuery {
+	return &UserQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUser},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a User entity by its id.
+func (c *UserClient) Get(ctx context.Context, id uuid.UUID) (*User, error) {
+	return c.Query().Where(user.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *UserClient) GetX(ctx context.Context, id uuid.UUID) *User {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QuerySubscriptions queries the subscriptions edge of a User.
+func (c *UserClient) QuerySubscriptions(_m *User) *NotifySubscriptionQuery {
+	query := (&NotifySubscriptionClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(notifysubscription.Table, notifysubscription.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.SubscriptionsTable, user.SubscriptionsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryNotifications queries the notifications edge of a User.
+func (c *UserClient) QueryNotifications(_m *User) *NotificationQuery {
+	query := (&NotificationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(notification.Table, notification.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.NotificationsTable, user.NotificationsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryTokens queries the tokens edge of a User.
+func (c *UserClient) QueryTokens(_m *User) *UserTokenQuery {
+	query := (&UserTokenClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(usertoken.Table, usertoken.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.TokensTable, user.TokensColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *UserClient) Hooks() []Hook {
+	return c.hooks.User
+}
+
+// Interceptors returns the client interceptors.
+func (c *UserClient) Interceptors() []Interceptor {
+	return c.inters.User
+}
+
+func (c *UserClient) mutate(ctx context.Context, m *UserMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UserCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&UserUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&UserUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UserDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown User mutation op: %q", m.Op())
+	}
+}
+
+// UserTokenClient is a client for the UserToken schema.
+type UserTokenClient struct {
+	config
+}
+
+// NewUserTokenClient returns a client for the UserToken from the given config.
+func NewUserTokenClient(c config) *UserTokenClient {
+	return &UserTokenClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `usertoken.Hooks(f(g(h())))`.
+func (c *UserTokenClient) Use(hooks ...Hook) {
+	c.hooks.UserToken = append(c.hooks.UserToken, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `usertoken.Intercept(f(g(h())))`.
+func (c *UserTokenClient) Intercept(interceptors ...Interceptor) {
+	c.inters.UserToken = append(c.inters.UserToken, interceptors...)
+}
+
+// Create returns a builder for creating a UserToken entity.
+func (c *UserTokenClient) Create() *UserTokenCreate {
+	mutation := newUserTokenMutation(c.config, OpCreate)
+	return &UserTokenCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of UserToken entities.
+func (c *UserTokenClient) CreateBulk(builders ...*UserTokenCreate) *UserTokenCreateBulk {
+	return &UserTokenCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *UserTokenClient) MapCreateBulk(slice any, setFunc func(*UserTokenCreate, int)) *UserTokenCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &UserTokenCreateBulk{err: fmt.Errorf("calling to UserTokenClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*UserTokenCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &UserTokenCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for UserToken.
+func (c *UserTokenClient) Update() *UserTokenUpdate {
+	mutation := newUserTokenMutation(c.config, OpUpdate)
+	return &UserTokenUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UserTokenClient) UpdateOne(_m *UserToken) *UserTokenUpdateOne {
+	mutation := newUserTokenMutation(c.config, OpUpdateOne, withUserToken(_m))
+	return &UserTokenUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *UserTokenClient) UpdateOneID(id uuid.UUID) *UserTokenUpdateOne {
+	mutation := newUserTokenMutation(c.config, OpUpdateOne, withUserTokenID(id))
+	return &UserTokenUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for UserToken.
+func (c *UserTokenClient) Delete() *UserTokenDelete {
+	mutation := newUserTokenMutation(c.config, OpDelete)
+	return &UserTokenDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *UserTokenClient) DeleteOne(_m *UserToken) *UserTokenDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *UserTokenClient) DeleteOneID(id uuid.UUID) *UserTokenDeleteOne {
+	builder := c.Delete().Where(usertoken.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &UserTokenDeleteOne{builder}
+}
+
+// Query returns a query builder for UserToken.
+func (c *UserTokenClient) Query() *UserTokenQuery {
+	return &UserTokenQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUserToken},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a UserToken entity by its id.
+func (c *UserTokenClient) Get(ctx context.Context, id uuid.UUID) (*UserToken, error) {
+	return c.Query().Where(usertoken.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *UserTokenClient) GetX(ctx context.Context, id uuid.UUID) *UserToken {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUser queries the user edge of a UserToken.
+func (c *UserTokenClient) QueryUser(_m *UserToken) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(usertoken.Table, usertoken.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, usertoken.UserTable, usertoken.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *UserTokenClient) Hooks() []Hook {
+	return c.hooks.UserToken
+}
+
+// Interceptors returns the client interceptors.
+func (c *UserTokenClient) Interceptors() []Interceptor {
+	return c.inters.UserToken
+}
+
+func (c *UserTokenClient) mutate(ctx context.Context, m *UserTokenMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UserTokenCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&UserTokenUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&UserTokenUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UserTokenDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown UserToken mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Chunk, Document, InvestigationJob, Notification, NotifySubscription, NotifyUser,
-		SupportRequest, SyncState, TelegramMessage []ent.Hook
+		Chunk, Document, InvestigationJob, Notification, NotifySubscription,
+		SupportRequest, SyncState, TelegramMessage, User, UserToken []ent.Hook
 	}
 	inters struct {
-		Chunk, Document, InvestigationJob, Notification, NotifySubscription, NotifyUser,
-		SupportRequest, SyncState, TelegramMessage []ent.Interceptor
+		Chunk, Document, InvestigationJob, Notification, NotifySubscription,
+		SupportRequest, SyncState, TelegramMessage, User, UserToken []ent.Interceptor
 	}
 )

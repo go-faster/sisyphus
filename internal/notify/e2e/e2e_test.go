@@ -121,7 +121,8 @@ func openTestDB(t *testing.T) *ent.Client {
 		ctx := context.Background()
 		_, _ = client.Notification.Delete().Exec(ctx)
 		_, _ = client.NotifySubscription.Delete().Exec(ctx)
-		_, _ = client.NotifyUser.Delete().Exec(ctx)
+		_, _ = client.UserToken.Delete().Exec(ctx)
+		_, _ = client.User.Delete().Exec(ctx)
 	})
 	return client
 }
@@ -167,7 +168,7 @@ func TestE2E_GitLabMRAssignment_ToTelegramDelivery(t *testing.T) {
 	dispatcher := notify.NewDispatcher(store, store, notify.ChannelTelegram, nil)
 	enqueued, err := dispatcher.Dispatch(ctx, events)
 	require.NoError(t, err)
-	// Only alice is enrolled/linked/subscribed; bob has no NotifyUser row,
+	// Only alice is enrolled/linked/subscribed; bob has no User row,
 	// so only alice's mr_assigned event produces an outbox row.
 	require.Equal(t, 1, enqueued)
 

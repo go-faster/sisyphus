@@ -12,8 +12,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/go-faster/sisyphus/internal/ent/notification"
-	"github.com/go-faster/sisyphus/internal/ent/notifyuser"
 	"github.com/go-faster/sisyphus/internal/ent/predicate"
+	"github.com/go-faster/sisyphus/internal/ent/user"
 	"github.com/google/uuid"
 )
 
@@ -199,8 +199,8 @@ func (_u *NotificationUpdate) ClearDeliveredAt() *NotificationUpdate {
 	return _u
 }
 
-// SetUser sets the "user" edge to the NotifyUser entity.
-func (_u *NotificationUpdate) SetUser(v *NotifyUser) *NotificationUpdate {
+// SetUser sets the "user" edge to the User entity.
+func (_u *NotificationUpdate) SetUser(v *User) *NotificationUpdate {
 	return _u.SetUserID(v.ID)
 }
 
@@ -209,7 +209,7 @@ func (_u *NotificationUpdate) Mutation() *NotificationMutation {
 	return _u.mutation
 }
 
-// ClearUser clears the "user" edge to the NotifyUser entity.
+// ClearUser clears the "user" edge to the User entity.
 func (_u *NotificationUpdate) ClearUser() *NotificationUpdate {
 	_u.mutation.ClearUser()
 	return _u
@@ -327,7 +327,7 @@ func (_u *NotificationUpdate) sqlSave(ctx context.Context) (_node int, err error
 			Columns: []string{notification.UserColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(notifyuser.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
 			},
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
@@ -340,7 +340,7 @@ func (_u *NotificationUpdate) sqlSave(ctx context.Context) (_node int, err error
 			Columns: []string{notification.UserColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(notifyuser.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -537,8 +537,8 @@ func (_u *NotificationUpdateOne) ClearDeliveredAt() *NotificationUpdateOne {
 	return _u
 }
 
-// SetUser sets the "user" edge to the NotifyUser entity.
-func (_u *NotificationUpdateOne) SetUser(v *NotifyUser) *NotificationUpdateOne {
+// SetUser sets the "user" edge to the User entity.
+func (_u *NotificationUpdateOne) SetUser(v *User) *NotificationUpdateOne {
 	return _u.SetUserID(v.ID)
 }
 
@@ -547,7 +547,7 @@ func (_u *NotificationUpdateOne) Mutation() *NotificationMutation {
 	return _u.mutation
 }
 
-// ClearUser clears the "user" edge to the NotifyUser entity.
+// ClearUser clears the "user" edge to the User entity.
 func (_u *NotificationUpdateOne) ClearUser() *NotificationUpdateOne {
 	_u.mutation.ClearUser()
 	return _u
@@ -695,7 +695,7 @@ func (_u *NotificationUpdateOne) sqlSave(ctx context.Context) (_node *Notificati
 			Columns: []string{notification.UserColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(notifyuser.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
 			},
 		}
 		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
@@ -708,7 +708,7 @@ func (_u *NotificationUpdateOne) sqlSave(ctx context.Context) (_node *Notificati
 			Columns: []string{notification.UserColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(notifyuser.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

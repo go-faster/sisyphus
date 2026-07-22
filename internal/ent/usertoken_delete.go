@@ -8,30 +8,30 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/go-faster/sisyphus/internal/ent/notifyuser"
 	"github.com/go-faster/sisyphus/internal/ent/predicate"
+	"github.com/go-faster/sisyphus/internal/ent/usertoken"
 )
 
-// NotifyUserDelete is the builder for deleting a NotifyUser entity.
-type NotifyUserDelete struct {
+// UserTokenDelete is the builder for deleting a UserToken entity.
+type UserTokenDelete struct {
 	config
 	hooks    []Hook
-	mutation *NotifyUserMutation
+	mutation *UserTokenMutation
 }
 
-// Where appends a list predicates to the NotifyUserDelete builder.
-func (_d *NotifyUserDelete) Where(ps ...predicate.NotifyUser) *NotifyUserDelete {
+// Where appends a list predicates to the UserTokenDelete builder.
+func (_d *UserTokenDelete) Where(ps ...predicate.UserToken) *UserTokenDelete {
 	_d.mutation.Where(ps...)
 	return _d
 }
 
 // Exec executes the deletion query and returns how many vertices were deleted.
-func (_d *NotifyUserDelete) Exec(ctx context.Context) (int, error) {
+func (_d *UserTokenDelete) Exec(ctx context.Context) (int, error) {
 	return withHooks(ctx, _d.sqlExec, _d.mutation, _d.hooks)
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_d *NotifyUserDelete) ExecX(ctx context.Context) int {
+func (_d *UserTokenDelete) ExecX(ctx context.Context) int {
 	n, err := _d.Exec(ctx)
 	if err != nil {
 		panic(err)
@@ -39,8 +39,8 @@ func (_d *NotifyUserDelete) ExecX(ctx context.Context) int {
 	return n
 }
 
-func (_d *NotifyUserDelete) sqlExec(ctx context.Context) (int, error) {
-	_spec := sqlgraph.NewDeleteSpec(notifyuser.Table, sqlgraph.NewFieldSpec(notifyuser.FieldID, field.TypeUUID))
+func (_d *UserTokenDelete) sqlExec(ctx context.Context) (int, error) {
+	_spec := sqlgraph.NewDeleteSpec(usertoken.Table, sqlgraph.NewFieldSpec(usertoken.FieldID, field.TypeUUID))
 	if ps := _d.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
@@ -56,32 +56,32 @@ func (_d *NotifyUserDelete) sqlExec(ctx context.Context) (int, error) {
 	return affected, err
 }
 
-// NotifyUserDeleteOne is the builder for deleting a single NotifyUser entity.
-type NotifyUserDeleteOne struct {
-	_d *NotifyUserDelete
+// UserTokenDeleteOne is the builder for deleting a single UserToken entity.
+type UserTokenDeleteOne struct {
+	_d *UserTokenDelete
 }
 
-// Where appends a list predicates to the NotifyUserDelete builder.
-func (_d *NotifyUserDeleteOne) Where(ps ...predicate.NotifyUser) *NotifyUserDeleteOne {
+// Where appends a list predicates to the UserTokenDelete builder.
+func (_d *UserTokenDeleteOne) Where(ps ...predicate.UserToken) *UserTokenDeleteOne {
 	_d._d.mutation.Where(ps...)
 	return _d
 }
 
 // Exec executes the deletion query.
-func (_d *NotifyUserDeleteOne) Exec(ctx context.Context) error {
+func (_d *UserTokenDeleteOne) Exec(ctx context.Context) error {
 	n, err := _d._d.Exec(ctx)
 	switch {
 	case err != nil:
 		return err
 	case n == 0:
-		return &NotFoundError{notifyuser.Label}
+		return &NotFoundError{usertoken.Label}
 	default:
 		return nil
 	}
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_d *NotifyUserDeleteOne) ExecX(ctx context.Context) {
+func (_d *UserTokenDeleteOne) ExecX(ctx context.Context) {
 	if err := _d.Exec(ctx); err != nil {
 		panic(err)
 	}

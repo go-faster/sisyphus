@@ -14,32 +14,33 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/go-faster/sisyphus/internal/ent/notification"
 	"github.com/go-faster/sisyphus/internal/ent/notifysubscription"
-	"github.com/go-faster/sisyphus/internal/ent/notifyuser"
+	"github.com/go-faster/sisyphus/internal/ent/user"
+	"github.com/go-faster/sisyphus/internal/ent/usertoken"
 	"github.com/google/uuid"
 )
 
-// NotifyUserCreate is the builder for creating a NotifyUser entity.
-type NotifyUserCreate struct {
+// UserCreate is the builder for creating a User entity.
+type UserCreate struct {
 	config
-	mutation *NotifyUserMutation
+	mutation *UserMutation
 	hooks    []Hook
 	conflict []sql.ConflictOption
 }
 
 // SetTelegramUserID sets the "telegram_user_id" field.
-func (_c *NotifyUserCreate) SetTelegramUserID(v int64) *NotifyUserCreate {
+func (_c *UserCreate) SetTelegramUserID(v int64) *UserCreate {
 	_c.mutation.SetTelegramUserID(v)
 	return _c
 }
 
 // SetTelegramAccessHash sets the "telegram_access_hash" field.
-func (_c *NotifyUserCreate) SetTelegramAccessHash(v int64) *NotifyUserCreate {
+func (_c *UserCreate) SetTelegramAccessHash(v int64) *UserCreate {
 	_c.mutation.SetTelegramAccessHash(v)
 	return _c
 }
 
 // SetNillableTelegramAccessHash sets the "telegram_access_hash" field if the given value is not nil.
-func (_c *NotifyUserCreate) SetNillableTelegramAccessHash(v *int64) *NotifyUserCreate {
+func (_c *UserCreate) SetNillableTelegramAccessHash(v *int64) *UserCreate {
 	if v != nil {
 		_c.SetTelegramAccessHash(*v)
 	}
@@ -47,13 +48,13 @@ func (_c *NotifyUserCreate) SetNillableTelegramAccessHash(v *int64) *NotifyUserC
 }
 
 // SetGitlabUsername sets the "gitlab_username" field.
-func (_c *NotifyUserCreate) SetGitlabUsername(v string) *NotifyUserCreate {
+func (_c *UserCreate) SetGitlabUsername(v string) *UserCreate {
 	_c.mutation.SetGitlabUsername(v)
 	return _c
 }
 
 // SetNillableGitlabUsername sets the "gitlab_username" field if the given value is not nil.
-func (_c *NotifyUserCreate) SetNillableGitlabUsername(v *string) *NotifyUserCreate {
+func (_c *UserCreate) SetNillableGitlabUsername(v *string) *UserCreate {
 	if v != nil {
 		_c.SetGitlabUsername(*v)
 	}
@@ -61,13 +62,13 @@ func (_c *NotifyUserCreate) SetNillableGitlabUsername(v *string) *NotifyUserCrea
 }
 
 // SetJiraAccountID sets the "jira_account_id" field.
-func (_c *NotifyUserCreate) SetJiraAccountID(v string) *NotifyUserCreate {
+func (_c *UserCreate) SetJiraAccountID(v string) *UserCreate {
 	_c.mutation.SetJiraAccountID(v)
 	return _c
 }
 
 // SetNillableJiraAccountID sets the "jira_account_id" field if the given value is not nil.
-func (_c *NotifyUserCreate) SetNillableJiraAccountID(v *string) *NotifyUserCreate {
+func (_c *UserCreate) SetNillableJiraAccountID(v *string) *UserCreate {
 	if v != nil {
 		_c.SetJiraAccountID(*v)
 	}
@@ -75,13 +76,13 @@ func (_c *NotifyUserCreate) SetNillableJiraAccountID(v *string) *NotifyUserCreat
 }
 
 // SetJiraDisplayName sets the "jira_display_name" field.
-func (_c *NotifyUserCreate) SetJiraDisplayName(v string) *NotifyUserCreate {
+func (_c *UserCreate) SetJiraDisplayName(v string) *UserCreate {
 	_c.mutation.SetJiraDisplayName(v)
 	return _c
 }
 
 // SetNillableJiraDisplayName sets the "jira_display_name" field if the given value is not nil.
-func (_c *NotifyUserCreate) SetNillableJiraDisplayName(v *string) *NotifyUserCreate {
+func (_c *UserCreate) SetNillableJiraDisplayName(v *string) *UserCreate {
 	if v != nil {
 		_c.SetJiraDisplayName(*v)
 	}
@@ -89,13 +90,13 @@ func (_c *NotifyUserCreate) SetNillableJiraDisplayName(v *string) *NotifyUserCre
 }
 
 // SetEnabled sets the "enabled" field.
-func (_c *NotifyUserCreate) SetEnabled(v bool) *NotifyUserCreate {
+func (_c *UserCreate) SetEnabled(v bool) *UserCreate {
 	_c.mutation.SetEnabled(v)
 	return _c
 }
 
 // SetNillableEnabled sets the "enabled" field if the given value is not nil.
-func (_c *NotifyUserCreate) SetNillableEnabled(v *bool) *NotifyUserCreate {
+func (_c *UserCreate) SetNillableEnabled(v *bool) *UserCreate {
 	if v != nil {
 		_c.SetEnabled(*v)
 	}
@@ -103,13 +104,13 @@ func (_c *NotifyUserCreate) SetNillableEnabled(v *bool) *NotifyUserCreate {
 }
 
 // SetCreatedAt sets the "created_at" field.
-func (_c *NotifyUserCreate) SetCreatedAt(v time.Time) *NotifyUserCreate {
+func (_c *UserCreate) SetCreatedAt(v time.Time) *UserCreate {
 	_c.mutation.SetCreatedAt(v)
 	return _c
 }
 
 // SetNillableCreatedAt sets the "created_at" field if the given value is not nil.
-func (_c *NotifyUserCreate) SetNillableCreatedAt(v *time.Time) *NotifyUserCreate {
+func (_c *UserCreate) SetNillableCreatedAt(v *time.Time) *UserCreate {
 	if v != nil {
 		_c.SetCreatedAt(*v)
 	}
@@ -117,13 +118,13 @@ func (_c *NotifyUserCreate) SetNillableCreatedAt(v *time.Time) *NotifyUserCreate
 }
 
 // SetUpdatedAt sets the "updated_at" field.
-func (_c *NotifyUserCreate) SetUpdatedAt(v time.Time) *NotifyUserCreate {
+func (_c *UserCreate) SetUpdatedAt(v time.Time) *UserCreate {
 	_c.mutation.SetUpdatedAt(v)
 	return _c
 }
 
 // SetNillableUpdatedAt sets the "updated_at" field if the given value is not nil.
-func (_c *NotifyUserCreate) SetNillableUpdatedAt(v *time.Time) *NotifyUserCreate {
+func (_c *UserCreate) SetNillableUpdatedAt(v *time.Time) *UserCreate {
 	if v != nil {
 		_c.SetUpdatedAt(*v)
 	}
@@ -131,13 +132,13 @@ func (_c *NotifyUserCreate) SetNillableUpdatedAt(v *time.Time) *NotifyUserCreate
 }
 
 // SetID sets the "id" field.
-func (_c *NotifyUserCreate) SetID(v uuid.UUID) *NotifyUserCreate {
+func (_c *UserCreate) SetID(v uuid.UUID) *UserCreate {
 	_c.mutation.SetID(v)
 	return _c
 }
 
 // SetNillableID sets the "id" field if the given value is not nil.
-func (_c *NotifyUserCreate) SetNillableID(v *uuid.UUID) *NotifyUserCreate {
+func (_c *UserCreate) SetNillableID(v *uuid.UUID) *UserCreate {
 	if v != nil {
 		_c.SetID(*v)
 	}
@@ -145,13 +146,13 @@ func (_c *NotifyUserCreate) SetNillableID(v *uuid.UUID) *NotifyUserCreate {
 }
 
 // AddSubscriptionIDs adds the "subscriptions" edge to the NotifySubscription entity by IDs.
-func (_c *NotifyUserCreate) AddSubscriptionIDs(ids ...uuid.UUID) *NotifyUserCreate {
+func (_c *UserCreate) AddSubscriptionIDs(ids ...uuid.UUID) *UserCreate {
 	_c.mutation.AddSubscriptionIDs(ids...)
 	return _c
 }
 
 // AddSubscriptions adds the "subscriptions" edges to the NotifySubscription entity.
-func (_c *NotifyUserCreate) AddSubscriptions(v ...*NotifySubscription) *NotifyUserCreate {
+func (_c *UserCreate) AddSubscriptions(v ...*NotifySubscription) *UserCreate {
 	ids := make([]uuid.UUID, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
@@ -160,13 +161,13 @@ func (_c *NotifyUserCreate) AddSubscriptions(v ...*NotifySubscription) *NotifyUs
 }
 
 // AddNotificationIDs adds the "notifications" edge to the Notification entity by IDs.
-func (_c *NotifyUserCreate) AddNotificationIDs(ids ...uuid.UUID) *NotifyUserCreate {
+func (_c *UserCreate) AddNotificationIDs(ids ...uuid.UUID) *UserCreate {
 	_c.mutation.AddNotificationIDs(ids...)
 	return _c
 }
 
 // AddNotifications adds the "notifications" edges to the Notification entity.
-func (_c *NotifyUserCreate) AddNotifications(v ...*Notification) *NotifyUserCreate {
+func (_c *UserCreate) AddNotifications(v ...*Notification) *UserCreate {
 	ids := make([]uuid.UUID, len(v))
 	for i := range v {
 		ids[i] = v[i].ID
@@ -174,19 +175,34 @@ func (_c *NotifyUserCreate) AddNotifications(v ...*Notification) *NotifyUserCrea
 	return _c.AddNotificationIDs(ids...)
 }
 
-// Mutation returns the NotifyUserMutation object of the builder.
-func (_c *NotifyUserCreate) Mutation() *NotifyUserMutation {
+// AddTokenIDs adds the "tokens" edge to the UserToken entity by IDs.
+func (_c *UserCreate) AddTokenIDs(ids ...uuid.UUID) *UserCreate {
+	_c.mutation.AddTokenIDs(ids...)
+	return _c
+}
+
+// AddTokens adds the "tokens" edges to the UserToken entity.
+func (_c *UserCreate) AddTokens(v ...*UserToken) *UserCreate {
+	ids := make([]uuid.UUID, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddTokenIDs(ids...)
+}
+
+// Mutation returns the UserMutation object of the builder.
+func (_c *UserCreate) Mutation() *UserMutation {
 	return _c.mutation
 }
 
-// Save creates the NotifyUser in the database.
-func (_c *NotifyUserCreate) Save(ctx context.Context) (*NotifyUser, error) {
+// Save creates the User in the database.
+func (_c *UserCreate) Save(ctx context.Context) (*User, error) {
 	_c.defaults()
 	return withHooks(ctx, _c.sqlSave, _c.mutation, _c.hooks)
 }
 
 // SaveX calls Save and panics if Save returns an error.
-func (_c *NotifyUserCreate) SaveX(ctx context.Context) *NotifyUser {
+func (_c *UserCreate) SaveX(ctx context.Context) *User {
 	v, err := _c.Save(ctx)
 	if err != nil {
 		panic(err)
@@ -195,56 +211,56 @@ func (_c *NotifyUserCreate) SaveX(ctx context.Context) *NotifyUser {
 }
 
 // Exec executes the query.
-func (_c *NotifyUserCreate) Exec(ctx context.Context) error {
+func (_c *UserCreate) Exec(ctx context.Context) error {
 	_, err := _c.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_c *NotifyUserCreate) ExecX(ctx context.Context) {
+func (_c *UserCreate) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
 		panic(err)
 	}
 }
 
 // defaults sets the default values of the builder before save.
-func (_c *NotifyUserCreate) defaults() {
+func (_c *UserCreate) defaults() {
 	if _, ok := _c.mutation.Enabled(); !ok {
-		v := notifyuser.DefaultEnabled
+		v := user.DefaultEnabled
 		_c.mutation.SetEnabled(v)
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
-		v := notifyuser.DefaultCreatedAt()
+		v := user.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
 	}
 	if _, ok := _c.mutation.UpdatedAt(); !ok {
-		v := notifyuser.DefaultUpdatedAt()
+		v := user.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
 	if _, ok := _c.mutation.ID(); !ok {
-		v := notifyuser.DefaultID()
+		v := user.DefaultID()
 		_c.mutation.SetID(v)
 	}
 }
 
 // check runs all checks and user-defined validators on the builder.
-func (_c *NotifyUserCreate) check() error {
+func (_c *UserCreate) check() error {
 	if _, ok := _c.mutation.TelegramUserID(); !ok {
-		return &ValidationError{Name: "telegram_user_id", err: errors.New(`ent: missing required field "NotifyUser.telegram_user_id"`)}
+		return &ValidationError{Name: "telegram_user_id", err: errors.New(`ent: missing required field "User.telegram_user_id"`)}
 	}
 	if _, ok := _c.mutation.Enabled(); !ok {
-		return &ValidationError{Name: "enabled", err: errors.New(`ent: missing required field "NotifyUser.enabled"`)}
+		return &ValidationError{Name: "enabled", err: errors.New(`ent: missing required field "User.enabled"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
-		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "NotifyUser.created_at"`)}
+		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "User.created_at"`)}
 	}
 	if _, ok := _c.mutation.UpdatedAt(); !ok {
-		return &ValidationError{Name: "updated_at", err: errors.New(`ent: missing required field "NotifyUser.updated_at"`)}
+		return &ValidationError{Name: "updated_at", err: errors.New(`ent: missing required field "User.updated_at"`)}
 	}
 	return nil
 }
 
-func (_c *NotifyUserCreate) sqlSave(ctx context.Context) (*NotifyUser, error) {
+func (_c *UserCreate) sqlSave(ctx context.Context) (*User, error) {
 	if err := _c.check(); err != nil {
 		return nil, err
 	}
@@ -267,10 +283,10 @@ func (_c *NotifyUserCreate) sqlSave(ctx context.Context) (*NotifyUser, error) {
 	return _node, nil
 }
 
-func (_c *NotifyUserCreate) createSpec() (*NotifyUser, *sqlgraph.CreateSpec) {
+func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	var (
-		_node = &NotifyUser{config: _c.config}
-		_spec = sqlgraph.NewCreateSpec(notifyuser.Table, sqlgraph.NewFieldSpec(notifyuser.FieldID, field.TypeUUID))
+		_node = &User{config: _c.config}
+		_spec = sqlgraph.NewCreateSpec(user.Table, sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID))
 	)
 	_spec.OnConflict = _c.conflict
 	if id, ok := _c.mutation.ID(); ok {
@@ -278,43 +294,43 @@ func (_c *NotifyUserCreate) createSpec() (*NotifyUser, *sqlgraph.CreateSpec) {
 		_spec.ID.Value = &id
 	}
 	if value, ok := _c.mutation.TelegramUserID(); ok {
-		_spec.SetField(notifyuser.FieldTelegramUserID, field.TypeInt64, value)
+		_spec.SetField(user.FieldTelegramUserID, field.TypeInt64, value)
 		_node.TelegramUserID = value
 	}
 	if value, ok := _c.mutation.TelegramAccessHash(); ok {
-		_spec.SetField(notifyuser.FieldTelegramAccessHash, field.TypeInt64, value)
+		_spec.SetField(user.FieldTelegramAccessHash, field.TypeInt64, value)
 		_node.TelegramAccessHash = &value
 	}
 	if value, ok := _c.mutation.GitlabUsername(); ok {
-		_spec.SetField(notifyuser.FieldGitlabUsername, field.TypeString, value)
+		_spec.SetField(user.FieldGitlabUsername, field.TypeString, value)
 		_node.GitlabUsername = &value
 	}
 	if value, ok := _c.mutation.JiraAccountID(); ok {
-		_spec.SetField(notifyuser.FieldJiraAccountID, field.TypeString, value)
+		_spec.SetField(user.FieldJiraAccountID, field.TypeString, value)
 		_node.JiraAccountID = &value
 	}
 	if value, ok := _c.mutation.JiraDisplayName(); ok {
-		_spec.SetField(notifyuser.FieldJiraDisplayName, field.TypeString, value)
+		_spec.SetField(user.FieldJiraDisplayName, field.TypeString, value)
 		_node.JiraDisplayName = &value
 	}
 	if value, ok := _c.mutation.Enabled(); ok {
-		_spec.SetField(notifyuser.FieldEnabled, field.TypeBool, value)
+		_spec.SetField(user.FieldEnabled, field.TypeBool, value)
 		_node.Enabled = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
-		_spec.SetField(notifyuser.FieldCreatedAt, field.TypeTime, value)
+		_spec.SetField(user.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
 	}
 	if value, ok := _c.mutation.UpdatedAt(); ok {
-		_spec.SetField(notifyuser.FieldUpdatedAt, field.TypeTime, value)
+		_spec.SetField(user.FieldUpdatedAt, field.TypeTime, value)
 		_node.UpdatedAt = value
 	}
 	if nodes := _c.mutation.SubscriptionsIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   notifyuser.SubscriptionsTable,
-			Columns: []string{notifyuser.SubscriptionsColumn},
+			Table:   user.SubscriptionsTable,
+			Columns: []string{user.SubscriptionsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(notifysubscription.FieldID, field.TypeUUID),
@@ -329,11 +345,27 @@ func (_c *NotifyUserCreate) createSpec() (*NotifyUser, *sqlgraph.CreateSpec) {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
 			Inverse: false,
-			Table:   notifyuser.NotificationsTable,
-			Columns: []string{notifyuser.NotificationsColumn},
+			Table:   user.NotificationsTable,
+			Columns: []string{user.NotificationsColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(notification.FieldID, field.TypeUUID),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.TokensIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.TokensTable,
+			Columns: []string{user.TokensColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(usertoken.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {
@@ -347,7 +379,7 @@ func (_c *NotifyUserCreate) createSpec() (*NotifyUser, *sqlgraph.CreateSpec) {
 // OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
 // of the `INSERT` statement. For example:
 //
-//	client.NotifyUser.Create().
+//	client.User.Create().
 //		SetTelegramUserID(v).
 //		OnConflict(
 //			// Update the row with the new values
@@ -356,13 +388,13 @@ func (_c *NotifyUserCreate) createSpec() (*NotifyUser, *sqlgraph.CreateSpec) {
 //		).
 //		// Override some of the fields with custom
 //		// update values.
-//		Update(func(u *ent.NotifyUserUpsert) {
+//		Update(func(u *ent.UserUpsert) {
 //			SetTelegramUserID(v+v).
 //		}).
 //		Exec(ctx)
-func (_c *NotifyUserCreate) OnConflict(opts ...sql.ConflictOption) *NotifyUserUpsertOne {
+func (_c *UserCreate) OnConflict(opts ...sql.ConflictOption) *UserUpsertOne {
 	_c.conflict = opts
-	return &NotifyUserUpsertOne{
+	return &UserUpsertOne{
 		create: _c,
 	}
 }
@@ -370,168 +402,168 @@ func (_c *NotifyUserCreate) OnConflict(opts ...sql.ConflictOption) *NotifyUserUp
 // OnConflictColumns calls `OnConflict` and configures the columns
 // as conflict target. Using this option is equivalent to using:
 //
-//	client.NotifyUser.Create().
+//	client.User.Create().
 //		OnConflict(sql.ConflictColumns(columns...)).
 //		Exec(ctx)
-func (_c *NotifyUserCreate) OnConflictColumns(columns ...string) *NotifyUserUpsertOne {
+func (_c *UserCreate) OnConflictColumns(columns ...string) *UserUpsertOne {
 	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
-	return &NotifyUserUpsertOne{
+	return &UserUpsertOne{
 		create: _c,
 	}
 }
 
 type (
-	// NotifyUserUpsertOne is the builder for "upsert"-ing
-	//  one NotifyUser node.
-	NotifyUserUpsertOne struct {
-		create *NotifyUserCreate
+	// UserUpsertOne is the builder for "upsert"-ing
+	//  one User node.
+	UserUpsertOne struct {
+		create *UserCreate
 	}
 
-	// NotifyUserUpsert is the "OnConflict" setter.
-	NotifyUserUpsert struct {
+	// UserUpsert is the "OnConflict" setter.
+	UserUpsert struct {
 		*sql.UpdateSet
 	}
 )
 
 // SetTelegramUserID sets the "telegram_user_id" field.
-func (u *NotifyUserUpsert) SetTelegramUserID(v int64) *NotifyUserUpsert {
-	u.Set(notifyuser.FieldTelegramUserID, v)
+func (u *UserUpsert) SetTelegramUserID(v int64) *UserUpsert {
+	u.Set(user.FieldTelegramUserID, v)
 	return u
 }
 
 // UpdateTelegramUserID sets the "telegram_user_id" field to the value that was provided on create.
-func (u *NotifyUserUpsert) UpdateTelegramUserID() *NotifyUserUpsert {
-	u.SetExcluded(notifyuser.FieldTelegramUserID)
+func (u *UserUpsert) UpdateTelegramUserID() *UserUpsert {
+	u.SetExcluded(user.FieldTelegramUserID)
 	return u
 }
 
 // AddTelegramUserID adds v to the "telegram_user_id" field.
-func (u *NotifyUserUpsert) AddTelegramUserID(v int64) *NotifyUserUpsert {
-	u.Add(notifyuser.FieldTelegramUserID, v)
+func (u *UserUpsert) AddTelegramUserID(v int64) *UserUpsert {
+	u.Add(user.FieldTelegramUserID, v)
 	return u
 }
 
 // SetTelegramAccessHash sets the "telegram_access_hash" field.
-func (u *NotifyUserUpsert) SetTelegramAccessHash(v int64) *NotifyUserUpsert {
-	u.Set(notifyuser.FieldTelegramAccessHash, v)
+func (u *UserUpsert) SetTelegramAccessHash(v int64) *UserUpsert {
+	u.Set(user.FieldTelegramAccessHash, v)
 	return u
 }
 
 // UpdateTelegramAccessHash sets the "telegram_access_hash" field to the value that was provided on create.
-func (u *NotifyUserUpsert) UpdateTelegramAccessHash() *NotifyUserUpsert {
-	u.SetExcluded(notifyuser.FieldTelegramAccessHash)
+func (u *UserUpsert) UpdateTelegramAccessHash() *UserUpsert {
+	u.SetExcluded(user.FieldTelegramAccessHash)
 	return u
 }
 
 // AddTelegramAccessHash adds v to the "telegram_access_hash" field.
-func (u *NotifyUserUpsert) AddTelegramAccessHash(v int64) *NotifyUserUpsert {
-	u.Add(notifyuser.FieldTelegramAccessHash, v)
+func (u *UserUpsert) AddTelegramAccessHash(v int64) *UserUpsert {
+	u.Add(user.FieldTelegramAccessHash, v)
 	return u
 }
 
 // ClearTelegramAccessHash clears the value of the "telegram_access_hash" field.
-func (u *NotifyUserUpsert) ClearTelegramAccessHash() *NotifyUserUpsert {
-	u.SetNull(notifyuser.FieldTelegramAccessHash)
+func (u *UserUpsert) ClearTelegramAccessHash() *UserUpsert {
+	u.SetNull(user.FieldTelegramAccessHash)
 	return u
 }
 
 // SetGitlabUsername sets the "gitlab_username" field.
-func (u *NotifyUserUpsert) SetGitlabUsername(v string) *NotifyUserUpsert {
-	u.Set(notifyuser.FieldGitlabUsername, v)
+func (u *UserUpsert) SetGitlabUsername(v string) *UserUpsert {
+	u.Set(user.FieldGitlabUsername, v)
 	return u
 }
 
 // UpdateGitlabUsername sets the "gitlab_username" field to the value that was provided on create.
-func (u *NotifyUserUpsert) UpdateGitlabUsername() *NotifyUserUpsert {
-	u.SetExcluded(notifyuser.FieldGitlabUsername)
+func (u *UserUpsert) UpdateGitlabUsername() *UserUpsert {
+	u.SetExcluded(user.FieldGitlabUsername)
 	return u
 }
 
 // ClearGitlabUsername clears the value of the "gitlab_username" field.
-func (u *NotifyUserUpsert) ClearGitlabUsername() *NotifyUserUpsert {
-	u.SetNull(notifyuser.FieldGitlabUsername)
+func (u *UserUpsert) ClearGitlabUsername() *UserUpsert {
+	u.SetNull(user.FieldGitlabUsername)
 	return u
 }
 
 // SetJiraAccountID sets the "jira_account_id" field.
-func (u *NotifyUserUpsert) SetJiraAccountID(v string) *NotifyUserUpsert {
-	u.Set(notifyuser.FieldJiraAccountID, v)
+func (u *UserUpsert) SetJiraAccountID(v string) *UserUpsert {
+	u.Set(user.FieldJiraAccountID, v)
 	return u
 }
 
 // UpdateJiraAccountID sets the "jira_account_id" field to the value that was provided on create.
-func (u *NotifyUserUpsert) UpdateJiraAccountID() *NotifyUserUpsert {
-	u.SetExcluded(notifyuser.FieldJiraAccountID)
+func (u *UserUpsert) UpdateJiraAccountID() *UserUpsert {
+	u.SetExcluded(user.FieldJiraAccountID)
 	return u
 }
 
 // ClearJiraAccountID clears the value of the "jira_account_id" field.
-func (u *NotifyUserUpsert) ClearJiraAccountID() *NotifyUserUpsert {
-	u.SetNull(notifyuser.FieldJiraAccountID)
+func (u *UserUpsert) ClearJiraAccountID() *UserUpsert {
+	u.SetNull(user.FieldJiraAccountID)
 	return u
 }
 
 // SetJiraDisplayName sets the "jira_display_name" field.
-func (u *NotifyUserUpsert) SetJiraDisplayName(v string) *NotifyUserUpsert {
-	u.Set(notifyuser.FieldJiraDisplayName, v)
+func (u *UserUpsert) SetJiraDisplayName(v string) *UserUpsert {
+	u.Set(user.FieldJiraDisplayName, v)
 	return u
 }
 
 // UpdateJiraDisplayName sets the "jira_display_name" field to the value that was provided on create.
-func (u *NotifyUserUpsert) UpdateJiraDisplayName() *NotifyUserUpsert {
-	u.SetExcluded(notifyuser.FieldJiraDisplayName)
+func (u *UserUpsert) UpdateJiraDisplayName() *UserUpsert {
+	u.SetExcluded(user.FieldJiraDisplayName)
 	return u
 }
 
 // ClearJiraDisplayName clears the value of the "jira_display_name" field.
-func (u *NotifyUserUpsert) ClearJiraDisplayName() *NotifyUserUpsert {
-	u.SetNull(notifyuser.FieldJiraDisplayName)
+func (u *UserUpsert) ClearJiraDisplayName() *UserUpsert {
+	u.SetNull(user.FieldJiraDisplayName)
 	return u
 }
 
 // SetEnabled sets the "enabled" field.
-func (u *NotifyUserUpsert) SetEnabled(v bool) *NotifyUserUpsert {
-	u.Set(notifyuser.FieldEnabled, v)
+func (u *UserUpsert) SetEnabled(v bool) *UserUpsert {
+	u.Set(user.FieldEnabled, v)
 	return u
 }
 
 // UpdateEnabled sets the "enabled" field to the value that was provided on create.
-func (u *NotifyUserUpsert) UpdateEnabled() *NotifyUserUpsert {
-	u.SetExcluded(notifyuser.FieldEnabled)
+func (u *UserUpsert) UpdateEnabled() *UserUpsert {
+	u.SetExcluded(user.FieldEnabled)
 	return u
 }
 
 // SetUpdatedAt sets the "updated_at" field.
-func (u *NotifyUserUpsert) SetUpdatedAt(v time.Time) *NotifyUserUpsert {
-	u.Set(notifyuser.FieldUpdatedAt, v)
+func (u *UserUpsert) SetUpdatedAt(v time.Time) *UserUpsert {
+	u.Set(user.FieldUpdatedAt, v)
 	return u
 }
 
 // UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
-func (u *NotifyUserUpsert) UpdateUpdatedAt() *NotifyUserUpsert {
-	u.SetExcluded(notifyuser.FieldUpdatedAt)
+func (u *UserUpsert) UpdateUpdatedAt() *UserUpsert {
+	u.SetExcluded(user.FieldUpdatedAt)
 	return u
 }
 
 // UpdateNewValues updates the mutable fields using the new values that were set on create except the ID field.
 // Using this option is equivalent to using:
 //
-//	client.NotifyUser.Create().
+//	client.User.Create().
 //		OnConflict(
 //			sql.ResolveWithNewValues(),
 //			sql.ResolveWith(func(u *sql.UpdateSet) {
-//				u.SetIgnore(notifyuser.FieldID)
+//				u.SetIgnore(user.FieldID)
 //			}),
 //		).
 //		Exec(ctx)
-func (u *NotifyUserUpsertOne) UpdateNewValues() *NotifyUserUpsertOne {
+func (u *UserUpsertOne) UpdateNewValues() *UserUpsertOne {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
 	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
 		if _, exists := u.create.mutation.ID(); exists {
-			s.SetIgnore(notifyuser.FieldID)
+			s.SetIgnore(user.FieldID)
 		}
 		if _, exists := u.create.mutation.CreatedAt(); exists {
-			s.SetIgnore(notifyuser.FieldCreatedAt)
+			s.SetIgnore(user.FieldCreatedAt)
 		}
 	}))
 	return u
@@ -540,191 +572,191 @@ func (u *NotifyUserUpsertOne) UpdateNewValues() *NotifyUserUpsertOne {
 // Ignore sets each column to itself in case of conflict.
 // Using this option is equivalent to using:
 //
-//	client.NotifyUser.Create().
+//	client.User.Create().
 //	    OnConflict(sql.ResolveWithIgnore()).
 //	    Exec(ctx)
-func (u *NotifyUserUpsertOne) Ignore() *NotifyUserUpsertOne {
+func (u *UserUpsertOne) Ignore() *UserUpsertOne {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
 	return u
 }
 
 // DoNothing configures the conflict_action to `DO NOTHING`.
 // Supported only by SQLite and PostgreSQL.
-func (u *NotifyUserUpsertOne) DoNothing() *NotifyUserUpsertOne {
+func (u *UserUpsertOne) DoNothing() *UserUpsertOne {
 	u.create.conflict = append(u.create.conflict, sql.DoNothing())
 	return u
 }
 
-// Update allows overriding fields `UPDATE` values. See the NotifyUserCreate.OnConflict
+// Update allows overriding fields `UPDATE` values. See the UserCreate.OnConflict
 // documentation for more info.
-func (u *NotifyUserUpsertOne) Update(set func(*NotifyUserUpsert)) *NotifyUserUpsertOne {
+func (u *UserUpsertOne) Update(set func(*UserUpsert)) *UserUpsertOne {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
-		set(&NotifyUserUpsert{UpdateSet: update})
+		set(&UserUpsert{UpdateSet: update})
 	}))
 	return u
 }
 
 // SetTelegramUserID sets the "telegram_user_id" field.
-func (u *NotifyUserUpsertOne) SetTelegramUserID(v int64) *NotifyUserUpsertOne {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertOne) SetTelegramUserID(v int64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
 		s.SetTelegramUserID(v)
 	})
 }
 
 // AddTelegramUserID adds v to the "telegram_user_id" field.
-func (u *NotifyUserUpsertOne) AddTelegramUserID(v int64) *NotifyUserUpsertOne {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertOne) AddTelegramUserID(v int64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
 		s.AddTelegramUserID(v)
 	})
 }
 
 // UpdateTelegramUserID sets the "telegram_user_id" field to the value that was provided on create.
-func (u *NotifyUserUpsertOne) UpdateTelegramUserID() *NotifyUserUpsertOne {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertOne) UpdateTelegramUserID() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
 		s.UpdateTelegramUserID()
 	})
 }
 
 // SetTelegramAccessHash sets the "telegram_access_hash" field.
-func (u *NotifyUserUpsertOne) SetTelegramAccessHash(v int64) *NotifyUserUpsertOne {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertOne) SetTelegramAccessHash(v int64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
 		s.SetTelegramAccessHash(v)
 	})
 }
 
 // AddTelegramAccessHash adds v to the "telegram_access_hash" field.
-func (u *NotifyUserUpsertOne) AddTelegramAccessHash(v int64) *NotifyUserUpsertOne {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertOne) AddTelegramAccessHash(v int64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
 		s.AddTelegramAccessHash(v)
 	})
 }
 
 // UpdateTelegramAccessHash sets the "telegram_access_hash" field to the value that was provided on create.
-func (u *NotifyUserUpsertOne) UpdateTelegramAccessHash() *NotifyUserUpsertOne {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertOne) UpdateTelegramAccessHash() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
 		s.UpdateTelegramAccessHash()
 	})
 }
 
 // ClearTelegramAccessHash clears the value of the "telegram_access_hash" field.
-func (u *NotifyUserUpsertOne) ClearTelegramAccessHash() *NotifyUserUpsertOne {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertOne) ClearTelegramAccessHash() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
 		s.ClearTelegramAccessHash()
 	})
 }
 
 // SetGitlabUsername sets the "gitlab_username" field.
-func (u *NotifyUserUpsertOne) SetGitlabUsername(v string) *NotifyUserUpsertOne {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertOne) SetGitlabUsername(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
 		s.SetGitlabUsername(v)
 	})
 }
 
 // UpdateGitlabUsername sets the "gitlab_username" field to the value that was provided on create.
-func (u *NotifyUserUpsertOne) UpdateGitlabUsername() *NotifyUserUpsertOne {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertOne) UpdateGitlabUsername() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
 		s.UpdateGitlabUsername()
 	})
 }
 
 // ClearGitlabUsername clears the value of the "gitlab_username" field.
-func (u *NotifyUserUpsertOne) ClearGitlabUsername() *NotifyUserUpsertOne {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertOne) ClearGitlabUsername() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
 		s.ClearGitlabUsername()
 	})
 }
 
 // SetJiraAccountID sets the "jira_account_id" field.
-func (u *NotifyUserUpsertOne) SetJiraAccountID(v string) *NotifyUserUpsertOne {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertOne) SetJiraAccountID(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
 		s.SetJiraAccountID(v)
 	})
 }
 
 // UpdateJiraAccountID sets the "jira_account_id" field to the value that was provided on create.
-func (u *NotifyUserUpsertOne) UpdateJiraAccountID() *NotifyUserUpsertOne {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertOne) UpdateJiraAccountID() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
 		s.UpdateJiraAccountID()
 	})
 }
 
 // ClearJiraAccountID clears the value of the "jira_account_id" field.
-func (u *NotifyUserUpsertOne) ClearJiraAccountID() *NotifyUserUpsertOne {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertOne) ClearJiraAccountID() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
 		s.ClearJiraAccountID()
 	})
 }
 
 // SetJiraDisplayName sets the "jira_display_name" field.
-func (u *NotifyUserUpsertOne) SetJiraDisplayName(v string) *NotifyUserUpsertOne {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertOne) SetJiraDisplayName(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
 		s.SetJiraDisplayName(v)
 	})
 }
 
 // UpdateJiraDisplayName sets the "jira_display_name" field to the value that was provided on create.
-func (u *NotifyUserUpsertOne) UpdateJiraDisplayName() *NotifyUserUpsertOne {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertOne) UpdateJiraDisplayName() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
 		s.UpdateJiraDisplayName()
 	})
 }
 
 // ClearJiraDisplayName clears the value of the "jira_display_name" field.
-func (u *NotifyUserUpsertOne) ClearJiraDisplayName() *NotifyUserUpsertOne {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertOne) ClearJiraDisplayName() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
 		s.ClearJiraDisplayName()
 	})
 }
 
 // SetEnabled sets the "enabled" field.
-func (u *NotifyUserUpsertOne) SetEnabled(v bool) *NotifyUserUpsertOne {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertOne) SetEnabled(v bool) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
 		s.SetEnabled(v)
 	})
 }
 
 // UpdateEnabled sets the "enabled" field to the value that was provided on create.
-func (u *NotifyUserUpsertOne) UpdateEnabled() *NotifyUserUpsertOne {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertOne) UpdateEnabled() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
 		s.UpdateEnabled()
 	})
 }
 
 // SetUpdatedAt sets the "updated_at" field.
-func (u *NotifyUserUpsertOne) SetUpdatedAt(v time.Time) *NotifyUserUpsertOne {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertOne) SetUpdatedAt(v time.Time) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
 		s.SetUpdatedAt(v)
 	})
 }
 
 // UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
-func (u *NotifyUserUpsertOne) UpdateUpdatedAt() *NotifyUserUpsertOne {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertOne) UpdateUpdatedAt() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
 		s.UpdateUpdatedAt()
 	})
 }
 
 // Exec executes the query.
-func (u *NotifyUserUpsertOne) Exec(ctx context.Context) error {
+func (u *UserUpsertOne) Exec(ctx context.Context) error {
 	if len(u.create.conflict) == 0 {
-		return errors.New("ent: missing options for NotifyUserCreate.OnConflict")
+		return errors.New("ent: missing options for UserCreate.OnConflict")
 	}
 	return u.create.Exec(ctx)
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (u *NotifyUserUpsertOne) ExecX(ctx context.Context) {
+func (u *UserUpsertOne) ExecX(ctx context.Context) {
 	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }
 
 // Exec executes the UPSERT query and returns the inserted/updated ID.
-func (u *NotifyUserUpsertOne) ID(ctx context.Context) (id uuid.UUID, err error) {
+func (u *UserUpsertOne) ID(ctx context.Context) (id uuid.UUID, err error) {
 	if u.create.driver.Dialect() == dialect.MySQL {
 		// In case of "ON CONFLICT", there is no way to get back non-numeric ID
 		// fields from the database since MySQL does not support the RETURNING clause.
-		return id, errors.New("ent: NotifyUserUpsertOne.ID is not supported by MySQL driver. Use NotifyUserUpsertOne.Exec instead")
+		return id, errors.New("ent: UserUpsertOne.ID is not supported by MySQL driver. Use UserUpsertOne.Exec instead")
 	}
 	node, err := u.create.Save(ctx)
 	if err != nil {
@@ -734,7 +766,7 @@ func (u *NotifyUserUpsertOne) ID(ctx context.Context) (id uuid.UUID, err error) 
 }
 
 // IDX is like ID, but panics if an error occurs.
-func (u *NotifyUserUpsertOne) IDX(ctx context.Context) uuid.UUID {
+func (u *UserUpsertOne) IDX(ctx context.Context) uuid.UUID {
 	id, err := u.ID(ctx)
 	if err != nil {
 		panic(err)
@@ -742,28 +774,28 @@ func (u *NotifyUserUpsertOne) IDX(ctx context.Context) uuid.UUID {
 	return id
 }
 
-// NotifyUserCreateBulk is the builder for creating many NotifyUser entities in bulk.
-type NotifyUserCreateBulk struct {
+// UserCreateBulk is the builder for creating many User entities in bulk.
+type UserCreateBulk struct {
 	config
 	err      error
-	builders []*NotifyUserCreate
+	builders []*UserCreate
 	conflict []sql.ConflictOption
 }
 
-// Save creates the NotifyUser entities in the database.
-func (_c *NotifyUserCreateBulk) Save(ctx context.Context) ([]*NotifyUser, error) {
+// Save creates the User entities in the database.
+func (_c *UserCreateBulk) Save(ctx context.Context) ([]*User, error) {
 	if _c.err != nil {
 		return nil, _c.err
 	}
 	specs := make([]*sqlgraph.CreateSpec, len(_c.builders))
-	nodes := make([]*NotifyUser, len(_c.builders))
+	nodes := make([]*User, len(_c.builders))
 	mutators := make([]Mutator, len(_c.builders))
 	for i := range _c.builders {
 		func(i int, root context.Context) {
 			builder := _c.builders[i]
 			builder.defaults()
 			var mut Mutator = MutateFunc(func(ctx context.Context, m Mutation) (Value, error) {
-				mutation, ok := m.(*NotifyUserMutation)
+				mutation, ok := m.(*UserMutation)
 				if !ok {
 					return nil, fmt.Errorf("unexpected mutation type %T", m)
 				}
@@ -807,7 +839,7 @@ func (_c *NotifyUserCreateBulk) Save(ctx context.Context) ([]*NotifyUser, error)
 }
 
 // SaveX is like Save, but panics if an error occurs.
-func (_c *NotifyUserCreateBulk) SaveX(ctx context.Context) []*NotifyUser {
+func (_c *UserCreateBulk) SaveX(ctx context.Context) []*User {
 	v, err := _c.Save(ctx)
 	if err != nil {
 		panic(err)
@@ -816,13 +848,13 @@ func (_c *NotifyUserCreateBulk) SaveX(ctx context.Context) []*NotifyUser {
 }
 
 // Exec executes the query.
-func (_c *NotifyUserCreateBulk) Exec(ctx context.Context) error {
+func (_c *UserCreateBulk) Exec(ctx context.Context) error {
 	_, err := _c.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (_c *NotifyUserCreateBulk) ExecX(ctx context.Context) {
+func (_c *UserCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
 		panic(err)
 	}
@@ -831,7 +863,7 @@ func (_c *NotifyUserCreateBulk) ExecX(ctx context.Context) {
 // OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
 // of the `INSERT` statement. For example:
 //
-//	client.NotifyUser.CreateBulk(builders...).
+//	client.User.CreateBulk(builders...).
 //		OnConflict(
 //			// Update the row with the new values
 //			// the was proposed for insertion.
@@ -839,13 +871,13 @@ func (_c *NotifyUserCreateBulk) ExecX(ctx context.Context) {
 //		).
 //		// Override some of the fields with custom
 //		// update values.
-//		Update(func(u *ent.NotifyUserUpsert) {
+//		Update(func(u *ent.UserUpsert) {
 //			SetTelegramUserID(v+v).
 //		}).
 //		Exec(ctx)
-func (_c *NotifyUserCreateBulk) OnConflict(opts ...sql.ConflictOption) *NotifyUserUpsertBulk {
+func (_c *UserCreateBulk) OnConflict(opts ...sql.ConflictOption) *UserUpsertBulk {
 	_c.conflict = opts
-	return &NotifyUserUpsertBulk{
+	return &UserUpsertBulk{
 		create: _c,
 	}
 }
@@ -853,42 +885,42 @@ func (_c *NotifyUserCreateBulk) OnConflict(opts ...sql.ConflictOption) *NotifyUs
 // OnConflictColumns calls `OnConflict` and configures the columns
 // as conflict target. Using this option is equivalent to using:
 //
-//	client.NotifyUser.Create().
+//	client.User.Create().
 //		OnConflict(sql.ConflictColumns(columns...)).
 //		Exec(ctx)
-func (_c *NotifyUserCreateBulk) OnConflictColumns(columns ...string) *NotifyUserUpsertBulk {
+func (_c *UserCreateBulk) OnConflictColumns(columns ...string) *UserUpsertBulk {
 	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
-	return &NotifyUserUpsertBulk{
+	return &UserUpsertBulk{
 		create: _c,
 	}
 }
 
-// NotifyUserUpsertBulk is the builder for "upsert"-ing
-// a bulk of NotifyUser nodes.
-type NotifyUserUpsertBulk struct {
-	create *NotifyUserCreateBulk
+// UserUpsertBulk is the builder for "upsert"-ing
+// a bulk of User nodes.
+type UserUpsertBulk struct {
+	create *UserCreateBulk
 }
 
 // UpdateNewValues updates the mutable fields using the new values that
 // were set on create. Using this option is equivalent to using:
 //
-//	client.NotifyUser.Create().
+//	client.User.Create().
 //		OnConflict(
 //			sql.ResolveWithNewValues(),
 //			sql.ResolveWith(func(u *sql.UpdateSet) {
-//				u.SetIgnore(notifyuser.FieldID)
+//				u.SetIgnore(user.FieldID)
 //			}),
 //		).
 //		Exec(ctx)
-func (u *NotifyUserUpsertBulk) UpdateNewValues() *NotifyUserUpsertBulk {
+func (u *UserUpsertBulk) UpdateNewValues() *UserUpsertBulk {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
 	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(s *sql.UpdateSet) {
 		for _, b := range u.create.builders {
 			if _, exists := b.mutation.ID(); exists {
-				s.SetIgnore(notifyuser.FieldID)
+				s.SetIgnore(user.FieldID)
 			}
 			if _, exists := b.mutation.CreatedAt(); exists {
-				s.SetIgnore(notifyuser.FieldCreatedAt)
+				s.SetIgnore(user.FieldCreatedAt)
 			}
 		}
 	}))
@@ -898,188 +930,188 @@ func (u *NotifyUserUpsertBulk) UpdateNewValues() *NotifyUserUpsertBulk {
 // Ignore sets each column to itself in case of conflict.
 // Using this option is equivalent to using:
 //
-//	client.NotifyUser.Create().
+//	client.User.Create().
 //		OnConflict(sql.ResolveWithIgnore()).
 //		Exec(ctx)
-func (u *NotifyUserUpsertBulk) Ignore() *NotifyUserUpsertBulk {
+func (u *UserUpsertBulk) Ignore() *UserUpsertBulk {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
 	return u
 }
 
 // DoNothing configures the conflict_action to `DO NOTHING`.
 // Supported only by SQLite and PostgreSQL.
-func (u *NotifyUserUpsertBulk) DoNothing() *NotifyUserUpsertBulk {
+func (u *UserUpsertBulk) DoNothing() *UserUpsertBulk {
 	u.create.conflict = append(u.create.conflict, sql.DoNothing())
 	return u
 }
 
-// Update allows overriding fields `UPDATE` values. See the NotifyUserCreateBulk.OnConflict
+// Update allows overriding fields `UPDATE` values. See the UserCreateBulk.OnConflict
 // documentation for more info.
-func (u *NotifyUserUpsertBulk) Update(set func(*NotifyUserUpsert)) *NotifyUserUpsertBulk {
+func (u *UserUpsertBulk) Update(set func(*UserUpsert)) *UserUpsertBulk {
 	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
-		set(&NotifyUserUpsert{UpdateSet: update})
+		set(&UserUpsert{UpdateSet: update})
 	}))
 	return u
 }
 
 // SetTelegramUserID sets the "telegram_user_id" field.
-func (u *NotifyUserUpsertBulk) SetTelegramUserID(v int64) *NotifyUserUpsertBulk {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertBulk) SetTelegramUserID(v int64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
 		s.SetTelegramUserID(v)
 	})
 }
 
 // AddTelegramUserID adds v to the "telegram_user_id" field.
-func (u *NotifyUserUpsertBulk) AddTelegramUserID(v int64) *NotifyUserUpsertBulk {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertBulk) AddTelegramUserID(v int64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
 		s.AddTelegramUserID(v)
 	})
 }
 
 // UpdateTelegramUserID sets the "telegram_user_id" field to the value that was provided on create.
-func (u *NotifyUserUpsertBulk) UpdateTelegramUserID() *NotifyUserUpsertBulk {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertBulk) UpdateTelegramUserID() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
 		s.UpdateTelegramUserID()
 	})
 }
 
 // SetTelegramAccessHash sets the "telegram_access_hash" field.
-func (u *NotifyUserUpsertBulk) SetTelegramAccessHash(v int64) *NotifyUserUpsertBulk {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertBulk) SetTelegramAccessHash(v int64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
 		s.SetTelegramAccessHash(v)
 	})
 }
 
 // AddTelegramAccessHash adds v to the "telegram_access_hash" field.
-func (u *NotifyUserUpsertBulk) AddTelegramAccessHash(v int64) *NotifyUserUpsertBulk {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertBulk) AddTelegramAccessHash(v int64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
 		s.AddTelegramAccessHash(v)
 	})
 }
 
 // UpdateTelegramAccessHash sets the "telegram_access_hash" field to the value that was provided on create.
-func (u *NotifyUserUpsertBulk) UpdateTelegramAccessHash() *NotifyUserUpsertBulk {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertBulk) UpdateTelegramAccessHash() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
 		s.UpdateTelegramAccessHash()
 	})
 }
 
 // ClearTelegramAccessHash clears the value of the "telegram_access_hash" field.
-func (u *NotifyUserUpsertBulk) ClearTelegramAccessHash() *NotifyUserUpsertBulk {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertBulk) ClearTelegramAccessHash() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
 		s.ClearTelegramAccessHash()
 	})
 }
 
 // SetGitlabUsername sets the "gitlab_username" field.
-func (u *NotifyUserUpsertBulk) SetGitlabUsername(v string) *NotifyUserUpsertBulk {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertBulk) SetGitlabUsername(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
 		s.SetGitlabUsername(v)
 	})
 }
 
 // UpdateGitlabUsername sets the "gitlab_username" field to the value that was provided on create.
-func (u *NotifyUserUpsertBulk) UpdateGitlabUsername() *NotifyUserUpsertBulk {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertBulk) UpdateGitlabUsername() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
 		s.UpdateGitlabUsername()
 	})
 }
 
 // ClearGitlabUsername clears the value of the "gitlab_username" field.
-func (u *NotifyUserUpsertBulk) ClearGitlabUsername() *NotifyUserUpsertBulk {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertBulk) ClearGitlabUsername() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
 		s.ClearGitlabUsername()
 	})
 }
 
 // SetJiraAccountID sets the "jira_account_id" field.
-func (u *NotifyUserUpsertBulk) SetJiraAccountID(v string) *NotifyUserUpsertBulk {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertBulk) SetJiraAccountID(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
 		s.SetJiraAccountID(v)
 	})
 }
 
 // UpdateJiraAccountID sets the "jira_account_id" field to the value that was provided on create.
-func (u *NotifyUserUpsertBulk) UpdateJiraAccountID() *NotifyUserUpsertBulk {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertBulk) UpdateJiraAccountID() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
 		s.UpdateJiraAccountID()
 	})
 }
 
 // ClearJiraAccountID clears the value of the "jira_account_id" field.
-func (u *NotifyUserUpsertBulk) ClearJiraAccountID() *NotifyUserUpsertBulk {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertBulk) ClearJiraAccountID() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
 		s.ClearJiraAccountID()
 	})
 }
 
 // SetJiraDisplayName sets the "jira_display_name" field.
-func (u *NotifyUserUpsertBulk) SetJiraDisplayName(v string) *NotifyUserUpsertBulk {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertBulk) SetJiraDisplayName(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
 		s.SetJiraDisplayName(v)
 	})
 }
 
 // UpdateJiraDisplayName sets the "jira_display_name" field to the value that was provided on create.
-func (u *NotifyUserUpsertBulk) UpdateJiraDisplayName() *NotifyUserUpsertBulk {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertBulk) UpdateJiraDisplayName() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
 		s.UpdateJiraDisplayName()
 	})
 }
 
 // ClearJiraDisplayName clears the value of the "jira_display_name" field.
-func (u *NotifyUserUpsertBulk) ClearJiraDisplayName() *NotifyUserUpsertBulk {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertBulk) ClearJiraDisplayName() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
 		s.ClearJiraDisplayName()
 	})
 }
 
 // SetEnabled sets the "enabled" field.
-func (u *NotifyUserUpsertBulk) SetEnabled(v bool) *NotifyUserUpsertBulk {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertBulk) SetEnabled(v bool) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
 		s.SetEnabled(v)
 	})
 }
 
 // UpdateEnabled sets the "enabled" field to the value that was provided on create.
-func (u *NotifyUserUpsertBulk) UpdateEnabled() *NotifyUserUpsertBulk {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertBulk) UpdateEnabled() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
 		s.UpdateEnabled()
 	})
 }
 
 // SetUpdatedAt sets the "updated_at" field.
-func (u *NotifyUserUpsertBulk) SetUpdatedAt(v time.Time) *NotifyUserUpsertBulk {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertBulk) SetUpdatedAt(v time.Time) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
 		s.SetUpdatedAt(v)
 	})
 }
 
 // UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
-func (u *NotifyUserUpsertBulk) UpdateUpdatedAt() *NotifyUserUpsertBulk {
-	return u.Update(func(s *NotifyUserUpsert) {
+func (u *UserUpsertBulk) UpdateUpdatedAt() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
 		s.UpdateUpdatedAt()
 	})
 }
 
 // Exec executes the query.
-func (u *NotifyUserUpsertBulk) Exec(ctx context.Context) error {
+func (u *UserUpsertBulk) Exec(ctx context.Context) error {
 	if u.create.err != nil {
 		return u.create.err
 	}
 	for i, b := range u.create.builders {
 		if len(b.conflict) != 0 {
-			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the NotifyUserCreateBulk instead", i)
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the UserCreateBulk instead", i)
 		}
 	}
 	if len(u.create.conflict) == 0 {
-		return errors.New("ent: missing options for NotifyUserCreateBulk.OnConflict")
+		return errors.New("ent: missing options for UserCreateBulk.OnConflict")
 	}
 	return u.create.Exec(ctx)
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (u *NotifyUserUpsertBulk) ExecX(ctx context.Context) {
+func (u *UserUpsertBulk) ExecX(ctx context.Context) {
 	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}

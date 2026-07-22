@@ -15,8 +15,8 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent"
 	"github.com/go-faster/sisyphus/internal/ent/notification"
 	"github.com/go-faster/sisyphus/internal/ent/notifysubscription"
-	"github.com/go-faster/sisyphus/internal/ent/notifyuser"
 	"github.com/go-faster/sisyphus/internal/ent/predicate"
+	"github.com/go-faster/sisyphus/internal/ent/user"
 	"github.com/go-faster/sisyphus/internal/notify"
 )
 
@@ -32,7 +32,7 @@ const (
 	StatusError     = "error"
 )
 
-// Store persists NotifyUser/NotifySubscription/Notification rows via ent.
+// Store persists User/NotifySubscription/Notification rows via ent.
 type Store struct {
 	db *ent.Client
 }
@@ -42,22 +42,22 @@ func New(db *ent.Client) *Store {
 	return &Store{db: db}
 }
 
-// EnrollTelegram upserts a NotifyUser for telegramUserID, persisting its
+// EnrollTelegram upserts a User row for telegramUserID, persisting its
 // current access hash. Called on /subscribe and on every allowlisted
 // message from a known user, so a rotated bot session (a new access hash)
 // self-heals on the user's next contact rather than requiring re-enrollment.
 func (s *Store) EnrollTelegram(ctx context.Context, telegramUserID, accessHash int64) (uuid.UUID, error) {
-	err := s.db.NotifyUser.Create().
+	err := s.db.User.Create().
 		SetTelegramUserID(telegramUserID).
 		SetTelegramAccessHash(accessHash).
 		SetEnabled(true).
-		OnConflictColumns(notifyuser.FieldTelegramUserID).
+		OnConflictColumns(user.FieldTelegramUserID).
 		UpdateNewValues().
 		Exec(ctx)
 	if err != nil {
 		return uuid.Nil, errors.Wrap(err, "enroll telegram user")
 	}
-	u, err := s.db.NotifyUser.Query().Where(notifyuser.TelegramUserID(telegramUserID)).Only(ctx)
+	u, err := s.db.User.Query().Where(user.TelegramUserID(telegramUserID)).Only(ctx)
 	if err != nil {
 		return uuid.Nil, errors.Wrap(err, "get enrolled user")
 	}
@@ -67,11 +67,11 @@ func (s *Store) EnrollTelegram(ctx context.Context, telegramUserID, accessHash i
 // LinkGitLab associates telegramUserID with a GitLab username. Returns an
 // error if that username is already linked to a different user.
 func (s *Store) LinkGitLab(ctx context.Context, telegramUserID int64, username string) error {
-	u, err := s.db.NotifyUser.Query().Where(notifyuser.TelegramUserID(telegramUserID)).Only(ctx)
+	u, err := s.db.User.Query().Where(user.TelegramUserID(telegramUserID)).Only(ctx)
 	if err != nil {
 		return errors.Wrap(err, "get notify user")
 	}
-	if err := s.db.NotifyUser.UpdateOneID(u.ID).SetGitlabUsername(username).Exec(ctx); err != nil {
+	if err := s.db.User.UpdateOneID(u.ID).SetGitlabUsername(username).Exec(ctx); err != nil {
 		if ent.IsConstraintError(err) {
 			return errors.Errorf("gitlab username %q is already linked to another user", username)
 		}
@@ -83,11 +83,11 @@ func (s *Store) LinkGitLab(ctx context.Context, telegramUserID int64, username s
 // LinkJira associates telegramUserID with a Jira accountId. Returns an error
 // if that accountId is already linked to a different user.
 func (s *Store) LinkJira(ctx context.Context, telegramUserID int64, accountID, displayName string) error {
-	u, err := s.db.NotifyUser.Query().Where(notifyuser.TelegramUserID(telegramUserID)).Only(ctx)
+	u, err := s.db.User.Query().Where(user.TelegramUserID(telegramUserID)).Only(ctx)
 	if err != nil {
 		return errors.Wrap(err, "get notify user")
 	}
-	upd := s.db.NotifyUser.UpdateOneID(u.ID).SetJiraAccountID(accountID)
+	upd := s.db.User.UpdateOneID(u.ID).SetJiraAccountID(accountID)
 	if displayName != "" {
 		upd = upd.SetJiraDisplayName(displayName)
 	}
@@ -105,7 +105,7 @@ func (s *Store) LinkJira(ctx context.Context, telegramUserID int64, accountID, d
 // the subscription in place rather than creating a second row (unique on
 // (user_id, source)).
 func (s *Store) Subscribe(ctx context.Context, telegramUserID int64, source notify.Source, eventTypes []notify.EventType) error {
-	u, err := s.db.NotifyUser.Query().Where(notifyuser.TelegramUserID(telegramUserID)).Only(ctx)
+	u, err := s.db.User.Query().Where(user.TelegramUserID(telegramUserID)).Only(ctx)
 	if err != nil {
 		return errors.Wrap(err, "get notify user")
 	}
@@ -131,7 +131,7 @@ func (s *Store) Subscribe(ctx context.Context, telegramUserID int64, source noti
 
 // Unsubscribe disables telegramUserID's subscription to source, if any.
 func (s *Store) Unsubscribe(ctx context.Context, telegramUserID int64, source notify.Source) error {
-	u, err := s.db.NotifyUser.Query().Where(notifyuser.TelegramUserID(telegramUserID)).Only(ctx)
+	u, err := s.db.User.Query().Where(user.TelegramUserID(telegramUserID)).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil
@@ -162,7 +162,7 @@ type Subscription struct {
 
 // ListSubscriptions returns telegramUserID's subscriptions.
 func (s *Store) ListSubscriptions(ctx context.Context, telegramUserID int64) ([]Subscription, error) {
-	u, err := s.db.NotifyUser.Query().Where(notifyuser.TelegramUserID(telegramUserID)).Only(ctx)
+	u, err := s.db.User.Query().Where(user.TelegramUserID(telegramUserID)).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil, nil
@@ -194,24 +194,24 @@ func (s *Store) ListSubscriptions(ctx context.Context, telegramUserID int64) ([]
 // subscriptions to (source, eventType) belonging to the user whose linked
 // identity matches recipient.
 func (s *Store) Subscribers(ctx context.Context, source notify.Source, eventType notify.EventType, recipient notify.Actor) ([]notify.Subscriber, error) {
-	var identityPred predicate.NotifyUser
+	var identityPred predicate.User
 	switch source {
 	case notify.SourceGitLab:
 		if recipient.Key == "" {
 			return nil, nil
 		}
-		identityPred = notifyuser.GitlabUsername(recipient.Key)
+		identityPred = user.GitlabUsername(recipient.Key)
 	case notify.SourceJira:
 		if recipient.Key == "" {
 			return nil, nil
 		}
-		identityPred = notifyuser.JiraAccountID(recipient.Key)
+		identityPred = user.JiraAccountID(recipient.Key)
 	default:
 		return nil, errors.Errorf("unknown notify source %q", source)
 	}
 
-	users, err := s.db.NotifyUser.Query().
-		Where(notifyuser.Enabled(true), identityPred).
+	users, err := s.db.User.Query().
+		Where(user.Enabled(true), identityPred).
 		All(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "query notify users")
@@ -221,7 +221,7 @@ func (s *Store) Subscribers(ctx context.Context, source notify.Source, eventType
 	}
 
 	userIDs := make([]uuid.UUID, 0, len(users))
-	byID := make(map[uuid.UUID]*ent.NotifyUser, len(users))
+	byID := make(map[uuid.UUID]*ent.User, len(users))
 	for _, u := range users {
 		userIDs = append(userIDs, u.ID)
 		byID[u.ID] = u

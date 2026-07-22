@@ -268,7 +268,7 @@ func HasUser() predicate.NotifySubscription {
 }
 
 // HasUserWith applies the HasEdge predicate on the "user" edge with a given conditions (other predicates).
-func HasUserWith(preds ...predicate.NotifyUser) predicate.NotifySubscription {
+func HasUserWith(preds ...predicate.User) predicate.NotifySubscription {
 	return predicate.NotifySubscription(func(s *sql.Selector) {
 		step := newUserStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {

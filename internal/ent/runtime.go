@@ -10,11 +10,12 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/investigationjob"
 	"github.com/go-faster/sisyphus/internal/ent/notification"
 	"github.com/go-faster/sisyphus/internal/ent/notifysubscription"
-	"github.com/go-faster/sisyphus/internal/ent/notifyuser"
 	"github.com/go-faster/sisyphus/internal/ent/schema"
 	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 	"github.com/go-faster/sisyphus/internal/ent/telegrammessage"
+	"github.com/go-faster/sisyphus/internal/ent/user"
+	"github.com/go-faster/sisyphus/internal/ent/usertoken"
 	"github.com/google/uuid"
 )
 
@@ -186,26 +187,6 @@ func init() {
 	notifysubscriptionDescID := notifysubscriptionFields[0].Descriptor()
 	// notifysubscription.DefaultID holds the default value on creation for the id field.
 	notifysubscription.DefaultID = notifysubscriptionDescID.Default.(func() uuid.UUID)
-	notifyuserFields := schema.NotifyUser{}.Fields()
-	_ = notifyuserFields
-	// notifyuserDescEnabled is the schema descriptor for enabled field.
-	notifyuserDescEnabled := notifyuserFields[6].Descriptor()
-	// notifyuser.DefaultEnabled holds the default value on creation for the enabled field.
-	notifyuser.DefaultEnabled = notifyuserDescEnabled.Default.(bool)
-	// notifyuserDescCreatedAt is the schema descriptor for created_at field.
-	notifyuserDescCreatedAt := notifyuserFields[7].Descriptor()
-	// notifyuser.DefaultCreatedAt holds the default value on creation for the created_at field.
-	notifyuser.DefaultCreatedAt = notifyuserDescCreatedAt.Default.(func() time.Time)
-	// notifyuserDescUpdatedAt is the schema descriptor for updated_at field.
-	notifyuserDescUpdatedAt := notifyuserFields[8].Descriptor()
-	// notifyuser.DefaultUpdatedAt holds the default value on creation for the updated_at field.
-	notifyuser.DefaultUpdatedAt = notifyuserDescUpdatedAt.Default.(func() time.Time)
-	// notifyuser.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
-	notifyuser.UpdateDefaultUpdatedAt = notifyuserDescUpdatedAt.UpdateDefault.(func() time.Time)
-	// notifyuserDescID is the schema descriptor for id field.
-	notifyuserDescID := notifyuserFields[0].Descriptor()
-	// notifyuser.DefaultID holds the default value on creation for the id field.
-	notifyuser.DefaultID = notifyuserDescID.Default.(func() uuid.UUID)
 	supportrequestFields := schema.SupportRequest{}.Fields()
 	_ = supportrequestFields
 	// supportrequestDescRawText is the schema descriptor for raw_text field.
@@ -276,4 +257,46 @@ func init() {
 	telegrammessageDescID := telegrammessageFields[0].Descriptor()
 	// telegrammessage.DefaultID holds the default value on creation for the id field.
 	telegrammessage.DefaultID = telegrammessageDescID.Default.(func() uuid.UUID)
+	userFields := schema.User{}.Fields()
+	_ = userFields
+	// userDescEnabled is the schema descriptor for enabled field.
+	userDescEnabled := userFields[6].Descriptor()
+	// user.DefaultEnabled holds the default value on creation for the enabled field.
+	user.DefaultEnabled = userDescEnabled.Default.(bool)
+	// userDescCreatedAt is the schema descriptor for created_at field.
+	userDescCreatedAt := userFields[7].Descriptor()
+	// user.DefaultCreatedAt holds the default value on creation for the created_at field.
+	user.DefaultCreatedAt = userDescCreatedAt.Default.(func() time.Time)
+	// userDescUpdatedAt is the schema descriptor for updated_at field.
+	userDescUpdatedAt := userFields[8].Descriptor()
+	// user.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	user.DefaultUpdatedAt = userDescUpdatedAt.Default.(func() time.Time)
+	// user.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	user.UpdateDefaultUpdatedAt = userDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// userDescID is the schema descriptor for id field.
+	userDescID := userFields[0].Descriptor()
+	// user.DefaultID holds the default value on creation for the id field.
+	user.DefaultID = userDescID.Default.(func() uuid.UUID)
+	usertokenFields := schema.UserToken{}.Fields()
+	_ = usertokenFields
+	// usertokenDescName is the schema descriptor for name field.
+	usertokenDescName := usertokenFields[2].Descriptor()
+	// usertoken.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	usertoken.NameValidator = usertokenDescName.Validators[0].(func(string) error)
+	// usertokenDescTokenHash is the schema descriptor for token_hash field.
+	usertokenDescTokenHash := usertokenFields[3].Descriptor()
+	// usertoken.TokenHashValidator is a validator for the "token_hash" field. It is called by the builders before save.
+	usertoken.TokenHashValidator = usertokenDescTokenHash.Validators[0].(func(string) error)
+	// usertokenDescTokenPrefix is the schema descriptor for token_prefix field.
+	usertokenDescTokenPrefix := usertokenFields[4].Descriptor()
+	// usertoken.TokenPrefixValidator is a validator for the "token_prefix" field. It is called by the builders before save.
+	usertoken.TokenPrefixValidator = usertokenDescTokenPrefix.Validators[0].(func(string) error)
+	// usertokenDescCreatedAt is the schema descriptor for created_at field.
+	usertokenDescCreatedAt := usertokenFields[5].Descriptor()
+	// usertoken.DefaultCreatedAt holds the default value on creation for the created_at field.
+	usertoken.DefaultCreatedAt = usertokenDescCreatedAt.Default.(func() time.Time)
+	// usertokenDescID is the schema descriptor for id field.
+	usertokenDescID := usertokenFields[0].Descriptor()
+	// usertoken.DefaultID holds the default value on creation for the id field.
+	usertoken.DefaultID = usertokenDescID.Default.(func() uuid.UUID)
 }

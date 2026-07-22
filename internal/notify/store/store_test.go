@@ -35,7 +35,8 @@ func openTestDB(t *testing.T) *ent.Client {
 		ctx := context.Background()
 		_, _ = client.Notification.Delete().Exec(ctx)
 		_, _ = client.NotifySubscription.Delete().Exec(ctx)
-		_, _ = client.NotifyUser.Delete().Exec(ctx)
+		_, _ = client.UserToken.Delete().Exec(ctx)
+		_, _ = client.User.Delete().Exec(ctx)
 	})
 	return client
 }

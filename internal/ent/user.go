@@ -9,12 +9,12 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
-	"github.com/go-faster/sisyphus/internal/ent/notifyuser"
+	"github.com/go-faster/sisyphus/internal/ent/user"
 	"github.com/google/uuid"
 )
 
-// NotifyUser is the model entity for the NotifyUser schema.
-type NotifyUser struct {
+// User is the model entity for the User schema.
+type User struct {
 	config `json:"-"`
 	// ID of the ent.
 	ID uuid.UUID `json:"id,omitempty"`
@@ -35,25 +35,27 @@ type NotifyUser struct {
 	// UpdatedAt holds the value of the "updated_at" field.
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
-	// The values are being populated by the NotifyUserQuery when eager-loading is set.
-	Edges        NotifyUserEdges `json:"edges"`
+	// The values are being populated by the UserQuery when eager-loading is set.
+	Edges        UserEdges `json:"edges"`
 	selectValues sql.SelectValues
 }
 
-// NotifyUserEdges holds the relations/edges for other nodes in the graph.
-type NotifyUserEdges struct {
+// UserEdges holds the relations/edges for other nodes in the graph.
+type UserEdges struct {
 	// Subscriptions holds the value of the subscriptions edge.
 	Subscriptions []*NotifySubscription `json:"subscriptions,omitempty"`
 	// Notifications holds the value of the notifications edge.
 	Notifications []*Notification `json:"notifications,omitempty"`
+	// Tokens holds the value of the tokens edge.
+	Tokens []*UserToken `json:"tokens,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [2]bool
+	loadedTypes [3]bool
 }
 
 // SubscriptionsOrErr returns the Subscriptions value or an error if the edge
 // was not loaded in eager-loading.
-func (e NotifyUserEdges) SubscriptionsOrErr() ([]*NotifySubscription, error) {
+func (e UserEdges) SubscriptionsOrErr() ([]*NotifySubscription, error) {
 	if e.loadedTypes[0] {
 		return e.Subscriptions, nil
 	}
@@ -62,27 +64,36 @@ func (e NotifyUserEdges) SubscriptionsOrErr() ([]*NotifySubscription, error) {
 
 // NotificationsOrErr returns the Notifications value or an error if the edge
 // was not loaded in eager-loading.
-func (e NotifyUserEdges) NotificationsOrErr() ([]*Notification, error) {
+func (e UserEdges) NotificationsOrErr() ([]*Notification, error) {
 	if e.loadedTypes[1] {
 		return e.Notifications, nil
 	}
 	return nil, &NotLoadedError{edge: "notifications"}
 }
 
+// TokensOrErr returns the Tokens value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) TokensOrErr() ([]*UserToken, error) {
+	if e.loadedTypes[2] {
+		return e.Tokens, nil
+	}
+	return nil, &NotLoadedError{edge: "tokens"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
-func (*NotifyUser) scanValues(columns []string) ([]any, error) {
+func (*User) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case notifyuser.FieldEnabled:
+		case user.FieldEnabled:
 			values[i] = new(sql.NullBool)
-		case notifyuser.FieldTelegramUserID, notifyuser.FieldTelegramAccessHash:
+		case user.FieldTelegramUserID, user.FieldTelegramAccessHash:
 			values[i] = new(sql.NullInt64)
-		case notifyuser.FieldGitlabUsername, notifyuser.FieldJiraAccountID, notifyuser.FieldJiraDisplayName:
+		case user.FieldGitlabUsername, user.FieldJiraAccountID, user.FieldJiraDisplayName:
 			values[i] = new(sql.NullString)
-		case notifyuser.FieldCreatedAt, notifyuser.FieldUpdatedAt:
+		case user.FieldCreatedAt, user.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
-		case notifyuser.FieldID:
+		case user.FieldID:
 			values[i] = new(uuid.UUID)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -92,66 +103,66 @@ func (*NotifyUser) scanValues(columns []string) ([]any, error) {
 }
 
 // assignValues assigns the values that were returned from sql.Rows (after scanning)
-// to the NotifyUser fields.
-func (_m *NotifyUser) assignValues(columns []string, values []any) error {
+// to the User fields.
+func (_m *User) assignValues(columns []string, values []any) error {
 	if m, n := len(values), len(columns); m < n {
 		return fmt.Errorf("mismatch number of scan values: %d != %d", m, n)
 	}
 	for i := range columns {
 		switch columns[i] {
-		case notifyuser.FieldID:
+		case user.FieldID:
 			if value, ok := values[i].(*uuid.UUID); !ok {
 				return fmt.Errorf("unexpected type %T for field id", values[i])
 			} else if value != nil {
 				_m.ID = *value
 			}
-		case notifyuser.FieldTelegramUserID:
+		case user.FieldTelegramUserID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field telegram_user_id", values[i])
 			} else if value.Valid {
 				_m.TelegramUserID = value.Int64
 			}
-		case notifyuser.FieldTelegramAccessHash:
+		case user.FieldTelegramAccessHash:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field telegram_access_hash", values[i])
 			} else if value.Valid {
 				_m.TelegramAccessHash = new(int64)
 				*_m.TelegramAccessHash = value.Int64
 			}
-		case notifyuser.FieldGitlabUsername:
+		case user.FieldGitlabUsername:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field gitlab_username", values[i])
 			} else if value.Valid {
 				_m.GitlabUsername = new(string)
 				*_m.GitlabUsername = value.String
 			}
-		case notifyuser.FieldJiraAccountID:
+		case user.FieldJiraAccountID:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field jira_account_id", values[i])
 			} else if value.Valid {
 				_m.JiraAccountID = new(string)
 				*_m.JiraAccountID = value.String
 			}
-		case notifyuser.FieldJiraDisplayName:
+		case user.FieldJiraDisplayName:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field jira_display_name", values[i])
 			} else if value.Valid {
 				_m.JiraDisplayName = new(string)
 				*_m.JiraDisplayName = value.String
 			}
-		case notifyuser.FieldEnabled:
+		case user.FieldEnabled:
 			if value, ok := values[i].(*sql.NullBool); !ok {
 				return fmt.Errorf("unexpected type %T for field enabled", values[i])
 			} else if value.Valid {
 				_m.Enabled = value.Bool
 			}
-		case notifyuser.FieldCreatedAt:
+		case user.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
 			} else if value.Valid {
 				_m.CreatedAt = value.Time
 			}
-		case notifyuser.FieldUpdatedAt:
+		case user.FieldUpdatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field updated_at", values[i])
 			} else if value.Valid {
@@ -164,44 +175,49 @@ func (_m *NotifyUser) assignValues(columns []string, values []any) error {
 	return nil
 }
 
-// Value returns the ent.Value that was dynamically selected and assigned to the NotifyUser.
+// Value returns the ent.Value that was dynamically selected and assigned to the User.
 // This includes values selected through modifiers, order, etc.
-func (_m *NotifyUser) Value(name string) (ent.Value, error) {
+func (_m *User) Value(name string) (ent.Value, error) {
 	return _m.selectValues.Get(name)
 }
 
-// QuerySubscriptions queries the "subscriptions" edge of the NotifyUser entity.
-func (_m *NotifyUser) QuerySubscriptions() *NotifySubscriptionQuery {
-	return NewNotifyUserClient(_m.config).QuerySubscriptions(_m)
+// QuerySubscriptions queries the "subscriptions" edge of the User entity.
+func (_m *User) QuerySubscriptions() *NotifySubscriptionQuery {
+	return NewUserClient(_m.config).QuerySubscriptions(_m)
 }
 
-// QueryNotifications queries the "notifications" edge of the NotifyUser entity.
-func (_m *NotifyUser) QueryNotifications() *NotificationQuery {
-	return NewNotifyUserClient(_m.config).QueryNotifications(_m)
+// QueryNotifications queries the "notifications" edge of the User entity.
+func (_m *User) QueryNotifications() *NotificationQuery {
+	return NewUserClient(_m.config).QueryNotifications(_m)
 }
 
-// Update returns a builder for updating this NotifyUser.
-// Note that you need to call NotifyUser.Unwrap() before calling this method if this NotifyUser
+// QueryTokens queries the "tokens" edge of the User entity.
+func (_m *User) QueryTokens() *UserTokenQuery {
+	return NewUserClient(_m.config).QueryTokens(_m)
+}
+
+// Update returns a builder for updating this User.
+// Note that you need to call User.Unwrap() before calling this method if this User
 // was returned from a transaction, and the transaction was committed or rolled back.
-func (_m *NotifyUser) Update() *NotifyUserUpdateOne {
-	return NewNotifyUserClient(_m.config).UpdateOne(_m)
+func (_m *User) Update() *UserUpdateOne {
+	return NewUserClient(_m.config).UpdateOne(_m)
 }
 
-// Unwrap unwraps the NotifyUser entity that was returned from a transaction after it was closed,
+// Unwrap unwraps the User entity that was returned from a transaction after it was closed,
 // so that all future queries will be executed through the driver which created the transaction.
-func (_m *NotifyUser) Unwrap() *NotifyUser {
+func (_m *User) Unwrap() *User {
 	_tx, ok := _m.config.driver.(*txDriver)
 	if !ok {
-		panic("ent: NotifyUser is not a transactional entity")
+		panic("ent: User is not a transactional entity")
 	}
 	_m.config.driver = _tx.drv
 	return _m
 }
 
 // String implements the fmt.Stringer.
-func (_m *NotifyUser) String() string {
+func (_m *User) String() string {
 	var builder strings.Builder
-	builder.WriteString("NotifyUser(")
+	builder.WriteString("User(")
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
 	builder.WriteString("telegram_user_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.TelegramUserID))
@@ -238,5 +254,5 @@ func (_m *NotifyUser) String() string {
 	return builder.String()
 }
 
-// NotifyUsers is a parsable slice of NotifyUser.
-type NotifyUsers []*NotifyUser
+// Users is a parsable slice of User.
+type Users []*User

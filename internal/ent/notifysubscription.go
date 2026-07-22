@@ -11,7 +11,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/go-faster/sisyphus/internal/ent/notifysubscription"
-	"github.com/go-faster/sisyphus/internal/ent/notifyuser"
+	"github.com/go-faster/sisyphus/internal/ent/user"
 	"github.com/google/uuid"
 )
 
@@ -43,7 +43,7 @@ type NotifySubscription struct {
 // NotifySubscriptionEdges holds the relations/edges for other nodes in the graph.
 type NotifySubscriptionEdges struct {
 	// User holds the value of the user edge.
-	User *NotifyUser `json:"user,omitempty"`
+	User *User `json:"user,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
 	loadedTypes [1]bool
@@ -51,11 +51,11 @@ type NotifySubscriptionEdges struct {
 
 // UserOrErr returns the User value or an error if the edge
 // was not loaded in eager-loading, or loaded but was not found.
-func (e NotifySubscriptionEdges) UserOrErr() (*NotifyUser, error) {
+func (e NotifySubscriptionEdges) UserOrErr() (*User, error) {
 	if e.User != nil {
 		return e.User, nil
 	} else if e.loadedTypes[0] {
-		return nil, &NotFoundError{label: notifyuser.Label}
+		return nil, &NotFoundError{label: user.Label}
 	}
 	return nil, &NotLoadedError{edge: "user"}
 }
@@ -156,7 +156,7 @@ func (_m *NotifySubscription) Value(name string) (ent.Value, error) {
 }
 
 // QueryUser queries the "user" edge of the NotifySubscription entity.
-func (_m *NotifySubscription) QueryUser() *NotifyUserQuery {
+func (_m *NotifySubscription) QueryUser() *UserQuery {
 	return NewNotifySubscriptionClient(_m.config).QueryUser(_m)
 }
 

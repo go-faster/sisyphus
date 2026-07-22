@@ -11,58 +11,58 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/go-faster/sisyphus/internal/ent/notifysubscription"
 	"github.com/go-faster/sisyphus/internal/ent/predicate"
 	"github.com/go-faster/sisyphus/internal/ent/user"
+	"github.com/go-faster/sisyphus/internal/ent/usertoken"
 	"github.com/google/uuid"
 )
 
-// NotifySubscriptionQuery is the builder for querying NotifySubscription entities.
-type NotifySubscriptionQuery struct {
+// UserTokenQuery is the builder for querying UserToken entities.
+type UserTokenQuery struct {
 	config
 	ctx        *QueryContext
-	order      []notifysubscription.OrderOption
+	order      []usertoken.OrderOption
 	inters     []Interceptor
-	predicates []predicate.NotifySubscription
+	predicates []predicate.UserToken
 	withUser   *UserQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
 }
 
-// Where adds a new predicate for the NotifySubscriptionQuery builder.
-func (_q *NotifySubscriptionQuery) Where(ps ...predicate.NotifySubscription) *NotifySubscriptionQuery {
+// Where adds a new predicate for the UserTokenQuery builder.
+func (_q *UserTokenQuery) Where(ps ...predicate.UserToken) *UserTokenQuery {
 	_q.predicates = append(_q.predicates, ps...)
 	return _q
 }
 
 // Limit the number of records to be returned by this query.
-func (_q *NotifySubscriptionQuery) Limit(limit int) *NotifySubscriptionQuery {
+func (_q *UserTokenQuery) Limit(limit int) *UserTokenQuery {
 	_q.ctx.Limit = &limit
 	return _q
 }
 
 // Offset to start from.
-func (_q *NotifySubscriptionQuery) Offset(offset int) *NotifySubscriptionQuery {
+func (_q *UserTokenQuery) Offset(offset int) *UserTokenQuery {
 	_q.ctx.Offset = &offset
 	return _q
 }
 
 // Unique configures the query builder to filter duplicate records on query.
 // By default, unique is set to true, and can be disabled using this method.
-func (_q *NotifySubscriptionQuery) Unique(unique bool) *NotifySubscriptionQuery {
+func (_q *UserTokenQuery) Unique(unique bool) *UserTokenQuery {
 	_q.ctx.Unique = &unique
 	return _q
 }
 
 // Order specifies how the records should be ordered.
-func (_q *NotifySubscriptionQuery) Order(o ...notifysubscription.OrderOption) *NotifySubscriptionQuery {
+func (_q *UserTokenQuery) Order(o ...usertoken.OrderOption) *UserTokenQuery {
 	_q.order = append(_q.order, o...)
 	return _q
 }
 
 // QueryUser chains the current query on the "user" edge.
-func (_q *NotifySubscriptionQuery) QueryUser() *UserQuery {
+func (_q *UserTokenQuery) QueryUser() *UserQuery {
 	query := (&UserClient{config: _q.config}).Query()
 	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
 		if err := _q.prepareQuery(ctx); err != nil {
@@ -73,9 +73,9 @@ func (_q *NotifySubscriptionQuery) QueryUser() *UserQuery {
 			return nil, err
 		}
 		step := sqlgraph.NewStep(
-			sqlgraph.From(notifysubscription.Table, notifysubscription.FieldID, selector),
+			sqlgraph.From(usertoken.Table, usertoken.FieldID, selector),
 			sqlgraph.To(user.Table, user.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, true, notifysubscription.UserTable, notifysubscription.UserColumn),
+			sqlgraph.Edge(sqlgraph.M2O, true, usertoken.UserTable, usertoken.UserColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -83,21 +83,21 @@ func (_q *NotifySubscriptionQuery) QueryUser() *UserQuery {
 	return query
 }
 
-// First returns the first NotifySubscription entity from the query.
-// Returns a *NotFoundError when no NotifySubscription was found.
-func (_q *NotifySubscriptionQuery) First(ctx context.Context) (*NotifySubscription, error) {
+// First returns the first UserToken entity from the query.
+// Returns a *NotFoundError when no UserToken was found.
+func (_q *UserTokenQuery) First(ctx context.Context) (*UserToken, error) {
 	nodes, err := _q.Limit(1).All(setContextOp(ctx, _q.ctx, ent.OpQueryFirst))
 	if err != nil {
 		return nil, err
 	}
 	if len(nodes) == 0 {
-		return nil, &NotFoundError{notifysubscription.Label}
+		return nil, &NotFoundError{usertoken.Label}
 	}
 	return nodes[0], nil
 }
 
 // FirstX is like First, but panics if an error occurs.
-func (_q *NotifySubscriptionQuery) FirstX(ctx context.Context) *NotifySubscription {
+func (_q *UserTokenQuery) FirstX(ctx context.Context) *UserToken {
 	node, err := _q.First(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -105,22 +105,22 @@ func (_q *NotifySubscriptionQuery) FirstX(ctx context.Context) *NotifySubscripti
 	return node
 }
 
-// FirstID returns the first NotifySubscription ID from the query.
-// Returns a *NotFoundError when no NotifySubscription ID was found.
-func (_q *NotifySubscriptionQuery) FirstID(ctx context.Context) (id uuid.UUID, err error) {
+// FirstID returns the first UserToken ID from the query.
+// Returns a *NotFoundError when no UserToken ID was found.
+func (_q *UserTokenQuery) FirstID(ctx context.Context) (id uuid.UUID, err error) {
 	var ids []uuid.UUID
 	if ids, err = _q.Limit(1).IDs(setContextOp(ctx, _q.ctx, ent.OpQueryFirstID)); err != nil {
 		return
 	}
 	if len(ids) == 0 {
-		err = &NotFoundError{notifysubscription.Label}
+		err = &NotFoundError{usertoken.Label}
 		return
 	}
 	return ids[0], nil
 }
 
 // FirstIDX is like FirstID, but panics if an error occurs.
-func (_q *NotifySubscriptionQuery) FirstIDX(ctx context.Context) uuid.UUID {
+func (_q *UserTokenQuery) FirstIDX(ctx context.Context) uuid.UUID {
 	id, err := _q.FirstID(ctx)
 	if err != nil && !IsNotFound(err) {
 		panic(err)
@@ -128,10 +128,10 @@ func (_q *NotifySubscriptionQuery) FirstIDX(ctx context.Context) uuid.UUID {
 	return id
 }
 
-// Only returns a single NotifySubscription entity found by the query, ensuring it only returns one.
-// Returns a *NotSingularError when more than one NotifySubscription entity is found.
-// Returns a *NotFoundError when no NotifySubscription entities are found.
-func (_q *NotifySubscriptionQuery) Only(ctx context.Context) (*NotifySubscription, error) {
+// Only returns a single UserToken entity found by the query, ensuring it only returns one.
+// Returns a *NotSingularError when more than one UserToken entity is found.
+// Returns a *NotFoundError when no UserToken entities are found.
+func (_q *UserTokenQuery) Only(ctx context.Context) (*UserToken, error) {
 	nodes, err := _q.Limit(2).All(setContextOp(ctx, _q.ctx, ent.OpQueryOnly))
 	if err != nil {
 		return nil, err
@@ -140,14 +140,14 @@ func (_q *NotifySubscriptionQuery) Only(ctx context.Context) (*NotifySubscriptio
 	case 1:
 		return nodes[0], nil
 	case 0:
-		return nil, &NotFoundError{notifysubscription.Label}
+		return nil, &NotFoundError{usertoken.Label}
 	default:
-		return nil, &NotSingularError{notifysubscription.Label}
+		return nil, &NotSingularError{usertoken.Label}
 	}
 }
 
 // OnlyX is like Only, but panics if an error occurs.
-func (_q *NotifySubscriptionQuery) OnlyX(ctx context.Context) *NotifySubscription {
+func (_q *UserTokenQuery) OnlyX(ctx context.Context) *UserToken {
 	node, err := _q.Only(ctx)
 	if err != nil {
 		panic(err)
@@ -155,10 +155,10 @@ func (_q *NotifySubscriptionQuery) OnlyX(ctx context.Context) *NotifySubscriptio
 	return node
 }
 
-// OnlyID is like Only, but returns the only NotifySubscription ID in the query.
-// Returns a *NotSingularError when more than one NotifySubscription ID is found.
+// OnlyID is like Only, but returns the only UserToken ID in the query.
+// Returns a *NotSingularError when more than one UserToken ID is found.
 // Returns a *NotFoundError when no entities are found.
-func (_q *NotifySubscriptionQuery) OnlyID(ctx context.Context) (id uuid.UUID, err error) {
+func (_q *UserTokenQuery) OnlyID(ctx context.Context) (id uuid.UUID, err error) {
 	var ids []uuid.UUID
 	if ids, err = _q.Limit(2).IDs(setContextOp(ctx, _q.ctx, ent.OpQueryOnlyID)); err != nil {
 		return
@@ -167,15 +167,15 @@ func (_q *NotifySubscriptionQuery) OnlyID(ctx context.Context) (id uuid.UUID, er
 	case 1:
 		id = ids[0]
 	case 0:
-		err = &NotFoundError{notifysubscription.Label}
+		err = &NotFoundError{usertoken.Label}
 	default:
-		err = &NotSingularError{notifysubscription.Label}
+		err = &NotSingularError{usertoken.Label}
 	}
 	return
 }
 
 // OnlyIDX is like OnlyID, but panics if an error occurs.
-func (_q *NotifySubscriptionQuery) OnlyIDX(ctx context.Context) uuid.UUID {
+func (_q *UserTokenQuery) OnlyIDX(ctx context.Context) uuid.UUID {
 	id, err := _q.OnlyID(ctx)
 	if err != nil {
 		panic(err)
@@ -183,18 +183,18 @@ func (_q *NotifySubscriptionQuery) OnlyIDX(ctx context.Context) uuid.UUID {
 	return id
 }
 
-// All executes the query and returns a list of NotifySubscriptions.
-func (_q *NotifySubscriptionQuery) All(ctx context.Context) ([]*NotifySubscription, error) {
+// All executes the query and returns a list of UserTokens.
+func (_q *UserTokenQuery) All(ctx context.Context) ([]*UserToken, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryAll)
 	if err := _q.prepareQuery(ctx); err != nil {
 		return nil, err
 	}
-	qr := querierAll[[]*NotifySubscription, *NotifySubscriptionQuery]()
-	return withInterceptors[[]*NotifySubscription](ctx, _q, qr, _q.inters)
+	qr := querierAll[[]*UserToken, *UserTokenQuery]()
+	return withInterceptors[[]*UserToken](ctx, _q, qr, _q.inters)
 }
 
 // AllX is like All, but panics if an error occurs.
-func (_q *NotifySubscriptionQuery) AllX(ctx context.Context) []*NotifySubscription {
+func (_q *UserTokenQuery) AllX(ctx context.Context) []*UserToken {
 	nodes, err := _q.All(ctx)
 	if err != nil {
 		panic(err)
@@ -202,20 +202,20 @@ func (_q *NotifySubscriptionQuery) AllX(ctx context.Context) []*NotifySubscripti
 	return nodes
 }
 
-// IDs executes the query and returns a list of NotifySubscription IDs.
-func (_q *NotifySubscriptionQuery) IDs(ctx context.Context) (ids []uuid.UUID, err error) {
+// IDs executes the query and returns a list of UserToken IDs.
+func (_q *UserTokenQuery) IDs(ctx context.Context) (ids []uuid.UUID, err error) {
 	if _q.ctx.Unique == nil && _q.path != nil {
 		_q.Unique(true)
 	}
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryIDs)
-	if err = _q.Select(notifysubscription.FieldID).Scan(ctx, &ids); err != nil {
+	if err = _q.Select(usertoken.FieldID).Scan(ctx, &ids); err != nil {
 		return nil, err
 	}
 	return ids, nil
 }
 
 // IDsX is like IDs, but panics if an error occurs.
-func (_q *NotifySubscriptionQuery) IDsX(ctx context.Context) []uuid.UUID {
+func (_q *UserTokenQuery) IDsX(ctx context.Context) []uuid.UUID {
 	ids, err := _q.IDs(ctx)
 	if err != nil {
 		panic(err)
@@ -224,16 +224,16 @@ func (_q *NotifySubscriptionQuery) IDsX(ctx context.Context) []uuid.UUID {
 }
 
 // Count returns the count of the given query.
-func (_q *NotifySubscriptionQuery) Count(ctx context.Context) (int, error) {
+func (_q *UserTokenQuery) Count(ctx context.Context) (int, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryCount)
 	if err := _q.prepareQuery(ctx); err != nil {
 		return 0, err
 	}
-	return withInterceptors[int](ctx, _q, querierCount[*NotifySubscriptionQuery](), _q.inters)
+	return withInterceptors[int](ctx, _q, querierCount[*UserTokenQuery](), _q.inters)
 }
 
 // CountX is like Count, but panics if an error occurs.
-func (_q *NotifySubscriptionQuery) CountX(ctx context.Context) int {
+func (_q *UserTokenQuery) CountX(ctx context.Context) int {
 	count, err := _q.Count(ctx)
 	if err != nil {
 		panic(err)
@@ -242,7 +242,7 @@ func (_q *NotifySubscriptionQuery) CountX(ctx context.Context) int {
 }
 
 // Exist returns true if the query has elements in the graph.
-func (_q *NotifySubscriptionQuery) Exist(ctx context.Context) (bool, error) {
+func (_q *UserTokenQuery) Exist(ctx context.Context) (bool, error) {
 	ctx = setContextOp(ctx, _q.ctx, ent.OpQueryExist)
 	switch _, err := _q.FirstID(ctx); {
 	case IsNotFound(err):
@@ -255,7 +255,7 @@ func (_q *NotifySubscriptionQuery) Exist(ctx context.Context) (bool, error) {
 }
 
 // ExistX is like Exist, but panics if an error occurs.
-func (_q *NotifySubscriptionQuery) ExistX(ctx context.Context) bool {
+func (_q *UserTokenQuery) ExistX(ctx context.Context) bool {
 	exist, err := _q.Exist(ctx)
 	if err != nil {
 		panic(err)
@@ -263,18 +263,18 @@ func (_q *NotifySubscriptionQuery) ExistX(ctx context.Context) bool {
 	return exist
 }
 
-// Clone returns a duplicate of the NotifySubscriptionQuery builder, including all associated steps. It can be
+// Clone returns a duplicate of the UserTokenQuery builder, including all associated steps. It can be
 // used to prepare common query builders and use them differently after the clone is made.
-func (_q *NotifySubscriptionQuery) Clone() *NotifySubscriptionQuery {
+func (_q *UserTokenQuery) Clone() *UserTokenQuery {
 	if _q == nil {
 		return nil
 	}
-	return &NotifySubscriptionQuery{
+	return &UserTokenQuery{
 		config:     _q.config,
 		ctx:        _q.ctx.Clone(),
-		order:      append([]notifysubscription.OrderOption{}, _q.order...),
+		order:      append([]usertoken.OrderOption{}, _q.order...),
 		inters:     append([]Interceptor{}, _q.inters...),
-		predicates: append([]predicate.NotifySubscription{}, _q.predicates...),
+		predicates: append([]predicate.UserToken{}, _q.predicates...),
 		withUser:   _q.withUser.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
@@ -284,7 +284,7 @@ func (_q *NotifySubscriptionQuery) Clone() *NotifySubscriptionQuery {
 
 // WithUser tells the query-builder to eager-load the nodes that are connected to
 // the "user" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *NotifySubscriptionQuery) WithUser(opts ...func(*UserQuery)) *NotifySubscriptionQuery {
+func (_q *UserTokenQuery) WithUser(opts ...func(*UserQuery)) *UserTokenQuery {
 	query := (&UserClient{config: _q.config}).Query()
 	for _, opt := range opts {
 		opt(query)
@@ -303,15 +303,15 @@ func (_q *NotifySubscriptionQuery) WithUser(opts ...func(*UserQuery)) *NotifySub
 //		Count int `json:"count,omitempty"`
 //	}
 //
-//	client.NotifySubscription.Query().
-//		GroupBy(notifysubscription.FieldUserID).
+//	client.UserToken.Query().
+//		GroupBy(usertoken.FieldUserID).
 //		Aggregate(ent.Count()).
 //		Scan(ctx, &v)
-func (_q *NotifySubscriptionQuery) GroupBy(field string, fields ...string) *NotifySubscriptionGroupBy {
+func (_q *UserTokenQuery) GroupBy(field string, fields ...string) *UserTokenGroupBy {
 	_q.ctx.Fields = append([]string{field}, fields...)
-	grbuild := &NotifySubscriptionGroupBy{build: _q}
+	grbuild := &UserTokenGroupBy{build: _q}
 	grbuild.flds = &_q.ctx.Fields
-	grbuild.label = notifysubscription.Label
+	grbuild.label = usertoken.Label
 	grbuild.scan = grbuild.Scan
 	return grbuild
 }
@@ -325,23 +325,23 @@ func (_q *NotifySubscriptionQuery) GroupBy(field string, fields ...string) *Noti
 //		UserID uuid.UUID `json:"user_id,omitempty"`
 //	}
 //
-//	client.NotifySubscription.Query().
-//		Select(notifysubscription.FieldUserID).
+//	client.UserToken.Query().
+//		Select(usertoken.FieldUserID).
 //		Scan(ctx, &v)
-func (_q *NotifySubscriptionQuery) Select(fields ...string) *NotifySubscriptionSelect {
+func (_q *UserTokenQuery) Select(fields ...string) *UserTokenSelect {
 	_q.ctx.Fields = append(_q.ctx.Fields, fields...)
-	sbuild := &NotifySubscriptionSelect{NotifySubscriptionQuery: _q}
-	sbuild.label = notifysubscription.Label
+	sbuild := &UserTokenSelect{UserTokenQuery: _q}
+	sbuild.label = usertoken.Label
 	sbuild.flds, sbuild.scan = &_q.ctx.Fields, sbuild.Scan
 	return sbuild
 }
 
-// Aggregate returns a NotifySubscriptionSelect configured with the given aggregations.
-func (_q *NotifySubscriptionQuery) Aggregate(fns ...AggregateFunc) *NotifySubscriptionSelect {
+// Aggregate returns a UserTokenSelect configured with the given aggregations.
+func (_q *UserTokenQuery) Aggregate(fns ...AggregateFunc) *UserTokenSelect {
 	return _q.Select().Aggregate(fns...)
 }
 
-func (_q *NotifySubscriptionQuery) prepareQuery(ctx context.Context) error {
+func (_q *UserTokenQuery) prepareQuery(ctx context.Context) error {
 	for _, inter := range _q.inters {
 		if inter == nil {
 			return fmt.Errorf("ent: uninitialized interceptor (forgotten import ent/runtime?)")
@@ -353,7 +353,7 @@ func (_q *NotifySubscriptionQuery) prepareQuery(ctx context.Context) error {
 		}
 	}
 	for _, f := range _q.ctx.Fields {
-		if !notifysubscription.ValidColumn(f) {
+		if !usertoken.ValidColumn(f) {
 			return &ValidationError{Name: f, err: fmt.Errorf("ent: invalid field %q for query", f)}
 		}
 	}
@@ -367,19 +367,19 @@ func (_q *NotifySubscriptionQuery) prepareQuery(ctx context.Context) error {
 	return nil
 }
 
-func (_q *NotifySubscriptionQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*NotifySubscription, error) {
+func (_q *UserTokenQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*UserToken, error) {
 	var (
-		nodes       = []*NotifySubscription{}
+		nodes       = []*UserToken{}
 		_spec       = _q.querySpec()
 		loadedTypes = [1]bool{
 			_q.withUser != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
-		return (*NotifySubscription).scanValues(nil, columns)
+		return (*UserToken).scanValues(nil, columns)
 	}
 	_spec.Assign = func(columns []string, values []any) error {
-		node := &NotifySubscription{config: _q.config}
+		node := &UserToken{config: _q.config}
 		nodes = append(nodes, node)
 		node.Edges.loadedTypes = loadedTypes
 		return node.assignValues(columns, values)
@@ -395,16 +395,16 @@ func (_q *NotifySubscriptionQuery) sqlAll(ctx context.Context, hooks ...queryHoo
 	}
 	if query := _q.withUser; query != nil {
 		if err := _q.loadUser(ctx, query, nodes, nil,
-			func(n *NotifySubscription, e *User) { n.Edges.User = e }); err != nil {
+			func(n *UserToken, e *User) { n.Edges.User = e }); err != nil {
 			return nil, err
 		}
 	}
 	return nodes, nil
 }
 
-func (_q *NotifySubscriptionQuery) loadUser(ctx context.Context, query *UserQuery, nodes []*NotifySubscription, init func(*NotifySubscription), assign func(*NotifySubscription, *User)) error {
+func (_q *UserTokenQuery) loadUser(ctx context.Context, query *UserQuery, nodes []*UserToken, init func(*UserToken), assign func(*UserToken, *User)) error {
 	ids := make([]uuid.UUID, 0, len(nodes))
-	nodeids := make(map[uuid.UUID][]*NotifySubscription)
+	nodeids := make(map[uuid.UUID][]*UserToken)
 	for i := range nodes {
 		fk := nodes[i].UserID
 		if _, ok := nodeids[fk]; !ok {
@@ -432,7 +432,7 @@ func (_q *NotifySubscriptionQuery) loadUser(ctx context.Context, query *UserQuer
 	return nil
 }
 
-func (_q *NotifySubscriptionQuery) sqlCount(ctx context.Context) (int, error) {
+func (_q *UserTokenQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
 	_spec.Node.Columns = _q.ctx.Fields
 	if len(_q.ctx.Fields) > 0 {
@@ -441,8 +441,8 @@ func (_q *NotifySubscriptionQuery) sqlCount(ctx context.Context) (int, error) {
 	return sqlgraph.CountNodes(ctx, _q.driver, _spec)
 }
 
-func (_q *NotifySubscriptionQuery) querySpec() *sqlgraph.QuerySpec {
-	_spec := sqlgraph.NewQuerySpec(notifysubscription.Table, notifysubscription.Columns, sqlgraph.NewFieldSpec(notifysubscription.FieldID, field.TypeUUID))
+func (_q *UserTokenQuery) querySpec() *sqlgraph.QuerySpec {
+	_spec := sqlgraph.NewQuerySpec(usertoken.Table, usertoken.Columns, sqlgraph.NewFieldSpec(usertoken.FieldID, field.TypeUUID))
 	_spec.From = _q.sql
 	if unique := _q.ctx.Unique; unique != nil {
 		_spec.Unique = *unique
@@ -451,14 +451,14 @@ func (_q *NotifySubscriptionQuery) querySpec() *sqlgraph.QuerySpec {
 	}
 	if fields := _q.ctx.Fields; len(fields) > 0 {
 		_spec.Node.Columns = make([]string, 0, len(fields))
-		_spec.Node.Columns = append(_spec.Node.Columns, notifysubscription.FieldID)
+		_spec.Node.Columns = append(_spec.Node.Columns, usertoken.FieldID)
 		for i := range fields {
-			if fields[i] != notifysubscription.FieldID {
+			if fields[i] != usertoken.FieldID {
 				_spec.Node.Columns = append(_spec.Node.Columns, fields[i])
 			}
 		}
 		if _q.withUser != nil {
-			_spec.Node.AddColumnOnce(notifysubscription.FieldUserID)
+			_spec.Node.AddColumnOnce(usertoken.FieldUserID)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {
@@ -484,12 +484,12 @@ func (_q *NotifySubscriptionQuery) querySpec() *sqlgraph.QuerySpec {
 	return _spec
 }
 
-func (_q *NotifySubscriptionQuery) sqlQuery(ctx context.Context) *sql.Selector {
+func (_q *UserTokenQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	builder := sql.Dialect(_q.driver.Dialect())
-	t1 := builder.Table(notifysubscription.Table)
+	t1 := builder.Table(usertoken.Table)
 	columns := _q.ctx.Fields
 	if len(columns) == 0 {
-		columns = notifysubscription.Columns
+		columns = usertoken.Columns
 	}
 	selector := builder.Select(t1.Columns(columns...)...).From(t1)
 	if _q.sql != nil {
@@ -516,28 +516,28 @@ func (_q *NotifySubscriptionQuery) sqlQuery(ctx context.Context) *sql.Selector {
 	return selector
 }
 
-// NotifySubscriptionGroupBy is the group-by builder for NotifySubscription entities.
-type NotifySubscriptionGroupBy struct {
+// UserTokenGroupBy is the group-by builder for UserToken entities.
+type UserTokenGroupBy struct {
 	selector
-	build *NotifySubscriptionQuery
+	build *UserTokenQuery
 }
 
 // Aggregate adds the given aggregation functions to the group-by query.
-func (_g *NotifySubscriptionGroupBy) Aggregate(fns ...AggregateFunc) *NotifySubscriptionGroupBy {
+func (_g *UserTokenGroupBy) Aggregate(fns ...AggregateFunc) *UserTokenGroupBy {
 	_g.fns = append(_g.fns, fns...)
 	return _g
 }
 
 // Scan applies the selector query and scans the result into the given value.
-func (_g *NotifySubscriptionGroupBy) Scan(ctx context.Context, v any) error {
+func (_g *UserTokenGroupBy) Scan(ctx context.Context, v any) error {
 	ctx = setContextOp(ctx, _g.build.ctx, ent.OpQueryGroupBy)
 	if err := _g.build.prepareQuery(ctx); err != nil {
 		return err
 	}
-	return scanWithInterceptors[*NotifySubscriptionQuery, *NotifySubscriptionGroupBy](ctx, _g.build, _g, _g.build.inters, v)
+	return scanWithInterceptors[*UserTokenQuery, *UserTokenGroupBy](ctx, _g.build, _g, _g.build.inters, v)
 }
 
-func (_g *NotifySubscriptionGroupBy) sqlScan(ctx context.Context, root *NotifySubscriptionQuery, v any) error {
+func (_g *UserTokenGroupBy) sqlScan(ctx context.Context, root *UserTokenQuery, v any) error {
 	selector := root.sqlQuery(ctx).Select()
 	aggregation := make([]string, 0, len(_g.fns))
 	for _, fn := range _g.fns {
@@ -564,28 +564,28 @@ func (_g *NotifySubscriptionGroupBy) sqlScan(ctx context.Context, root *NotifySu
 	return sql.ScanSlice(rows, v)
 }
 
-// NotifySubscriptionSelect is the builder for selecting fields of NotifySubscription entities.
-type NotifySubscriptionSelect struct {
-	*NotifySubscriptionQuery
+// UserTokenSelect is the builder for selecting fields of UserToken entities.
+type UserTokenSelect struct {
+	*UserTokenQuery
 	selector
 }
 
 // Aggregate adds the given aggregation functions to the selector query.
-func (_s *NotifySubscriptionSelect) Aggregate(fns ...AggregateFunc) *NotifySubscriptionSelect {
+func (_s *UserTokenSelect) Aggregate(fns ...AggregateFunc) *UserTokenSelect {
 	_s.fns = append(_s.fns, fns...)
 	return _s
 }
 
 // Scan applies the selector query and scans the result into the given value.
-func (_s *NotifySubscriptionSelect) Scan(ctx context.Context, v any) error {
+func (_s *UserTokenSelect) Scan(ctx context.Context, v any) error {
 	ctx = setContextOp(ctx, _s.ctx, ent.OpQuerySelect)
 	if err := _s.prepareQuery(ctx); err != nil {
 		return err
 	}
-	return scanWithInterceptors[*NotifySubscriptionQuery, *NotifySubscriptionSelect](ctx, _s.NotifySubscriptionQuery, _s, _s.inters, v)
+	return scanWithInterceptors[*UserTokenQuery, *UserTokenSelect](ctx, _s.UserTokenQuery, _s, _s.inters, v)
 }
 
-func (_s *NotifySubscriptionSelect) sqlScan(ctx context.Context, root *NotifySubscriptionQuery, v any) error {
+func (_s *UserTokenSelect) sqlScan(ctx context.Context, root *UserTokenQuery, v any) error {
 	selector := root.sqlQuery(ctx)
 	aggregation := make([]string, 0, len(_s.fns))
 	for _, fn := range _s.fns {

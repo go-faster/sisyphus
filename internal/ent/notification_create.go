@@ -13,7 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/go-faster/sisyphus/internal/ent/notification"
-	"github.com/go-faster/sisyphus/internal/ent/notifyuser"
+	"github.com/go-faster/sisyphus/internal/ent/user"
 	"github.com/google/uuid"
 )
 
@@ -201,8 +201,8 @@ func (_c *NotificationCreate) SetNillableID(v *uuid.UUID) *NotificationCreate {
 	return _c
 }
 
-// SetUser sets the "user" edge to the NotifyUser entity.
-func (_c *NotificationCreate) SetUser(v *NotifyUser) *NotificationCreate {
+// SetUser sets the "user" edge to the User entity.
+func (_c *NotificationCreate) SetUser(v *User) *NotificationCreate {
 	return _c.SetUserID(v.ID)
 }
 
@@ -423,7 +423,7 @@ func (_c *NotificationCreate) createSpec() (*Notification, *sqlgraph.CreateSpec)
 			Columns: []string{notification.UserColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(notifyuser.FieldID, field.TypeUUID),
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeUUID),
 			},
 		}
 		for _, k := range nodes {

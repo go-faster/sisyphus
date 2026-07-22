@@ -22,14 +22,16 @@ type Tx struct {
 	Notification *NotificationClient
 	// NotifySubscription is the client for interacting with the NotifySubscription builders.
 	NotifySubscription *NotifySubscriptionClient
-	// NotifyUser is the client for interacting with the NotifyUser builders.
-	NotifyUser *NotifyUserClient
 	// SupportRequest is the client for interacting with the SupportRequest builders.
 	SupportRequest *SupportRequestClient
 	// SyncState is the client for interacting with the SyncState builders.
 	SyncState *SyncStateClient
 	// TelegramMessage is the client for interacting with the TelegramMessage builders.
 	TelegramMessage *TelegramMessageClient
+	// User is the client for interacting with the User builders.
+	User *UserClient
+	// UserToken is the client for interacting with the UserToken builders.
+	UserToken *UserTokenClient
 
 	// lazily loaded.
 	client     *Client
@@ -166,10 +168,11 @@ func (tx *Tx) init() {
 	tx.InvestigationJob = NewInvestigationJobClient(tx.config)
 	tx.Notification = NewNotificationClient(tx.config)
 	tx.NotifySubscription = NewNotifySubscriptionClient(tx.config)
-	tx.NotifyUser = NewNotifyUserClient(tx.config)
 	tx.SupportRequest = NewSupportRequestClient(tx.config)
 	tx.SyncState = NewSyncStateClient(tx.config)
 	tx.TelegramMessage = NewTelegramMessageClient(tx.config)
+	tx.User = NewUserClient(tx.config)
+	tx.UserToken = NewUserTokenClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

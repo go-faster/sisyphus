@@ -69,18 +69,6 @@ func (f NotifySubscriptionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.NotifySubscriptionMutation", m)
 }
 
-// The NotifyUserFunc type is an adapter to allow the use of ordinary
-// function as NotifyUser mutator.
-type NotifyUserFunc func(context.Context, *ent.NotifyUserMutation) (ent.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f NotifyUserFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-	if mv, ok := m.(*ent.NotifyUserMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.NotifyUserMutation", m)
-}
-
 // The SupportRequestFunc type is an adapter to allow the use of ordinary
 // function as SupportRequest mutator.
 type SupportRequestFunc func(context.Context, *ent.SupportRequestMutation) (ent.Value, error)
@@ -115,6 +103,30 @@ func (f TelegramMessageFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Va
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TelegramMessageMutation", m)
+}
+
+// The UserFunc type is an adapter to allow the use of ordinary
+// function as User mutator.
+type UserFunc func(context.Context, *ent.UserMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f UserFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.UserMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UserMutation", m)
+}
+
+// The UserTokenFunc type is an adapter to allow the use of ordinary
+// function as UserToken mutator.
+type UserTokenFunc func(context.Context, *ent.UserTokenMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f UserTokenFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.UserTokenMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UserTokenMutation", m)
 }
 
 // Condition is a hook condition function.

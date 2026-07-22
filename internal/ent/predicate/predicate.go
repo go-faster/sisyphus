@@ -21,9 +21,6 @@ type Notification func(*sql.Selector)
 // NotifySubscription is the predicate function for notifysubscription builders.
 type NotifySubscription func(*sql.Selector)
 
-// NotifyUser is the predicate function for notifyuser builders.
-type NotifyUser func(*sql.Selector)
-
 // SupportRequest is the predicate function for supportrequest builders.
 type SupportRequest func(*sql.Selector)
 
@@ -32,3 +29,9 @@ type SyncState func(*sql.Selector)
 
 // TelegramMessage is the predicate function for telegrammessage builders.
 type TelegramMessage func(*sql.Selector)
+
+// User is the predicate function for user builders.
+type User func(*sql.Selector)
+
+// UserToken is the predicate function for usertoken builders.
+type UserToken func(*sql.Selector)

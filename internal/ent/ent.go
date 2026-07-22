@@ -17,10 +17,11 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/investigationjob"
 	"github.com/go-faster/sisyphus/internal/ent/notification"
 	"github.com/go-faster/sisyphus/internal/ent/notifysubscription"
-	"github.com/go-faster/sisyphus/internal/ent/notifyuser"
 	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 	"github.com/go-faster/sisyphus/internal/ent/telegrammessage"
+	"github.com/go-faster/sisyphus/internal/ent/user"
+	"github.com/go-faster/sisyphus/internal/ent/usertoken"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -86,10 +87,11 @@ func checkColumn(t, c string) error {
 			investigationjob.Table:   investigationjob.ValidColumn,
 			notification.Table:       notification.ValidColumn,
 			notifysubscription.Table: notifysubscription.ValidColumn,
-			notifyuser.Table:         notifyuser.ValidColumn,
 			supportrequest.Table:     supportrequest.ValidColumn,
 			syncstate.Table:          syncstate.ValidColumn,
 			telegrammessage.Table:    telegrammessage.ValidColumn,
+			user.Table:               user.ValidColumn,
+			usertoken.Table:          usertoken.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

@@ -146,9 +146,9 @@ var (
 		PrimaryKey: []*schema.Column{NotificationsColumns[0]},
 		ForeignKeys: []*schema.ForeignKey{
 			{
-				Symbol:     "notifications_notify_users_notifications",
+				Symbol:     "notifications_users_notifications",
 				Columns:    []*schema.Column{NotificationsColumns[15]},
-				RefColumns: []*schema.Column{NotifyUsersColumns[0]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 		},
@@ -183,9 +183,9 @@ var (
 		PrimaryKey: []*schema.Column{NotifySubscriptionsColumns[0]},
 		ForeignKeys: []*schema.ForeignKey{
 			{
-				Symbol:     "notify_subscriptions_notify_users_subscriptions",
+				Symbol:     "notify_subscriptions_users_subscriptions",
 				Columns:    []*schema.Column{NotifySubscriptionsColumns[7]},
-				RefColumns: []*schema.Column{NotifyUsersColumns[0]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 		},
@@ -202,41 +202,6 @@ var (
 				Annotation: &entsql.IndexAnnotation{
 					Type: "GIN",
 				},
-			},
-		},
-	}
-	// NotifyUsersColumns holds the columns for the "notify_users" table.
-	NotifyUsersColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeUUID},
-		{Name: "telegram_user_id", Type: field.TypeInt64},
-		{Name: "telegram_access_hash", Type: field.TypeInt64, Nullable: true},
-		{Name: "gitlab_username", Type: field.TypeString, Nullable: true},
-		{Name: "jira_account_id", Type: field.TypeString, Nullable: true},
-		{Name: "jira_display_name", Type: field.TypeString, Nullable: true},
-		{Name: "enabled", Type: field.TypeBool, Default: true},
-		{Name: "created_at", Type: field.TypeTime},
-		{Name: "updated_at", Type: field.TypeTime},
-	}
-	// NotifyUsersTable holds the schema information for the "notify_users" table.
-	NotifyUsersTable = &schema.Table{
-		Name:       "notify_users",
-		Columns:    NotifyUsersColumns,
-		PrimaryKey: []*schema.Column{NotifyUsersColumns[0]},
-		Indexes: []*schema.Index{
-			{
-				Name:    "notifyuser_telegram_user_id",
-				Unique:  true,
-				Columns: []*schema.Column{NotifyUsersColumns[1]},
-			},
-			{
-				Name:    "notifyuser_gitlab_username",
-				Unique:  true,
-				Columns: []*schema.Column{NotifyUsersColumns[3]},
-			},
-			{
-				Name:    "notifyuser_jira_account_id",
-				Unique:  true,
-				Columns: []*schema.Column{NotifyUsersColumns[4]},
 			},
 		},
 	}
@@ -336,6 +301,79 @@ var (
 			},
 		},
 	}
+	// UsersColumns holds the columns for the "users" table.
+	UsersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "telegram_user_id", Type: field.TypeInt64},
+		{Name: "telegram_access_hash", Type: field.TypeInt64, Nullable: true},
+		{Name: "gitlab_username", Type: field.TypeString, Nullable: true},
+		{Name: "jira_account_id", Type: field.TypeString, Nullable: true},
+		{Name: "jira_display_name", Type: field.TypeString, Nullable: true},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// UsersTable holds the schema information for the "users" table.
+	UsersTable = &schema.Table{
+		Name:       "users",
+		Columns:    UsersColumns,
+		PrimaryKey: []*schema.Column{UsersColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "user_telegram_user_id",
+				Unique:  true,
+				Columns: []*schema.Column{UsersColumns[1]},
+			},
+			{
+				Name:    "user_gitlab_username",
+				Unique:  true,
+				Columns: []*schema.Column{UsersColumns[3]},
+			},
+			{
+				Name:    "user_jira_account_id",
+				Unique:  true,
+				Columns: []*schema.Column{UsersColumns[4]},
+			},
+		},
+	}
+	// UserTokensColumns holds the columns for the "user_tokens" table.
+	UserTokensColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "name", Type: field.TypeString},
+		{Name: "token_hash", Type: field.TypeString},
+		{Name: "token_prefix", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "expires_at", Type: field.TypeTime, Nullable: true},
+		{Name: "last_used_at", Type: field.TypeTime, Nullable: true},
+		{Name: "revoked_at", Type: field.TypeTime, Nullable: true},
+		{Name: "user_id", Type: field.TypeUUID},
+	}
+	// UserTokensTable holds the schema information for the "user_tokens" table.
+	UserTokensTable = &schema.Table{
+		Name:       "user_tokens",
+		Columns:    UserTokensColumns,
+		PrimaryKey: []*schema.Column{UserTokensColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "user_tokens_users_tokens",
+				Columns:    []*schema.Column{UserTokensColumns[8]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "usertoken_token_hash",
+				Unique:  true,
+				Columns: []*schema.Column{UserTokensColumns[2]},
+			},
+			{
+				Name:    "usertoken_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{UserTokensColumns[8]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		ChunksTable,
@@ -343,15 +381,17 @@ var (
 		InvestigationJobsTable,
 		NotificationsTable,
 		NotifySubscriptionsTable,
-		NotifyUsersTable,
 		SupportRequestsTable,
 		SyncStatesTable,
 		TelegramMessagesTable,
+		UsersTable,
+		UserTokensTable,
 	}
 )
 
 func init() {
 	ChunksTable.ForeignKeys[0].RefTable = DocumentsTable
-	NotificationsTable.ForeignKeys[0].RefTable = NotifyUsersTable
-	NotifySubscriptionsTable.ForeignKeys[0].RefTable = NotifyUsersTable
+	NotificationsTable.ForeignKeys[0].RefTable = UsersTable
+	NotifySubscriptionsTable.ForeignKeys[0].RefTable = UsersTable
+	UserTokensTable.ForeignKeys[0].RefTable = UsersTable
 }
