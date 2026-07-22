@@ -8,10 +8,14 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/chunk"
 	"github.com/go-faster/sisyphus/internal/ent/document"
 	"github.com/go-faster/sisyphus/internal/ent/investigationjob"
+	"github.com/go-faster/sisyphus/internal/ent/notification"
+	"github.com/go-faster/sisyphus/internal/ent/notifysubscription"
 	"github.com/go-faster/sisyphus/internal/ent/schema"
 	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 	"github.com/go-faster/sisyphus/internal/ent/telegrammessage"
+	"github.com/go-faster/sisyphus/internal/ent/user"
+	"github.com/go-faster/sisyphus/internal/ent/usertoken"
 	"github.com/google/uuid"
 )
 
@@ -107,6 +111,82 @@ func init() {
 	investigationjobDescID := investigationjobFields[0].Descriptor()
 	// investigationjob.DefaultID holds the default value on creation for the id field.
 	investigationjob.DefaultID = investigationjobDescID.Default.(func() uuid.UUID)
+	notificationFields := schema.Notification{}.Fields()
+	_ = notificationFields
+	// notificationDescDedupKey is the schema descriptor for dedup_key field.
+	notificationDescDedupKey := notificationFields[1].Descriptor()
+	// notification.DedupKeyValidator is a validator for the "dedup_key" field. It is called by the builders before save.
+	notification.DedupKeyValidator = notificationDescDedupKey.Validators[0].(func(string) error)
+	// notificationDescChannel is the schema descriptor for channel field.
+	notificationDescChannel := notificationFields[3].Descriptor()
+	// notification.ChannelValidator is a validator for the "channel" field. It is called by the builders before save.
+	notification.ChannelValidator = notificationDescChannel.Validators[0].(func(string) error)
+	// notificationDescSource is the schema descriptor for source field.
+	notificationDescSource := notificationFields[6].Descriptor()
+	// notification.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	notification.SourceValidator = notificationDescSource.Validators[0].(func(string) error)
+	// notificationDescEventType is the schema descriptor for event_type field.
+	notificationDescEventType := notificationFields[7].Descriptor()
+	// notification.EventTypeValidator is a validator for the "event_type" field. It is called by the builders before save.
+	notification.EventTypeValidator = notificationDescEventType.Validators[0].(func(string) error)
+	// notificationDescText is the schema descriptor for text field.
+	notificationDescText := notificationFields[8].Descriptor()
+	// notification.TextValidator is a validator for the "text" field. It is called by the builders before save.
+	notification.TextValidator = notificationDescText.Validators[0].(func(string) error)
+	// notificationDescStatus is the schema descriptor for status field.
+	notificationDescStatus := notificationFields[10].Descriptor()
+	// notification.DefaultStatus holds the default value on creation for the status field.
+	notification.DefaultStatus = notificationDescStatus.Default.(string)
+	// notificationDescAttempts is the schema descriptor for attempts field.
+	notificationDescAttempts := notificationFields[11].Descriptor()
+	// notification.DefaultAttempts holds the default value on creation for the attempts field.
+	notification.DefaultAttempts = notificationDescAttempts.Default.(int)
+	// notificationDescCreatedAt is the schema descriptor for created_at field.
+	notificationDescCreatedAt := notificationFields[13].Descriptor()
+	// notification.DefaultCreatedAt holds the default value on creation for the created_at field.
+	notification.DefaultCreatedAt = notificationDescCreatedAt.Default.(func() time.Time)
+	// notificationDescUpdatedAt is the schema descriptor for updated_at field.
+	notificationDescUpdatedAt := notificationFields[14].Descriptor()
+	// notification.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	notification.DefaultUpdatedAt = notificationDescUpdatedAt.Default.(func() time.Time)
+	// notification.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	notification.UpdateDefaultUpdatedAt = notificationDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// notificationDescID is the schema descriptor for id field.
+	notificationDescID := notificationFields[0].Descriptor()
+	// notification.DefaultID holds the default value on creation for the id field.
+	notification.DefaultID = notificationDescID.Default.(func() uuid.UUID)
+	notifysubscriptionFields := schema.NotifySubscription{}.Fields()
+	_ = notifysubscriptionFields
+	// notifysubscriptionDescSource is the schema descriptor for source field.
+	notifysubscriptionDescSource := notifysubscriptionFields[2].Descriptor()
+	// notifysubscription.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	notifysubscription.SourceValidator = notifysubscriptionDescSource.Validators[0].(func(string) error)
+	// notifysubscriptionDescEventTypes is the schema descriptor for event_types field.
+	notifysubscriptionDescEventTypes := notifysubscriptionFields[3].Descriptor()
+	// notifysubscription.DefaultEventTypes holds the default value on creation for the event_types field.
+	notifysubscription.DefaultEventTypes = notifysubscriptionDescEventTypes.Default.([]string)
+	// notifysubscriptionDescFilters is the schema descriptor for filters field.
+	notifysubscriptionDescFilters := notifysubscriptionFields[4].Descriptor()
+	// notifysubscription.DefaultFilters holds the default value on creation for the filters field.
+	notifysubscription.DefaultFilters = notifysubscriptionDescFilters.Default.(map[string]interface{})
+	// notifysubscriptionDescEnabled is the schema descriptor for enabled field.
+	notifysubscriptionDescEnabled := notifysubscriptionFields[5].Descriptor()
+	// notifysubscription.DefaultEnabled holds the default value on creation for the enabled field.
+	notifysubscription.DefaultEnabled = notifysubscriptionDescEnabled.Default.(bool)
+	// notifysubscriptionDescCreatedAt is the schema descriptor for created_at field.
+	notifysubscriptionDescCreatedAt := notifysubscriptionFields[6].Descriptor()
+	// notifysubscription.DefaultCreatedAt holds the default value on creation for the created_at field.
+	notifysubscription.DefaultCreatedAt = notifysubscriptionDescCreatedAt.Default.(func() time.Time)
+	// notifysubscriptionDescUpdatedAt is the schema descriptor for updated_at field.
+	notifysubscriptionDescUpdatedAt := notifysubscriptionFields[7].Descriptor()
+	// notifysubscription.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	notifysubscription.DefaultUpdatedAt = notifysubscriptionDescUpdatedAt.Default.(func() time.Time)
+	// notifysubscription.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	notifysubscription.UpdateDefaultUpdatedAt = notifysubscriptionDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// notifysubscriptionDescID is the schema descriptor for id field.
+	notifysubscriptionDescID := notifysubscriptionFields[0].Descriptor()
+	// notifysubscription.DefaultID holds the default value on creation for the id field.
+	notifysubscription.DefaultID = notifysubscriptionDescID.Default.(func() uuid.UUID)
 	supportrequestFields := schema.SupportRequest{}.Fields()
 	_ = supportrequestFields
 	// supportrequestDescRawText is the schema descriptor for raw_text field.
@@ -177,4 +257,46 @@ func init() {
 	telegrammessageDescID := telegrammessageFields[0].Descriptor()
 	// telegrammessage.DefaultID holds the default value on creation for the id field.
 	telegrammessage.DefaultID = telegrammessageDescID.Default.(func() uuid.UUID)
+	userFields := schema.User{}.Fields()
+	_ = userFields
+	// userDescEnabled is the schema descriptor for enabled field.
+	userDescEnabled := userFields[6].Descriptor()
+	// user.DefaultEnabled holds the default value on creation for the enabled field.
+	user.DefaultEnabled = userDescEnabled.Default.(bool)
+	// userDescCreatedAt is the schema descriptor for created_at field.
+	userDescCreatedAt := userFields[7].Descriptor()
+	// user.DefaultCreatedAt holds the default value on creation for the created_at field.
+	user.DefaultCreatedAt = userDescCreatedAt.Default.(func() time.Time)
+	// userDescUpdatedAt is the schema descriptor for updated_at field.
+	userDescUpdatedAt := userFields[8].Descriptor()
+	// user.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	user.DefaultUpdatedAt = userDescUpdatedAt.Default.(func() time.Time)
+	// user.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	user.UpdateDefaultUpdatedAt = userDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// userDescID is the schema descriptor for id field.
+	userDescID := userFields[0].Descriptor()
+	// user.DefaultID holds the default value on creation for the id field.
+	user.DefaultID = userDescID.Default.(func() uuid.UUID)
+	usertokenFields := schema.UserToken{}.Fields()
+	_ = usertokenFields
+	// usertokenDescName is the schema descriptor for name field.
+	usertokenDescName := usertokenFields[2].Descriptor()
+	// usertoken.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	usertoken.NameValidator = usertokenDescName.Validators[0].(func(string) error)
+	// usertokenDescTokenHash is the schema descriptor for token_hash field.
+	usertokenDescTokenHash := usertokenFields[3].Descriptor()
+	// usertoken.TokenHashValidator is a validator for the "token_hash" field. It is called by the builders before save.
+	usertoken.TokenHashValidator = usertokenDescTokenHash.Validators[0].(func(string) error)
+	// usertokenDescTokenPrefix is the schema descriptor for token_prefix field.
+	usertokenDescTokenPrefix := usertokenFields[4].Descriptor()
+	// usertoken.TokenPrefixValidator is a validator for the "token_prefix" field. It is called by the builders before save.
+	usertoken.TokenPrefixValidator = usertokenDescTokenPrefix.Validators[0].(func(string) error)
+	// usertokenDescCreatedAt is the schema descriptor for created_at field.
+	usertokenDescCreatedAt := usertokenFields[5].Descriptor()
+	// usertoken.DefaultCreatedAt holds the default value on creation for the created_at field.
+	usertoken.DefaultCreatedAt = usertokenDescCreatedAt.Default.(func() time.Time)
+	// usertokenDescID is the schema descriptor for id field.
+	usertokenDescID := usertokenFields[0].Descriptor()
+	// usertoken.DefaultID holds the default value on creation for the id field.
+	usertoken.DefaultID = usertokenDescID.Default.(func() uuid.UUID)
 }

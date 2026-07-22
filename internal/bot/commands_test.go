@@ -26,7 +26,11 @@ func TestCommandRegistryHelpText(t *testing.T) {
 		"/help \u2014 Show this message\n" +
 		"/context <question> \u2014 search indexed knowledge and answer a question\n" +
 		"/search <query> \u2014 raw ranked search results, no summary\n" +
-		"/investigate <description> \u2014 run an on-demand investigation"
+		"/investigate <description> \u2014 run an on-demand investigation\n" +
+		"/link <gitlab|jira> <identity> [display name] \u2014 link your GitLab/Jira identity for notifications\n" +
+		"/subscribe <gitlab|jira> [event_type ...] \u2014 subscribe to GitLab/Jira notifications\n" +
+		"/unsubscribe <gitlab|jira> \u2014 unsubscribe from notifications\n" +
+		"/notifications \u2014 list your notification subscriptions"
 	require.Equal(t, want, reg.helpText())
 }
 
@@ -83,7 +87,7 @@ func TestBuildCommandRegistryOrder(t *testing.T) {
 	})
 	reg := b.buildCommandRegistry(context.Background())
 
-	expected := []string{"start", "help", "context", "search", "investigate"}
+	expected := []string{"start", "help", "context", "search", "investigate", "link", "subscribe", "unsubscribe", "notifications"}
 	require.Len(t, reg.cmds, len(expected))
 	for i, name := range expected {
 		require.Equal(t, name, reg.cmds[i].name, "command %d", i)

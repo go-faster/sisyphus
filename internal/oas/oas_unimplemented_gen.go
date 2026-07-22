@@ -13,6 +13,15 @@ type UnimplementedHandler struct{}
 
 var _ Handler = UnimplementedHandler{}
 
+// AckNotification implements ackNotification operation.
+//
+// Record a notification delivery attempt's outcome.
+//
+// POST /notifications/{id}/ack
+func (UnimplementedHandler) AckNotification(ctx context.Context, req *NotificationAckRequest, params AckNotificationParams) (r *Ack, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // Context implements context operation.
 //
 // Answer a support question from retrieved context (plan §14).
@@ -46,6 +55,60 @@ func (UnimplementedHandler) GetFile(ctx context.Context, req *FileRequest) (r *F
 //
 // GET /health
 func (UnimplementedHandler) GetHealth(ctx context.Context) (r *Health, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// GetPendingNotifications implements getPendingNotifications operation.
+//
+// List pending Telegram-channel notifications, oldest first, for a sink to drain and deliver.
+//
+// GET /notifications/pending
+func (UnimplementedHandler) GetPendingNotifications(ctx context.Context, params GetPendingNotificationsParams) (r *PendingNotificationsResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// NotifyEnroll implements notifyEnroll operation.
+//
+// Upsert a NotifyUser's Telegram identity (access hash), called on first bot contact.
+//
+// POST /notify/enroll
+func (UnimplementedHandler) NotifyEnroll(ctx context.Context, req *NotifyEnrollRequest) (r *Ack, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// NotifyLink implements notifyLink operation.
+//
+// Link a Telegram user's GitLab/Jira identity.
+//
+// POST /notify/link
+func (UnimplementedHandler) NotifyLink(ctx context.Context, req *NotifyLinkRequest) (r *Ack, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// NotifyListSubscriptions implements notifyListSubscriptions operation.
+//
+// List a Telegram user's subscriptions.
+//
+// GET /notify/subscriptions/{telegram_user_id}
+func (UnimplementedHandler) NotifyListSubscriptions(ctx context.Context, params NotifyListSubscriptionsParams) (r *NotifySubscriptionsResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// NotifySubscribe implements notifySubscribe operation.
+//
+// Subscribe a Telegram user to a source's event types.
+//
+// POST /notify/subscribe
+func (UnimplementedHandler) NotifySubscribe(ctx context.Context, req *NotifySubscribeRequest) (r *Ack, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// NotifyUnsubscribe implements notifyUnsubscribe operation.
+//
+// Unsubscribe a Telegram user from a source.
+//
+// POST /notify/unsubscribe
+func (UnimplementedHandler) NotifyUnsubscribe(ctx context.Context, req *NotifyUnsubscribeRequest) (r *Ack, _ error) {
 	return r, ht.ErrNotImplemented
 }
 

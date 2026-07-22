@@ -1,5 +1,11 @@
-// Package gitlab ingests GitLab issues, merge requests, and releases via the REST API
-// into normalized Documents (plan §5).
+// Package gitlab fetches GitLab issues, merge requests, and releases via
+// the REST API, returning the chunker's structured types (chunkgitlab.Issue/
+// MergeRequest/Release). It knows nothing about index.Document or
+// notifications: converting a fetched resource into an index.Document is
+// internal/chunk/gitlab's job (DocumentFromIssue/MergeRequest/Release),
+// called by whichever consumer needs it (internal/ingestrun for indexing,
+// internal/notify/gitlab for notifications) — so this package has exactly
+// one responsibility: talk to the GitLab REST API.
 package gitlab
 
 import (
@@ -19,7 +25,6 @@ import (
 
 	chunkgitlab "github.com/go-faster/sisyphus/internal/chunk/gitlab"
 	"github.com/go-faster/sisyphus/internal/cliversion"
-	"github.com/go-faster/sisyphus/internal/index"
 	"github.com/go-faster/sisyphus/internal/netclient"
 )
 
@@ -54,11 +59,25 @@ type Cursor struct {
 	UpdatedAfter string `json:"updated_after"` // RFC3339 timestamp
 }
 
-// FetchResult is returned by a single Fetch call.
-type FetchResult struct {
-	Documents  []index.Document
-	NextCursor Cursor
-	HasMore    bool
+// IssueRef pairs an Issue with the project it belongs to, since a single
+// Cursor spans every configured project.
+type IssueRef struct {
+	Project string
+	Issue   chunkgitlab.Issue
+}
+
+// MergeRequestRef pairs a MergeRequest with the project it belongs to, since
+// a single Cursor spans every configured project.
+type MergeRequestRef struct {
+	Project string
+	MR      chunkgitlab.MergeRequest
+}
+
+// ReleaseRef pairs a Release with the project it belongs to, since a single
+// Cursor spans every configured project.
+type ReleaseRef struct {
+	Project string
+	Release chunkgitlab.Release
 }
 
 // Fetcher retrieves GitLab issues, MRs, and releases via the REST API.
@@ -249,43 +268,33 @@ func encodeProjectRef(ref string) string {
 	return url.PathEscape(ref)
 }
 
-// FetchIssues fetches issues from configured projects, returning documents and the updated cursor.
-func (f *Fetcher) FetchIssues(
-	ctx context.Context,
-	page int,
-	cursor Cursor,
-) (FetchResult, error) {
+// FetchIssues fetches one page of issues from configured projects.
+func (f *Fetcher) FetchIssues(ctx context.Context, page int, cursor Cursor) ([]IssueRef, Cursor, bool, error) {
 	projects := projectRefs(f.projects)
 	if len(projects) == 0 {
-		return FetchResult{}, errors.New("gitlab: no projects configured")
+		return nil, Cursor{}, false, errors.New("gitlab: no projects configured")
 	}
 
-	var docs []index.Document
+	var refs []IssueRef
 	var maxUpdatedAt string
 
 	for _, project := range projects {
-		projectDocs, projectMaxUpdated, err := f.fetchProjectIssues(ctx, project, page, cursor)
+		issues, projectMaxUpdated, err := f.fetchProjectIssues(ctx, project, page, cursor)
 		if err != nil {
-			return FetchResult{}, err
+			return nil, Cursor{}, false, err
 		}
-		docs = append(docs, projectDocs...)
+		for _, issue := range issues {
+			refs = append(refs, IssueRef{Project: project, Issue: issue})
+		}
 		if projectMaxUpdated > maxUpdatedAt {
 			maxUpdatedAt = projectMaxUpdated
 		}
 	}
 
-	result := FetchResult{
-		Documents: docs,
-		NextCursor: Cursor{
-			UpdatedAfter: maxUpdatedAt,
-		},
-		HasMore: len(docs) >= f.pageSize,
-	}
-
-	return result, nil
+	return refs, Cursor{UpdatedAfter: maxUpdatedAt}, len(refs) >= f.pageSize, nil
 }
 
-func (f *Fetcher) fetchProjectIssues(ctx context.Context, project string, page int, cursor Cursor) ([]index.Document, string, error) {
+func (f *Fetcher) fetchProjectIssues(ctx context.Context, project string, page int, cursor Cursor) ([]chunkgitlab.Issue, string, error) {
 	q := url.Values{}
 	q.Set("page", strconv.Itoa(page))
 	q.Set("per_page", strconv.Itoa(f.pageSize))
@@ -312,7 +321,7 @@ func (f *Fetcher) fetchProjectIssues(ctx context.Context, project string, page i
 		return nil, "", errors.Wrap(err, "parse issues response")
 	}
 
-	var docs []index.Document
+	var out []chunkgitlab.Issue
 	var maxUpdatedAt string
 
 	for _, issue := range issues {
@@ -347,15 +356,14 @@ func (f *Fetcher) fetchProjectIssues(ctx context.Context, project string, page i
 			continue
 		}
 
-		doc := chunkgitlab.DocumentFromIssue(project, chunkIssue)
-		docs = append(docs, doc)
+		out = append(out, chunkIssue)
 
-		if doc.UpdatedAt.Format(time.RFC3339) > maxUpdatedAt {
-			maxUpdatedAt = doc.UpdatedAt.Format(time.RFC3339)
+		if updated := chunkIssue.Updated.Format(time.RFC3339); updated > maxUpdatedAt {
+			maxUpdatedAt = updated
 		}
 	}
 
-	return docs, maxUpdatedAt, nil
+	return out, maxUpdatedAt, nil
 }
 
 func (f *Fetcher) fetchIssueDiscussions(ctx context.Context, project string, iid int) ([]chunkgitlab.Thread, error) {
@@ -473,43 +481,33 @@ func (f *Fetcher) fetchIssueLinks(ctx context.Context, project string, iid int) 
 	return links, nil
 }
 
-// FetchMergeRequests fetches merge requests from configured projects.
-func (f *Fetcher) FetchMergeRequests(
-	ctx context.Context,
-	page int,
-	cursor Cursor,
-) (FetchResult, error) {
+// FetchMergeRequests fetches one page of merge requests from configured projects.
+func (f *Fetcher) FetchMergeRequests(ctx context.Context, page int, cursor Cursor) ([]MergeRequestRef, Cursor, bool, error) {
 	projects := projectRefs(f.projects)
 	if len(projects) == 0 {
-		return FetchResult{}, errors.New("gitlab: no projects configured")
+		return nil, Cursor{}, false, errors.New("gitlab: no projects configured")
 	}
 
-	var docs []index.Document
+	var refs []MergeRequestRef
 	var maxUpdatedAt string
 
 	for _, project := range projects {
-		projectDocs, projectMaxUpdated, err := f.fetchProjectMergeRequests(ctx, project, page, cursor)
+		mrs, projectMaxUpdated, err := f.fetchProjectMergeRequests(ctx, project, page, cursor)
 		if err != nil {
-			return FetchResult{}, err
+			return nil, Cursor{}, false, err
 		}
-		docs = append(docs, projectDocs...)
+		for _, mr := range mrs {
+			refs = append(refs, MergeRequestRef{Project: project, MR: mr})
+		}
 		if projectMaxUpdated > maxUpdatedAt {
 			maxUpdatedAt = projectMaxUpdated
 		}
 	}
 
-	result := FetchResult{
-		Documents: docs,
-		NextCursor: Cursor{
-			UpdatedAfter: maxUpdatedAt,
-		},
-		HasMore: len(docs) >= f.pageSize,
-	}
-
-	return result, nil
+	return refs, Cursor{UpdatedAfter: maxUpdatedAt}, len(refs) >= f.pageSize, nil
 }
 
-func (f *Fetcher) fetchProjectMergeRequests(ctx context.Context, project string, page int, cursor Cursor) ([]index.Document, string, error) {
+func (f *Fetcher) fetchProjectMergeRequests(ctx context.Context, project string, page int, cursor Cursor) ([]chunkgitlab.MergeRequest, string, error) {
 	q := url.Values{}
 	q.Set("page", strconv.Itoa(page))
 	q.Set("per_page", strconv.Itoa(f.pageSize))
@@ -536,7 +534,7 @@ func (f *Fetcher) fetchProjectMergeRequests(ctx context.Context, project string,
 		return nil, "", errors.Wrap(err, "parse merge requests response")
 	}
 
-	var docs []index.Document
+	var out []chunkgitlab.MergeRequest
 	var maxUpdatedAt string
 
 	for _, mr := range mrs {
@@ -571,15 +569,14 @@ func (f *Fetcher) fetchProjectMergeRequests(ctx context.Context, project string,
 			continue
 		}
 
-		doc := chunkgitlab.DocumentFromMergeRequest(project, chunkMR)
-		docs = append(docs, doc)
+		out = append(out, chunkMR)
 
-		if doc.UpdatedAt.Format(time.RFC3339) > maxUpdatedAt {
-			maxUpdatedAt = doc.UpdatedAt.Format(time.RFC3339)
+		if updated := chunkMR.Updated.Format(time.RFC3339); updated > maxUpdatedAt {
+			maxUpdatedAt = updated
 		}
 	}
 
-	return docs, maxUpdatedAt, nil
+	return out, maxUpdatedAt, nil
 }
 
 func (f *Fetcher) fetchMRDiscussions(ctx context.Context, project string, iid int) ([]chunkgitlab.Thread, error) {
@@ -697,44 +694,34 @@ func (f *Fetcher) fetchMRClosesIssues(ctx context.Context, project string, iid i
 	return links, nil
 }
 
-// FetchReleases fetches releases from configured projects.
+// FetchReleases fetches one page of releases from configured projects.
 // Note: releases don't have updated_after filtering, so we filter client-side.
-func (f *Fetcher) FetchReleases(
-	ctx context.Context,
-	page int,
-	cursor Cursor,
-) (FetchResult, error) {
+func (f *Fetcher) FetchReleases(ctx context.Context, page int, cursor Cursor) ([]ReleaseRef, Cursor, bool, error) {
 	projects := projectRefs(f.projects)
 	if len(projects) == 0 {
-		return FetchResult{}, errors.New("gitlab: no projects configured")
+		return nil, Cursor{}, false, errors.New("gitlab: no projects configured")
 	}
 
-	var docs []index.Document
+	var refs []ReleaseRef
 	var maxReleasedAt string
 
 	for _, project := range projects {
-		projectDocs, projectMaxReleased, err := f.fetchProjectReleases(ctx, project, page, cursor)
+		releases, projectMaxReleased, err := f.fetchProjectReleases(ctx, project, page, cursor)
 		if err != nil {
-			return FetchResult{}, err
+			return nil, Cursor{}, false, err
 		}
-		docs = append(docs, projectDocs...)
+		for _, release := range releases {
+			refs = append(refs, ReleaseRef{Project: project, Release: release})
+		}
 		if projectMaxReleased > maxReleasedAt {
 			maxReleasedAt = projectMaxReleased
 		}
 	}
 
-	result := FetchResult{
-		Documents: docs,
-		NextCursor: Cursor{
-			UpdatedAfter: maxReleasedAt,
-		},
-		HasMore: len(docs) >= f.pageSize,
-	}
-
-	return result, nil
+	return refs, Cursor{UpdatedAfter: maxReleasedAt}, len(refs) >= f.pageSize, nil
 }
 
-func (f *Fetcher) fetchProjectReleases(ctx context.Context, project string, page int, cursor Cursor) ([]index.Document, string, error) {
+func (f *Fetcher) fetchProjectReleases(ctx context.Context, project string, page int, cursor Cursor) ([]chunkgitlab.Release, string, error) {
 	q := url.Values{}
 	q.Set("page", strconv.Itoa(page))
 	q.Set("per_page", strconv.Itoa(f.pageSize))
@@ -755,7 +742,7 @@ func (f *Fetcher) fetchProjectReleases(ctx context.Context, project string, page
 		return nil, "", errors.Wrap(err, "parse releases response")
 	}
 
-	var docs []index.Document
+	var out []chunkgitlab.Release
 	var maxReleasedAt string
 
 	for _, release := range releases {
@@ -777,16 +764,14 @@ func (f *Fetcher) fetchProjectReleases(ctx context.Context, project string, page
 			continue
 		}
 
-		doc := chunkgitlab.DocumentFromRelease(project, chunkRelease)
-		docs = append(docs, doc)
+		out = append(out, chunkRelease)
 
-		releasedAtStr := doc.UpdatedAt.Format(time.RFC3339)
-		if releasedAtStr > maxReleasedAt {
-			maxReleasedAt = releasedAtStr
+		if released := chunkRelease.ReleasedAt.Format(time.RFC3339); released > maxReleasedAt {
+			maxReleasedAt = released
 		}
 	}
 
-	return docs, maxReleasedAt, nil
+	return out, maxReleasedAt, nil
 }
 
 // Conversion functions from GitLab API types to chunker types.

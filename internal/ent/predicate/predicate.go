@@ -15,6 +15,12 @@ type Document func(*sql.Selector)
 // InvestigationJob is the predicate function for investigationjob builders.
 type InvestigationJob func(*sql.Selector)
 
+// Notification is the predicate function for notification builders.
+type Notification func(*sql.Selector)
+
+// NotifySubscription is the predicate function for notifysubscription builders.
+type NotifySubscription func(*sql.Selector)
+
 // SupportRequest is the predicate function for supportrequest builders.
 type SupportRequest func(*sql.Selector)
 
@@ -23,3 +29,9 @@ type SyncState func(*sql.Selector)
 
 // TelegramMessage is the predicate function for telegrammessage builders.
 type TelegramMessage func(*sql.Selector)
+
+// User is the predicate function for user builders.
+type User func(*sql.Selector)
+
+// UserToken is the predicate function for usertoken builders.
+type UserToken func(*sql.Selector)

@@ -36,11 +36,8 @@ import (
 	"github.com/go-faster/sisyphus/internal/pipeline"
 )
 
-var (
-	// ErrNotConfigured reports that a source lacks required configuration.
-	ErrNotConfigured = errors.New("source not configured")
-	errLimitReached  = errors.New("limit reached")
-)
+// ErrNotConfigured reports that a source lacks required configuration.
+var ErrNotConfigured = errors.New("source not configured")
 
 // indexConcurrency bounds how many documents pipeline.Index runs at once.
 const indexConcurrency = 8
@@ -131,7 +128,10 @@ func (r Runner) RunGitLab(ctx context.Context, opts GitLabOptions) error {
 		}
 	}
 
-	ingestResource := func(resourceName string, enabled bool, src index.Source, fetch func(context.Context, int, gitlabingest.Cursor) (gitlabingest.FetchResult, error)) error {
+	// ingestResource pages a GitLab resource via fetch (which returns
+	// documents already converted from the structured fetch, plus the
+	// advanced cursor and whether more pages remain), indexing each page.
+	ingestResource := func(resourceName string, enabled bool, src index.Source, fetch func(context.Context, int, gitlabingest.Cursor) ([]index.Document, gitlabingest.Cursor, bool, error)) error {
 		if !enabled {
 			return nil
 		}
@@ -157,14 +157,14 @@ func (r Runner) RunGitLab(ctx context.Context, opts GitLabOptions) error {
 		maxObserved := startCur.UpdatedAfter
 
 		for {
-			res, err := fetch(ctx, page, startCur)
+			docs, nextCur, hasMore, err := fetch(ctx, page, startCur)
 			if err != nil {
 				lg.Error("gitlab fetch failed", zap.Error(err))
 				anyErr = true
 				break
 			}
 
-			pageBatch := res.Documents
+			pageBatch := docs
 			if opts.Limit > 0 {
 				remaining := opts.Limit - processed
 				if remaining <= 0 {
@@ -181,10 +181,10 @@ func (r Runner) RunGitLab(ctx context.Context, opts GitLabOptions) error {
 				anyErr = true
 			}
 
-			if res.NextCursor.UpdatedAfter > maxObserved {
-				maxObserved = res.NextCursor.UpdatedAfter
+			if nextCur.UpdatedAfter > maxObserved {
+				maxObserved = nextCur.UpdatedAfter
 			}
-			if limReached || !res.HasMore {
+			if limReached || !hasMore {
 				break
 			}
 			page++
@@ -206,22 +206,46 @@ func (r Runner) RunGitLab(ctx context.Context, opts GitLabOptions) error {
 	}
 
 	if err := ingestResource("issues", cfg.GitLab.Issues, index.SourceGitLabIssue,
-		func(ctx context.Context, page int, cur gitlabingest.Cursor) (gitlabingest.FetchResult, error) {
-			return fetcher.FetchIssues(ctx, page, cur)
+		func(ctx context.Context, page int, cur gitlabingest.Cursor) ([]index.Document, gitlabingest.Cursor, bool, error) {
+			refs, nextCur, hasMore, err := fetcher.FetchIssues(ctx, page, cur)
+			if err != nil {
+				return nil, gitlabingest.Cursor{}, false, err
+			}
+			docs := make([]index.Document, 0, len(refs))
+			for _, ref := range refs {
+				docs = append(docs, chunkgitlab.DocumentFromIssue(ref.Project, ref.Issue))
+			}
+			return docs, nextCur, hasMore, nil
 		},
 	); err != nil && !errors.Is(err, ErrNotConfigured) {
 		return err
 	}
 	if err := ingestResource("merge_requests", cfg.GitLab.MergeRequests, index.SourceGitLabMR,
-		func(ctx context.Context, page int, cur gitlabingest.Cursor) (gitlabingest.FetchResult, error) {
-			return fetcher.FetchMergeRequests(ctx, page, cur)
+		func(ctx context.Context, page int, cur gitlabingest.Cursor) ([]index.Document, gitlabingest.Cursor, bool, error) {
+			refs, nextCur, hasMore, err := fetcher.FetchMergeRequests(ctx, page, cur)
+			if err != nil {
+				return nil, gitlabingest.Cursor{}, false, err
+			}
+			docs := make([]index.Document, 0, len(refs))
+			for _, ref := range refs {
+				docs = append(docs, chunkgitlab.DocumentFromMergeRequest(ref.Project, ref.MR))
+			}
+			return docs, nextCur, hasMore, nil
 		},
 	); err != nil && !errors.Is(err, ErrNotConfigured) {
 		return err
 	}
 	if err := ingestResource("releases", cfg.GitLab.Releases, index.SourceGitLabRelease,
-		func(ctx context.Context, page int, cur gitlabingest.Cursor) (gitlabingest.FetchResult, error) {
-			return fetcher.FetchReleases(ctx, page, cur)
+		func(ctx context.Context, page int, cur gitlabingest.Cursor) ([]index.Document, gitlabingest.Cursor, bool, error) {
+			refs, nextCur, hasMore, err := fetcher.FetchReleases(ctx, page, cur)
+			if err != nil {
+				return nil, gitlabingest.Cursor{}, false, err
+			}
+			docs := make([]index.Document, 0, len(refs))
+			for _, ref := range refs {
+				docs = append(docs, chunkgitlab.DocumentFromRelease(ref.Project, ref.Release))
+			}
+			return docs, nextCur, hasMore, nil
 		},
 	); err != nil && !errors.Is(err, ErrNotConfigured) {
 		return err
@@ -302,25 +326,32 @@ func (r Runner) RunJira(ctx context.Context, opts JiraOptions) error {
 	processed := 0
 	anyErr := false
 	finalCur := cur
+	fetchOpts := jiraingest.FetchOptions{Projects: projects, PageSize: 100}
 
-	_, fetchErr := fetcher.FetchAll(ctx, jiraingest.FetchOptions{
-		Projects: projects,
-		PageSize: 100,
-	}, cur, func(ctx context.Context, docs []index.Document, nextCur jiraingest.Cursor) error {
-		if opts.Limit > 0 && processed >= opts.Limit {
-			return errLimitReached
+	for opts.Limit <= 0 || processed < opts.Limit {
+		issues, nextCur, hasMore, err := fetcher.FetchIssues(ctx, fetchOpts, cur)
+		if err != nil {
+			lg.Error("jira fetch failed", zap.Error(err))
+			anyErr = true
+			break
 		}
-		batch := docs
+
+		batch := make([]index.Document, 0, len(issues))
+		for _, iss := range issues {
+			batch = append(batch, chunkjira.DocumentFromIssue(iss))
+		}
 		if opts.Limit > 0 {
 			if remaining := opts.Limit - processed; remaining < len(batch) {
 				batch = batch[:remaining]
 			}
 		}
+
 		n, errFound := IndexBatch(ctx, lg, pipe, batch, opts.DryRun, "jira")
 		processed += n
 		if errFound {
 			anyErr = true
 		}
+
 		curStr, _ := json.Marshal(nextCur)
 		st := "ok"
 		if anyErr && !opts.DryRun {
@@ -328,14 +359,11 @@ func (r Runner) RunJira(ctx context.Context, opts JiraOptions) error {
 		}
 		_ = UpsertSyncState(ctx, r.DB, string(src), time.Now(), string(curStr), st, processed)
 		finalCur = nextCur
-		return nil
-	})
+		cur = nextCur
 
-	if errors.Is(fetchErr, errLimitReached) {
-		fetchErr = nil
-	}
-	if fetchErr != nil {
-		anyErr = true
+		if !hasMore {
+			break
+		}
 	}
 
 	curStr, _ := json.Marshal(finalCur)
@@ -345,8 +373,8 @@ func (r Runner) RunJira(ctx context.Context, opts JiraOptions) error {
 	}
 	_ = UpsertSyncState(ctx, r.DB, string(src), time.Now(), string(curStr), st, processed)
 
-	if fetchErr != nil {
-		return errors.Wrap(fetchErr, "jira fetchall")
+	if anyErr {
+		return errors.New("one or more jira documents failed to index")
 	}
 	return nil
 }
@@ -492,6 +520,21 @@ func LoadJiraCursor(ctx context.Context, db *ent.Client, src string) (jiraingest
 		}
 	}
 	return c, nil
+}
+
+// LoadRawCursor loads a SyncState row's opaque last_cursor string, for
+// callers (the notify collectors) whose cursor format isn't one of
+// gitlabingest.Cursor/jiraingest.Cursor and so can't use
+// LoadGitLabCursor/LoadJiraCursor.
+func LoadRawCursor(ctx context.Context, db *ent.Client, src string) (string, error) {
+	ss, err := db.SyncState.Query().Where(syncstate.Source(src)).Only(ctx)
+	if ent.IsNotFound(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", errors.Wrap(err, "query syncstate")
+	}
+	return ss.LastCursor, nil
 }
 
 // GitLabProjectRefs extracts non-empty GitLab project refs.

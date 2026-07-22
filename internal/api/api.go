@@ -31,6 +31,7 @@ type Handler struct {
 	answerer  index.Answerer
 	content   index.ContentResolver
 	fetcher   index.URLFetcher
+	notify    NotifyStore
 	version   string
 }
 

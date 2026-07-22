@@ -1,6 +1,12 @@
-// Package jira ingests Jira issues via the REST API into normalized Documents
-// (plan §5). It supports Jira Cloud (Basic auth with email + API token) and
-// Jira Server/DC (Basic auth with username + password, or PAT as Bearer token).
+// Package jira fetches Jira issues via the REST API, returning the
+// chunker's structured chunkjira.Issue type. It knows nothing about
+// index.Document or notifications: converting a fetched issue into an
+// index.Document is internal/chunk/jira's job (DocumentFromIssue), called by
+// whichever consumer needs it (internal/ingestrun for indexing,
+// internal/notify/jira for notifications) — so this package has exactly one
+// responsibility: talk to the Jira REST API. It supports Jira Cloud (Basic
+// auth with email + API token) and Jira Server/DC (Basic auth with username
+// + password, or PAT as Bearer token).
 package jira
 
 import (
@@ -29,7 +35,6 @@ import (
 
 	chunkjira "github.com/go-faster/sisyphus/internal/chunk/jira"
 	"github.com/go-faster/sisyphus/internal/cliversion"
-	"github.com/go-faster/sisyphus/internal/index"
 	"github.com/go-faster/sisyphus/internal/netclient"
 )
 
@@ -76,13 +81,6 @@ type FetchOptions struct {
 type Cursor struct {
 	LastUpdated string `json:"last_updated"` // RFC3339 timestamp
 	StartAt     int    `json:"start_at"`     // page offset within that bound
-}
-
-// FetchResult is returned by a single Fetch call.
-type FetchResult struct {
-	Documents  []index.Document
-	NextCursor Cursor
-	HasMore    bool
 }
 
 // AuthStatus describes the Jira identity used by the configured credentials.
@@ -174,6 +172,7 @@ type jiraNamed struct {
 }
 
 type jiraUser struct {
+	AccountID   string `json:"accountId"`
 	DisplayName string `json:"displayName"`
 }
 
@@ -266,6 +265,7 @@ func convertIssue(jiraIss jiraIssue) (chunkjira.Issue, error) {
 
 	if jiraIss.Fields.Assignee != nil {
 		iss.Assignee = jiraIss.Fields.Assignee.DisplayName
+		iss.AssigneeAccountID = jiraIss.Fields.Assignee.AccountID
 	}
 	if jiraIss.Fields.Reporter != nil {
 		iss.Reporter = jiraIss.Fields.Reporter.DisplayName
@@ -461,11 +461,11 @@ func (f *Fetcher) doPreflight(req *http.Request, op string) ([]byte, error) {
 	return f.doRequest(req, op)
 }
 
-// Fetch performs ONE page of Jira's /rest/api/2/search endpoint, returning
-// the issues as index.Documents and an updated cursor.
-func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions, cursor Cursor) (FetchResult, error) {
+// FetchIssues performs ONE page of Jira's /rest/api/2/search endpoint,
+// returning the issues and an advanced cursor.
+func (f *Fetcher) FetchIssues(ctx context.Context, opts FetchOptions, cursor Cursor) ([]chunkjira.Issue, Cursor, bool, error) {
 	if len(opts.Projects) == 0 {
-		return FetchResult{}, errors.New("jira: empty projects list")
+		return nil, Cursor{}, false, errors.New("jira: empty projects list")
 	}
 
 	pageSize := f.pageSize
@@ -489,20 +489,20 @@ func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions, cursor Cursor) (
 	)
 	req, err := f.buildRequest(ctx, jql, cursor.StartAt, pageSize, fields)
 	if err != nil {
-		return FetchResult{}, errors.Wrap(err, "build request")
+		return nil, Cursor{}, false, errors.Wrap(err, "build request")
 	}
 
 	body, err := f.doRequest(req, "jira search")
 	if err != nil {
-		return FetchResult{}, err
+		return nil, Cursor{}, false, err
 	}
 
 	var searchResp jiraSearchResponse
 	if err := json.Unmarshal(body, &searchResp); err != nil {
-		return FetchResult{}, errors.Wrap(err, "parse response")
+		return nil, Cursor{}, false, errors.Wrap(err, "parse response")
 	}
 
-	docs := make([]index.Document, 0, len(searchResp.Issues))
+	issues := make([]chunkjira.Issue, 0, len(searchResp.Issues))
 	for _, iss := range searchResp.Issues {
 		chunkIssue, err := convertIssue(iss)
 		if err != nil {
@@ -515,23 +515,19 @@ func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions, cursor Cursor) (
 		if f.baseURL != "" && chunkIssue.Key != "" {
 			chunkIssue.WebURL = f.baseURL + "/browse/" + chunkIssue.Key
 		}
-		docs = append(docs, chunkjira.DocumentFromIssue(chunkIssue))
+		issues = append(issues, chunkIssue)
 	}
 
-	result := FetchResult{
-		Documents:  docs,
-		NextCursor: cursor,
+	if len(issues) == 0 {
+		return issues, cursor, false, nil
 	}
 
-	if len(docs) == 0 {
-		result.HasMore = false
-		return result, nil
-	}
+	lastUpdatedStr := issues[len(issues)-1].Updated.Format(time.RFC3339)
 
-	lastDoc := docs[len(docs)-1]
-	lastUpdatedStr := lastDoc.UpdatedAt.Format(time.RFC3339)
+	var nextCursor Cursor
+	var hasMore bool
 
-	if len(docs) < pageSize {
+	if len(issues) < pageSize {
 		// Partial page: the current window may be exhausted.
 		//
 		// Mid-page ambiguous update race: if we are advancing by offset
@@ -540,57 +536,26 @@ func (f *Fetcher) Fetch(ctx context.Context, opts FetchOptions, cursor Cursor) (
 		// same issues).  Continue paging by offset until we see an issue
 		// with updated strictly greater than LastUpdated.
 		if cursor.StartAt > 0 && lastUpdatedStr == cursor.LastUpdated {
-			result.NextCursor = Cursor{
+			nextCursor = Cursor{
 				LastUpdated: cursor.LastUpdated,
-				StartAt:     cursor.StartAt + len(docs),
+				StartAt:     cursor.StartAt + len(issues),
 			}
-			result.HasMore = true
+			hasMore = true
 		} else {
-			result.NextCursor = Cursor{
+			nextCursor = Cursor{
 				LastUpdated: lastUpdatedStr,
 				StartAt:     0,
 			}
-			result.HasMore = false
+			hasMore = false
 		}
 	} else {
 		// Full page: advance offset within the same time window.
-		result.NextCursor = Cursor{
+		nextCursor = Cursor{
 			LastUpdated: cursor.LastUpdated,
 			StartAt:     cursor.StartAt + pageSize,
 		}
-		result.HasMore = true
+		hasMore = true
 	}
 
-	return result, nil
-}
-
-// FetchAll pages through all results starting at cursor, calling fn for each
-// batch of documents.  Stops when HasMore is false.  Returns the final cursor
-// (progressed past the last issue seen, with LastUpdated = last issue's
-// updated, StartAt = 0).  If fn returns an error, FetchAll stops and returns
-// errors.Wrap(err, "jira fetch batch").
-func (f *Fetcher) FetchAll(
-	ctx context.Context,
-	opts FetchOptions,
-	cursor Cursor,
-	fn func(ctx context.Context, docs []index.Document, cursor Cursor) error,
-) (Cursor, error) {
-	for {
-		result, err := f.Fetch(ctx, opts, cursor)
-		if err != nil {
-			return cursor, errors.Wrap(err, "jira fetch batch")
-		}
-
-		if len(result.Documents) > 0 {
-			if err := fn(ctx, result.Documents, result.NextCursor); err != nil {
-				return cursor, errors.Wrap(err, "jira fetch batch")
-			}
-		}
-
-		if !result.HasMore {
-			return result.NextCursor, nil
-		}
-
-		cursor = result.NextCursor
-	}
+	return issues, nextCursor, hasMore, nil
 }

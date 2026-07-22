@@ -41,11 +41,20 @@ type Config struct {
 	Agent   AgentConfig
 	Context ContextConfig
 	Ingest  IngestConfig
+	Notify  NotifyConfig
 
 	// Warnings holds deprecation warnings collected while resolving the
 	// config (e.g. use of a field superseded by a per-service section). The
 	// caller should log these.
 	Warnings []string
+}
+
+// NotifyConfig controls ssingest serve's notify collector/dispatcher: the
+// per-user GitLab MR assignment/review-request and Jira issue-assignment
+// notifications delivered via internal/notify. PollIntervalSeconds is 0
+// (disabled) by default, like ingest.*.poll.interval_seconds.
+type NotifyConfig struct {
+	PollIntervalSeconds int
 }
 
 // IngestConfig configures ssingest's `serve` daemon mode: the address its
@@ -218,6 +227,13 @@ type fileConfig struct {
 	Agent   fileAgentConfig   `yaml:"agent"`
 	Context fileContextConfig `yaml:"context"`
 	Ingest  fileIngestConfig  `yaml:"ingest"`
+	Notify  fileNotifyConfig  `yaml:"notify"`
+}
+
+type fileNotifyConfig struct {
+	Poll struct {
+		IntervalSeconds int `yaml:"interval_seconds"`
+	} `yaml:"poll"`
 }
 
 type fileIngestConfig struct {
@@ -847,6 +863,9 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			GitPollIntervalSeconds:      c.Ingest.Git.Poll.IntervalSeconds,
 			FilesPollIntervalSeconds:    c.Ingest.Files.Poll.IntervalSeconds,
 			TelegramPollIntervalSeconds: c.Ingest.Telegram.Poll.IntervalSeconds,
+		},
+		Notify: NotifyConfig{
+			PollIntervalSeconds: c.Notify.Poll.IntervalSeconds,
 		},
 	}, nil
 }
