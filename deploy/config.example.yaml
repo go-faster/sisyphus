@@ -130,6 +130,11 @@ openrouter:
   api_key:
     env: SISYPHUS_OPENROUTER_API_KEY
   model: openai/gpt-4o-mini
+  # reasoning_effort: requests OpenRouter's unified reasoning mode
+  # (low/medium/high). Unset leaves it up to whichever upstream provider
+  # OpenRouter routes the request to — some emit no reasoning at all
+  # regardless of this setting.
+  # reasoning_effort: low
 
 # context: agentic /context workflow settings.
 context:

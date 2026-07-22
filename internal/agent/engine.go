@@ -73,11 +73,19 @@ func (e *Engine[T]) MaxIterations() int {
 }
 
 // Run fetches tools from the toolSource, appends the terminal tool, and
-// executes the loop starting from messages.
+// executes the loop starting from messages. A toolSource.Tools failure (e.g.
+// the MCP gateway/sandbox being briefly unreachable) does not fail the whole
+// run for any agent — every agent here is one Engine[T] instance, so this is
+// the single choke point shared by /investigate and /context alike. The loop
+// still proceeds with just the terminal tool: the model can submit whatever
+// it has, or in /investigate's case say the tools it needed were
+// unavailable, instead of the whole job dying before it even starts.
 func (e *Engine[T]) Run(ctx context.Context, messages []openai.ChatCompletionMessageParamUnion) (EngineResult[T], error) {
 	tools, err := e.toolSource.Tools(ctx)
 	if err != nil {
-		return EngineResult[T]{}, errors.Wrap(err, "get tools")
+		e.logger.Warn("list tools failed, continuing without them", zap.Error(err))
+		recordToolListFailure(ctx)
+		tools = nil
 	}
 	tools = append(tools, e.spec.Def)
 	return e.run(ctx, messages, tools, e.maxIterations)

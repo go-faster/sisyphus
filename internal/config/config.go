@@ -138,6 +138,12 @@ type APIConfig struct {
 type OpenRouter struct {
 	APIKey string
 	Model  string
+	// ReasoningEffort requests OpenRouter's unified reasoning mode
+	// ("low", "medium", "high"); empty leaves it unset, so whether a
+	// completion carries reasoning is entirely up to whichever provider
+	// OpenRouter happens to route the request to. Validated against
+	// validReasoningEfforts.
+	ReasoningEffort string
 }
 
 // Enabled reports whether OpenRouter is configured.
@@ -461,9 +467,14 @@ type fileGitLabConfig struct {
 }
 
 type fileOpenRouter struct {
-	APIKey Secret `yaml:"api_key"`
-	Model  string `yaml:"model"`
+	APIKey          Secret `yaml:"api_key"`
+	Model           string `yaml:"model"`
+	ReasoningEffort string `yaml:"reasoning_effort"`
 }
+
+// validReasoningEfforts are the effort levels OpenRouter's unified
+// reasoning API accepts; empty means unset (see OpenRouter.ReasoningEffort).
+var validReasoningEfforts = map[string]bool{"": true, "low": true, "medium": true, "high": true}
 
 type fileTelegram struct {
 	Addr           string         `yaml:"addr"`
@@ -712,6 +723,9 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 	if err != nil {
 		return Config{}, errors.Wrap(err, "openrouter api_key")
 	}
+	if !validReasoningEfforts[c.OpenRouter.ReasoningEffort] {
+		return Config{}, errors.Errorf("openrouter.reasoning_effort %q must be one of low, medium, high", c.OpenRouter.ReasoningEffort)
+	}
 	telegramAppHash, err := c.Telegram.AppHash.Resolve(baseDir)
 	if err != nil {
 		return Config{}, errors.Wrap(err, "telegram app_hash")
@@ -784,8 +798,9 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			AuthToken: mcpAuthToken,
 		},
 		OpenRouter: OpenRouter{
-			APIKey: openRouterKey,
-			Model:  c.OpenRouter.Model,
+			APIKey:          openRouterKey,
+			Model:           c.OpenRouter.Model,
+			ReasoningEffort: c.OpenRouter.ReasoningEffort,
 		},
 		Telegram: Telegram{
 			Addr:           c.Telegram.Addr,

@@ -128,7 +128,7 @@ func coreLoop(ctx context.Context, llm LLM, toolSource ToolSource, model string,
 		}
 		res.PromptTokens += usage.PromptTokens
 		res.CompletionTokens += usage.CompletionTokens
-		messages = append(messages, msg.ToParam())
+		messages = append(messages, toParamWithReasoning(msg))
 
 		if len(msg.ToolCalls) == 0 {
 			res.NoToolContent = msg.Content

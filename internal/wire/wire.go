@@ -244,9 +244,10 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 			return Components{}, errors.Wrap(err, "openrouter http client")
 		}
 		orClient = openrouter.New(cfg.OpenRouter.APIKey, openrouter.Options{
-			HTTPClient:     httpClient,
-			TracerProvider: opts.TracerProvider,
-			MeterProvider:  opts.MeterProvider,
+			HTTPClient:      httpClient,
+			TracerProvider:  opts.TracerProvider,
+			MeterProvider:   opts.MeterProvider,
+			ReasoningEffort: cfg.OpenRouter.ReasoningEffort,
 		})
 		answerer = openrouter.NewAnswerer(orClient, cfg.OpenRouter.Model, openrouter.AnswererOptions{})
 	} else {
@@ -321,7 +322,7 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 				gatewayCleanup = func() { _ = gatewayClient.Close() }
 			}
 		}
-		toolSource := answer.NewMultiToolSource(knowledgeTools, gatewayTools)
+		toolSource := answer.NewMultiToolSource(lg, knowledgeTools, gatewayTools)
 		answerer = answer.NewAgenticAnswerer(orClient, toolSource, cfg.OpenRouter.Model, answer.AgenticOptions{
 			Logger:         lg,
 			Retriever:      retr,

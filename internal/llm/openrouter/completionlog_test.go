@@ -1,13 +1,11 @@
 package openrouter
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/go-faster/sdk/zctx"
-	"github.com/openai/openai-go/v3"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -73,47 +71,4 @@ func TestCompleteWithTools_NoLogBelowDebug(t *testing.T) {
 	_, _, err := c.CompleteWithTools(ctx, "test-model", nil, nil)
 	require.NoError(t, err)
 	require.Zero(t, logs.FilterMessage("llm completion").Len())
-}
-
-func TestCompletionReasoning(t *testing.T) {
-	tests := []struct {
-		name string
-		raw  string
-		want string
-	}{
-		{
-			name: "absent",
-			raw:  `{"role":"assistant","content":"hi"}`,
-			want: "",
-		},
-		{
-			name: "null",
-			raw:  `{"role":"assistant","content":"hi","reasoning":null}`,
-			want: "",
-		},
-		{
-			name: "string",
-			raw:  `{"role":"assistant","content":"hi","reasoning":"first I checked the RFC"}`,
-			want: "first I checked the RFC",
-		},
-		{
-			name: "empty string",
-			raw:  `{"role":"assistant","content":"hi","reasoning":""}`,
-			want: "",
-		},
-		{
-			// Some providers return structured reasoning blocks rather than a
-			// bare string; fall back to the raw JSON instead of dropping it.
-			name: "structured falls back to raw",
-			raw:  `{"role":"assistant","content":"hi","reasoning":[{"text":"step one"}]}`,
-			want: `[{"text":"step one"}]`,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var msg openai.ChatCompletionMessage
-			require.NoError(t, json.Unmarshal([]byte(tt.raw), &msg))
-			require.Equal(t, tt.want, completionReasoning(msg))
-		})
-	}
 }

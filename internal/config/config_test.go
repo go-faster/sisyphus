@@ -89,6 +89,7 @@ telegram:
       limit: 50
 openrouter:
   model: test-model
+  reasoning_effort: low
 agent:
   addr: :8082
   base_url: http://ssagent:8082
@@ -122,6 +123,7 @@ agent:
 	require.Equal(t, 123, cfg.Telegram.AppID)
 	require.Equal(t, "/tmp/sisyphus-session", cfg.Telegram.SessionDir)
 	require.Equal(t, "test-model", cfg.OpenRouter.Model)
+	require.Equal(t, "low", cfg.OpenRouter.ReasoningEffort)
 	require.Equal(t, "http://ssapi:8080", cfg.API.BaseURL)
 	require.Equal(t, "test-token", cfg.API.AuthToken)
 	require.Contains(t, cfg.Warnings, "fetch site gitlab-internal allows write method POST; prefer read-only methods unless explicitly required")
@@ -250,6 +252,22 @@ func TestLoadRequiresDatabaseDSN(t *testing.T) {
 
 	_, err := Load()
 	require.Error(t, err)
+}
+
+func TestLoadRejectsInvalidReasoningEffort(t *testing.T) {
+	clearEnv(t)
+
+	path := writeConfig(t, `database:
+  dsn:
+    value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+openrouter:
+  model: test-model
+  reasoning_effort: extreme
+`)
+	t.Setenv("SISYPHUS_CONFIG", path)
+
+	_, err := Load()
+	require.ErrorContains(t, err, "reasoning_effort")
 }
 
 func writeConfig(t *testing.T, data string) string {
