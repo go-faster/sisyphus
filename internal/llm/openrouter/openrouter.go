@@ -23,11 +23,12 @@ const defaultBaseURL = "https://openrouter.ai/api/v1"
 
 // Client wraps the openai-go SDK client pointed at OpenRouter.
 type Client struct {
-	oc           openai.Client
-	tracer       trace.Tracer
-	m            *llmMetrics
-	maxRetries   int
-	retryBackoff time.Duration
+	oc              openai.Client
+	tracer          trace.Tracer
+	m               *llmMetrics
+	maxRetries      int
+	retryBackoff    time.Duration
+	reasoningEffort string
 }
 
 // Options configures a Client.
@@ -46,6 +47,14 @@ type Options struct {
 	// RetryBackoff is the base delay between those retries; it doubles each
 	// attempt. Default 500ms.
 	RetryBackoff time.Duration
+	// ReasoningEffort requests OpenRouter's unified reasoning mode ("low",
+	// "medium", or "high"); empty leaves the request as-is, so whether a
+	// completion carries a reasoning trace is entirely up to whatever
+	// provider OpenRouter happens to route the request to (see
+	// internal/agent/reasoning.go, which round-trips reasoning when
+	// present but can't make a provider produce it). Validated in
+	// internal/config.
+	ReasoningEffort string
 }
 
 func (opts *Options) setDefaults() {
@@ -79,12 +88,28 @@ func New(apiKey string, opts Options) *Client {
 	}
 	m, _ := newLLMMetrics(opts.MeterProvider)
 	return &Client{
-		oc:           openai.NewClient(ropts...),
-		tracer:       opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/llm/openrouter"),
-		m:            m,
-		maxRetries:   opts.MaxRetries,
-		retryBackoff: opts.RetryBackoff,
+		oc:              openai.NewClient(ropts...),
+		tracer:          opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/llm/openrouter"),
+		m:               m,
+		maxRetries:      opts.MaxRetries,
+		retryBackoff:    opts.RetryBackoff,
+		reasoningEffort: opts.ReasoningEffort,
 	}
+}
+
+// withReasoning requests OpenRouter's unified reasoning mode when
+// c.reasoningEffort is set. "reasoning" is an OpenRouter extension absent
+// from the OpenAI schema (same as the response-side field
+// internal/agent.ExtractReasoning reads), so it goes through
+// SetExtraFields rather than a typed field.
+func (c *Client) withReasoning(params openai.ChatCompletionNewParams) openai.ChatCompletionNewParams {
+	if c.reasoningEffort == "" {
+		return params
+	}
+	params.SetExtraFields(map[string]any{
+		"reasoning": map[string]any{"effort": c.reasoningEffort},
+	})
+	return params
 }
 
 // newChatCompletion sends a chat-completion request and retries transient
@@ -197,10 +222,10 @@ func (c *Client) complete(ctx context.Context, model string, messages []openai.C
 		span.End()
 	}()
 
-	resp, err := c.newChatCompletion(ctx, openai.ChatCompletionNewParams{
+	resp, err := c.newChatCompletion(ctx, c.withReasoning(openai.ChatCompletionNewParams{
 		Model:    model,
 		Messages: messages,
-	})
+	}))
 	if err != nil {
 		return "", errors.Wrap(err, "chat completion")
 	}

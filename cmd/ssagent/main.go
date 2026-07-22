@@ -92,9 +92,10 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry, info cli
 		return errors.Wrap(err, "mcp http client")
 	}
 	llm := openrouter.New(cfg.OpenRouter.APIKey, openrouter.Options{
-		HTTPClient:     httpClient,
-		TracerProvider: telemetry.TracerProvider(),
-		MeterProvider:  telemetry.MeterProvider(),
+		HTTPClient:      httpClient,
+		TracerProvider:  telemetry.TracerProvider(),
+		MeterProvider:   telemetry.MeterProvider(),
+		ReasoningEffort: cfg.OpenRouter.ReasoningEffort,
 	})
 
 	mcpOpts := mcpclient.Options{

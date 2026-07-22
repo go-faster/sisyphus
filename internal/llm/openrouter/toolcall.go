@@ -37,10 +37,10 @@ func (c *Client) CompleteWithTools(
 		span.End()
 	}()
 
-	req := openai.ChatCompletionNewParams{
+	req := c.withReasoning(openai.ChatCompletionNewParams{
 		Model:    model,
 		Messages: messages,
-	}
+	})
 	if len(tools) > 0 {
 		req.Tools = tools
 	}
