@@ -11,16 +11,37 @@ import (
 )
 
 var (
-	rn1AllowedHeaders = map[string]string{
+	rn5AllowedHeaders = map[string]string{
 		"POST": "Authorization,Content-Type",
+	}
+	rn6AllowedHeaders = map[string]string{
+		"POST": "Authorization,Content-Type",
+	}
+	rn8AllowedHeaders = map[string]string{
+		"POST": "Authorization,Content-Type",
+	}
+	rn10AllowedHeaders = map[string]string{
+		"GET": "Authorization",
 	}
 	rn3AllowedHeaders = map[string]string{
 		"POST": "Authorization,Content-Type",
 	}
-	rn5AllowedHeaders = map[string]string{
+	rn12AllowedHeaders = map[string]string{
 		"POST": "Authorization,Content-Type",
 	}
-	rn7AllowedHeaders = map[string]string{
+	rn14AllowedHeaders = map[string]string{
+		"POST": "Authorization,Content-Type",
+	}
+	rn18AllowedHeaders = map[string]string{
+		"POST": "Authorization,Content-Type",
+	}
+	rn16AllowedHeaders = map[string]string{
+		"GET": "Authorization",
+	}
+	rn19AllowedHeaders = map[string]string{
+		"POST": "Authorization,Content-Type",
+	}
+	rn20AllowedHeaders = map[string]string{
 		"POST": "Authorization,Content-Type",
 	}
 )
@@ -55,6 +76,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.notFound(w, r)
 		return
 	}
+	args := [1]string{}
 
 	// Static code generated router with unwrapped path search.
 	switch {
@@ -91,7 +113,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					default:
 						s.notAllowed(w, r, notAllowedParams{
 							allowedMethods: "POST",
-							allowedHeaders: rn1AllowedHeaders,
+							allowedHeaders: rn5AllowedHeaders,
 							acceptPost:     "application/json",
 							acceptPatch:    "",
 						})
@@ -128,7 +150,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						default:
 							s.notAllowed(w, r, notAllowedParams{
 								allowedMethods: "POST",
-								allowedHeaders: rn3AllowedHeaders,
+								allowedHeaders: rn6AllowedHeaders,
 								acceptPost:     "application/json",
 								acceptPatch:    "",
 							})
@@ -153,7 +175,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						default:
 							s.notAllowed(w, r, notAllowedParams{
 								allowedMethods: "POST",
-								allowedHeaders: rn5AllowedHeaders,
+								allowedHeaders: rn8AllowedHeaders,
 								acceptPost:     "application/json",
 								acceptPatch:    "",
 							})
@@ -189,6 +211,265 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 
+			case 'n': // Prefix: "notif"
+
+				if l := len("notif"); len(elem) >= l && elem[0:l] == "notif" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					break
+				}
+				switch elem[0] {
+				case 'i': // Prefix: "ications/"
+
+					if l := len("ications/"); len(elem) >= l && elem[0:l] == "ications/" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						break
+					}
+					switch elem[0] {
+					case 'p': // Prefix: "pending"
+						origElem := elem
+						if l := len("pending"); len(elem) >= l && elem[0:l] == "pending" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch r.Method {
+							case "GET":
+								s.handleGetPendingNotificationsRequest([0]string{}, elemIsEscaped, w, r)
+							default:
+								s.notAllowed(w, r, notAllowedParams{
+									allowedMethods: "GET",
+									allowedHeaders: rn10AllowedHeaders,
+									acceptPost:     "",
+									acceptPatch:    "",
+								})
+							}
+
+							return
+						}
+
+						elem = origElem
+					}
+					// Param: "id"
+					// Match until "/"
+					idx := strings.IndexByte(elem, '/')
+					if idx < 0 {
+						idx = len(elem)
+					}
+					args[0] = elem[:idx]
+					elem = elem[idx:]
+
+					if len(elem) == 0 {
+						break
+					}
+					switch elem[0] {
+					case '/': // Prefix: "/ack"
+
+						if l := len("/ack"); len(elem) >= l && elem[0:l] == "/ack" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch r.Method {
+							case "POST":
+								s.handleAckNotificationRequest([1]string{
+									args[0],
+								}, elemIsEscaped, w, r)
+							default:
+								s.notAllowed(w, r, notAllowedParams{
+									allowedMethods: "POST",
+									allowedHeaders: rn3AllowedHeaders,
+									acceptPost:     "application/json",
+									acceptPatch:    "",
+								})
+							}
+
+							return
+						}
+
+					}
+
+				case 'y': // Prefix: "y/"
+
+					if l := len("y/"); len(elem) >= l && elem[0:l] == "y/" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						break
+					}
+					switch elem[0] {
+					case 'e': // Prefix: "enroll"
+
+						if l := len("enroll"); len(elem) >= l && elem[0:l] == "enroll" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch r.Method {
+							case "POST":
+								s.handleNotifyEnrollRequest([0]string{}, elemIsEscaped, w, r)
+							default:
+								s.notAllowed(w, r, notAllowedParams{
+									allowedMethods: "POST",
+									allowedHeaders: rn12AllowedHeaders,
+									acceptPost:     "application/json",
+									acceptPatch:    "",
+								})
+							}
+
+							return
+						}
+
+					case 'l': // Prefix: "link"
+
+						if l := len("link"); len(elem) >= l && elem[0:l] == "link" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch r.Method {
+							case "POST":
+								s.handleNotifyLinkRequest([0]string{}, elemIsEscaped, w, r)
+							default:
+								s.notAllowed(w, r, notAllowedParams{
+									allowedMethods: "POST",
+									allowedHeaders: rn14AllowedHeaders,
+									acceptPost:     "application/json",
+									acceptPatch:    "",
+								})
+							}
+
+							return
+						}
+
+					case 's': // Prefix: "subscri"
+
+						if l := len("subscri"); len(elem) >= l && elem[0:l] == "subscri" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							break
+						}
+						switch elem[0] {
+						case 'b': // Prefix: "be"
+
+							if l := len("be"); len(elem) >= l && elem[0:l] == "be" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							if len(elem) == 0 {
+								// Leaf node.
+								switch r.Method {
+								case "POST":
+									s.handleNotifySubscribeRequest([0]string{}, elemIsEscaped, w, r)
+								default:
+									s.notAllowed(w, r, notAllowedParams{
+										allowedMethods: "POST",
+										allowedHeaders: rn18AllowedHeaders,
+										acceptPost:     "application/json",
+										acceptPatch:    "",
+									})
+								}
+
+								return
+							}
+
+						case 'p': // Prefix: "ptions/"
+
+							if l := len("ptions/"); len(elem) >= l && elem[0:l] == "ptions/" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							// Param: "telegram_user_id"
+							// Leaf parameter, slashes are prohibited
+							idx := strings.IndexByte(elem, '/')
+							if idx >= 0 {
+								break
+							}
+							args[0] = elem
+							elem = ""
+
+							if len(elem) == 0 {
+								// Leaf node.
+								switch r.Method {
+								case "GET":
+									s.handleNotifyListSubscriptionsRequest([1]string{
+										args[0],
+									}, elemIsEscaped, w, r)
+								default:
+									s.notAllowed(w, r, notAllowedParams{
+										allowedMethods: "GET",
+										allowedHeaders: rn16AllowedHeaders,
+										acceptPost:     "",
+										acceptPatch:    "",
+									})
+								}
+
+								return
+							}
+
+						}
+
+					case 'u': // Prefix: "unsubscribe"
+
+						if l := len("unsubscribe"); len(elem) >= l && elem[0:l] == "unsubscribe" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch r.Method {
+							case "POST":
+								s.handleNotifyUnsubscribeRequest([0]string{}, elemIsEscaped, w, r)
+							default:
+								s.notAllowed(w, r, notAllowedParams{
+									allowedMethods: "POST",
+									allowedHeaders: rn19AllowedHeaders,
+									acceptPost:     "application/json",
+									acceptPatch:    "",
+								})
+							}
+
+							return
+						}
+
+					}
+
+				}
+
 			case 's': // Prefix: "search"
 
 				if l := len("search"); len(elem) >= l && elem[0:l] == "search" {
@@ -205,7 +486,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					default:
 						s.notAllowed(w, r, notAllowedParams{
 							allowedMethods: "POST",
-							allowedHeaders: rn7AllowedHeaders,
+							allowedHeaders: rn20AllowedHeaders,
 							acceptPost:     "application/json",
 							acceptPatch:    "",
 						})
@@ -229,7 +510,7 @@ type Route struct {
 	operationGroup string
 	pathPattern    string
 	count          int
-	args           [0]string
+	args           [1]string
 }
 
 // Name returns ogen operation name.
@@ -426,6 +707,261 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 					default:
 						return
 					}
+				}
+
+			case 'n': // Prefix: "notif"
+
+				if l := len("notif"); len(elem) >= l && elem[0:l] == "notif" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					break
+				}
+				switch elem[0] {
+				case 'i': // Prefix: "ications/"
+
+					if l := len("ications/"); len(elem) >= l && elem[0:l] == "ications/" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						break
+					}
+					switch elem[0] {
+					case 'p': // Prefix: "pending"
+						origElem := elem
+						if l := len("pending"); len(elem) >= l && elem[0:l] == "pending" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch method {
+							case "GET":
+								r.name = GetPendingNotificationsOperation
+								r.summary = "List pending Telegram-channel notifications, oldest first, for a sink to drain and deliver."
+								r.operationID = "getPendingNotifications"
+								r.operationGroup = ""
+								r.pathPattern = "/notifications/pending"
+								r.args = args
+								r.count = 0
+								return r, true
+							default:
+								return
+							}
+						}
+
+						elem = origElem
+					}
+					// Param: "id"
+					// Match until "/"
+					idx := strings.IndexByte(elem, '/')
+					if idx < 0 {
+						idx = len(elem)
+					}
+					args[0] = elem[:idx]
+					elem = elem[idx:]
+
+					if len(elem) == 0 {
+						break
+					}
+					switch elem[0] {
+					case '/': // Prefix: "/ack"
+
+						if l := len("/ack"); len(elem) >= l && elem[0:l] == "/ack" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch method {
+							case "POST":
+								r.name = AckNotificationOperation
+								r.summary = "Record a notification delivery attempt's outcome."
+								r.operationID = "ackNotification"
+								r.operationGroup = ""
+								r.pathPattern = "/notifications/{id}/ack"
+								r.args = args
+								r.count = 1
+								return r, true
+							default:
+								return
+							}
+						}
+
+					}
+
+				case 'y': // Prefix: "y/"
+
+					if l := len("y/"); len(elem) >= l && elem[0:l] == "y/" {
+						elem = elem[l:]
+					} else {
+						break
+					}
+
+					if len(elem) == 0 {
+						break
+					}
+					switch elem[0] {
+					case 'e': // Prefix: "enroll"
+
+						if l := len("enroll"); len(elem) >= l && elem[0:l] == "enroll" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch method {
+							case "POST":
+								r.name = NotifyEnrollOperation
+								r.summary = "Upsert a NotifyUser's Telegram identity (access hash), called on first bot contact."
+								r.operationID = "notifyEnroll"
+								r.operationGroup = ""
+								r.pathPattern = "/notify/enroll"
+								r.args = args
+								r.count = 0
+								return r, true
+							default:
+								return
+							}
+						}
+
+					case 'l': // Prefix: "link"
+
+						if l := len("link"); len(elem) >= l && elem[0:l] == "link" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch method {
+							case "POST":
+								r.name = NotifyLinkOperation
+								r.summary = "Link a Telegram user's GitLab/Jira identity."
+								r.operationID = "notifyLink"
+								r.operationGroup = ""
+								r.pathPattern = "/notify/link"
+								r.args = args
+								r.count = 0
+								return r, true
+							default:
+								return
+							}
+						}
+
+					case 's': // Prefix: "subscri"
+
+						if l := len("subscri"); len(elem) >= l && elem[0:l] == "subscri" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							break
+						}
+						switch elem[0] {
+						case 'b': // Prefix: "be"
+
+							if l := len("be"); len(elem) >= l && elem[0:l] == "be" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							if len(elem) == 0 {
+								// Leaf node.
+								switch method {
+								case "POST":
+									r.name = NotifySubscribeOperation
+									r.summary = "Subscribe a Telegram user to a source's event types."
+									r.operationID = "notifySubscribe"
+									r.operationGroup = ""
+									r.pathPattern = "/notify/subscribe"
+									r.args = args
+									r.count = 0
+									return r, true
+								default:
+									return
+								}
+							}
+
+						case 'p': // Prefix: "ptions/"
+
+							if l := len("ptions/"); len(elem) >= l && elem[0:l] == "ptions/" {
+								elem = elem[l:]
+							} else {
+								break
+							}
+
+							// Param: "telegram_user_id"
+							// Leaf parameter, slashes are prohibited
+							idx := strings.IndexByte(elem, '/')
+							if idx >= 0 {
+								break
+							}
+							args[0] = elem
+							elem = ""
+
+							if len(elem) == 0 {
+								// Leaf node.
+								switch method {
+								case "GET":
+									r.name = NotifyListSubscriptionsOperation
+									r.summary = "List a Telegram user's subscriptions."
+									r.operationID = "notifyListSubscriptions"
+									r.operationGroup = ""
+									r.pathPattern = "/notify/subscriptions/{telegram_user_id}"
+									r.args = args
+									r.count = 1
+									return r, true
+								default:
+									return
+								}
+							}
+
+						}
+
+					case 'u': // Prefix: "unsubscribe"
+
+						if l := len("unsubscribe"); len(elem) >= l && elem[0:l] == "unsubscribe" {
+							elem = elem[l:]
+						} else {
+							break
+						}
+
+						if len(elem) == 0 {
+							// Leaf node.
+							switch method {
+							case "POST":
+								r.name = NotifyUnsubscribeOperation
+								r.summary = "Unsubscribe a Telegram user from a source."
+								r.operationID = "notifyUnsubscribe"
+								r.operationGroup = ""
+								r.pathPattern = "/notify/unsubscribe"
+								r.args = args
+								r.count = 0
+								return r, true
+							default:
+								return
+							}
+						}
+
+					}
+
 				}
 
 			case 's': // Prefix: "search"

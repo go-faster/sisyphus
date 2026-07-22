@@ -8,6 +8,12 @@ import (
 
 // Handler handles operations described by OpenAPI v3 specification.
 type Handler interface {
+	// AckNotification implements ackNotification operation.
+	//
+	// Record a notification delivery attempt's outcome.
+	//
+	// POST /notifications/{id}/ack
+	AckNotification(ctx context.Context, req *NotificationAckRequest, params AckNotificationParams) (*Ack, error)
 	// Context implements context operation.
 	//
 	// Answer a support question from retrieved context (plan §14).
@@ -32,6 +38,42 @@ type Handler interface {
 	//
 	// GET /health
 	GetHealth(ctx context.Context) (*Health, error)
+	// GetPendingNotifications implements getPendingNotifications operation.
+	//
+	// List pending Telegram-channel notifications, oldest first, for a sink to drain and deliver.
+	//
+	// GET /notifications/pending
+	GetPendingNotifications(ctx context.Context, params GetPendingNotificationsParams) (*PendingNotificationsResponse, error)
+	// NotifyEnroll implements notifyEnroll operation.
+	//
+	// Upsert a NotifyUser's Telegram identity (access hash), called on first bot contact.
+	//
+	// POST /notify/enroll
+	NotifyEnroll(ctx context.Context, req *NotifyEnrollRequest) (*Ack, error)
+	// NotifyLink implements notifyLink operation.
+	//
+	// Link a Telegram user's GitLab/Jira identity.
+	//
+	// POST /notify/link
+	NotifyLink(ctx context.Context, req *NotifyLinkRequest) (*Ack, error)
+	// NotifyListSubscriptions implements notifyListSubscriptions operation.
+	//
+	// List a Telegram user's subscriptions.
+	//
+	// GET /notify/subscriptions/{telegram_user_id}
+	NotifyListSubscriptions(ctx context.Context, params NotifyListSubscriptionsParams) (*NotifySubscriptionsResponse, error)
+	// NotifySubscribe implements notifySubscribe operation.
+	//
+	// Subscribe a Telegram user to a source's event types.
+	//
+	// POST /notify/subscribe
+	NotifySubscribe(ctx context.Context, req *NotifySubscribeRequest) (*Ack, error)
+	// NotifyUnsubscribe implements notifyUnsubscribe operation.
+	//
+	// Unsubscribe a Telegram user from a source.
+	//
+	// POST /notify/unsubscribe
+	NotifyUnsubscribe(ctx context.Context, req *NotifyUnsubscribeRequest) (*Ack, error)
 	// Search implements search operation.
 	//
 	// Hybrid (FTS + vector) chunk search.

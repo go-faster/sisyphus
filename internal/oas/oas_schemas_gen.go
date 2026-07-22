@@ -5,11 +5,27 @@ package oas
 import (
 	"fmt"
 
+	"github.com/go-faster/errors"
 	"github.com/google/uuid"
 )
 
 func (s *ErrorStatusCode) Error() string {
 	return fmt.Sprintf("code %d: %+v", s.StatusCode, s.Response)
+}
+
+// Ref: #/components/schemas/Ack
+type Ack struct {
+	Ok bool `json:"ok"`
+}
+
+// GetOk returns the value of Ok.
+func (s *Ack) GetOk() bool {
+	return s.Ok
+}
+
+// SetOk sets the value of Ok.
+func (s *Ack) SetOk(val bool) {
+	s.Ok = val
 }
 
 type BearerAuth struct {
@@ -584,6 +600,392 @@ func (s *Link) SetURL(val string) {
 	s.URL = val
 }
 
+// Ref: #/components/schemas/NotificationAckRequest
+type NotificationAckRequest struct {
+	// Delivered or error.
+	Status NotificationAckRequestStatus `json:"status"`
+	// Delivery failure detail (required when status=error).
+	Error OptString `json:"error"`
+}
+
+// GetStatus returns the value of Status.
+func (s *NotificationAckRequest) GetStatus() NotificationAckRequestStatus {
+	return s.Status
+}
+
+// GetError returns the value of Error.
+func (s *NotificationAckRequest) GetError() OptString {
+	return s.Error
+}
+
+// SetStatus sets the value of Status.
+func (s *NotificationAckRequest) SetStatus(val NotificationAckRequestStatus) {
+	s.Status = val
+}
+
+// SetError sets the value of Error.
+func (s *NotificationAckRequest) SetError(val OptString) {
+	s.Error = val
+}
+
+// Delivered or error.
+type NotificationAckRequestStatus string
+
+const (
+	NotificationAckRequestStatusDelivered NotificationAckRequestStatus = "delivered"
+	NotificationAckRequestStatusError     NotificationAckRequestStatus = "error"
+)
+
+// AllValues returns all NotificationAckRequestStatus values.
+func (NotificationAckRequestStatus) AllValues() []NotificationAckRequestStatus {
+	return []NotificationAckRequestStatus{
+		NotificationAckRequestStatusDelivered,
+		NotificationAckRequestStatusError,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s NotificationAckRequestStatus) MarshalText() ([]byte, error) {
+	switch s {
+	case NotificationAckRequestStatusDelivered:
+		return []byte(s), nil
+	case NotificationAckRequestStatusError:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *NotificationAckRequestStatus) UnmarshalText(data []byte) error {
+	switch NotificationAckRequestStatus(data) {
+	case NotificationAckRequestStatusDelivered:
+		*s = NotificationAckRequestStatusDelivered
+		return nil
+	case NotificationAckRequestStatusError:
+		*s = NotificationAckRequestStatusError
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/NotifyEnrollRequest
+type NotifyEnrollRequest struct {
+	TelegramUserID     int64 `json:"telegram_user_id"`
+	TelegramAccessHash int64 `json:"telegram_access_hash"`
+}
+
+// GetTelegramUserID returns the value of TelegramUserID.
+func (s *NotifyEnrollRequest) GetTelegramUserID() int64 {
+	return s.TelegramUserID
+}
+
+// GetTelegramAccessHash returns the value of TelegramAccessHash.
+func (s *NotifyEnrollRequest) GetTelegramAccessHash() int64 {
+	return s.TelegramAccessHash
+}
+
+// SetTelegramUserID sets the value of TelegramUserID.
+func (s *NotifyEnrollRequest) SetTelegramUserID(val int64) {
+	s.TelegramUserID = val
+}
+
+// SetTelegramAccessHash sets the value of TelegramAccessHash.
+func (s *NotifyEnrollRequest) SetTelegramAccessHash(val int64) {
+	s.TelegramAccessHash = val
+}
+
+// Ref: #/components/schemas/NotifyLinkRequest
+type NotifyLinkRequest struct {
+	TelegramUserID int64 `json:"telegram_user_id"`
+	// Gitlab or jira.
+	Source NotifyLinkRequestSource `json:"source"`
+	// GitLab username, or Jira accountId.
+	Identity string `json:"identity"`
+	// Optional human-readable name (Jira only).
+	DisplayName OptString `json:"display_name"`
+}
+
+// GetTelegramUserID returns the value of TelegramUserID.
+func (s *NotifyLinkRequest) GetTelegramUserID() int64 {
+	return s.TelegramUserID
+}
+
+// GetSource returns the value of Source.
+func (s *NotifyLinkRequest) GetSource() NotifyLinkRequestSource {
+	return s.Source
+}
+
+// GetIdentity returns the value of Identity.
+func (s *NotifyLinkRequest) GetIdentity() string {
+	return s.Identity
+}
+
+// GetDisplayName returns the value of DisplayName.
+func (s *NotifyLinkRequest) GetDisplayName() OptString {
+	return s.DisplayName
+}
+
+// SetTelegramUserID sets the value of TelegramUserID.
+func (s *NotifyLinkRequest) SetTelegramUserID(val int64) {
+	s.TelegramUserID = val
+}
+
+// SetSource sets the value of Source.
+func (s *NotifyLinkRequest) SetSource(val NotifyLinkRequestSource) {
+	s.Source = val
+}
+
+// SetIdentity sets the value of Identity.
+func (s *NotifyLinkRequest) SetIdentity(val string) {
+	s.Identity = val
+}
+
+// SetDisplayName sets the value of DisplayName.
+func (s *NotifyLinkRequest) SetDisplayName(val OptString) {
+	s.DisplayName = val
+}
+
+// Gitlab or jira.
+type NotifyLinkRequestSource string
+
+const (
+	NotifyLinkRequestSourceGitlab NotifyLinkRequestSource = "gitlab"
+	NotifyLinkRequestSourceJira   NotifyLinkRequestSource = "jira"
+)
+
+// AllValues returns all NotifyLinkRequestSource values.
+func (NotifyLinkRequestSource) AllValues() []NotifyLinkRequestSource {
+	return []NotifyLinkRequestSource{
+		NotifyLinkRequestSourceGitlab,
+		NotifyLinkRequestSourceJira,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s NotifyLinkRequestSource) MarshalText() ([]byte, error) {
+	switch s {
+	case NotifyLinkRequestSourceGitlab:
+		return []byte(s), nil
+	case NotifyLinkRequestSourceJira:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *NotifyLinkRequestSource) UnmarshalText(data []byte) error {
+	switch NotifyLinkRequestSource(data) {
+	case NotifyLinkRequestSourceGitlab:
+		*s = NotifyLinkRequestSourceGitlab
+		return nil
+	case NotifyLinkRequestSourceJira:
+		*s = NotifyLinkRequestSourceJira
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/NotifySubscribeRequest
+type NotifySubscribeRequest struct {
+	TelegramUserID int64                        `json:"telegram_user_id"`
+	Source         NotifySubscribeRequestSource `json:"source"`
+	EventTypes     []string                     `json:"event_types"`
+}
+
+// GetTelegramUserID returns the value of TelegramUserID.
+func (s *NotifySubscribeRequest) GetTelegramUserID() int64 {
+	return s.TelegramUserID
+}
+
+// GetSource returns the value of Source.
+func (s *NotifySubscribeRequest) GetSource() NotifySubscribeRequestSource {
+	return s.Source
+}
+
+// GetEventTypes returns the value of EventTypes.
+func (s *NotifySubscribeRequest) GetEventTypes() []string {
+	return s.EventTypes
+}
+
+// SetTelegramUserID sets the value of TelegramUserID.
+func (s *NotifySubscribeRequest) SetTelegramUserID(val int64) {
+	s.TelegramUserID = val
+}
+
+// SetSource sets the value of Source.
+func (s *NotifySubscribeRequest) SetSource(val NotifySubscribeRequestSource) {
+	s.Source = val
+}
+
+// SetEventTypes sets the value of EventTypes.
+func (s *NotifySubscribeRequest) SetEventTypes(val []string) {
+	s.EventTypes = val
+}
+
+type NotifySubscribeRequestSource string
+
+const (
+	NotifySubscribeRequestSourceGitlab NotifySubscribeRequestSource = "gitlab"
+	NotifySubscribeRequestSourceJira   NotifySubscribeRequestSource = "jira"
+)
+
+// AllValues returns all NotifySubscribeRequestSource values.
+func (NotifySubscribeRequestSource) AllValues() []NotifySubscribeRequestSource {
+	return []NotifySubscribeRequestSource{
+		NotifySubscribeRequestSourceGitlab,
+		NotifySubscribeRequestSourceJira,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s NotifySubscribeRequestSource) MarshalText() ([]byte, error) {
+	switch s {
+	case NotifySubscribeRequestSourceGitlab:
+		return []byte(s), nil
+	case NotifySubscribeRequestSourceJira:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *NotifySubscribeRequestSource) UnmarshalText(data []byte) error {
+	switch NotifySubscribeRequestSource(data) {
+	case NotifySubscribeRequestSourceGitlab:
+		*s = NotifySubscribeRequestSourceGitlab
+		return nil
+	case NotifySubscribeRequestSourceJira:
+		*s = NotifySubscribeRequestSourceJira
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/NotifySubscription
+type NotifySubscription struct {
+	Source     string   `json:"source"`
+	EventTypes []string `json:"event_types"`
+	Enabled    bool     `json:"enabled"`
+}
+
+// GetSource returns the value of Source.
+func (s *NotifySubscription) GetSource() string {
+	return s.Source
+}
+
+// GetEventTypes returns the value of EventTypes.
+func (s *NotifySubscription) GetEventTypes() []string {
+	return s.EventTypes
+}
+
+// GetEnabled returns the value of Enabled.
+func (s *NotifySubscription) GetEnabled() bool {
+	return s.Enabled
+}
+
+// SetSource sets the value of Source.
+func (s *NotifySubscription) SetSource(val string) {
+	s.Source = val
+}
+
+// SetEventTypes sets the value of EventTypes.
+func (s *NotifySubscription) SetEventTypes(val []string) {
+	s.EventTypes = val
+}
+
+// SetEnabled sets the value of Enabled.
+func (s *NotifySubscription) SetEnabled(val bool) {
+	s.Enabled = val
+}
+
+// Ref: #/components/schemas/NotifySubscriptionsResponse
+type NotifySubscriptionsResponse struct {
+	Subscriptions []NotifySubscription `json:"subscriptions"`
+}
+
+// GetSubscriptions returns the value of Subscriptions.
+func (s *NotifySubscriptionsResponse) GetSubscriptions() []NotifySubscription {
+	return s.Subscriptions
+}
+
+// SetSubscriptions sets the value of Subscriptions.
+func (s *NotifySubscriptionsResponse) SetSubscriptions(val []NotifySubscription) {
+	s.Subscriptions = val
+}
+
+// Ref: #/components/schemas/NotifyUnsubscribeRequest
+type NotifyUnsubscribeRequest struct {
+	TelegramUserID int64                          `json:"telegram_user_id"`
+	Source         NotifyUnsubscribeRequestSource `json:"source"`
+}
+
+// GetTelegramUserID returns the value of TelegramUserID.
+func (s *NotifyUnsubscribeRequest) GetTelegramUserID() int64 {
+	return s.TelegramUserID
+}
+
+// GetSource returns the value of Source.
+func (s *NotifyUnsubscribeRequest) GetSource() NotifyUnsubscribeRequestSource {
+	return s.Source
+}
+
+// SetTelegramUserID sets the value of TelegramUserID.
+func (s *NotifyUnsubscribeRequest) SetTelegramUserID(val int64) {
+	s.TelegramUserID = val
+}
+
+// SetSource sets the value of Source.
+func (s *NotifyUnsubscribeRequest) SetSource(val NotifyUnsubscribeRequestSource) {
+	s.Source = val
+}
+
+type NotifyUnsubscribeRequestSource string
+
+const (
+	NotifyUnsubscribeRequestSourceGitlab NotifyUnsubscribeRequestSource = "gitlab"
+	NotifyUnsubscribeRequestSourceJira   NotifyUnsubscribeRequestSource = "jira"
+)
+
+// AllValues returns all NotifyUnsubscribeRequestSource values.
+func (NotifyUnsubscribeRequestSource) AllValues() []NotifyUnsubscribeRequestSource {
+	return []NotifyUnsubscribeRequestSource{
+		NotifyUnsubscribeRequestSourceGitlab,
+		NotifyUnsubscribeRequestSourceJira,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s NotifyUnsubscribeRequestSource) MarshalText() ([]byte, error) {
+	switch s {
+	case NotifyUnsubscribeRequestSourceGitlab:
+		return []byte(s), nil
+	case NotifyUnsubscribeRequestSourceJira:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *NotifyUnsubscribeRequestSource) UnmarshalText(data []byte) error {
+	switch NotifyUnsubscribeRequestSource(data) {
+	case NotifyUnsubscribeRequestSourceGitlab:
+		*s = NotifyUnsubscribeRequestSourceGitlab
+		return nil
+	case NotifyUnsubscribeRequestSourceJira:
+		*s = NotifyUnsubscribeRequestSourceJira
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
 // NewOptBool returns new OptBool with value set to v.
 func NewOptBool(v bool) OptBool {
 	return OptBool{
@@ -1042,6 +1444,91 @@ func (o OptString) Or(d string) string {
 		return v
 	}
 	return d
+}
+
+// Ref: #/components/schemas/PendingNotification
+type PendingNotification struct {
+	ID                 uuid.UUID `json:"id"`
+	TelegramUserID     int64     `json:"telegram_user_id"`
+	TelegramAccessHash int64     `json:"telegram_access_hash"`
+	Text               string    `json:"text"`
+	URL                OptString `json:"url"`
+	Attempts           int       `json:"attempts"`
+}
+
+// GetID returns the value of ID.
+func (s *PendingNotification) GetID() uuid.UUID {
+	return s.ID
+}
+
+// GetTelegramUserID returns the value of TelegramUserID.
+func (s *PendingNotification) GetTelegramUserID() int64 {
+	return s.TelegramUserID
+}
+
+// GetTelegramAccessHash returns the value of TelegramAccessHash.
+func (s *PendingNotification) GetTelegramAccessHash() int64 {
+	return s.TelegramAccessHash
+}
+
+// GetText returns the value of Text.
+func (s *PendingNotification) GetText() string {
+	return s.Text
+}
+
+// GetURL returns the value of URL.
+func (s *PendingNotification) GetURL() OptString {
+	return s.URL
+}
+
+// GetAttempts returns the value of Attempts.
+func (s *PendingNotification) GetAttempts() int {
+	return s.Attempts
+}
+
+// SetID sets the value of ID.
+func (s *PendingNotification) SetID(val uuid.UUID) {
+	s.ID = val
+}
+
+// SetTelegramUserID sets the value of TelegramUserID.
+func (s *PendingNotification) SetTelegramUserID(val int64) {
+	s.TelegramUserID = val
+}
+
+// SetTelegramAccessHash sets the value of TelegramAccessHash.
+func (s *PendingNotification) SetTelegramAccessHash(val int64) {
+	s.TelegramAccessHash = val
+}
+
+// SetText sets the value of Text.
+func (s *PendingNotification) SetText(val string) {
+	s.Text = val
+}
+
+// SetURL sets the value of URL.
+func (s *PendingNotification) SetURL(val OptString) {
+	s.URL = val
+}
+
+// SetAttempts sets the value of Attempts.
+func (s *PendingNotification) SetAttempts(val int) {
+	s.Attempts = val
+}
+
+// Ref: #/components/schemas/PendingNotificationsResponse
+type PendingNotificationsResponse struct {
+	Notifications []PendingNotification `json:"notifications"`
+}
+
+// GetNotifications returns the value of Notifications.
+func (s *PendingNotificationsResponse) GetNotifications() []PendingNotification {
+	return s.Notifications
+}
+
+// SetNotifications sets the value of Notifications.
+func (s *PendingNotificationsResponse) SetNotifications(val []PendingNotification) {
+	s.Notifications = val
 }
 
 // Ref: #/components/schemas/SearchRequest
