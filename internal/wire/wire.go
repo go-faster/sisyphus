@@ -321,7 +321,7 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 				gatewayCleanup = func() { _ = gatewayClient.Close() }
 			}
 		}
-		toolSource := answer.NewMultiToolSource(knowledgeTools, gatewayTools)
+		toolSource := answer.NewMultiToolSource(lg, knowledgeTools, gatewayTools)
 		answerer = answer.NewAgenticAnswerer(orClient, toolSource, cfg.OpenRouter.Model, answer.AgenticOptions{
 			Logger:         lg,
 			Retriever:      retr,

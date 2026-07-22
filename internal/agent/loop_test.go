@@ -152,6 +152,29 @@ func TestLoop_Run_ToolError(t *testing.T) {
 	require.Equal(t, []string{"error_tool"}, ts.calls)
 }
 
+// TestLoop_Run_ToolsListFailure verifies a toolSource.Tools failure (e.g. the
+// MCP gateway being briefly unreachable) does not fail the whole run: the
+// loop still proceeds — with just the terminal tool — instead of erroring
+// out before it even starts. Applies to every agent (Engine[T] is the one
+// choke point shared by /investigate's Loop and /context's ContextLoop).
+func TestLoop_Run_ToolsListFailure(t *testing.T) {
+	llm := &fakeLLM{
+		responses: []openai.ChatCompletionMessage{
+			{
+				ToolCalls: []openai.ChatCompletionMessageToolCallUnion{
+					submitReportCall("call_1", Report{Problem: "p", Verdict: VerdictNeedsInvestigation, Findings: "tools were unavailable"}),
+				},
+			},
+		},
+	}
+	ts := &fakeToolSource{err: errors.New("mcp gateway unreachable")}
+
+	loop := NewLoop(llm, ts, "test-model", 5, zaptest.NewLogger(t))
+	res, err := loop.Run(context.Background(), "system", "user")
+	require.NoError(t, err)
+	require.Equal(t, "tools were unavailable", res.Report.Findings)
+}
+
 func TestLoop_Run_NoToolCalls(t *testing.T) {
 	llm := &fakeLLM{
 		responses: []openai.ChatCompletionMessage{
