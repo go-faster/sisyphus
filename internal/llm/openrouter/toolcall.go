@@ -45,7 +45,7 @@ func (c *Client) CompleteWithTools(
 		req.Tools = tools
 	}
 
-	resp, err := c.oc.Chat.Completions.New(ctx, req)
+	resp, err := c.newChatCompletion(ctx, req)
 	if err != nil {
 		return openai.ChatCompletionMessage{}, agent.Usage{}, errors.Wrap(err, "chat completion with tools")
 	}

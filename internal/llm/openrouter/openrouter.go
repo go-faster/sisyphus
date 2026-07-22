@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cenkalti/backoff/v5"
 	"github.com/go-faster/errors"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
@@ -22,9 +23,11 @@ const defaultBaseURL = "https://openrouter.ai/api/v1"
 
 // Client wraps the openai-go SDK client pointed at OpenRouter.
 type Client struct {
-	oc     openai.Client
-	tracer trace.Tracer
-	m      *llmMetrics
+	oc           openai.Client
+	tracer       trace.Tracer
+	m            *llmMetrics
+	maxRetries   int
+	retryBackoff time.Duration
 }
 
 // Options configures a Client.
@@ -35,6 +38,14 @@ type Options struct {
 	HTTPClient     *http.Client
 	TracerProvider trace.TracerProvider
 	MeterProvider  metric.MeterProvider
+	// MaxRetries is the number of extra attempts for transient upstream errors
+	// that OpenRouter returns inside an HTTP 200 body (see UpstreamError). The
+	// openai-go SDK only retries non-2xx responses itself, so these would
+	// otherwise never be retried. Default 2.
+	MaxRetries int
+	// RetryBackoff is the base delay between those retries; it doubles each
+	// attempt. Default 500ms.
+	RetryBackoff time.Duration
 }
 
 func (opts *Options) setDefaults() {
@@ -46,6 +57,12 @@ func (opts *Options) setDefaults() {
 	}
 	if opts.MeterProvider == nil {
 		opts.MeterProvider = otel.GetMeterProvider()
+	}
+	if opts.MaxRetries == 0 {
+		opts.MaxRetries = 2
+	}
+	if opts.RetryBackoff == 0 {
+		opts.RetryBackoff = 500 * time.Millisecond
 	}
 }
 
@@ -62,10 +79,33 @@ func New(apiKey string, opts Options) *Client {
 	}
 	m, _ := newLLMMetrics(opts.MeterProvider)
 	return &Client{
-		oc:     openai.NewClient(ropts...),
-		tracer: opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/llm/openrouter"),
-		m:      m,
+		oc:           openai.NewClient(ropts...),
+		tracer:       opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/llm/openrouter"),
+		m:            m,
+		maxRetries:   opts.MaxRetries,
+		retryBackoff: opts.RetryBackoff,
 	}
+}
+
+// newChatCompletion sends a chat-completion request and retries transient
+// upstream errors that OpenRouter returns inside an HTTP 200 body (see
+// UpstreamError). Transport/non-2xx errors are already retried by the openai-go
+// SDK, so those are marked permanent here to avoid stacking a second retry
+// layer on top.
+func (c *Client) newChatCompletion(ctx context.Context, params openai.ChatCompletionNewParams) (*openai.ChatCompletion, error) {
+	bo := backoff.NewExponentialBackOff()
+	bo.InitialInterval = c.retryBackoff
+	traceOpts := traceLinkOptions(ctx)
+	return backoff.Retry(ctx, func() (*openai.ChatCompletion, error) {
+		resp, err := c.oc.Chat.Completions.New(ctx, params, traceOpts...)
+		if err != nil {
+			return nil, backoff.Permanent(err)
+		}
+		if uerr := upstreamError(resp.RawJSON()); uerr != nil {
+			return nil, uerr
+		}
+		return resp, nil
+	}, backoff.WithBackOff(bo), backoff.WithMaxTries(uint(c.maxRetries)+1))
 }
 
 type llmMetrics struct {
@@ -157,7 +197,7 @@ func (c *Client) complete(ctx context.Context, model string, messages []openai.C
 		span.End()
 	}()
 
-	resp, err := c.oc.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+	resp, err := c.newChatCompletion(ctx, openai.ChatCompletionNewParams{
 		Model:    model,
 		Messages: messages,
 	})
