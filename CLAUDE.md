@@ -290,7 +290,9 @@ query that would also drop the caller's service/source-tier filters.
 
 ## Codegen
 
-- ent: `go generate ./internal/ent/...` (runs `ent generate`).
+- ent: `go generate ./internal/ent/...` (runs `ent generate`). Renaming a schema type: delete
+  the old generated files first (`internal/ent/<oldname>*.go`, `internal/ent/<oldname>/`) —
+  generate errors trying to open the removed schema file otherwise.
 - ogen: `go generate ./internal/oas/...`.
 - Commit generated code in a **separate commit** from the schema/spec that produced it.
 
@@ -327,14 +329,23 @@ Migration files must not contain more than the forward migration: the runner exe
 entire file as one blob with no down/rollback support, and stray SQL after a `-- +goose
 Down`-style comment will actually execute.
 
+A migration not yet merged/deployed: squash it (delete the migration file(s), restore the
+prior `atlas.sum`, rerun `make migrate-diff`) rather than layering a rename/follow-up
+migration on top — avoids a permanently dangling table in every future environment's history.
+
 ## Build / test
 
+- Run `go generate`, `go build`/`vet`/`test`, and `golangci-lint` outside the sandbox — the
+  module/build cache isn't sandbox-writable and these fail with a read-only-filesystem error
+  otherwise.
 - Format: `golangci-lint fmt ./...` (do not hand-format).
-- Lint: `golangci-lint run --fix ./...` (`--fix` can automatically fix some issues).
+- Lint: `golangci-lint run --fix ./...` (`--fix` can automatically fix some issues). `dogsled`
+  flags 3+ blank identifiers in any statement, not just `:=` declarations — discard extra
+  return values with separate `_ = x` statements, not `_, _, _ = a, b, c`.
 - Test: `make test` (or `make test_fast` = `go test ./...`).
 - Tests must be hermetic, fast (no real sleeps), non-flaky, cross-platform. DB-backed tests use testcontainers or are skipped when no DB is available — convention: skip when `SISYPHUS_TEST_DB` (postgres DSN) is unset. That name is the ONLY gate: a suite gated on anything else runs nowhere.
 - CI's `test-db` job (`.github/workflows/x.yml`) sets `SISYPHUS_TEST_DB` against a Postgres service and runs the whole suite with `-p 1`. The shared `test` job cannot: its matrix spans macOS/Windows and the reusable workflow takes no service container. So a DB-backed test is only really covered if it skips on that one variable.
-- The DB-backed suites share one database, so a suite must delete only its own fixtures on cleanup (scope by source prefix or table). Wiping a table deletes another package's rows mid-test.
+- The DB-backed suites share one database, so a suite must delete only its own fixtures on cleanup (scope by source prefix or table). Wiping a table deletes another package's rows mid-test. Packages also run concurrently, so literal fixture values (usernames, keys) can collide across suites on a shared unique column — use suite-distinct values, not just cleanup scoping.
 - Locally: `docker run --rm -e POSTGRES_PASSWORD=test -e POSTGRES_USER=test -e POSTGRES_DB=test -p 5433:5432 postgres:17-alpine`, then `SISYPHUS_TEST_DB="postgres://test:test@127.0.0.1:5433/test?sslmode=disable" go test ./...`.
 
 ## Ingestion
