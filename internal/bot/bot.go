@@ -4,7 +4,9 @@ package bot
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -527,19 +529,29 @@ func contextFailureMessage(err error) string {
 	return "Sorry, something went wrong handling that request."
 }
 
+// investigateTraceIDPattern matches the trace_id cmd/ssagent's runJob embeds
+// in a failed job's error message (see its "trace_id=" wrap) — the OTel
+// trace ID itself doesn't survive the ssagent -> ssbot HTTP/JSON boundary any
+// other way, only the rendered error string does.
+var investigateTraceIDPattern = regexp.MustCompile(`trace_id=([0-9a-f]{32})`)
+
 // investigateFailureMessage picks a user-facing message for a failed
 // /investigate request, distinguishing a timeout and iteration exhaustion
 // from other failures instead of one generic "investigation failed" for
-// every cause.
+// every cause. Appends the trace ID when the error carries one, so a failure
+// can still be looked up.
 func investigateFailureMessage(err error) string {
+	msg := "Sorry, investigation failed."
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
-		return "Sorry, the investigation timed out before reaching a conclusion."
+		msg = "Sorry, the investigation timed out before reaching a conclusion."
 	case errors.Is(err, agent.ErrMaxIterations):
-		return "Sorry, the investigation used too many steps without reaching a conclusion. Try narrowing the question."
-	default:
-		return "Sorry, investigation failed."
+		msg = "Sorry, the investigation used too many steps without reaching a conclusion. Try narrowing the question."
 	}
+	if m := investigateTraceIDPattern.FindStringSubmatch(err.Error()); m != nil {
+		msg += fmt.Sprintf("\ntrace_id: %s", m[1])
+	}
+	return msg
 }
 
 func (b *Bot) handleInvestigate(ctx context.Context, description string) (agent.Report, error) {

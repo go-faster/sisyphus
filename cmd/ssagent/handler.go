@@ -142,6 +142,14 @@ func runJob(ctx context.Context, store jobStore, inv agent.Investigator, jobID u
 		status = "error"
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+		// Errors don't carry the OTel trace ID across the ssagent -> ssbot
+		// HTTP/JSON boundary (only job.Error's rendered string does, same as
+		// classifyJobError below), so it's embedded in the message text here
+		// and parsed back out client-side. Lets a failed investigation still
+		// point an operator at the right trace.
+		if sc := span.SpanContext(); sc.IsValid() {
+			err = errors.Wrapf(err, "trace_id=%s", sc.TraceID().String())
+		}
 		logger.Error("investigation failed", zap.Error(err), zap.String("job_id", jobID.String()))
 		if failErr := store.Fail(context.WithoutCancel(ctx), jobID, err); failErr != nil {
 			logger.Error("persist job failure", zap.Error(failErr), zap.String("job_id", jobID.String()))
