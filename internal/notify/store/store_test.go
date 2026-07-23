@@ -4,18 +4,45 @@ import (
 	"context"
 	stdsql "database/sql"
 	"os"
+	"sync"
 	"testing"
+	"time"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/go-faster/errors"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/go-faster/sisyphus/internal/ent"
+	"github.com/go-faster/sisyphus/internal/ent/queuejob"
 	"github.com/go-faster/sisyphus/internal/notify"
 )
+
+// clock is an injectable time source, so lease and backoff behavior is
+// testable without a real sleep.
+type clock struct {
+	mu sync.Mutex
+	t  time.Time
+}
+
+func newClock() *clock {
+	return &clock{t: time.Date(2026, 7, 23, 12, 0, 0, 0, time.UTC)}
+}
+
+func (c *clock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.t
+}
+
+func (c *clock) Advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = c.t.Add(d)
+}
 
 func openTestDB(t *testing.T) *ent.Client {
 	t.Helper()
@@ -33,6 +60,9 @@ func openTestDB(t *testing.T) *ent.Client {
 	require.NoError(t, client.Schema.Create(ctx))
 	t.Cleanup(func() {
 		ctx := context.Background()
+		// Scoped to this package's queues: the shared test database carries
+		// other suites' jobs too.
+		_, _ = client.QueueJob.Delete().Where(queuejob.QueueHasPrefix("notify.")).Exec(ctx)
 		_, _ = client.Notification.Delete().Exec(ctx)
 		_, _ = client.NotifySubscription.Delete().Exec(ctx)
 		_, _ = client.UserToken.Delete().Exec(ctx)
@@ -42,7 +72,7 @@ func openTestDB(t *testing.T) *ent.Client {
 }
 
 func TestStore_EnrollLinkSubscribeRoundTrip(t *testing.T) {
-	s := New(openTestDB(t))
+	s := New(openTestDB(t), Options{})
 	ctx := t.Context()
 
 	const telegramUserID int64 = 1001
@@ -83,7 +113,7 @@ func TestStore_EnrollLinkSubscribeRoundTrip(t *testing.T) {
 }
 
 func TestStore_SubscribersMatchesLinkedIdentity(t *testing.T) {
-	s := New(openTestDB(t))
+	s := New(openTestDB(t), Options{})
 	ctx := t.Context()
 
 	const telegramUserID int64 = 2002
@@ -110,7 +140,7 @@ func TestStore_SubscribersMatchesLinkedIdentity(t *testing.T) {
 }
 
 func TestStore_EnqueueDedupIsIdempotent(t *testing.T) {
-	s := New(openTestDB(t))
+	s := New(openTestDB(t), Options{})
 	ctx := t.Context()
 
 	const telegramUserID int64 = 3003
@@ -143,7 +173,9 @@ func TestStore_EnqueueDedupIsIdempotent(t *testing.T) {
 }
 
 func TestStore_AckDeliveredAndErrorTransitions(t *testing.T) {
-	s := New(openTestDB(t))
+	c := newClock()
+	client := openTestDB(t)
+	s := New(client, Options{Now: c.Now})
 	ctx := t.Context()
 
 	const telegramUserID int64 = 4004
@@ -169,23 +201,83 @@ func TestStore_AckDeliveredAndErrorTransitions(t *testing.T) {
 	require.Len(t, pending, 1)
 	require.NoError(t, s.Ack(ctx, pending[0].ID, nil))
 
+	delivered, err := client.Notification.Get(ctx, pending[0].ID)
+	require.NoError(t, err)
+	require.Equal(t, StatusDelivered, delivered.Status)
+	require.NotNil(t, delivered.DeliveredAt)
+
 	pending, err = s.Pending(ctx, notify.ChannelTelegram, 10)
 	require.NoError(t, err)
 	require.Empty(t, pending)
 
-	// Failed repeatedly until MaxDeliveryAttempts, then no longer pending.
+	// Failed repeatedly until MaxDeliveryAttempts. Each attempt is a fresh
+	// claim, since a nacked delivery goes back to the queue rather than
+	// staying in the caller's hand.
 	_, err = s.Enqueue(ctx, notify.ChannelTelegram, target, mkNotification("issue-2"))
 	require.NoError(t, err)
-	pending, err = s.Pending(ctx, notify.ChannelTelegram, 10)
-	require.NoError(t, err)
-	require.Len(t, pending, 1)
-	id := pending[0].ID
 
-	for range MaxDeliveryAttempts {
+	var id uuid.UUID
+	for attempt := 1; attempt <= MaxDeliveryAttempts; attempt++ {
+		pending, err = s.Pending(ctx, notify.ChannelTelegram, 10)
+		require.NoError(t, err)
+		require.Len(t, pending, 1, "attempt %d", attempt)
+		require.Equal(t, attempt, pending[0].Attempts)
+		id = pending[0].ID
 		require.NoError(t, s.Ack(ctx, id, errors.New("delivery failed")))
+		// Past the retry backoff, so the next claim is not merely early.
+		c.Advance(time.Hour)
 	}
 
 	pending, err = s.Pending(ctx, notify.ChannelTelegram, 10)
 	require.NoError(t, err)
-	require.Empty(t, pending)
+	require.Empty(t, pending, "attempts exhausted")
+
+	failed, err := client.Notification.Get(ctx, id)
+	require.NoError(t, err)
+	require.Equal(t, StatusError, failed.Status)
+	require.Equal(t, MaxDeliveryAttempts, failed.Attempts)
+	require.NotNil(t, failed.Error)
+	require.Equal(t, "delivery failed", *failed.Error)
+}
+
+// TestStore_PendingLeasesExclusively is the property that lets a sink run
+// more than one replica: a claimed delivery is invisible to every other
+// drainer until its lease lapses.
+func TestStore_PendingLeasesExclusively(t *testing.T) {
+	c := newClock()
+	client := openTestDB(t)
+	s := New(client, Options{Now: c.Now, DeliveryLease: time.Minute})
+	other := New(client, Options{Now: c.Now, DeliveryLease: time.Minute})
+	ctx := t.Context()
+
+	const telegramUserID int64 = 5005
+	userID, err := s.EnrollTelegram(ctx, telegramUserID, 333)
+	require.NoError(t, err)
+
+	_, err = s.Enqueue(ctx, notify.ChannelTelegram,
+		notify.Target{TelegramUserID: telegramUserID, TelegramAccessHash: 333},
+		notify.Notification{
+			UserID:   userID,
+			Source:   notify.SourceGitLab,
+			Type:     notify.EventMRAssigned,
+			Text:     "only once",
+			DedupKey: notify.DedupKey(userID, "lease-test"),
+		})
+	require.NoError(t, err)
+
+	first, err := s.Pending(ctx, notify.ChannelTelegram, 10)
+	require.NoError(t, err)
+	require.Len(t, first, 1)
+
+	second, err := other.Pending(ctx, notify.ChannelTelegram, 10)
+	require.NoError(t, err)
+	require.Empty(t, second, "a leased delivery must not be handed to a second drainer")
+
+	// The first drainer dies without acking; the lease lapsing is what makes
+	// the delivery recoverable.
+	c.Advance(2 * time.Minute)
+	retry, err := other.Pending(ctx, notify.ChannelTelegram, 10)
+	require.NoError(t, err)
+	require.Len(t, retry, 1)
+	require.Equal(t, first[0].ID, retry[0].ID)
 }

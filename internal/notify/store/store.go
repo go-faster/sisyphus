@@ -1,7 +1,8 @@
 // Package store persists the notification system's users, subscriptions,
-// and outbox in Postgres via ent, mirroring internal/agentstore's
-// create-or-get idempotency pattern for the outbox (Enqueue) and its
-// status-lifecycle pattern for delivery (Pending/Ack).
+// and outbox in Postgres via ent. The outbox is a thin domain layer over
+// internal/queue (see outbox.go): the queue owns delivery — claims, retries,
+// leases — while the Notification row stays the operator-facing record of
+// what was sent and what happened to it.
 package store
 
 import (
@@ -13,33 +14,58 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/go-faster/sisyphus/internal/ent"
-	"github.com/go-faster/sisyphus/internal/ent/notification"
 	"github.com/go-faster/sisyphus/internal/ent/notifysubscription"
 	"github.com/go-faster/sisyphus/internal/ent/predicate"
 	"github.com/go-faster/sisyphus/internal/ent/user"
 	"github.com/go-faster/sisyphus/internal/notify"
+	"github.com/go-faster/sisyphus/internal/queue"
 )
 
-// MaxDeliveryAttempts caps how many times ssbot may retry delivering the
-// same outbox row before Ack gives up and leaves it in StatusError for
-// operator inspection, instead of retrying forever.
-const MaxDeliveryAttempts = 5
+// Options configures a [Store].
+type Options struct {
+	// DeliveryLease is how long a claimed delivery is held before another
+	// sink may take it. It must exceed a sink's slowest send, or the same
+	// notification can go out twice.
+	DeliveryLease time.Duration
+	// Owner identifies this process in claimed rows, for debugging.
+	Owner string
+	// Now is the clock, injectable for tests.
+	Now func() time.Time
+}
 
-// Delivery status values for the Notification outbox's status column.
-const (
-	StatusPending   = "pending"
-	StatusDelivered = "delivered"
-	StatusError     = "error"
-)
+func (opts *Options) setDefaults() {
+	if opts.DeliveryLease == 0 {
+		opts.DeliveryLease = 5 * time.Minute
+	}
+	if opts.Now == nil {
+		opts.Now = time.Now
+	}
+}
 
 // Store persists User/NotifySubscription/Notification rows via ent.
 type Store struct {
-	db *ent.Client
+	db   *ent.Client
+	opts Options
 }
 
 // New creates a Store backed by db.
-func New(db *ent.Client) *Store {
-	return &Store{db: db}
+func New(db *ent.Client, opts Options) *Store {
+	opts.setDefaults()
+	return &Store{db: db, opts: opts}
+}
+
+// queue returns the delivery queue for channel. Queues are constructed per
+// call rather than cached: a [queue.Postgres] is a handle, not a connection.
+func (s *Store) queue(channel notify.Channel) (*queue.Postgres, error) {
+	if channel == "" {
+		return nil, errors.New("empty notify channel")
+	}
+	return queue.NewPostgres(s.db, queueName(channel), queue.PostgresOptions{
+		MaxAttempts: MaxDeliveryAttempts,
+		Lease:       s.opts.DeliveryLease,
+		Owner:       s.opts.Owner,
+		Now:         s.opts.Now,
+	}), nil
 }
 
 // EnrollTelegram upserts a User row for telegramUserID, persisting its
@@ -260,107 +286,4 @@ func (s *Store) Subscribers(ctx context.Context, source notify.Source, eventType
 
 func containsEventType(types []string, want notify.EventType) bool {
 	return slices.Contains(types, string(want))
-}
-
-// Enqueue implements notify.OutboxWriter. It writes a pending outbox row for
-// n.DedupKey; a repeated dedup key (the collector re-emitted an event
-// already notified) is a no-op — created is false and no error is returned,
-// matching internal/agentstore.Store.Submit's idempotency-key pattern.
-func (s *Store) Enqueue(ctx context.Context, channel notify.Channel, target notify.Target, n notify.Notification) (bool, error) {
-	create := s.db.Notification.Create().
-		SetDedupKey(n.DedupKey).
-		SetUserID(n.UserID).
-		SetChannel(string(channel)).
-		SetSource(string(n.Source)).
-		SetEventType(string(n.Type)).
-		SetText(n.Text).
-		SetURL(n.URL)
-	if channel == notify.ChannelTelegram {
-		create = create.
-			SetTelegramUserID(target.TelegramUserID).
-			SetTelegramAccessHash(target.TelegramAccessHash)
-	}
-
-	_, err := create.Save(ctx)
-	if err != nil {
-		if ent.IsConstraintError(err) {
-			return false, nil
-		}
-		return false, errors.Wrap(err, "enqueue notification")
-	}
-	return true, nil
-}
-
-// OutboxItem is one pending delivery, as drained by a sink's host process.
-type OutboxItem struct {
-	ID                 uuid.UUID
-	TelegramUserID     int64
-	TelegramAccessHash int64
-	Text               string
-	URL                string
-	Attempts           int
-}
-
-// Pending returns up to limit pending outbox rows for channel, oldest first.
-func (s *Store) Pending(ctx context.Context, channel notify.Channel, limit int) ([]OutboxItem, error) {
-	rows, err := s.db.Notification.Query().
-		Where(
-			notification.Channel(string(channel)),
-			notification.Status(StatusPending),
-		).
-		Order(notification.ByCreatedAt()).
-		Limit(limit).
-		All(ctx)
-	if err != nil {
-		return nil, errors.Wrap(err, "query pending notifications")
-	}
-
-	out := make([]OutboxItem, 0, len(rows))
-	for _, r := range rows {
-		var hash int64
-		if r.TelegramAccessHash != nil {
-			hash = *r.TelegramAccessHash
-		}
-		out = append(out, OutboxItem{
-			ID:                 r.ID,
-			TelegramUserID:     r.TelegramUserID,
-			TelegramAccessHash: hash,
-			Text:               r.Text,
-			URL:                r.URL,
-			Attempts:           r.Attempts,
-		})
-	}
-	return out, nil
-}
-
-// Ack records a delivery attempt's outcome. A successful delivery transitions
-// the row to StatusDelivered. A failure increments Attempts and, once
-// MaxDeliveryAttempts is reached, transitions to StatusError instead of
-// leaving the row pending forever for ssbot to keep retrying.
-func (s *Store) Ack(ctx context.Context, id uuid.UUID, deliverErr error) error {
-	if deliverErr == nil {
-		if err := s.db.Notification.UpdateOneID(id).
-			SetStatus(StatusDelivered).
-			SetDeliveredAt(time.Now()).
-			Exec(ctx); err != nil {
-			return errors.Wrap(err, "ack delivered notification")
-		}
-		return nil
-	}
-
-	row, err := s.db.Notification.Get(ctx, id)
-	if err != nil {
-		return errors.Wrap(err, "get notification")
-	}
-
-	upd := row.Update().
-		SetAttempts(row.Attempts + 1).
-		SetError(deliverErr.Error())
-	if row.Attempts+1 >= MaxDeliveryAttempts {
-		upd = upd.SetStatus(StatusError)
-	}
-	if err := upd.Exec(ctx); err != nil {
-		return errors.Wrap(err, "ack failed notification")
-	}
-	return nil
 }

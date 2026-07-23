@@ -28,6 +28,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/apiclient"
 	chunkgitlab "github.com/go-faster/sisyphus/internal/chunk/gitlab"
 	"github.com/go-faster/sisyphus/internal/ent"
+	"github.com/go-faster/sisyphus/internal/ent/queuejob"
 	ingestgitlab "github.com/go-faster/sisyphus/internal/ingest/gitlab"
 	"github.com/go-faster/sisyphus/internal/notify"
 	notifygitlab "github.com/go-faster/sisyphus/internal/notify/gitlab"
@@ -119,6 +120,7 @@ func openTestDB(t *testing.T) *ent.Client {
 	require.NoError(t, client.Schema.Create(ctx))
 	t.Cleanup(func() {
 		ctx := context.Background()
+		_, _ = client.QueueJob.Delete().Where(queuejob.QueueHasPrefix("notify.")).Exec(ctx)
 		_, _ = client.Notification.Delete().Exec(ctx)
 		_, _ = client.NotifySubscription.Delete().Exec(ctx)
 		_, _ = client.UserToken.Delete().Exec(ctx)
@@ -130,7 +132,7 @@ func openTestDB(t *testing.T) *ent.Client {
 func TestE2E_GitLabMRAssignment_ToTelegramDelivery(t *testing.T) {
 	db := openTestDB(t)
 	ctx := t.Context()
-	store := notifystore.New(db)
+	store := notifystore.New(db, notifystore.Options{})
 
 	const telegramUserID int64 = 900100100
 	const telegramAccessHash int64 = 555444333

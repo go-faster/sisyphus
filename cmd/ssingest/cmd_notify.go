@@ -58,7 +58,7 @@ func (d *ingestDeps) notifyRunner() notifyRunner {
 // for one source does not prevent the other source from still running.
 func (r notifyRunner) RunOnce(ctx context.Context) error {
 	lg := zctx.From(ctx).Named("notify")
-	store := notifystore.New(r.db)
+	store := notifystore.New(r.db, notifystore.Options{Owner: "ssingest"})
 	dispatcher := notify.NewDispatcher(store, store, notify.ChannelTelegram, nil)
 
 	var errs []error
