@@ -20,7 +20,7 @@ require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/ogen-go/ogen v1.23.0
-	github.com/openai/openai-go/v3 v3.44.0
+	github.com/openai/openai-go/v3 v3.45.0
 	github.com/peterbourgon/diskv v2.0.1+incompatible
 	github.com/qdrant/go-client v1.18.3
 	github.com/spf13/cobra v1.10.2
@@ -144,7 +144,7 @@ require (
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/skeema/knownhosts v1.3.1 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
-	github.com/tidwall/gjson v1.18.0 // indirect
+	github.com/tidwall/gjson v1.19.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
