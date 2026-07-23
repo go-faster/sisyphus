@@ -102,12 +102,6 @@ type NewOptions struct {
 	TracerProvider trace.TracerProvider
 	MeterProvider  metric.MeterProvider
 	UserAgent      string
-
-	// RunMigrations applies pending schema migrations on startup. Only one
-	// long-running service should set this — sisyphus — so migrations run
-	// exactly once per deploy instead of racing across every process/replica
-	// sharing the database.
-	RunMigrations bool
 }
 
 func (opts *NewOptions) setDefaults() {
@@ -124,29 +118,47 @@ func (opts *NewOptions) setDefaults() {
 	}
 }
 
-// NewServices opens the database, optionally runs migrations, and wires the
-// embedder and optional vector store. runMigrations is false for ssingest:
-// it runs frequently (cron, concurrently per source) and must not race
-// schema migrations against itself or the long-running services.
-func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trace.TracerProvider, mp metric.MeterProvider, userAgent string, runMigrations bool) (*Services, error) {
-	db, err := otelsql.Open("pgx", cfg.DatabaseDSN,
+// OpenDB opens the traced Postgres connection pool shared by every service
+// that touches the database (ssapi/ssingest's full wiring, and the standalone
+// `ssapi migrate` command, which needs nothing else).
+func OpenDB(dsn string) (*sql.DB, error) {
+	db, err := otelsql.Open("pgx", dsn,
 		otelsql.WithAttributes(semconv.DBSystemPostgreSQL),
 		otelsql.WithSpanOptions(otelsql.SpanOptions{DisableErrSkip: true}),
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "open db")
 	}
+	return db, nil
+}
+
+// Migrate applies pending schema migrations. It is the only place migrations
+// run: a one-shot `ssapi migrate` invocation (see cmd/ssapi and the migrate
+// Job in deploy/helm), never a serving replica. Runner.Run serializes
+// concurrent callers via a Postgres advisory lock, so overlapping Jobs (e.g.
+// racing helm upgrades) are safe too.
+func Migrate(ctx context.Context, cfg config.Config) error {
+	db, err := OpenDB(cfg.DatabaseDSN)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = db.Close() }()
+
+	return entmigrate.NewRunner(db).Run(ctx)
+}
+
+// NewServices opens the database and wires the embedder and optional vector
+// store. It never applies schema migrations: those run exactly once, out of
+// the serving path, via Migrate — running them per-process/per-replica would
+// race on schema_migrations.
+func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trace.TracerProvider, mp metric.MeterProvider, userAgent string) (*Services, error) {
+	db, err := OpenDB(cfg.DatabaseDSN)
+	if err != nil {
+		return nil, err
+	}
 	cleanup := func() { _ = db.Close() }
 
 	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))
-
-	if runMigrations {
-		migrator := entmigrate.NewRunner(db)
-		if err := migrator.Run(ctx); err != nil {
-			cleanup()
-			return nil, errors.Wrap(err, "migrate schema")
-		}
-	}
 
 	pg := pgsearch.New(db, client)
 
@@ -201,7 +213,9 @@ func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trac
 
 // New builds Postgres, FTS, embedder, optional Qdrant vector store, retrieval
 // service and answerer (OpenRouter or stub) exactly as the original main did.
-// It performs schema and FTS migrations. On error, resources are cleaned up.
+// It does not apply schema migrations (see NewServices); Health gates
+// readiness on the schema being fully migrated instead. On error, resources
+// are cleaned up.
 func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, error) {
 	opts.setDefaults()
 	lg := zctx.From(ctx)
@@ -212,7 +226,7 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		}
 	}
 
-	svcs, err := NewServices(ctx, cfg, lg, opts.TracerProvider, opts.MeterProvider, opts.UserAgent, opts.RunMigrations)
+	svcs, err := NewServices(ctx, cfg, lg, opts.TracerProvider, opts.MeterProvider, opts.UserAgent)
 	if err != nil {
 		return Components{}, err
 	}
@@ -354,7 +368,7 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 		Answerer:        answerer,
 		ContentResolver: contentResolver,
 		URLFetcher:      urlFetcher,
-		Health:          &healthChecker{db: svcs.SQLDB, vectors: svcs.VectorHealth},
+		Health:          &healthChecker{db: svcs.SQLDB, vectors: svcs.VectorHealth, migrator: entmigrate.NewRunner(svcs.SQLDB)},
 		closeDB:         closeDB,
 	}, nil
 }
@@ -362,6 +376,7 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 type healthChecker struct {
 	db        *sql.DB
 	vectors   HealthChecker
+	migrator  *entmigrate.Runner
 	mu        sync.Mutex
 	checkedAt time.Time
 	err       error
@@ -391,6 +406,15 @@ func (h *healthChecker) check(ctx context.Context) error {
 	if h.db != nil {
 		if err := h.db.PingContext(ctx); err != nil {
 			return errors.Wrap(err, "postgres")
+		}
+	}
+	if h.migrator != nil {
+		pending, err := h.migrator.Pending(ctx)
+		if err != nil {
+			return errors.Wrap(err, "check schema migrations")
+		}
+		if len(pending) > 0 {
+			return errors.Errorf("schema not migrated yet: %d pending migration(s)", len(pending))
 		}
 	}
 	if h.vectors != nil {

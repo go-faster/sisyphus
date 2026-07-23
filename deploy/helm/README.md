@@ -160,8 +160,11 @@ falls back to reading document bodies from Postgres, and the sandbox has no repo
 
 ## Ops notes
 
-- Only `ssapi` runs migrations. `ssingest` waits for `ssapi`'s `/ready` in an init
-  container.
+- Schema migrations run once via the `migrateJob` pre-install/pre-upgrade hook Job
+  (`ssapi migrate`), before any Deployment is created or updated — no serving
+  replica migrates itself, so `ssapi` can run N replicas. `ssingest` waits for
+  `ssapi`'s `/ready` in an init container, which also fails while any migration
+  is still pending.
 - `ssingest` and `ssbot` are pinned to one replica with a `Recreate` strategy: two
   ingestion schedulers would race on the same source rows, two bots would
   double-answer every Telegram update.

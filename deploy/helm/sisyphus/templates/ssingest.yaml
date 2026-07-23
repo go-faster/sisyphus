@@ -50,8 +50,11 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       {{- if .Values.ssapi.enabled }}
       initContainers:
-        {{- /* Only ssapi runs migrations; wait for it so ssingest never hits a
-               schema it does not know yet. */}}
+        {{- /* Schema migrations run once via migrateJob's hook, before this
+               Deployment is even created. This wait is a belt-and-braces
+               readiness check: ssapi's own /ready fails while any migration
+               is still pending, so waiting on it also means ssingest never
+               starts against a schema it does not know yet. */}}
         - name: wait-for-ssapi
           image: {{ .Values.waitImage | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}

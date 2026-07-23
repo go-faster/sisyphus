@@ -44,7 +44,7 @@ func newRoot(t *app.Telemetry) *cobra.Command {
 		}
 		c.LogWarnings(lg)
 
-		services, err := wire.NewServices(ctx, c, lg, deps.tp, deps.mp, deps.userAgent, false)
+		services, err := wire.NewServices(ctx, c, lg, deps.tp, deps.mp, deps.userAgent)
 		if err != nil {
 			return errors.Wrap(err, "setup services")
 		}

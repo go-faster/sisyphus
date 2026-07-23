@@ -93,6 +93,33 @@ services:
     depends_on:
       - sandbox
 
+  # One-shot: applies pending schema migrations, then exits. ssapi/ssingest
+  # wait for it via `condition: service_completed_successfully` instead of
+  # migrating themselves, mirroring the Helm chart's migrateJob hook.
+  ssmigrate:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "10"
+        max-size: "2m"
+    entrypoint: [ "/usr/local/bin/ssapi", "migrate" ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SISYPHUS_CONFIG: /data/scp/config.yaml
+      SISYPHUS_DATABASE_DSN: ${SISYPHUS_DATABASE_DSN:-postgres://sisyphus:sisyphus@postgres:5432/sisyphus?sslmode=disable}
+      OTEL_LOG_LEVEL: debug
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otelcol:4317
+      OTEL_EXPORTER_OTLP_INSECURE: true
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+    volumes:
+      - ./config.yaml:/data/scp/config.yaml:ro
+      - ssapi:/data/scp
+
   ssapi:
     build:
       context: ..
@@ -105,6 +132,8 @@ services:
         max-size: "2m"
     entrypoint: [ "/usr/local/bin/ssapi" ]
     depends_on:
+      ssmigrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       qdrant:
@@ -146,6 +175,8 @@ services:
     # jira, telegram), replacing the old one-shot `ssingest all` cron model.
     entrypoint: [ "/usr/local/bin/ssingest", "serve" ]
     depends_on:
+      ssmigrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       qdrant:
