@@ -80,6 +80,12 @@ type Delivery struct {
 	// MaxAttempts is this delivery's attempt budget. Attempts == MaxAttempts
 	// means a Nack sends the job to StatusError instead of retrying.
 	MaxAttempts int
+	// Deadline is when this claim lapses and the job becomes claimable by
+	// someone else. [Worker] bounds its handler by exactly this, so work
+	// cannot outlive the claim that authorizes it — there is deliberately no
+	// separate job-timeout setting to drift out of step with the lease.
+	// Zero means unbounded.
+	Deadline time.Time
 }
 
 // LastAttempt reports whether a Nack of this delivery is terminal.

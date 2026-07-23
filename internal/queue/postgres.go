@@ -24,14 +24,19 @@ type PostgresOptions struct {
 	// MaxAttempts is the default attempt budget per message.
 	MaxAttempts int
 	// Lease is how long a claim is held before the job returns to the pool.
-	// It must comfortably exceed the slowest expected job: a job still
-	// running when its lease expires gets claimed a second time.
+	// A [Worker] gives its handler exactly this long, so the handler cannot
+	// outlive the claim.
 	Lease time.Duration
 	// Backoff maps a failed attempt count to the delay before the next claim.
 	Backoff func(attempt int) time.Duration
 	// Owner identifies the claiming process in lease_owner, for debugging.
 	Owner string
-	// Now is the clock, injectable so tests need no real sleeps.
+	// Now overrides the clock, for tests only.
+	//
+	// Leave it nil in production: the queue then reads time from Postgres, so
+	// every worker compares visibility against one clock. Deriving it from
+	// each process's own clock instead makes a replica whose clock runs fast
+	// see live claims as expired and steal them.
 	Now func() time.Time
 }
 
@@ -44,9 +49,6 @@ func (opts *PostgresOptions) setDefaults() {
 	}
 	if opts.Backoff == nil {
 		opts.Backoff = ExponentialBackoff(30*time.Second, 10*time.Minute)
-	}
-	if opts.Now == nil {
-		opts.Now = time.Now
 	}
 }
 
@@ -78,8 +80,17 @@ func (p *Postgres) WithTx(tx execQuerier) *Postgres {
 	return &c
 }
 
+// clock is the value passed wherever a query says COALESCE($n, now()): nil in
+// production, so Postgres supplies the time, and a fixed instant under test.
+func (p *Postgres) clock() any {
+	if p.opts.Now == nil {
+		return nil
+	}
+	return p.opts.Now()
+}
+
 const publishPrefix = `INSERT INTO queue_jobs
-	(id, queue, dedup_key, payload, status, attempts, max_attempts, available_at, created_at, updated_at)
+	(id, queue, dedup_key, payload, status, attempts, max_attempts, visible_at, created_at, updated_at)
 VALUES `
 
 // Publish inserts msgs, ignoring any whose key already exists in this queue.
@@ -93,11 +104,13 @@ func (p *Postgres) Publish(ctx context.Context, msgs ...Message) (int, error) {
 		return 0, nil
 	}
 
-	now := p.opts.Now()
 	var (
 		values strings.Builder
-		args   = make([]any, 0, len(msgs)*8)
+		args   = make([]any, 0, len(msgs)*9+1)
 	)
+	// $1 is the shared clock for every row, so one batch cannot straddle two
+	// instants.
+	args = append(args, p.clock())
 	for i, m := range msgs {
 		if m.Key == "" {
 			return 0, errors.Errorf("message %d: empty dedup key", i)
@@ -106,25 +119,31 @@ func (p *Postgres) Publish(ctx context.Context, msgs ...Message) (int, error) {
 		if maxAttempts == 0 {
 			maxAttempts = p.opts.MaxAttempts
 		}
-		if i > 0 {
-			values.WriteString(", ")
-		}
-		values.WriteString("(")
-		for j := range 10 {
-			if j > 0 {
-				values.WriteString(", ")
-			}
-			values.WriteString("$")
-			values.WriteString(strconv.Itoa(len(args) + j + 1))
-		}
-		values.WriteString(")")
 		id := m.ID
 		if id == uuid.Nil {
 			id = uuid.New()
 		}
+
+		if i > 0 {
+			values.WriteString(", ")
+		}
+		base := len(args)
+		values.WriteString("(")
+		for j := range 7 {
+			if j > 0 {
+				values.WriteString(", ")
+			}
+			values.WriteString("$")
+			values.WriteString(strconv.Itoa(base + j + 1))
+		}
+		// visible_at, created_at, updated_at all derive from the shared clock.
+		values.WriteString(", COALESCE($1, now()) + make_interval(secs => $")
+		values.WriteString(strconv.Itoa(base + 8))
+		values.WriteString("), COALESCE($1, now()), COALESCE($1, now()))")
+
 		args = append(args,
 			id, p.name, m.Key, m.Payload,
-			StatusPending, 0, maxAttempts, now.Add(m.Delay), now, now,
+			StatusPending, 0, maxAttempts, m.Delay.Seconds(),
 		)
 	}
 
@@ -146,39 +165,38 @@ func (p *Postgres) Publish(ctx context.Context, msgs ...Message) (int, error) {
 // SKIP LOCKED is what makes concurrent workers safe: a row another worker is
 // mid-claim on is passed over instead of blocking this one.
 //
-// The candidate predicate covers both a never-claimed job and one whose lease
-// expired because its worker died, which is why no separate requeue step is
-// needed to recover from a crash.
+// The predicate is a single range over visible_at, which is why the partial
+// index on (queue, visible_at) can serve both the filter and the ORDER BY.
+// It covers a never-claimed job and one whose claim lapsed because its worker
+// died with the same comparison — no separate requeue step recovers a crash,
+// the visibility clock does.
 const claimQuery = `WITH ready AS (
 	SELECT id FROM queue_jobs
 	WHERE queue = $1
+	  AND status IN ('pending', 'running')
+	  AND visible_at <= COALESCE($2, now())
 	  AND attempts < max_attempts
-	  AND (
-	        (status = 'pending' AND available_at <= $2)
-	     OR (status = 'running' AND lease_expires_at <= $2)
-	  )
-	ORDER BY available_at, created_at
+	ORDER BY visible_at
 	FOR UPDATE SKIP LOCKED
 	LIMIT $3
 )
 UPDATE queue_jobs j
 SET status = 'running',
     attempts = j.attempts + 1,
-    lease_expires_at = $4,
+    visible_at = COALESCE($2, now()) + make_interval(secs => $4),
     lease_owner = $5,
-    updated_at = $2
+    updated_at = COALESCE($2, now())
 FROM ready
 WHERE j.id = ready.id
-RETURNING j.id, j.dedup_key, j.payload, j.attempts, j.max_attempts`
+RETURNING j.id, j.dedup_key, j.payload, j.attempts, j.max_attempts, j.visible_at`
 
 // Fetch claims up to limit ready jobs.
 func (p *Postgres) Fetch(ctx context.Context, limit int) ([]Delivery, error) {
 	if limit <= 0 {
 		return nil, nil
 	}
-	now := p.opts.Now()
 	rows, err := p.db.QueryContext(ctx, claimQuery,
-		p.name, now, limit, now.Add(p.opts.Lease), p.opts.Owner,
+		p.name, p.clock(), limit, p.opts.Lease.Seconds(), p.opts.Owner,
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "claim queue jobs")
@@ -188,7 +206,7 @@ func (p *Postgres) Fetch(ctx context.Context, limit int) ([]Delivery, error) {
 	var out []Delivery
 	for rows.Next() {
 		var d Delivery
-		if err := rows.Scan(&d.ID, &d.Key, &d.Payload, &d.Attempts, &d.MaxAttempts); err != nil {
+		if err := rows.Scan(&d.ID, &d.Key, &d.Payload, &d.Attempts, &d.MaxAttempts, &d.Deadline); err != nil {
 			return nil, errors.Wrap(err, "scan queue job")
 		}
 		out = append(out, d)
@@ -200,15 +218,15 @@ func (p *Postgres) Fetch(ctx context.Context, limit int) ([]Delivery, error) {
 }
 
 const ackQuery = `UPDATE queue_jobs
-SET status = $2, completed_at = $3, updated_at = $3, lease_expires_at = NULL, lease_owner = ''
+SET status = $2, completed_at = COALESCE($3, now()), updated_at = COALESCE($3, now()), lease_owner = ''
 WHERE id = $1`
 
 // Ack marks a delivery done. It is unconditional and therefore idempotent:
-// acking twice, or acking after the lease expired and another worker
-// re-claimed the job, both settle on done. The queue is at-least-once, so a
-// consumer must be idempotent regardless.
+// acking twice, or acking after the claim lapsed and another worker took the
+// job, both settle on done. The queue is at-least-once, so a consumer must be
+// idempotent regardless.
 func (p *Postgres) Ack(ctx context.Context, id uuid.UUID) error {
-	res, err := p.db.ExecContext(ctx, ackQuery, id, StatusDone, p.opts.Now())
+	res, err := p.db.ExecContext(ctx, ackQuery, id, StatusDone, p.clock())
 	if err != nil {
 		return errors.Wrap(err, "ack queue job")
 	}
@@ -218,11 +236,13 @@ func (p *Postgres) Ack(ctx context.Context, id uuid.UUID) error {
 const nackSelect = `SELECT attempts, max_attempts FROM queue_jobs WHERE id = $1`
 
 const nackRetry = `UPDATE queue_jobs
-SET status = $2, available_at = $3, error = $4, updated_at = $5, lease_expires_at = NULL, lease_owner = ''
+SET status = $2, visible_at = COALESCE($3, now()) + make_interval(secs => $4), error = $5,
+    updated_at = COALESCE($3, now()), lease_owner = ''
 WHERE id = $1`
 
 const nackTerminal = `UPDATE queue_jobs
-SET status = $2, error = $3, completed_at = $4, updated_at = $4, lease_expires_at = NULL, lease_owner = ''
+SET status = $2, error = $3, completed_at = COALESCE($4, now()), updated_at = COALESCE($4, now()),
+    lease_owner = ''
 WHERE id = $1`
 
 // Nack returns a failed delivery to the queue, delayed by the configured
@@ -253,14 +273,13 @@ func (p *Postgres) Nack(ctx context.Context, id uuid.UUID, cause error) error {
 	if cause != nil {
 		msg = cause.Error()
 	}
-	now := p.opts.Now()
 
 	var res sql.Result
 	if attempts >= maxAttempts {
-		res, err = p.db.ExecContext(ctx, nackTerminal, id, StatusError, msg, now)
+		res, err = p.db.ExecContext(ctx, nackTerminal, id, StatusError, msg, p.clock())
 	} else {
 		res, err = p.db.ExecContext(ctx, nackRetry,
-			id, StatusPending, now.Add(p.opts.Backoff(attempts)), msg, now,
+			id, StatusPending, p.clock(), p.opts.Backoff(attempts).Seconds(), msg,
 		)
 	}
 	if err != nil {
@@ -270,23 +289,23 @@ func (p *Postgres) Nack(ctx context.Context, id uuid.UUID, cause error) error {
 }
 
 const reapQuery = `UPDATE queue_jobs
-SET status = $2, completed_at = $3, updated_at = $3, lease_expires_at = NULL, lease_owner = '',
+SET status = $2, completed_at = COALESCE($3, now()), updated_at = COALESCE($3, now()), lease_owner = '',
     error = CASE WHEN COALESCE(error, '') = '' THEN $4 ELSE error END
 WHERE queue = $1
   AND status IN ('pending', 'running')
   AND attempts >= max_attempts
-  AND (status = 'pending' OR lease_expires_at <= $3)`
+  AND visible_at <= COALESCE($3, now())`
 
 // ReapStale settles jobs that can never be claimed again: their attempts are
-// spent and no worker holds a live lease. Without it those rows sit in a
+// spent and no worker holds a live claim. Without it those rows sit in a
 // non-terminal status forever — invisible to Fetch, but indistinguishable
 // from real backlog in any "how much work is outstanding" query.
 //
-// It is not required for correctness of retries; an expired lease alone is
+// It is not required for correctness of retries; visibility lapsing alone is
 // enough for [Postgres.Fetch] to reclaim a crashed worker's job.
 func (p *Postgres) ReapStale(ctx context.Context) (int, error) {
 	res, err := p.db.ExecContext(ctx, reapQuery,
-		p.name, StatusError, p.opts.Now(), "attempts exhausted without acknowledgement",
+		p.name, StatusError, p.clock(), "attempts exhausted without acknowledgement",
 	)
 	if err != nil {
 		return 0, errors.Wrap(err, "reap stale queue jobs")

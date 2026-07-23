@@ -114,15 +114,35 @@ internal/queue          SHARED SUBSTRATE for background work (notify delivery, a
                         investigations, and ingest as it moves over). One queue_jobs
                         table serves every queue, distinguished by the `queue` column,
                         so there is one claim path and one set of indexes.
-                        Postgres.Fetch claims with FOR UPDATE SKIP LOCKED under a lease:
-                        N workers drain concurrently without coordination, and a worker
-                        that dies has its job reclaimed when the lease lapses — that
-                        expiry, not any separate requeue step, is what makes a crash
-                        recoverable. Nack retries with backoff until MaxAttempts, then
-                        the job is terminal (status=error) and stays for inspection.
-                        queue.Worker is the drain loop (claim → run → ack/nack); it
+                        Postgres.Fetch claims with FOR UPDATE SKIP LOCKED, N workers
+                        drain concurrently without coordination, and Nack retries with
+                        backoff until MaxAttempts, after which the job is terminal
+                        (status=error) and stays for inspection.
+                        THREE THINGS ARE LOAD-BEARING and were each a measured or
+                        prior-art-confirmed mistake before being fixed — do not undo:
+                        (1) `visible_at` is ONE column serving both "claimable at" and
+                        "claim expires at". Split into available_at/lease_expires_at,
+                        the OR between them defeats index ordering and Postgres sorts
+                        every matching row before LIMIT: measured 76ms and a 9.4MB
+                        external merge sort per claim on a 200k backlog, versus 0.06ms
+                        after. The partial index (queue, visible_at) WHERE status IN
+                        ('pending','running') is what serves both the filter and the
+                        ORDER BY, and it holds only outstanding work — terminal jobs
+                        leave the index, so history costs claims nothing (1.3MB vs the
+                        34MB full index on the same table).
+                        (2) Time comes from POSTGRES, not from Go. Queries say
+                        COALESCE($n, now()) and PostgresOptions.Now is nil outside
+                        tests. Per-process clocks mean a replica running fast sees live
+                        claims as expired and steals them. (pgmq uses clock_timestamp(),
+                        dataddo/pgq CURRENT_TIMESTAMP — nobody sane uses client time.)
+                        (3) A handler's deadline is the CLAIM's deadline
+                        (Delivery.Deadline), not a separate configured timeout. There is
+                        deliberately no WorkerOptions.JobTimeout: two independent knobs
+                        drift, and a handler outliving its claim means two workers run
+                        the same job.
+                        queue.Worker is the drain loop (claim -> run -> ack/nack); it
                         claims only as many jobs as it has free slots, so a backlog
-                        never sits leased behind a busy handler.
+                        never sits claimed behind a busy handler.
                         The interface carries PAYLOADS and acks by ID — it never hands
                         out rows, table names, or transactions — so a broker-backed
                         implementation stays possible. Two things follow, and must not
@@ -137,6 +157,13 @@ internal/queue          SHARED SUBSTRATE for background work (notify delivery, a
                         unless the queue is genuinely the dedup point — a queue job
                         outlives the row it refers to, so reusing a business dedup key
                         silently swallows a re-enqueue after the old row is cleaned up.
+                        NOT YET SOLVED: rows are never deleted and every job costs 2+
+                        UPDATEs, so the table accumulates dead tuples with no retention,
+                        archiving, partitioning or autovacuum tuning. Every comparable
+                        system treats this as mandatory (pgq/pgq is append-only +
+                        TRUNCATE rotation with autovacuum_enabled=off; pgmq deletes on
+                        ack or archives; dataddo/pgq partitions via pg_partman). Fix
+                        before this carries real volume.
 internal/bot            gotd bot, /context handler
 internal/ent            ent schema + generated code (Document, Chunk, SupportRequest,
                         TelegramMessage, SyncState, QueueJob)

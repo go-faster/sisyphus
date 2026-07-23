@@ -130,14 +130,17 @@ func TestWorker_RespectsConcurrency(t *testing.T) {
 	require.LessOrEqual(t, peak, concurrency)
 }
 
-func TestWorker_JobTimeoutNacks(t *testing.T) {
-	d := Delivery{ID: uuid.New(), Attempts: 1, MaxAttempts: 3}
+// TestWorker_BoundsHandlerByClaimDeadline verifies the handler is cut off at
+// the claim's expiry, so it cannot still be running once another worker is
+// free to take the job.
+func TestWorker_BoundsHandlerByClaimDeadline(t *testing.T) {
+	d := Delivery{ID: uuid.New(), Attempts: 1, MaxAttempts: 3, Deadline: time.Now().Add(time.Millisecond)}
 	q := newFakeQueue(d)
 
 	runWorker(t, q, func(ctx context.Context, _ Delivery) error {
 		<-ctx.Done()
 		return errors.Wrap(ctx.Err(), "job")
-	}, WorkerOptions{Concurrency: 1, JobTimeout: time.Millisecond})
+	}, WorkerOptions{Concurrency: 1})
 
 	require.Empty(t, q.acked)
 	require.Contains(t, q.nacked[d.ID], "context deadline exceeded")

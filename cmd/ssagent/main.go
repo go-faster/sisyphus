@@ -77,9 +77,10 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry, info cli
 
 	hostname, _ := os.Hostname()
 	store := agentstore.New(db, agentstore.Options{
-		// The lease must outlast a job, or a still-running investigation gets
-		// claimed a second time elsewhere.
-		Lease: jobTimeout + time.Minute,
+		// The lease IS the job timeout: queue.Worker bounds each handler by
+		// its claim, so a job can never still be running once another replica
+		// is free to take it.
+		Lease: jobTimeout,
 		Owner: hostname,
 	})
 
@@ -173,11 +174,13 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry, info cli
 	// The worker drains the queue alongside the HTTP server rather than being
 	// dispatched from the request handler, so an investigation outlives the
 	// request — and the process — that submitted it.
+	// No job timeout here: the claim's lease is the timeout (see
+	// agentstore.Options.Lease below), so an investigation cannot outlive the
+	// claim that authorizes it.
 	worker := queue.NewWorker(store.Queue(),
 		investigateHandler(store, inv, tracer, metrics, lg),
 		queue.WorkerOptions{
 			Concurrency: maxConcurrent,
-			JobTimeout:  jobTimeout,
 			Logger:      lg,
 		})
 

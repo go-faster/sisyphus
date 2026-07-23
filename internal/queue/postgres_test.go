@@ -118,6 +118,7 @@ func TestPostgres_FetchAckLifecycle(t *testing.T) {
 	require.Equal(t, []byte("work"), got[0].Payload)
 	require.Equal(t, 1, got[0].Attempts)
 	require.False(t, got[0].LastAttempt())
+	require.False(t, got[0].Deadline.IsZero(), "a claim must carry its expiry, so a worker can bound its handler by it")
 
 	// A leased job is invisible to a second fetch.
 	again, err := q.Fetch(ctx, 10)
@@ -128,10 +129,8 @@ func TestPostgres_FetchAckLifecycle(t *testing.T) {
 	row := jobByKey(t, client, q, "a")
 	require.Equal(t, StatusDone, row.Status)
 	require.NotNil(t, row.CompletedAt)
-	require.Nil(t, row.LeaseExpiresAt)
 
-	// An acked job stays claimed forever, even once the old lease would have
-	// lapsed.
+	// An acked job stays done forever, even once its claim would have lapsed.
 	after, err := q.Fetch(ctx, 10)
 	require.NoError(t, err)
 	require.Empty(t, after)

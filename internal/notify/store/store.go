@@ -29,16 +29,15 @@ type Options struct {
 	DeliveryLease time.Duration
 	// Owner identifies this process in claimed rows, for debugging.
 	Owner string
-	// Now is the clock, injectable for tests.
+	// Now overrides the clock, for tests only. Leave nil in production so
+	// every sink compares delivery visibility against Postgres's clock
+	// rather than its own.
 	Now func() time.Time
 }
 
 func (opts *Options) setDefaults() {
 	if opts.DeliveryLease == 0 {
 		opts.DeliveryLease = 5 * time.Minute
-	}
-	if opts.Now == nil {
-		opts.Now = time.Now
 	}
 }
 

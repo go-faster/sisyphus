@@ -86,6 +86,14 @@ func (s *Store) Submit(ctx context.Context, idempotencyKey, description string) 
 // Queue returns the investigation queue, for a worker to drain.
 func (s *Store) Queue() *queue.Postgres { return s.queue() }
 
+// clock mirrors queue's: nil in production so Postgres supplies the time.
+func (s *Store) clock() any {
+	if s.opts.Now == nil {
+		return nil
+	}
+	return s.opts.Now()
+}
+
 func (s *Store) queue() *queue.Postgres {
 	return queue.NewPostgres(s.db, QueueName, queue.PostgresOptions{
 		MaxAttempts: s.opts.MaxAttempts,
@@ -97,7 +105,7 @@ func (s *Store) queue() *queue.Postgres {
 
 // reapQuery settles job rows whose delivery the queue has given up on.
 const reapQuery = `UPDATE investigation_jobs j
-SET status = $1, error_message = $2, completed_at = $3, updated_at = $3
+SET status = $1, error_message = $2, completed_at = COALESCE($3, now()), updated_at = COALESCE($3, now())
 FROM queue_jobs q
 WHERE q.id = j.id
   AND q.queue = $4
@@ -116,7 +124,7 @@ func (s *Store) ReapStale(ctx context.Context) (int, error) {
 		return 0, errors.Wrap(err, "reap queue")
 	}
 	res, err := s.db.ExecContext(ctx, reapQuery,
-		string(StatusError), "investigation abandoned after repeated failures", s.opts.Now(), QueueName,
+		string(StatusError), "investigation abandoned after repeated failures", s.clock(), QueueName,
 	)
 	if err != nil {
 		return 0, errors.Wrap(err, "reap stale jobs")
@@ -131,8 +139,8 @@ func (s *Store) ReapStale(ctx context.Context) (int, error) {
 // Options configures a [Store].
 type Options struct {
 	// Lease is how long a claimed investigation is held before another worker
-	// may take it. It must exceed the job timeout, or a still-running
-	// investigation can be started a second time elsewhere.
+	// may take it, and therefore also how long an investigation is given to
+	// run: queue.Worker bounds the handler by the claim itself.
 	Lease time.Duration
 	// MaxAttempts is how many times an investigation may be claimed. The
 	// default of 2 means one run plus one recovery if the worker dies: a
@@ -141,7 +149,9 @@ type Options struct {
 	MaxAttempts int
 	// Owner identifies this process in claimed rows, for debugging.
 	Owner string
-	// Now is the clock, injectable for tests.
+	// Now overrides the clock, for tests only. Leave nil in production so
+	// every replica compares claims against Postgres's clock rather than its
+	// own.
 	Now func() time.Time
 }
 
@@ -151,8 +161,5 @@ func (opts *Options) setDefaults() {
 	}
 	if opts.MaxAttempts == 0 {
 		opts.MaxAttempts = 2
-	}
-	if opts.Now == nil {
-		opts.Now = time.Now
 	}
 }

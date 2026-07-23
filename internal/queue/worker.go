@@ -22,11 +22,7 @@ type WorkerOptions struct {
 	// PollInterval is how long to wait before asking for work again after
 	// finding none.
 	PollInterval time.Duration
-	// JobTimeout bounds one handler call. It should be comfortably under the
-	// queue's lease, or a job can still be running when its lease lapses and
-	// another worker claims it.
-	JobTimeout time.Duration
-	Logger     *zap.Logger
+	Logger       *zap.Logger
 }
 
 func (opts *WorkerOptions) setDefaults() {
@@ -120,10 +116,14 @@ func (w *Worker) run(ctx context.Context, d Delivery) {
 		zap.Int("attempt", d.Attempts),
 	)
 
+	// The handler gets exactly the claim's lifetime. Taking the deadline from
+	// the delivery rather than from a configured timeout means a handler can
+	// never still be running after its claim lapsed and another worker took
+	// the job — there is no second knob to set inconsistently.
 	jobCtx := ctx
-	if w.opts.JobTimeout > 0 {
+	if !d.Deadline.IsZero() {
 		var cancel context.CancelFunc
-		jobCtx, cancel = context.WithTimeout(ctx, w.opts.JobTimeout)
+		jobCtx, cancel = context.WithDeadline(ctx, d.Deadline)
 		defer cancel()
 	}
 
