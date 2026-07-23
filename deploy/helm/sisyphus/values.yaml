@@ -212,6 +212,9 @@ ssbot:
 
 ssagent:
   enabled: true
+  # >1 is fine: investigations are dispatched through the Postgres job queue
+  # (FOR UPDATE SKIP LOCKED + lease), so replicas share the backlog rather than
+  # racing, and a pod that dies has its in-flight job reclaimed by another.
   replicas: 1
   port: 8082
   resources:
