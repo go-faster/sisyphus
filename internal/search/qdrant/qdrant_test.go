@@ -29,7 +29,7 @@ func TestChunkToPayload(t *testing.T) {
 		},
 	}
 
-	payload := chunkToPayload(chunk)
+	payload, _ := chunkToPayload(chunk)
 
 	// Check basic fields
 	if v, ok := payload["chunk_id"]; !ok || v.GetStringValue() != chunkID.String() {
@@ -77,7 +77,7 @@ func TestChunkToPayloadInvalidUTF8(t *testing.T) {
 		},
 	}
 
-	payload := chunkToPayload(chunk)
+	payload, _ := chunkToPayload(chunk)
 
 	if got := payload["title"].GetStringValue(); got != "titlesuffix" {
 		t.Fatalf("title: got %q, want %q", got, "titlesuffix")
@@ -154,7 +154,7 @@ func TestRoundTrip(t *testing.T) {
 	}
 
 	// Convert to payload
-	payload := chunkToPayload(original)
+	payload, _ := chunkToPayload(original)
 
 	// Convert back to chunk
 	pointID := qdrant.NewIDUUID(chunkID.String())
@@ -449,7 +449,7 @@ func TestChunkToPayloadEmptyMetadata(t *testing.T) {
 		Title:      "main.go",
 	}
 
-	payload := chunkToPayload(chunk)
+	payload, _ := chunkToPayload(chunk)
 
 	if len(payload) < 4 {
 		t.Errorf("payload should have at least 4 keys, got %d", len(payload))
