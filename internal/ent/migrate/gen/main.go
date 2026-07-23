@@ -7,6 +7,15 @@
 //
 // Requires a local Docker daemon; the container is created and removed for
 // this run only, nothing persists and no already-running stack is needed.
+//
+// Some DDL cannot be expressed in the ent schema and is hand-written straight
+// into migrations/. That invalidates atlas.sum, and every subsequent run
+// refuses to start on the checksum mismatch, so:
+//
+//	go run ./internal/ent/migrate/gen -hash
+//
+// rewrites the sum file over the directory as it stands. It needs no Docker,
+// and it is the only sanctioned way to update atlas.sum — never edit it.
 package main
 
 import (
@@ -39,11 +48,16 @@ func main() {
 	}
 }
 
+const migrationsDir = "internal/ent/migrate/migrations"
+
 func run() error {
 	if len(os.Args) != 2 {
-		return fmt.Errorf("usage: gen <name>")
+		return fmt.Errorf("usage: gen <name>|-hash")
 	}
 	name := os.Args[1]
+	if name == "-hash" {
+		return rehash()
+	}
 
 	ctx := context.Background()
 	container, err := tcpostgres.Run(ctx,
@@ -63,7 +77,7 @@ func run() error {
 		return fmt.Errorf("scratch postgres connection string: %w", err)
 	}
 
-	dir, err := atlas.NewLocalDir("internal/ent/migrate/migrations")
+	dir, err := atlas.NewLocalDir(migrationsDir)
 	if err != nil {
 		return fmt.Errorf("open migration directory: %w", err)
 	}
@@ -74,4 +88,22 @@ func run() error {
 		schema.WithDialect(dialect.Postgres),
 		schema.WithFormatter(atlas.DefaultFormatter),
 	)
+}
+
+// rehash rewrites atlas.sum from the migration files on disk, so a
+// hand-written migration does not wedge every later run on a checksum
+// mismatch.
+func rehash() error {
+	dir, err := atlas.NewLocalDir(migrationsDir)
+	if err != nil {
+		return fmt.Errorf("open migration directory: %w", err)
+	}
+	sum, err := dir.Checksum()
+	if err != nil {
+		return fmt.Errorf("checksum migration directory: %w", err)
+	}
+	if err := atlas.WriteSumFile(dir, sum); err != nil {
+		return fmt.Errorf("write sum file: %w", err)
+	}
+	return nil
 }

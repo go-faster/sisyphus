@@ -33,6 +33,10 @@ codegen:
 migrate-diff:
 	go run ./internal/ent/migrate/gen $(NAME)
 
+# Rewrite atlas.sum after hand-writing a migration file. No Docker needed.
+migrate-hash:
+	go run ./internal/ent/migrate/gen -hash
+
 run:
 	go run ./cmd/ssapi
 
@@ -74,4 +78,4 @@ repair-dry-run:
 repair:
 	go run ./cmd/ssingest repair
 
-.PHONY: lint fmt codegen migrate-diff run run-bot run-agent ingest ingest-git ingest-gitlab ingest-jira ingest-telegram ingest-serve gc gc-dry-run repair repair-dry-run
+.PHONY: lint fmt codegen migrate-diff migrate-hash run run-bot run-agent ingest ingest-git ingest-gitlab ingest-jira ingest-telegram ingest-serve gc gc-dry-run repair repair-dry-run
