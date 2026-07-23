@@ -173,6 +173,11 @@ services:
     # `serve` runs ssingest as a daemon: webhook-triggered + polled
     # incremental ingestion for every configured source (git, files, gitlab,
     # jira, telegram), replacing the old one-shot `ssingest all` cron model.
+    #
+    # It publishes index jobs and, with ingest.worker.enabled left at its
+    # default of true, drains them itself. To scale indexing out, run
+    # `ssingest worker` replicas and set ingest.worker.enabled=false here; the
+    # Helm chart wires that up as `ssingestWorker` (see deploy/helm/README.md).
     entrypoint: [ "/usr/local/bin/ssingest", "serve" ]
     depends_on:
       ssmigrate:

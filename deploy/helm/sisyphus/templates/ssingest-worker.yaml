@@ -1,0 +1,121 @@
+{{- if and .Values.ssingest.enabled .Values.ssingestWorker.enabled }}
+{{- $full := include "sisyphus.fullname" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $full }}-ssingest-worker
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ssingest-worker
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.ssingest.port }}
+      targetPort: http
+  selector:
+    {{- include "sisyphus.selectorLabels" (dict "root" . "component" "ssingest-worker") | nindent 4 }}
+---
+{{- /* `ssingest worker` is the indexing half of ingestion: chunk, embed, upsert.
+       Unlike `ssingest serve` it is safe to scale — it advances no cursor and
+       holds no source credentials, clone or Telegram session, because every
+       document it indexes arrives whole in its queue job. Claims are exclusive
+       for a lease and pipeline.Index is idempotent on (source, source_id), so
+       the worst a redelivery costs is repeated embedding work.
+
+       It therefore mounts no PVC and uses a RollingUpdate strategy: a rollout
+       may briefly run old and new pods together with no ill effect. */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $full }}-ssingest-worker
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ssingest-worker
+spec:
+  replicas: {{ .Values.ssingestWorker.replicas }}
+  selector:
+    matchLabels:
+      {{- include "sisyphus.selectorLabels" (dict "root" . "component" "ssingest-worker") | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-config.yaml") . | sha256sum }}
+        {{- with .Values.ssingestWorker.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "sisyphus.labels" . | nindent 8 }}
+        {{- include "sisyphus.selectorLabels" (dict "root" . "component" "ssingest-worker") | nindent 8 }}
+    spec:
+      {{- include "sisyphus.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "sisyphus.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.ssapi.enabled }}
+      initContainers:
+        {{- /* Same reasoning as ssingest's: ssapi's /ready fails while a
+               migration is pending, so waiting on it means a worker never
+               indexes against a schema it does not know. */}}
+        - name: wait-for-ssapi
+          image: {{ .Values.waitImage | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              until wget -q -O- "http://{{ $full }}-ssapi:{{ .Values.ssapi.service.port }}/ready"; do
+                echo "waiting for ssapi"
+                sleep 3
+              done
+          resources:
+            limits: {cpu: 100m, memory: 64Mi}
+            requests: {cpu: 10m, memory: 16Mi}
+      {{- end }}
+      containers:
+        - name: ssingest-worker
+          image: {{ include "sisyphus.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/usr/local/bin/ssingest", "worker"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            {{- include "sisyphus.appEnv" . | nindent 12 }}
+          envFrom:
+            {{- include "sisyphus.appEnvFrom" . | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.ssingest.port }}
+          readinessProbe:
+            httpGet: {path: /ready, port: http}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.ssingestWorker.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "sisyphus.configMount" . | nindent 12 }}
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        {{- include "sisyphus.configVolume" . | nindent 8 }}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.ssingestWorker.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ssingestWorker.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ssingestWorker.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

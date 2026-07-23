@@ -52,6 +52,9 @@ cmd/ssingest           ingestion CLI + daemon: git|files|gitlab|jira|telegram|al
                         own interval), so no external cron is needed. ssingest is the only
                         webhook/poll owner — ssapi does not run ingestion. Wires its dependencies
                         inline (does NOT reuse internal/wire, only internal/wire.NewServices).
+                        `worker` is the other half: it drains the `ingest.index` queue and does
+                        nothing else. See "Ingestion topology" below — `serve` fetches and
+                        publishes, `worker` indexes, and `worker` is the one that scales.
                         `gc` is the odd one out: not ingestion, but a one-shot sweep of
                         vector-store points no chunk references (internal/vectorgc).
 internal/index          SHARED CONTRACT: Document, Chunk, Chunker, Embedder, Searcher, constants. Do not add deps here.
@@ -82,6 +85,10 @@ internal/webhook        debounced Trigger (coalesces a webhook + a poll tick rac
 internal/pipeline       Pipeline.Index: idempotent doc+chunk upsert (ent) + embed (Ollama)
                         + vector Upsert/Delete (Qdrant). Per-chunk embedding skip (preserves
                         unchanged chunks' qdrant_point_id) and stale-point cleanup on changed docs.
+                        pipeline.Skipper answers Index's skip question without doing the work,
+                        for a producer filtering documents before they cost a queue row; it
+                        shares `unchanged` with Index rather than reimplementing it, because a
+                        producer that under-reports change silently stops indexing.
                         The document-level skip (skip.go's `unchanged`) must cover EVERY input
                         that shapes the output: body hash, doc.URL (propagated onto chunks as
                         source_url), and the chunker version. Anything left out is a field that
@@ -114,6 +121,35 @@ internal/vectorrepair   `ssingest repair`: re-embeds chunks whose point is keyed
                         Writes the new point BEFORE rebinding the row and deletes the old one
                         after, so an interrupted run leaves an orphan (gc's job), never a row
                         pointing at nothing.
+internal/indexjob       the boundary between ingestion's two halves: Kind (which chunker),
+                        Payload (one document per job), Publisher (producer side) and
+                        Handler (worker side), over the `ingest.index` queue.
+                        A job carries the DOCUMENT, not a reference to it — that is what
+                        lets a worker run with no source credentials, clone or session file.
+                        TWO THINGS ARE LOAD-BEARING:
+                        (1) Decode REHYDRATES metadata. The GitLab and Jira ingesters put a
+                        concrete Go struct in index.Document.Metadata (map[string]any) and
+                        their chunkers recover it by type assertion. After a JSON round-trip
+                        it is a map[string]any, the assertion fails, and the chunker falls
+                        through to its untyped fallback: one flat chunk instead of typed
+                        summary/comment chunks, with NO error and NO log. Every issue and MR
+                        would index worse forever and only --reset would reach them. A new
+                        struct-valued metadata key needs a case in rehydrate; TestRoundTripChunks
+                        is the only thing that catches one that was not.
+                        (2) Canonicalize puts the INLINE path through the same JSON
+                        normalization, because a metadata value's Go type is observable:
+                        internal/search/qdrant maps an int to a Qdrant integer and a float64
+                        to a double, and DROPS a []string entirely (qdrant.NewValue has no
+                        case for it, and addPayloadValue swallows the error) while a []any of
+                        the same strings converts fine. Without it, `ssingest gitlab` and
+                        `ssingest serve` would write different Qdrant payloads for the same
+                        document. Inert for retrieval today — every condition is a keyword
+                        match — but do not let the two paths diverge again.
+                        Publisher does NOT dedup by content. Keying on
+                        (source, source_id, body_hash) looks right and is wrong: queue dedup
+                        covers a job's whole lifetime, so a document edited A->B and reverted
+                        to A finds its key spent and is never re-indexed. It publishes under a
+                        fresh key and relies on pipeline.Index being idempotent instead.
 internal/queue          SHARED SUBSTRATE for background work (notify delivery, agent
                         investigations, and ingest as it moves over). One queue_jobs
                         table serves every queue, distinguished by the `queue` column,
@@ -282,6 +318,15 @@ backwards compatibility but are deprecated: using one logs a warning
 old and new field for the same value is a hard error at `config.Load()` time.
 See `internal/config/config.go`'s `resolveDeprecatedAddr`/`resolveDeprecatedSecret`.
 
+`ingest.worker.*` (`IngestWorkerConfig`) controls the indexing half: `enabled`
+(default **true** — a plain bool in YAML would make every config that omits the
+section silently disable in-process indexing, so the file struct holds a `*bool`
+and `resolve()` applies the default), `concurrency`, `lease_seconds`,
+`max_attempts`, `poll_interval_seconds`. `lease_seconds` is also the handler's
+deadline (`queue.Delivery.Deadline` — there is deliberately no second timeout
+knob), so it must comfortably exceed the slowest single document's
+embed-and-upsert or that document is reclaimed mid-run and retried forever.
+
 `ingest.*` (`IngestConfig`) controls `ssingest serve`'s daemon polling for the sources
 that have no config section of their own to hold a poll interval: `ingest.git.poll.interval_seconds`,
 `ingest.files.poll.interval_seconds`, `ingest.telegram.poll.interval_seconds` (all 0 by
@@ -441,6 +486,38 @@ migration on top — avoids a permanently dangling table in every future environ
 configured source, once, then exits. Per-source: `make ingest-git`, `make ingest-gitlab`,
 `make ingest-jira`, `make ingest-telegram`.
 
+### Ingestion topology
+
+Ingestion has two halves with opposite scaling properties, split across the
+`ingest.index` queue (`internal/indexjob`):
+
+- **Fetch** (`ssingest serve`) is single-owner. It holds the git clone, the
+  Telegram session and the source credentials, and it advances cursors — a
+  single value two concurrent runs would interleave writes to, leaving the
+  slower one to rewind it and re-fetch the same window forever. Each run takes a
+  per-source Postgres advisory lock (`ingestrun.WithSourceLock`) so a one-shot
+  `ssingest gitlab` cannot race the daemon; a contended run is skipped
+  (`ErrLocked`), not failed. The lock covers the orphan prune too, which is
+  equally read-modify-write.
+- **Index** (`ssingest worker`) is stateless and scales with replicas. Chunk,
+  embed and upsert are idempotent on `(source, source_id)`, so the worst a
+  redelivery costs is repeated embedding work — and embedding is where the time
+  goes. A worker needs no source access at all.
+
+`ssingest serve` publishes rather than indexes, but by default **also runs a
+worker in-process** (`ingest.worker.enabled`, default true) so a single-pod
+install still works end to end. Turn it off once dedicated workers are deployed;
+the Helm chart does that automatically when `ssingestWorker.enabled` is true.
+The one-shot subcommands (`ssingest git`, `make ingest`) always index inline —
+they must complete on their own with no worker running.
+
+The publisher **filters before enqueuing**: it runs the same skip check
+`pipeline.Index` does (`pipeline.Skipper`) and drops documents that would be
+no-ops. This is not an optimization to trade away. A poll tick re-walks the
+whole corpus and almost none of it has changed; enqueuing unfiltered would make
+queue volume track corpus size rather than change, and `queue_jobs` rows are
+currently never reclaimed (see the retention note under internal/queue).
+
 `make ingest-serve` (= `go run ./cmd/ssingest serve`) instead runs as a daemon: it never
 exits, and instead re-runs each source's incremental ingestion on a debounced
 `internal/webhook.Trigger` fired either by that source's webhook HTTP endpoint (GitLab/Jira
@@ -514,9 +591,11 @@ docs and commits sources.
 Config via env (see `deploy/.env.example`).
 
 Kubernetes: `helm upgrade --install sisyphus deploy/helm/sisyphus -f my-values.yaml`.
-The chart mirrors the compose stack. Two invariants it encodes: `ssingest`/`ssbot` are
+The chart mirrors the compose stack. Three invariants it encodes: `ssingest`/`ssbot` are
 single-replica with a `Recreate` strategy (two schedulers race on source rows, two bots
-double-answer), and the sandbox is egress-denied by NetworkPolicy with ingress only from
+double-answer); `ssingestWorker` is the opposite — replicas>1, RollingUpdate, no PVC,
+and enabling it flips `config.ingest.worker.enabled` to false so the scheduler stops
+indexing in-process; and the sandbox is egress-denied by NetworkPolicy with ingress only from
 its MCP front-end. Adding an MCP upstream (VictoriaLogs, Grafana, ...) is a values-only
 change under `mcp.servers` — Deployment, Service and the `gateway.toml` `[[upstream]]`
 are all generated from one entry.

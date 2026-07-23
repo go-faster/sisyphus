@@ -185,7 +185,8 @@ ssapi:
   affinity: {}
 
 # `ssingest serve`: the only ingestion scheduler. Single replica by design —
-# two would race on the same source rows.
+# two would race on the same source rows. It fetches and publishes index jobs;
+# see ssingestWorker for the half that consumes them.
 ssingest:
   enabled: true
   port: 8084
@@ -195,6 +196,24 @@ ssingest:
       type: ClusterIP
   resources:
     limits: {cpu: "2", memory: 512Mi}
+    requests: {cpu: 500m, memory: 256Mi}
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# `ssingest worker`: the indexing half — chunk, embed, upsert. Safe to scale,
+# because it advances no cursor and needs no source credentials: every document
+# arrives whole in its queue job.
+#
+# Enabling this also sets `ingest.worker.enabled: false` on ssingest, so the
+# scheduler stops indexing in-process. Disabling it puts indexing back in the
+# ssingest pod, which is the right shape for a small install.
+ssingestWorker:
+  enabled: false
+  replicas: 2
+  resources:
+    limits: {cpu: "2", memory: 1Gi}
     requests: {cpu: 500m, memory: 256Mi}
   podAnnotations: {}
   nodeSelector: {}
