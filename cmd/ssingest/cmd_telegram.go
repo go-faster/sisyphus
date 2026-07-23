@@ -7,8 +7,6 @@ import (
 
 	"github.com/go-faster/errors"
 	"github.com/spf13/cobra"
-
-	chunktg "github.com/go-faster/sisyphus/internal/chunk/telegram"
 )
 
 func newTelegramCmd(deps *ingestDeps) *cobra.Command {
@@ -23,14 +21,8 @@ func newTelegramCmd(deps *ingestDeps) *cobra.Command {
 			resetFlag, _ := cmd.Flags().GetString("reset")
 			doReset := resetFlag == "telegram" || resetFlag == "all"
 
-			ch := chunktg.New()
-			pipe, err := deps.pipeline(ch)
-			if err != nil {
-				return errors.Wrap(err, "build pipeline")
-			}
-
 			r := deps.runner()
-			if err := r.runTelegram(ctx, pipe, time.Time{}, doReset, limit, dryRun, args); err != nil {
+			if err := r.runTelegram(ctx, time.Time{}, doReset, limit, dryRun, args); err != nil {
 				if errors.Is(err, errNotConfigured) {
 					fmt.Fprintf(os.Stderr, "telegram not configured or ingest session missing\n")
 					os.Exit(1)

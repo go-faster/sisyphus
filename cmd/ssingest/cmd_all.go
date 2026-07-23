@@ -9,9 +9,6 @@ import (
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
-	chunkgitlab "github.com/go-faster/sisyphus/internal/chunk/gitlab"
-	chunkjira "github.com/go-faster/sisyphus/internal/chunk/jira"
-	chunktg "github.com/go-faster/sisyphus/internal/chunk/telegram"
 	"github.com/go-faster/sisyphus/internal/index"
 )
 
@@ -100,13 +97,8 @@ func newAllCmd(deps *ingestDeps) *cobra.Command {
 
 			// gitlab REST
 			{
-				ch := chunkgitlab.New()
-				pipe, err := deps.pipeline(ch)
-				if err != nil {
-					return errors.Wrap(err, "build gitlab pipeline")
-				}
 				doReset := resetFlag == "all" || resetFlag == "gitlab"
-				if err := r.runGitLabAPI(ctx, pipe, time.Time{}, doReset, limit, dryRun); err != nil {
+				if err := r.runGitLabAPI(ctx, time.Time{}, doReset, limit, dryRun); err != nil {
 					if errors.Is(err, errNotConfigured) {
 						lg.Info("skipping gitlab (not configured)")
 					} else {
@@ -118,13 +110,8 @@ func newAllCmd(deps *ingestDeps) *cobra.Command {
 
 			// jira
 			{
-				ch := chunkjira.New()
-				pipe, err := deps.pipeline(ch)
-				if err != nil {
-					return errors.Wrap(err, "build jira pipeline")
-				}
 				doReset := resetFlag == "all" || resetFlag == "jira"
-				if err := r.runJira(ctx, pipe, time.Time{}, doReset, limit, dryRun); err != nil {
+				if err := r.runJira(ctx, time.Time{}, doReset, limit, dryRun); err != nil {
 					if errors.Is(err, errNotConfigured) {
 						lg.Info("skipping jira (not configured)")
 					} else {
@@ -136,13 +123,8 @@ func newAllCmd(deps *ingestDeps) *cobra.Command {
 
 			// telegram
 			{
-				ch := chunktg.New()
-				pipe, err := deps.pipeline(ch)
-				if err != nil {
-					return errors.Wrap(err, "build telegram pipeline")
-				}
 				doReset := resetFlag == "all" || resetFlag == "telegram"
-				if err := r.runTelegram(ctx, pipe, time.Time{}, doReset, limit, dryRun, nil); err != nil {
+				if err := r.runTelegram(ctx, time.Time{}, doReset, limit, dryRun, nil); err != nil {
 					if errors.Is(err, errNotConfigured) {
 						lg.Info("skipping telegram (not configured)")
 					} else {

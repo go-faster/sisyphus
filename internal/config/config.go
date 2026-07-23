@@ -67,6 +67,45 @@ type IngestConfig struct {
 	GitPollIntervalSeconds      int
 	FilesPollIntervalSeconds    int
 	TelegramPollIntervalSeconds int
+	Worker                      IngestWorkerConfig
+}
+
+// IngestWorkerConfig controls the indexing half of ingestion: the queue
+// workers that chunk, embed and upsert documents `ssingest serve` publishes.
+//
+// Fetching is single-owner (it advances cursors and holds source credentials);
+// indexing is idempotent on (source, source_id) and scales with replicas, which
+// is why `ssingest worker` exists as a separate deployment.
+type IngestWorkerConfig struct {
+	// Enabled runs the drain loop inside `ssingest serve` as well.
+	//
+	// It defaults to true so a single-pod install keeps indexing what it
+	// publishes with no extra configuration. Turn it off once dedicated
+	// `ssingest worker` replicas are deployed, so the scheduler pod is not
+	// also competing for embedding capacity.
+	Enabled bool
+	// Concurrency is how many documents one worker process indexes at once.
+	Concurrency int
+	// LeaseSeconds bounds one document's indexing. It is also the handler's
+	// deadline (see queue.Delivery.Deadline), so it must comfortably exceed
+	// the slowest embed-and-upsert, or a large document is reclaimed mid-run
+	// and retried forever.
+	LeaseSeconds int
+	// MaxAttempts is the attempt budget per document before the job is left
+	// in the queue's terminal status for inspection.
+	MaxAttempts int
+	// PollIntervalSeconds is how long a worker waits after finding no work.
+	PollIntervalSeconds int
+}
+
+// Lease is LeaseSeconds as a duration.
+func (c IngestWorkerConfig) Lease() time.Duration {
+	return time.Duration(c.LeaseSeconds) * time.Second
+}
+
+// PollInterval is PollIntervalSeconds as a duration.
+func (c IngestWorkerConfig) PollInterval() time.Duration {
+	return time.Duration(c.PollIntervalSeconds) * time.Second
 }
 
 // MCPConfig configures the ssmcp service: the address its Streamable HTTP
@@ -253,7 +292,57 @@ type fileIngestConfig struct {
 			IntervalSeconds int `yaml:"interval_seconds"`
 		} `yaml:"poll"`
 	} `yaml:"telegram"`
+	Worker fileIngestWorkerConfig `yaml:"worker"`
 }
+
+type fileIngestWorkerConfig struct {
+	// Enabled is a pointer so "unset" is distinguishable from "false": this
+	// one defaults to true, and a plain bool would make every config that
+	// omits the section silently disable in-process indexing.
+	Enabled             *bool `yaml:"enabled"`
+	Concurrency         int   `yaml:"concurrency"`
+	LeaseSeconds        int   `yaml:"lease_seconds"`
+	MaxAttempts         int   `yaml:"max_attempts"`
+	PollIntervalSeconds int   `yaml:"poll_interval_seconds"`
+}
+
+// resolve applies the ingest worker defaults. They are applied here rather
+// than in defaultFileConfig because Enabled's default is true, which only the
+// pointer can express once the YAML has been merged over the defaults.
+func (c fileIngestWorkerConfig) resolve() IngestWorkerConfig {
+	out := IngestWorkerConfig{
+		Enabled:             c.Enabled == nil || *c.Enabled,
+		Concurrency:         c.Concurrency,
+		LeaseSeconds:        c.LeaseSeconds,
+		MaxAttempts:         c.MaxAttempts,
+		PollIntervalSeconds: c.PollIntervalSeconds,
+	}
+	if out.Concurrency <= 0 {
+		out.Concurrency = defaultIngestWorkerConcurrency
+	}
+	if out.LeaseSeconds <= 0 {
+		out.LeaseSeconds = defaultIngestWorkerLeaseSeconds
+	}
+	if out.MaxAttempts <= 0 {
+		out.MaxAttempts = defaultIngestWorkerMaxAttempts
+	}
+	if out.PollIntervalSeconds <= 0 {
+		out.PollIntervalSeconds = defaultIngestWorkerPollSeconds
+	}
+	return out
+}
+
+const (
+	// defaultIngestWorkerConcurrency matches ingestrun's in-process indexing
+	// fan-out, so moving indexing onto the queue does not change how hard a
+	// single process leans on the embedder.
+	defaultIngestWorkerConcurrency = 8
+	// defaultIngestWorkerLeaseSeconds must cover the slowest single document:
+	// a large file chunked into hundreds of pieces, each embedded over HTTP.
+	defaultIngestWorkerLeaseSeconds = 600
+	defaultIngestWorkerMaxAttempts  = 3
+	defaultIngestWorkerPollSeconds  = 1
+)
 
 type fileMCPConfig struct {
 	Addr      string `yaml:"addr"`
@@ -863,6 +952,7 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			GitPollIntervalSeconds:      c.Ingest.Git.Poll.IntervalSeconds,
 			FilesPollIntervalSeconds:    c.Ingest.Files.Poll.IntervalSeconds,
 			TelegramPollIntervalSeconds: c.Ingest.Telegram.Poll.IntervalSeconds,
+			Worker:                      c.Ingest.Worker.resolve(),
 		},
 		Notify: NotifyConfig{
 			PollIntervalSeconds: c.Notify.Poll.IntervalSeconds,

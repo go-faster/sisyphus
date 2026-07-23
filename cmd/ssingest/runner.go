@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"os"
 	"strings"
@@ -13,16 +14,13 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
-	chunkcode "github.com/go-faster/sisyphus/internal/chunk/code"
-	chunkgit "github.com/go-faster/sisyphus/internal/chunk/git"
-	chunkmd "github.com/go-faster/sisyphus/internal/chunk/markdown"
-	chunkyaml "github.com/go-faster/sisyphus/internal/chunk/yaml"
 	"github.com/go-faster/sisyphus/internal/config"
 	"github.com/go-faster/sisyphus/internal/ent"
 	"github.com/go-faster/sisyphus/internal/ent/chunk"
 	"github.com/go-faster/sisyphus/internal/ent/document"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 	"github.com/go-faster/sisyphus/internal/index"
+	"github.com/go-faster/sisyphus/internal/indexjob"
 	filesingest "github.com/go-faster/sisyphus/internal/ingest/files"
 	gitingest "github.com/go-faster/sisyphus/internal/ingest/git"
 	telegramingest "github.com/go-faster/sisyphus/internal/ingest/telegram"
@@ -39,21 +37,44 @@ var errNotConfigured = ingestrun.ErrNotConfigured
 // indexBatch runs p.Index over docs with bounded concurrency. A single
 // document's failure is logged and does not stop the others, matching the
 // sequential loops it replaces; anyErr reports whether at least one failed.
-func indexBatch(ctx context.Context, lg *zap.Logger, p *pipeline.Pipeline, docs []index.Document, dry bool, label string) (processed int, anyErr bool) {
+func indexBatch(ctx context.Context, lg *zap.Logger, p pipeline.Indexer, docs []index.Document, dry bool, label string) (processed int, anyErr bool) {
 	return ingestrun.IndexBatch(ctx, lg, p, docs, dry, label)
 }
 
 type runner struct {
-	db        *ent.Client
-	vectors   pipeline.VectorStore
+	db      *ent.Client
+	vectors pipeline.VectorStore
+	// sqlDB is the pooled handle behind db, used for the per-source advisory
+	// lock: a session-scoped lock needs a connection of its own, which the ent
+	// client does not hand out.
+	sqlDB     *sql.DB
 	cfg       config.Config
 	tp        trace.TracerProvider
 	mp        metric.MeterProvider
 	embedder  index.Embedder
 	userAgent string
+	// newIndexer decides where indexing happens — in this process, or on a
+	// worker via the queue. The runs below do not know which.
+	newIndexer indexerFactory
+}
+
+// locked serializes a run against any other process running the same source.
+//
+// Only the fetch-and-advance half needs it: indexing is idempotent on
+// (source, source_id), but a cursor and an orphan prune are both
+// read-modify-write over shared rows, and two runs interleaving there either
+// rewind the cursor or prune documents the other just wrote.
+func (r *runner) locked(ctx context.Context, key string, fn func(context.Context) error) error {
+	return ingestrun.WithSourceLock(ctx, r.sqlDB, key, fn)
 }
 
 func (r *runner) runGit(ctx context.Context, reset bool, limit int, dry, prune bool) error {
+	return r.locked(ctx, "git", func(ctx context.Context) error {
+		return r.runGitLocked(ctx, reset, limit, dry, prune)
+	})
+}
+
+func (r *runner) runGitLocked(ctx context.Context, reset bool, limit int, dry, prune bool) error {
 	lg := zctx.From(ctx).Named("git")
 	cfg := r.cfg
 	db := r.db
@@ -65,22 +86,23 @@ func (r *runner) runGit(ctx context.Context, reset bool, limit int, dry, prune b
 		return errNotConfigured
 	}
 
-	// Build pipelines for each content type
-	docsPipe, err := r.buildPipeline(r.buildDocChunker())
+	// One indexer per content type: the walk splits into Markdown docs, YAML
+	// manifests, source code and commits, each with its own chunker.
+	docsPipe, err := r.newIndexer(indexjob.KindMarkdown)
 	if err != nil {
-		return errors.Wrap(err, "build docs pipeline")
+		return err
 	}
-	manifestPipe, err := r.buildPipeline(r.buildManifestChunker())
+	manifestPipe, err := r.newIndexer(indexjob.KindYAML)
 	if err != nil {
-		return errors.Wrap(err, "build manifest pipeline")
+		return err
 	}
-	codePipe, err := r.buildPipeline(r.buildCodeChunker())
+	codePipe, err := r.newIndexer(indexjob.KindCode)
 	if err != nil {
-		return errors.Wrap(err, "build code pipeline")
+		return err
 	}
-	commitsPipe, err := r.buildPipeline(r.buildCommitChunker())
+	commitsPipe, err := r.newIndexer(indexjob.KindGit)
 	if err != nil {
-		return errors.Wrap(err, "build commits pipeline")
+		return err
 	}
 
 	anyErr := false
@@ -327,6 +349,12 @@ func filterDocsBySource(docs []index.Document, prefix string) []index.Document {
 }
 
 func (r *runner) runFiles(ctx context.Context, reset bool, limit int, dry bool) error {
+	return r.locked(ctx, "files", func(ctx context.Context) error {
+		return r.runFilesLocked(ctx, reset, limit, dry)
+	})
+}
+
+func (r *runner) runFilesLocked(ctx context.Context, reset bool, limit int, dry bool) error {
 	lg := zctx.From(ctx).Named("files")
 	sources := fileSources(r.cfg.ContextFiles)
 	if len(sources) == 0 {
@@ -334,9 +362,9 @@ func (r *runner) runFiles(ctx context.Context, reset bool, limit int, dry bool) 
 		return errNotConfigured
 	}
 
-	pipe, err := r.buildPipeline(r.buildDocChunker())
+	pipe, err := r.newIndexer(indexjob.KindMarkdown)
 	if err != nil {
-		return errors.Wrap(err, "build files pipeline")
+		return err
 	}
 
 	anyErr := false
@@ -389,29 +417,6 @@ func (r *runner) runFiles(ctx context.Context, reset bool, limit int, dry bool) 
 		return errors.New("one or more context files failed to index")
 	}
 	return nil
-}
-
-func (r *runner) buildDocChunker() index.Chunker {
-	return chunkmd.New(chunkmd.ChunkerOptions{})
-}
-
-func (r *runner) buildManifestChunker() index.Chunker {
-	return chunkyaml.New(chunkyaml.ChunkerOptions{})
-}
-
-func (r *runner) buildCodeChunker() index.Chunker {
-	return chunkcode.New(chunkcode.ChunkerOptions{})
-}
-
-func (r *runner) buildCommitChunker() index.Chunker {
-	return chunkgit.New()
-}
-
-func (r *runner) buildPipeline(ch index.Chunker) (*pipeline.Pipeline, error) {
-	return pipeline.New(r.db, ch, r.embedder, r.vectors, pipeline.PipelineOptions{
-		TracerProvider: r.tp,
-		MeterProvider:  r.mp,
-	})
 }
 
 func (r *runner) pruneOrphans(ctx context.Context, src index.Source, walkedSourceIDs []string) error {
@@ -479,23 +484,35 @@ func (r *runner) pruneOrphans(ctx context.Context, src index.Source, walkedSourc
 	return nil
 }
 
-func (r *runner) runGitLabAPI(ctx context.Context, p *pipeline.Pipeline, since time.Time, reset bool, limit int, dry bool) error {
-	return r.sharedRunner().RunGitLab(ctx, ingestrun.GitLabOptions{
-		Pipeline: p,
-		Since:    since,
-		Reset:    reset,
-		Limit:    limit,
-		DryRun:   dry,
+func (r *runner) runGitLabAPI(ctx context.Context, since time.Time, reset bool, limit int, dry bool) error {
+	idx, err := r.newIndexer(indexjob.KindGitLab)
+	if err != nil {
+		return err
+	}
+	return r.locked(ctx, string(index.SourceGitLabIssue), func(ctx context.Context) error {
+		return r.sharedRunner().RunGitLab(ctx, ingestrun.GitLabOptions{
+			Indexer: idx,
+			Since:   since,
+			Reset:   reset,
+			Limit:   limit,
+			DryRun:  dry,
+		})
 	})
 }
 
-func (r *runner) runJira(ctx context.Context, p *pipeline.Pipeline, since time.Time, reset bool, limit int, dry bool) error {
-	return r.sharedRunner().RunJira(ctx, ingestrun.JiraOptions{
-		Pipeline: p,
-		Since:    since,
-		Reset:    reset,
-		Limit:    limit,
-		DryRun:   dry,
+func (r *runner) runJira(ctx context.Context, since time.Time, reset bool, limit int, dry bool) error {
+	idx, err := r.newIndexer(indexjob.KindJira)
+	if err != nil {
+		return err
+	}
+	return r.locked(ctx, string(index.SourceJira), func(ctx context.Context) error {
+		return r.sharedRunner().RunJira(ctx, ingestrun.JiraOptions{
+			Indexer: idx,
+			Since:   since,
+			Reset:   reset,
+			Limit:   limit,
+			DryRun:  dry,
+		})
 	})
 }
 
@@ -511,7 +528,13 @@ func (r *runner) sharedRunner() ingestrun.Runner {
 	}
 }
 
-func (r *runner) runTelegram(ctx context.Context, p *pipeline.Pipeline, since time.Time, reset bool, limit int, dry bool, dumpPaths []string) error {
+func (r *runner) runTelegram(ctx context.Context, since time.Time, reset bool, limit int, dry bool, dumpPaths []string) error {
+	return r.locked(ctx, string(index.SourceTelegram), func(ctx context.Context) error {
+		return r.runTelegramLocked(ctx, since, reset, limit, dry, dumpPaths)
+	})
+}
+
+func (r *runner) runTelegramLocked(ctx context.Context, since time.Time, reset bool, limit int, dry bool, dumpPaths []string) error {
 	tc := r.cfg.Telegram
 	lg := zctx.From(ctx).Named("telegram")
 	db := r.db
@@ -522,6 +545,11 @@ func (r *runner) runTelegram(ctx context.Context, p *pipeline.Pipeline, since ti
 	if !liveConfigured && !dumpConfigured {
 		lg.Info("telegram not configured")
 		return errNotConfigured
+	}
+
+	p, err := r.newIndexer(indexjob.KindTelegram)
+	if err != nil {
+		return err
 	}
 
 	src := index.SourceTelegram

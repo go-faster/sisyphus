@@ -168,5 +168,13 @@ falls back to reading document bodies from Postgres, and the sandbox has no repo
 - `ssingest` and `ssbot` are pinned to one replica with a `Recreate` strategy: two
   ingestion schedulers would race on the same source rows, two bots would
   double-answer every Telegram update.
+- Indexing scales separately from fetching. `ssingest serve` publishes one index
+  job per changed document; setting `ssingestWorker.enabled: true` deploys
+  `ssingest worker` replicas to consume them and flips `config.ingest.worker.enabled`
+  to `false` so the scheduler pod stops competing for embedding capacity. Workers
+  mount no PVC and hold no source credentials — every document arrives whole in
+  its job — so `ssingestWorker.replicas` is the knob for ingestion throughput.
+  Left disabled, `ssingest serve` indexes what it publishes in-process, which is
+  the right shape for a small install.
 - The bot fails closed — with `config.telegram.allowed_chats` /
   `allowed_user_ids` empty it silently ignores every message.

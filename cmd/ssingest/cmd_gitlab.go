@@ -7,8 +7,6 @@ import (
 
 	"github.com/go-faster/errors"
 	"github.com/spf13/cobra"
-
-	chunkgitlab "github.com/go-faster/sisyphus/internal/chunk/gitlab"
 )
 
 func newGitLabCmd(deps *ingestDeps) *cobra.Command {
@@ -33,14 +31,8 @@ func newGitLabCmd(deps *ingestDeps) *cobra.Command {
 				}
 			}
 
-			ch := chunkgitlab.New()
-			pipe, err := deps.pipeline(ch)
-			if err != nil {
-				return errors.Wrap(err, "build pipeline")
-			}
-
 			r := deps.runner()
-			if err := r.runGitLabAPI(ctx, pipe, since, doReset, limit, dryRun); err != nil {
+			if err := r.runGitLabAPI(ctx, since, doReset, limit, dryRun); err != nil {
 				if errors.Is(err, errNotConfigured) {
 					fmt.Fprintf(os.Stderr, "gitlab not configured\n")
 					os.Exit(1)

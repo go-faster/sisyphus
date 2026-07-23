@@ -25,6 +25,15 @@ import (
 	"github.com/go-faster/sisyphus/internal/index"
 )
 
+// Indexer indexes one document. [Pipeline] is the implementation that does the
+// work; internal/indexjob has one that hands the document to a worker instead.
+//
+// Ingestion runs take this rather than a *Pipeline so a run does not know
+// whether it is indexing in-process or enqueuing.
+type Indexer interface {
+	Index(ctx context.Context, doc index.Document) error
+}
+
 // VectorStore is the subset of the Qdrant store the pipeline needs.
 type VectorStore interface {
 	Upsert(ctx context.Context, chunks []index.Chunk, vectors [][]float32) error
