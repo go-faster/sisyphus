@@ -9,9 +9,11 @@ import (
 	"github.com/go-faster/sdk/zctx"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
-	chunktg "github.com/go-faster/sisyphus/internal/chunk/telegram"
 	"github.com/go-faster/sisyphus/internal/httpmw"
+	"github.com/go-faster/sisyphus/internal/indexjob"
+	"github.com/go-faster/sisyphus/internal/ingestrun"
 	"github.com/go-faster/sisyphus/internal/mcpserver"
 	"github.com/go-faster/sisyphus/internal/webhook"
 	"github.com/go-faster/sisyphus/internal/wire"
@@ -35,16 +37,11 @@ func newServeCmd(deps *ingestDeps) *cobra.Command {
 func runServe(ctx context.Context, deps *ingestDeps) error {
 	lg := zctx.From(ctx)
 	cfg := deps.cfg
-	r := deps.runner()
 
-	// Built once and reused across triggers/polls: runGit/runFiles build
-	// their own per-content-type pipelines internally, but runTelegram takes
-	// its pipeline from the caller (see cmd_telegram.go), so it needs one
-	// here too.
-	tgPipe, err := deps.pipeline(chunktg.New())
-	if err != nil {
-		return errors.Wrap(err, "build telegram pipeline")
-	}
+	// The daemon publishes index jobs rather than indexing inline: a source
+	// walk is one process's job because it advances cursors, but chunking and
+	// embedding what it finds is not, and that is where the time goes.
+	r := deps.runnerWith(deps.queueIndexers())
 
 	trigger := webhook.NewTrigger(ctx, webhook.TriggerOptions{
 		Logger:        lg,
@@ -58,13 +55,13 @@ func runServe(ctx context.Context, deps *ingestDeps) error {
 		return r.runFiles(ctx, false, 0, false)
 	}))
 	trigger.Register("gitlab", ignoreNotConfigured(func(ctx context.Context) error {
-		return r.runGitLabAPI(ctx, nil, time.Time{}, false, 0, false)
+		return r.runGitLabAPI(ctx, time.Time{}, false, 0, false)
 	}))
 	trigger.Register("jira", ignoreNotConfigured(func(ctx context.Context) error {
-		return r.runJira(ctx, nil, time.Time{}, false, 0, false)
+		return r.runJira(ctx, time.Time{}, false, 0, false)
 	}))
 	trigger.Register("telegram", ignoreNotConfigured(func(ctx context.Context) error {
-		return r.runTelegram(ctx, tgPipe, time.Time{}, false, 0, false, nil)
+		return r.runTelegram(ctx, time.Time{}, false, 0, false, nil)
 	}))
 	notifyRun := deps.notifyRunner()
 	trigger.Register("notify", ignoreNotConfigured(notifyRun.RunOnce))
@@ -99,7 +96,34 @@ func runServe(ctx context.Context, deps *ingestDeps) error {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	err = httpmw.Serve(ctx, lg, "http", httpSrv)
+	g, gctx := errgroup.WithContext(ctx)
+
+	// Index in-process as well, unless dedicated workers are deployed. This is
+	// what keeps a single-pod install whole: without it, `serve` would publish
+	// jobs nothing ever claims and ingestion would stop at the queue.
+	if cfg.Ingest.Worker.Enabled {
+		worker, err := newIndexWorker(deps, lg)
+		if err != nil {
+			return err
+		}
+		// Only jobs the queue itself gave up on — attempts spent with no live
+		// lease. A job another replica is still indexing is left alone.
+		if n, err := deps.indexQueue().ReapStale(ctx); err != nil {
+			lg.Error("reap stale index jobs", zap.Error(err))
+		} else if n > 0 {
+			lg.Warn("reaped index jobs abandoned by a previous run", zap.Int("count", n))
+		}
+		lg.Info("indexing in-process",
+			zap.Int("concurrency", cfg.Ingest.Worker.Concurrency),
+			zap.String("hint", "set ingest.worker.enabled=false once ssingest worker replicas are deployed"))
+		g.Go(func() error { return worker.Run(gctx) })
+	} else {
+		lg.Info("in-process indexing disabled, publishing index jobs only",
+			zap.String("queue", indexjob.QueueName))
+	}
+
+	g.Go(func() error { return httpmw.Serve(gctx, lg, "http", httpSrv) })
+	err := g.Wait()
 
 	lg.Info("waiting for in-flight ingestion jobs to drain")
 	poller.Wait()
@@ -108,16 +132,24 @@ func runServe(ctx context.Context, deps *ingestDeps) error {
 	return err
 }
 
-// ignoreNotConfigured wraps fn so a source lacking configuration (e.g. no
-// GitLab token set) is treated as a no-op rather than a poll/webhook
-// failure, matching how the one-shot subcommands report it (log + exit 1)
-// without making the daemon spam error logs every poll tick.
+// ignoreNotConfigured wraps fn so a run that was skipped rather than failed is
+// not reported as a failure.
+//
+// Two things count as skipped: a source lacking configuration (e.g. no GitLab
+// token), which the one-shot subcommands report as log + exit 1 but which must
+// not make the daemon spam error logs every poll tick; and a source another
+// process holds the advisory lock on, which is the lock working as intended.
 func ignoreNotConfigured(fn func(context.Context) error) func(context.Context) error {
 	return func(ctx context.Context) error {
-		if err := fn(ctx); err != nil && !errors.Is(err, errNotConfigured) {
+		err := fn(ctx)
+		switch {
+		case err == nil,
+			errors.Is(err, errNotConfigured),
+			errors.Is(err, ingestrun.ErrLocked):
+			return nil
+		default:
 			return err
 		}
-		return nil
 	}
 }
 

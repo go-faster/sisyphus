@@ -7,8 +7,6 @@ import (
 
 	"github.com/go-faster/errors"
 	"github.com/spf13/cobra"
-
-	chunkjira "github.com/go-faster/sisyphus/internal/chunk/jira"
 )
 
 func newJiraCmd(deps *ingestDeps) *cobra.Command {
@@ -33,14 +31,8 @@ func newJiraCmd(deps *ingestDeps) *cobra.Command {
 				}
 			}
 
-			ch := chunkjira.New()
-			pipe, err := deps.pipeline(ch)
-			if err != nil {
-				return errors.Wrap(err, "build pipeline")
-			}
-
 			r := deps.runner()
-			if err := r.runJira(ctx, pipe, since, doReset, limit, dryRun); err != nil {
+			if err := r.runJira(ctx, since, doReset, limit, dryRun); err != nil {
 				if errors.Is(err, errNotConfigured) {
 					fmt.Fprintf(os.Stderr, "jira not configured\n")
 					os.Exit(1)

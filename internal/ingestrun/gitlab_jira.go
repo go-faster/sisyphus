@@ -30,6 +30,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/document"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 	"github.com/go-faster/sisyphus/internal/index"
+	"github.com/go-faster/sisyphus/internal/indexjob"
 	gitlabingest "github.com/go-faster/sisyphus/internal/ingest/gitlab"
 	jiraingest "github.com/go-faster/sisyphus/internal/ingest/jira"
 	"github.com/go-faster/sisyphus/internal/netclient"
@@ -53,30 +54,42 @@ type Runner struct {
 	UserAgent string
 }
 
-// Pipeline builds an indexing pipeline for a source chunker.
-func (r Runner) Pipeline(ch index.Chunker) (*pipeline.Pipeline, error) {
-	return pipeline.New(r.DB, ch, r.Embedder, r.Vectors, pipeline.PipelineOptions{
+// Indexer builds an in-process indexer for a source chunker.
+//
+// It is wrapped in indexjob.Inline so a document indexed here goes through the
+// same normalization it would have gone through had it crossed the queue,
+// keeping the one-shot subcommands and `ssingest serve` writing identical rows.
+func (r Runner) Indexer(ch index.Chunker) (pipeline.Indexer, error) {
+	p, err := pipeline.New(r.DB, ch, r.Embedder, r.Vectors, pipeline.PipelineOptions{
 		TracerProvider: r.TP,
 		MeterProvider:  r.MP,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return indexjob.Inline(p), nil
 }
 
 // GitLabOptions controls a GitLab ingestion run.
 type GitLabOptions struct {
-	Pipeline *pipeline.Pipeline
-	Since    time.Time
-	Reset    bool
-	Limit    int
-	DryRun   bool
+	// Indexer consumes fetched documents. Nil builds an in-process pipeline,
+	// which is what the one-shot subcommands want; `ssingest serve` passes a
+	// publisher so the documents are indexed by a worker instead.
+	Indexer pipeline.Indexer
+	Since   time.Time
+	Reset   bool
+	Limit   int
+	DryRun  bool
 }
 
 // JiraOptions controls a Jira ingestion run.
 type JiraOptions struct {
-	Pipeline *pipeline.Pipeline
-	Since    time.Time
-	Reset    bool
-	Limit    int
-	DryRun   bool
+	// Indexer consumes fetched documents; see [GitLabOptions.Indexer].
+	Indexer pipeline.Indexer
+	Since   time.Time
+	Reset   bool
+	Limit   int
+	DryRun  bool
 }
 
 // RunGitLab runs incremental GitLab ingestion for all enabled GitLab resources.
@@ -120,11 +133,11 @@ func (r Runner) RunGitLab(ctx context.Context, opts GitLabOptions) error {
 		return errors.Wrap(err, "gitlab auth check")
 	}
 
-	pipe := opts.Pipeline
+	pipe := opts.Indexer
 	if pipe == nil {
-		pipe, err = r.Pipeline(chunkgitlab.New())
+		pipe, err = r.Indexer(chunkgitlab.New())
 		if err != nil {
-			return errors.Wrap(err, "build gitlab pipeline")
+			return errors.Wrap(err, "build gitlab indexer")
 		}
 	}
 
@@ -309,11 +322,11 @@ func (r Runner) RunJira(ctx context.Context, opts JiraOptions) error {
 		}
 	}
 
-	pipe := opts.Pipeline
+	pipe := opts.Indexer
 	if pipe == nil {
-		pipe, err = r.Pipeline(chunkjira.New())
+		pipe, err = r.Indexer(chunkjira.New())
 		if err != nil {
-			return errors.Wrap(err, "build jira pipeline")
+			return errors.Wrap(err, "build jira indexer")
 		}
 	}
 
@@ -380,7 +393,7 @@ func (r Runner) RunJira(ctx context.Context, opts JiraOptions) error {
 }
 
 // IndexBatch runs p.Index over docs with bounded concurrency.
-func IndexBatch(ctx context.Context, lg *zap.Logger, p *pipeline.Pipeline, docs []index.Document, dry bool, label string) (processed int, anyErr bool) {
+func IndexBatch(ctx context.Context, lg *zap.Logger, p pipeline.Indexer, docs []index.Document, dry bool, label string) (processed int, anyErr bool) {
 	if dry {
 		for _, d := range docs {
 			lg.Info("dry-run would index "+label,
