@@ -98,6 +98,19 @@ func runServe(ctx context.Context, deps *ingestDeps) error {
 
 	g, gctx := errgroup.WithContext(ctx)
 
+	// Settle index jobs the queue itself gave up on — attempts spent with no
+	// live lease — so they stop looking like outstanding backlog. A job another
+	// replica is still indexing is left alone.
+	//
+	// This belongs to `serve` rather than to the workers: serve is the single
+	// scheduler, so it runs once per deployment instead of once per replica,
+	// and it must still run when indexing has been moved out entirely.
+	if n, err := deps.indexQueue().ReapStale(ctx); err != nil {
+		lg.Error("reap stale index jobs", zap.Error(err))
+	} else if n > 0 {
+		lg.Warn("reaped index jobs abandoned by a previous run", zap.Int("count", n))
+	}
+
 	// Index in-process as well, unless dedicated workers are deployed. This is
 	// what keeps a single-pod install whole: without it, `serve` would publish
 	// jobs nothing ever claims and ingestion would stop at the queue.
@@ -105,13 +118,6 @@ func runServe(ctx context.Context, deps *ingestDeps) error {
 		worker, err := newIndexWorker(deps, lg)
 		if err != nil {
 			return err
-		}
-		// Only jobs the queue itself gave up on — attempts spent with no live
-		// lease. A job another replica is still indexing is left alone.
-		if n, err := deps.indexQueue().ReapStale(ctx); err != nil {
-			lg.Error("reap stale index jobs", zap.Error(err))
-		} else if n > 0 {
-			lg.Warn("reaped index jobs abandoned by a previous run", zap.Int("count", n))
 		}
 		lg.Info("indexing in-process",
 			zap.Int("concurrency", cfg.Ingest.Worker.Concurrency),
