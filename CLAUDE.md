@@ -29,13 +29,16 @@ Never store only embeddings — always keep Documents+Chunks in Postgres so we c
 cmd/ssapi              owns Postgres/ent + migrations; serves the HTTP API
                         (bearer-token auth on /search, /context; /health public)
 cmd/ssbot              Exposes system as Telegram bot; talks to ssapi via internal/apiclient
-cmd/ssagent            HTTP service for /investigate: an async, Postgres-backed job
-                        queue (internal/agentstore) over agent.Investigator's LLM
-                        tool-calling loop. POST /investigate persists a job and returns
-                        202 + job ID immediately; GET /investigate/{id} polls for the
-                        result. Connects to Postgres (database.dsn) but never migrates
-                        (only ssapi does). internal/agentclient is the HTTP client
-                        (submit + poll) ssbot uses to talk to it.
+cmd/ssagent            HTTP service for /investigate over agent.Investigator's LLM
+                        tool-calling loop. POST /investigate persists a job row
+                        (internal/agentstore) plus a queue job (internal/queue) in one
+                        tx and returns 202 + job ID immediately; a queue.Worker in the
+                        same process — or in any other replica — claims and runs it, so
+                        ssagent is a queue worker and safe to scale to N replicas.
+                        GET /investigate/{id} polls for the result. Connects to Postgres
+                        (database.dsn) but never migrates (only ssapi does).
+                        internal/agentclient is the HTTP client (submit + poll) ssbot
+                        uses to talk to it.
 cmd/ssmcp              MCP server entrypoint (Streamable HTTP or stdio); calls ssapi via internal/apiclient
 cmd/ssingest           ingestion CLI + daemon: git|files|gitlab|jira|telegram|all subcommands
                         run one-shot (--reset <src|all> (--yes-i-mean-all for all), --since,
@@ -107,9 +110,36 @@ internal/vectorrepair   `ssingest repair`: re-embeds chunks whose point is keyed
                         Writes the new point BEFORE rebinding the row and deletes the old one
                         after, so an interrupted run leaves an orphan (gc's job), never a row
                         pointing at nothing.
+internal/queue          SHARED SUBSTRATE for background work (notify delivery, agent
+                        investigations, and ingest as it moves over). One queue_jobs
+                        table serves every queue, distinguished by the `queue` column,
+                        so there is one claim path and one set of indexes.
+                        Postgres.Fetch claims with FOR UPDATE SKIP LOCKED under a lease:
+                        N workers drain concurrently without coordination, and a worker
+                        that dies has its job reclaimed when the lease lapses — that
+                        expiry, not any separate requeue step, is what makes a crash
+                        recoverable. Nack retries with backoff until MaxAttempts, then
+                        the job is terminal (status=error) and stays for inspection.
+                        queue.Worker is the drain loop (claim → run → ack/nack); it
+                        claims only as many jobs as it has free slots, so a backlog
+                        never sits leased behind a busy handler.
+                        The interface carries PAYLOADS and acks by ID — it never hands
+                        out rows, table names, or transactions — so a broker-backed
+                        implementation stays possible. Two things follow, and must not
+                        be designed away: dedup is best-effort (consumers must be
+                        idempotent, since delivery is at-least-once), and transactional
+                        enqueue is Postgres.WithTx's guarantee, NOT the interface's.
+                        Job state of record (a report, a delivery outcome) belongs on
+                        the domain row, never in the queue: a queue answers "what work
+                        is outstanding", never "what happened to job X".
+                        Producers that keep a domain row set Message.ID to that row's ID
+                        so the two share an identifier. Set Message.Key to that ID too
+                        unless the queue is genuinely the dedup point — a queue job
+                        outlives the row it refers to, so reusing a business dedup key
+                        silently swallows a re-enqueue after the old row is cleaned up.
 internal/bot            gotd bot, /context handler
 internal/ent            ent schema + generated code (Document, Chunk, SupportRequest,
-                        TelegramMessage, SyncState)
+                        TelegramMessage, SyncState, QueueJob)
 internal/llm/openrouter OpenRouter-backed LLM answerer (chat completions) used to
                         answer /context questions from retrieved chunks (non-agentic path).
 internal/agent          shared LLM tool-calling loop engine (coreLoop in core.go) used by
@@ -118,12 +148,17 @@ internal/agent          shared LLM tool-calling loop engine (coreLoop in core.go
                         DiscoveredURLs from tool results (source_url/url JSON fields only —
                         never free-form body text, see "Answers & link buttons")
 internal/agentstore     ent-backed persistence for cmd/ssagent's InvestigationJob rows
-                        (pending/running/done/error, idempotency_key, Report snapshot).
+                        (pending/running/done/error, idempotency_key, Report snapshot),
+                        plus dispatch through internal/queue (queue "agent.investigate").
                         Store.Submit is the dedup point: a repeated idempotency_key
-                        returns the existing job instead of creating a second one.
-                        Store.ReapStale marks any job still pending/running as error at
-                        ssagent startup, so a crash mid-investigation can't leave a
-                        client polling forever.
+                        returns the existing job instead of creating a second one, and
+                        writes the row + its queue job in one tx so a submitted job is
+                        never queued twice nor accepted without being queued.
+                        Store.ReapStale settles ONLY jobs the queue abandoned (attempts
+                        spent, no live lease). It must never sweep all pending/running
+                        rows: with a shared queue, "running" means "running on some
+                        replica", and a blanket sweep reports live investigations as
+                        dead.
 internal/answer         agentic /context answerer (index.Answerer): AgenticAnswerer runs
                         agent.coreLoop with search_knowledge/fetch_url tools (knowledge_tools.go,
                         in-process) merged via MultiToolSource with an optional ssh-mcp-backed
@@ -319,9 +354,16 @@ files against it, diffs the result against the ent schema, writes a new file, up
 Some DDL can't be expressed in the ent schema (e.g. `00002_fts.sql`'s
 `GENERATED ALWAYS AS (...) STORED` tsvector column — ent only supports plain
 `DEFAULT`/`DefaultExpr`, which don't recompute on `UPDATE`). Those migrations are
-still hand-written directly in `migrations/`; run `make migrate-diff` afterward to
-refresh `atlas.sum` (it should produce no new file, since the extra column/index isn't
-declared in the ent schema).
+still hand-written directly in `migrations/` — as are data migrations, which a schema
+diff cannot produce at all (e.g. `20260723061500_backfill_notification_queue.sql`,
+which gives already-queued notifications a delivery job so the outbox move doesn't
+strand them).
+
+A hand-written file invalidates `atlas.sum`, and every later `make migrate-diff` then
+refuses to start on the checksum mismatch. Run `make migrate-hash` to rehash the
+directory (no Docker needed), then `make migrate-diff` to confirm it replays cleanly
+and produces no new file — no new file means the ent schema and the migrations agree.
+Never hand-edit `atlas.sum`.
 
 Migration files must not contain more than the forward migration: the runner execs the
 entire file as one blob with no down/rollback support, and stray SQL after a `-- +goose
