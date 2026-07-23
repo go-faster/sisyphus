@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"os"
 	"time"
 
 	"entgo.io/ent/dialect"
@@ -11,6 +12,7 @@ import (
 	"github.com/go-faster/errors"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/go-faster/sdk/app"
 	"github.com/go-faster/sdk/zctx"
@@ -27,6 +29,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/mcpclient"
 	"github.com/go-faster/sisyphus/internal/mcpserver"
 	"github.com/go-faster/sisyphus/internal/netclient"
+	"github.com/go-faster/sisyphus/internal/queue"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // register pgx driver
 )
@@ -67,12 +70,26 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry, info cli
 		return errors.Wrap(err, "open job db")
 	}
 	defer closeDB()
-	store := agentstore.New(db)
+	jobTimeout := time.Duration(cfg.Agent.RequestTimeoutSeconds) * time.Second
+	if jobTimeout == 0 {
+		jobTimeout = 3 * time.Minute
+	}
 
+	hostname, _ := os.Hostname()
+	store := agentstore.New(db, agentstore.Options{
+		// The lease must outlast a job, or a still-running investigation gets
+		// claimed a second time elsewhere.
+		Lease: jobTimeout + time.Minute,
+		Owner: hostname,
+	})
+
+	// Only settles jobs the queue itself gave up on. A job another replica is
+	// still working on is left alone — with a shared queue, "running" no
+	// longer implies "running here".
 	if n, err := store.ReapStale(ctx); err != nil {
 		lg.Error("reap stale jobs", zap.Error(err))
 	} else if n > 0 {
-		lg.Warn("reaped stale jobs left over from a previous run", zap.Int("count", n))
+		lg.Warn("reaped stale jobs abandoned by a previous run", zap.Int("count", n))
 	}
 
 	httpClient, err := netclient.HTTPClient(ctx, "openrouter", cfg.Proxies.OpenRouter, netclient.HTTPClientOptions{
@@ -129,11 +146,6 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry, info cli
 	mux := http.NewServeMux()
 	mcpserver.InstallHealth(mux, info.Short(), mClient)
 
-	jobTimeout := time.Duration(cfg.Agent.RequestTimeoutSeconds) * time.Second
-	if jobTimeout == 0 {
-		jobTimeout = 3 * time.Minute
-	}
-
 	tracer := telemetry.TracerProvider().Tracer("github.com/go-faster/sisyphus/cmd/ssagent")
 	metrics, err := newAgentMetrics(telemetry.MeterProvider())
 	if err != nil {
@@ -143,21 +155,13 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry, info cli
 	if maxConcurrent == 0 {
 		maxConcurrent = 4
 	}
-	var sem chan struct{}
-	if maxConcurrent > 0 {
-		sem = make(chan struct{}, maxConcurrent)
-	}
 	maxBodyBytes := cfg.Agent.MaxBodyBytes
 	if maxBodyBytes == 0 {
 		maxBodyBytes = 64 * 1024
 	}
 
 	auth := mcpserver.BearerAuthMiddleware(cfg.Agent.AuthToken)
-	// baseCtx (not any single request's context) is what dispatched jobs run
-	// under, so an investigation keeps running — and its result still gets
-	// persisted — after the client that submitted it disconnects. It's
-	// canceled when the service itself shuts down.
-	mux.Handle("POST /investigate", auth(handleInvestigateSubmit(ctx, store, inv, jobTimeout, maxBodyBytes, sem, tracer, metrics, lg)))
+	mux.Handle("POST /investigate", auth(handleInvestigateSubmit(store, maxBodyBytes, lg)))
 	mux.Handle("GET /investigate/{id}", auth(handleInvestigateGet(store, lg)))
 
 	srv := &http.Server{
@@ -165,7 +169,22 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry, info cli
 		Handler:           httpmw.Wrap(lg, telemetry, mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	return httpmw.Serve(ctx, lg, "ssagent", srv)
+
+	// The worker drains the queue alongside the HTTP server rather than being
+	// dispatched from the request handler, so an investigation outlives the
+	// request — and the process — that submitted it.
+	worker := queue.NewWorker(store.Queue(),
+		investigateHandler(store, inv, tracer, metrics, lg),
+		queue.WorkerOptions{
+			Concurrency: maxConcurrent,
+			JobTimeout:  jobTimeout,
+			Logger:      lg,
+		})
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error { return worker.Run(gctx) })
+	g.Go(func() error { return httpmw.Serve(gctx, lg, "ssagent", srv) })
+	return g.Wait()
 }
 
 func main() {

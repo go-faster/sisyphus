@@ -20,6 +20,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/agentstore"
 	"github.com/go-faster/sisyphus/internal/index"
 	"github.com/go-faster/sisyphus/internal/mcpserver"
+	"github.com/go-faster/sisyphus/internal/queue"
 )
 
 // fakeInvestigator lets tests control an investigation's outcome and,
@@ -132,16 +133,35 @@ func (s *fakeJobStore) Get(_ context.Context, id uuid.UUID) (agentstore.Job, err
 // newTestMux wires the two /investigate routes the same way run() does, so
 // tests exercise real method routing ("POST /investigate" vs.
 // "GET /investigate/{id}") instead of calling handler funcs directly.
-func newTestMux(t *testing.T, store jobStore, inv agent.Investigator, sem chan struct{}) http.Handler {
+func newTestMux(t *testing.T, store jobStore) http.Handler {
 	t.Helper()
 	logger := zaptest.NewLogger(t)
-	tracer := noop.NewTracerProvider().Tracer("")
 	auth := mcpserver.BearerAuthMiddleware("secret")
 
 	mux := http.NewServeMux()
-	mux.Handle("POST /investigate", auth(handleInvestigateSubmit(t.Context(), store, inv, 5*time.Second, 64*1024, sem, tracer, nil, logger)))
+	mux.Handle("POST /investigate", auth(handleInvestigateSubmit(store, 64*1024, logger)))
 	mux.Handle("GET /investigate/{id}", auth(handleInvestigateGet(store, logger)))
 	return mux
+}
+
+// runClaimed drives the worker handler for one job, standing in for the
+// queue worker that would claim it in a running ssagent.
+func runClaimed(t *testing.T, store jobStore, inv agent.Investigator, id uuid.UUID, description string) error {
+	t.Helper()
+	payload, err := json.Marshal(agentstore.Payload{Description: description})
+	require.NoError(t, err)
+	h := investigateHandler(store, inv, noop.NewTracerProvider().Tracer(""), nil, zaptest.NewLogger(t))
+	return h(t.Context(), queue.Delivery{ID: id, Key: id.String(), Payload: payload, Attempts: 1, MaxAttempts: 2})
+}
+
+// jobID parses the job ID out of a 202 submit response.
+func jobID(t *testing.T, rec *httptest.ResponseRecorder) (InvestigateAcceptedResponse, uuid.UUID) {
+	t.Helper()
+	var accepted InvestigateAcceptedResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &accepted))
+	id, err := uuid.Parse(accepted.JobID)
+	require.NoError(t, err)
+	return accepted, id
 }
 
 func doRequest(mux http.Handler, method, path, authHeader string, body []byte) *httptest.ResponseRecorder {
@@ -162,22 +182,17 @@ func TestInvestigate_SubmitAndPoll_HappyPath(t *testing.T) {
 		Iterations: 2,
 		ToolsUsed:  1,
 	}}
-	mux := newTestMux(t, store, inv, nil)
+	mux := newTestMux(t, store)
 
 	body, _ := json.Marshal(InvestigateRequest{Description: "test issue"})
 	rec := doRequest(mux, http.MethodPost, "/investigate", "Bearer secret", body)
 	require.Equal(t, http.StatusAccepted, rec.Code)
 
-	var accepted InvestigateAcceptedResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &accepted))
+	accepted, id := jobID(t, rec)
 	require.NotEmpty(t, accepted.JobID)
 	require.Equal(t, "pending", accepted.Status)
 
-	select {
-	case <-store.notify:
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for job to complete")
-	}
+	require.NoError(t, runClaimed(t, store, inv, id, "test issue"))
 
 	rec = doRequest(mux, http.MethodGet, "/investigate/"+accepted.JobID, "Bearer secret", nil)
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -259,10 +274,7 @@ func TestJobResponse_QueuedAndTotalDuration(t *testing.T) {
 
 func TestInvestigate_SubmitRetryWithSameIdempotencyKey_ReturnsSameJob(t *testing.T) {
 	store := newFakeJobStore()
-	store.notify = make(chan uuid.UUID, 1)
-	block := make(chan struct{})
-	inv := &fakeInvestigator{block: block}
-	mux := newTestMux(t, store, inv, nil)
+	mux := newTestMux(t, store)
 
 	body, _ := json.Marshal(InvestigateRequest{Description: "test issue", IdempotencyKey: "retry-key"})
 	rec1 := doRequest(mux, http.MethodPost, "/investigate", "Bearer secret", body)
@@ -276,18 +288,11 @@ func TestInvestigate_SubmitRetryWithSameIdempotencyKey_ReturnsSameJob(t *testing
 	require.NoError(t, json.Unmarshal(rec2.Body.Bytes(), &second))
 
 	require.Equal(t, first.JobID, second.JobID)
-
-	close(block)
-	select {
-	case <-store.notify:
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for job to complete")
-	}
 }
 
 func TestInvestigate_Get_UnknownJob(t *testing.T) {
 	store := newFakeJobStore()
-	mux := newTestMux(t, store, &fakeInvestigator{}, nil)
+	mux := newTestMux(t, store)
 
 	rec := doRequest(mux, http.MethodGet, "/investigate/"+uuid.NewString(), "Bearer secret", nil)
 	require.Equal(t, http.StatusNotFound, rec.Code)
@@ -295,7 +300,7 @@ func TestInvestigate_Get_UnknownJob(t *testing.T) {
 
 func TestInvestigate_Get_InvalidID(t *testing.T) {
 	store := newFakeJobStore()
-	mux := newTestMux(t, store, &fakeInvestigator{}, nil)
+	mux := newTestMux(t, store)
 
 	rec := doRequest(mux, http.MethodGet, "/investigate/not-a-uuid", "Bearer secret", nil)
 	require.Equal(t, http.StatusBadRequest, rec.Code)
@@ -303,7 +308,7 @@ func TestInvestigate_Get_InvalidID(t *testing.T) {
 
 func TestInvestigate_NoAuth(t *testing.T) {
 	store := newFakeJobStore()
-	mux := newTestMux(t, store, &fakeInvestigator{}, nil)
+	mux := newTestMux(t, store)
 
 	body, _ := json.Marshal(InvestigateRequest{Description: "test issue"})
 	rec := doRequest(mux, http.MethodPost, "/investigate", "", body)
@@ -312,7 +317,7 @@ func TestInvestigate_NoAuth(t *testing.T) {
 
 func TestInvestigate_EmptyDescription(t *testing.T) {
 	store := newFakeJobStore()
-	mux := newTestMux(t, store, &fakeInvestigator{}, nil)
+	mux := newTestMux(t, store)
 
 	body, _ := json.Marshal(InvestigateRequest{Description: ""})
 	rec := doRequest(mux, http.MethodPost, "/investigate", "Bearer secret", body)
@@ -321,7 +326,7 @@ func TestInvestigate_EmptyDescription(t *testing.T) {
 
 func TestInvestigate_WrongMethod(t *testing.T) {
 	store := newFakeJobStore()
-	mux := newTestMux(t, store, &fakeInvestigator{}, nil)
+	mux := newTestMux(t, store)
 
 	rec := doRequest(mux, http.MethodDelete, "/investigate", "Bearer secret", nil)
 	require.Equal(t, http.StatusMethodNotAllowed, rec.Code)
@@ -330,10 +335,9 @@ func TestInvestigate_WrongMethod(t *testing.T) {
 func TestInvestigate_BodyTooLarge(t *testing.T) {
 	store := newFakeJobStore()
 	logger := zaptest.NewLogger(t)
-	tracer := noop.NewTracerProvider().Tracer("")
 	auth := mcpserver.BearerAuthMiddleware("secret")
 	mux := http.NewServeMux()
-	mux.Handle("POST /investigate", auth(handleInvestigateSubmit(t.Context(), store, &fakeInvestigator{}, 5*time.Second, 16, nil, tracer, nil, logger)))
+	mux.Handle("POST /investigate", auth(handleInvestigateSubmit(store, 16, logger)))
 
 	body, _ := json.Marshal(InvestigateRequest{Description: "this description is definitely longer than sixteen bytes"})
 	rec := doRequest(mux, http.MethodPost, "/investigate", "Bearer secret", body)
@@ -344,19 +348,16 @@ func TestInvestigate_JobFailure_RecordedAsError(t *testing.T) {
 	store := newFakeJobStore()
 	store.notify = make(chan uuid.UUID, 1)
 	inv := &fakeInvestigator{err: errors.New("boom")}
-	mux := newTestMux(t, store, inv, nil)
+	mux := newTestMux(t, store)
 
 	body, _ := json.Marshal(InvestigateRequest{Description: "test issue"})
 	rec := doRequest(mux, http.MethodPost, "/investigate", "Bearer secret", body)
 	require.Equal(t, http.StatusAccepted, rec.Code)
-	var accepted InvestigateAcceptedResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &accepted))
+	accepted, id := jobID(t, rec)
 
-	select {
-	case <-store.notify:
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for job to fail")
-	}
+	// A failed investigation is acknowledged, not retried: the failure is
+	// already recorded, and another LLM run would fail the same way.
+	require.NoError(t, runClaimed(t, store, inv, id, "test issue"))
 
 	rec = doRequest(mux, http.MethodGet, "/investigate/"+accepted.JobID, "Bearer secret", nil)
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -366,41 +367,40 @@ func TestInvestigate_JobFailure_RecordedAsError(t *testing.T) {
 	require.Equal(t, "boom", job.Error)
 }
 
-// TestInvestigate_ConcurrencyLimit_QueuesRatherThanRejects verifies that a
-// full worker semaphore no longer produces an HTTP-visible rejection (the
-// old synchronous handler's 429): the job is accepted and persisted as
-// pending immediately, and only its actual execution waits for a free slot.
-func TestInvestigate_ConcurrencyLimit_QueuesRatherThanRejects(t *testing.T) {
+// TestInvestigate_SubmitIsPendingUntilAWorkerClaimsIt verifies that
+// submission only queues work: nothing runs until a worker claims the job, so
+// a burst of requests is accepted and persisted rather than rejected or run
+// inline. Concurrency limiting now lives in the queue worker.
+func TestInvestigate_SubmitIsPendingUntilAWorkerClaimsIt(t *testing.T) {
 	store := newFakeJobStore()
-	store.notify = make(chan uuid.UUID, 2)
-	sem := make(chan struct{}, 1)
-	sem <- struct{}{} // occupy the only slot
-
 	inv := &fakeInvestigator{res: agent.Result{Report: agent.Report{Verdict: agent.VerdictSolved}}}
-	mux := newTestMux(t, store, inv, sem)
+	mux := newTestMux(t, store)
 
 	body, _ := json.Marshal(InvestigateRequest{Description: "test issue"})
 	rec := doRequest(mux, http.MethodPost, "/investigate", "Bearer secret", body)
 	require.Equal(t, http.StatusAccepted, rec.Code)
-
-	var accepted InvestigateAcceptedResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &accepted))
-	id, err := uuid.Parse(accepted.JobID)
-	require.NoError(t, err)
+	_, id := jobID(t, rec)
 
 	job, err := store.Get(t.Context(), id)
 	require.NoError(t, err)
-	require.Equal(t, agentstore.StatusPending, job.Status)
+	require.Equal(t, agentstore.StatusPending, job.Status, "submission must not run the investigation")
 
-	// Free the slot; the queued job should now run to completion.
-	<-sem
-	select {
-	case <-store.notify:
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for queued job to run")
-	}
+	require.NoError(t, runClaimed(t, store, inv, id, "test issue"))
 
 	job, err = store.Get(t.Context(), id)
 	require.NoError(t, err)
 	require.Equal(t, agentstore.StatusDone, job.Status)
+}
+
+// TestInvestigate_UndecodablePayloadIsRetired verifies a payload that can
+// never decode is failed and acknowledged rather than reclaimed until its
+// attempts run out.
+func TestInvestigate_UndecodablePayloadIsRetired(t *testing.T) {
+	store := newFakeJobStore()
+	id := uuid.New()
+	_, _, err := store.Submit(t.Context(), "key", "test issue")
+	require.NoError(t, err)
+
+	h := investigateHandler(store, &fakeInvestigator{}, noop.NewTracerProvider().Tracer(""), nil, zaptest.NewLogger(t))
+	require.NoError(t, h(t.Context(), queue.Delivery{ID: id, Payload: []byte("not json"), Attempts: 1, MaxAttempts: 2}))
 }

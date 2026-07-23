@@ -172,16 +172,12 @@ func runJob(ctx context.Context, store jobStore, inv agent.Investigator, jobID u
 	}
 }
 
-// handleInvestigateSubmit serves POST /investigate: it persists a job row
-// and returns immediately with its ID (202), then dispatches the actual
-// investigation to run in the background via runJob. maxBodyBytes caps the
-// request body; sem bounds how many investigations run concurrently (a
-// blocking acquire, not a rejection: since the job is already durably
-// queued, a burst of requests just waits for a free worker slot instead of
-// being dropped with a 429). A nil sem disables the limit. baseCtx is a
-// long-lived context (independent of any single request) that dispatched
-// jobs run under, so a job survives the HTTP request that created it.
-func handleInvestigateSubmit(baseCtx context.Context, store jobStore, inv agent.Investigator, jobTimeout time.Duration, maxBodyBytes int64, sem chan struct{}, tracer trace.Tracer, metrics *agentMetrics, logger *zap.Logger) http.HandlerFunc {
+// handleInvestigateSubmit serves POST /investigate: it persists a job row,
+// queues the investigation, and returns immediately with the job's ID (202).
+// A worker in this or any other replica claims it from the queue, so the job
+// no longer depends on the process that accepted the request staying alive.
+// maxBodyBytes caps the request body.
+func handleInvestigateSubmit(store jobStore, maxBodyBytes int64, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if maxBodyBytes > 0 {
 			r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
@@ -209,20 +205,6 @@ func handleInvestigateSubmit(baseCtx context.Context, store jobStore, inv agent.
 		}
 
 		if created {
-			jobCtx, cancel := context.WithTimeout(baseCtx, jobTimeout)
-			go func() {
-				defer cancel()
-				if sem != nil {
-					select {
-					case sem <- struct{}{}:
-						defer func() { <-sem }()
-					case <-jobCtx.Done():
-						_ = store.Fail(context.WithoutCancel(baseCtx), job.ID, jobCtx.Err())
-						return
-					}
-				}
-				runJob(jobCtx, store, inv, job.ID, req.Description, tracer, metrics, logger)
-			}()
 			sendJSON(w, http.StatusAccepted, InvestigateAcceptedResponse{JobID: job.ID.String(), Status: string(agentstore.StatusPending)}, logger)
 			return
 		}
