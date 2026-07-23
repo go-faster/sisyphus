@@ -23,6 +23,14 @@ Qdrant   = vector search over chunks
 
 Never store only embeddings — always keep Documents+Chunks in Postgres so we can reindex.
 
+**`ARCHITECTURE.md` describes the target, not the code.** It lays out a redesign of today's
+five role-based binaries into bounded contexts wired by an event spine, and it is **only
+partly implemented** — sections marked _(today)_ are real, the rest is not built yet. Read
+it for direction; do not treat it as a description of what exists, and do not "fix" code to
+match it. **This file and the nested ones are the source of truth for how the system
+actually works today.** When a piece of that migration lands, update the Layout below in
+the same change.
+
 ## Nested CLAUDE.md
 
 Directories marked **†** below carry their own `CLAUDE.md` with the invariants and
