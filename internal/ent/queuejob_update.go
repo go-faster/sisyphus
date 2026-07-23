@@ -96,37 +96,17 @@ func (_u *QueueJobUpdate) AddMaxAttempts(v int) *QueueJobUpdate {
 	return _u
 }
 
-// SetAvailableAt sets the "available_at" field.
-func (_u *QueueJobUpdate) SetAvailableAt(v time.Time) *QueueJobUpdate {
-	_u.mutation.SetAvailableAt(v)
+// SetVisibleAt sets the "visible_at" field.
+func (_u *QueueJobUpdate) SetVisibleAt(v time.Time) *QueueJobUpdate {
+	_u.mutation.SetVisibleAt(v)
 	return _u
 }
 
-// SetNillableAvailableAt sets the "available_at" field if the given value is not nil.
-func (_u *QueueJobUpdate) SetNillableAvailableAt(v *time.Time) *QueueJobUpdate {
+// SetNillableVisibleAt sets the "visible_at" field if the given value is not nil.
+func (_u *QueueJobUpdate) SetNillableVisibleAt(v *time.Time) *QueueJobUpdate {
 	if v != nil {
-		_u.SetAvailableAt(*v)
+		_u.SetVisibleAt(*v)
 	}
-	return _u
-}
-
-// SetLeaseExpiresAt sets the "lease_expires_at" field.
-func (_u *QueueJobUpdate) SetLeaseExpiresAt(v time.Time) *QueueJobUpdate {
-	_u.mutation.SetLeaseExpiresAt(v)
-	return _u
-}
-
-// SetNillableLeaseExpiresAt sets the "lease_expires_at" field if the given value is not nil.
-func (_u *QueueJobUpdate) SetNillableLeaseExpiresAt(v *time.Time) *QueueJobUpdate {
-	if v != nil {
-		_u.SetLeaseExpiresAt(*v)
-	}
-	return _u
-}
-
-// ClearLeaseExpiresAt clears the value of the "lease_expires_at" field.
-func (_u *QueueJobUpdate) ClearLeaseExpiresAt() *QueueJobUpdate {
-	_u.mutation.ClearLeaseExpiresAt()
 	return _u
 }
 
@@ -267,14 +247,8 @@ func (_u *QueueJobUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedMaxAttempts(); ok {
 		_spec.AddField(queuejob.FieldMaxAttempts, field.TypeInt, value)
 	}
-	if value, ok := _u.mutation.AvailableAt(); ok {
-		_spec.SetField(queuejob.FieldAvailableAt, field.TypeTime, value)
-	}
-	if value, ok := _u.mutation.LeaseExpiresAt(); ok {
-		_spec.SetField(queuejob.FieldLeaseExpiresAt, field.TypeTime, value)
-	}
-	if _u.mutation.LeaseExpiresAtCleared() {
-		_spec.ClearField(queuejob.FieldLeaseExpiresAt, field.TypeTime)
+	if value, ok := _u.mutation.VisibleAt(); ok {
+		_spec.SetField(queuejob.FieldVisibleAt, field.TypeTime, value)
 	}
 	if value, ok := _u.mutation.LeaseOwner(); ok {
 		_spec.SetField(queuejob.FieldLeaseOwner, field.TypeString, value)
@@ -385,37 +359,17 @@ func (_u *QueueJobUpdateOne) AddMaxAttempts(v int) *QueueJobUpdateOne {
 	return _u
 }
 
-// SetAvailableAt sets the "available_at" field.
-func (_u *QueueJobUpdateOne) SetAvailableAt(v time.Time) *QueueJobUpdateOne {
-	_u.mutation.SetAvailableAt(v)
+// SetVisibleAt sets the "visible_at" field.
+func (_u *QueueJobUpdateOne) SetVisibleAt(v time.Time) *QueueJobUpdateOne {
+	_u.mutation.SetVisibleAt(v)
 	return _u
 }
 
-// SetNillableAvailableAt sets the "available_at" field if the given value is not nil.
-func (_u *QueueJobUpdateOne) SetNillableAvailableAt(v *time.Time) *QueueJobUpdateOne {
+// SetNillableVisibleAt sets the "visible_at" field if the given value is not nil.
+func (_u *QueueJobUpdateOne) SetNillableVisibleAt(v *time.Time) *QueueJobUpdateOne {
 	if v != nil {
-		_u.SetAvailableAt(*v)
+		_u.SetVisibleAt(*v)
 	}
-	return _u
-}
-
-// SetLeaseExpiresAt sets the "lease_expires_at" field.
-func (_u *QueueJobUpdateOne) SetLeaseExpiresAt(v time.Time) *QueueJobUpdateOne {
-	_u.mutation.SetLeaseExpiresAt(v)
-	return _u
-}
-
-// SetNillableLeaseExpiresAt sets the "lease_expires_at" field if the given value is not nil.
-func (_u *QueueJobUpdateOne) SetNillableLeaseExpiresAt(v *time.Time) *QueueJobUpdateOne {
-	if v != nil {
-		_u.SetLeaseExpiresAt(*v)
-	}
-	return _u
-}
-
-// ClearLeaseExpiresAt clears the value of the "lease_expires_at" field.
-func (_u *QueueJobUpdateOne) ClearLeaseExpiresAt() *QueueJobUpdateOne {
-	_u.mutation.ClearLeaseExpiresAt()
 	return _u
 }
 
@@ -586,14 +540,8 @@ func (_u *QueueJobUpdateOne) sqlSave(ctx context.Context) (_node *QueueJob, err 
 	if value, ok := _u.mutation.AddedMaxAttempts(); ok {
 		_spec.AddField(queuejob.FieldMaxAttempts, field.TypeInt, value)
 	}
-	if value, ok := _u.mutation.AvailableAt(); ok {
-		_spec.SetField(queuejob.FieldAvailableAt, field.TypeTime, value)
-	}
-	if value, ok := _u.mutation.LeaseExpiresAt(); ok {
-		_spec.SetField(queuejob.FieldLeaseExpiresAt, field.TypeTime, value)
-	}
-	if _u.mutation.LeaseExpiresAtCleared() {
-		_spec.ClearField(queuejob.FieldLeaseExpiresAt, field.TypeTime)
+	if value, ok := _u.mutation.VisibleAt(); ok {
+		_spec.SetField(queuejob.FieldVisibleAt, field.TypeTime, value)
 	}
 	if value, ok := _u.mutation.LeaseOwner(); ok {
 		_spec.SetField(queuejob.FieldLeaseOwner, field.TypeString, value)

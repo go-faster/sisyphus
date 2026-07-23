@@ -30,10 +30,8 @@ type QueueJob struct {
 	Attempts int `json:"attempts,omitempty"`
 	// MaxAttempts holds the value of the "max_attempts" field.
 	MaxAttempts int `json:"max_attempts,omitempty"`
-	// AvailableAt holds the value of the "available_at" field.
-	AvailableAt time.Time `json:"available_at,omitempty"`
-	// LeaseExpiresAt holds the value of the "lease_expires_at" field.
-	LeaseExpiresAt *time.Time `json:"lease_expires_at,omitempty"`
+	// VisibleAt holds the value of the "visible_at" field.
+	VisibleAt time.Time `json:"visible_at,omitempty"`
 	// LeaseOwner holds the value of the "lease_owner" field.
 	LeaseOwner string `json:"lease_owner,omitempty"`
 	// Error holds the value of the "error" field.
@@ -58,7 +56,7 @@ func (*QueueJob) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullInt64)
 		case queuejob.FieldQueue, queuejob.FieldDedupKey, queuejob.FieldStatus, queuejob.FieldLeaseOwner, queuejob.FieldError:
 			values[i] = new(sql.NullString)
-		case queuejob.FieldAvailableAt, queuejob.FieldLeaseExpiresAt, queuejob.FieldCreatedAt, queuejob.FieldUpdatedAt, queuejob.FieldCompletedAt:
+		case queuejob.FieldVisibleAt, queuejob.FieldCreatedAt, queuejob.FieldUpdatedAt, queuejob.FieldCompletedAt:
 			values[i] = new(sql.NullTime)
 		case queuejob.FieldID:
 			values[i] = new(uuid.UUID)
@@ -119,18 +117,11 @@ func (_m *QueueJob) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.MaxAttempts = int(value.Int64)
 			}
-		case queuejob.FieldAvailableAt:
+		case queuejob.FieldVisibleAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
-				return fmt.Errorf("unexpected type %T for field available_at", values[i])
+				return fmt.Errorf("unexpected type %T for field visible_at", values[i])
 			} else if value.Valid {
-				_m.AvailableAt = value.Time
-			}
-		case queuejob.FieldLeaseExpiresAt:
-			if value, ok := values[i].(*sql.NullTime); !ok {
-				return fmt.Errorf("unexpected type %T for field lease_expires_at", values[i])
-			} else if value.Valid {
-				_m.LeaseExpiresAt = new(time.Time)
-				*_m.LeaseExpiresAt = value.Time
+				_m.VisibleAt = value.Time
 			}
 		case queuejob.FieldLeaseOwner:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -217,13 +208,8 @@ func (_m *QueueJob) String() string {
 	builder.WriteString("max_attempts=")
 	builder.WriteString(fmt.Sprintf("%v", _m.MaxAttempts))
 	builder.WriteString(", ")
-	builder.WriteString("available_at=")
-	builder.WriteString(_m.AvailableAt.Format(time.ANSIC))
-	builder.WriteString(", ")
-	if v := _m.LeaseExpiresAt; v != nil {
-		builder.WriteString("lease_expires_at=")
-		builder.WriteString(v.Format(time.ANSIC))
-	}
+	builder.WriteString("visible_at=")
+	builder.WriteString(_m.VisibleAt.Format(time.ANSIC))
 	builder.WriteString(", ")
 	builder.WriteString("lease_owner=")
 	builder.WriteString(_m.LeaseOwner)

@@ -84,30 +84,16 @@ func (_c *QueueJobCreate) SetNillableMaxAttempts(v *int) *QueueJobCreate {
 	return _c
 }
 
-// SetAvailableAt sets the "available_at" field.
-func (_c *QueueJobCreate) SetAvailableAt(v time.Time) *QueueJobCreate {
-	_c.mutation.SetAvailableAt(v)
+// SetVisibleAt sets the "visible_at" field.
+func (_c *QueueJobCreate) SetVisibleAt(v time.Time) *QueueJobCreate {
+	_c.mutation.SetVisibleAt(v)
 	return _c
 }
 
-// SetNillableAvailableAt sets the "available_at" field if the given value is not nil.
-func (_c *QueueJobCreate) SetNillableAvailableAt(v *time.Time) *QueueJobCreate {
+// SetNillableVisibleAt sets the "visible_at" field if the given value is not nil.
+func (_c *QueueJobCreate) SetNillableVisibleAt(v *time.Time) *QueueJobCreate {
 	if v != nil {
-		_c.SetAvailableAt(*v)
-	}
-	return _c
-}
-
-// SetLeaseExpiresAt sets the "lease_expires_at" field.
-func (_c *QueueJobCreate) SetLeaseExpiresAt(v time.Time) *QueueJobCreate {
-	_c.mutation.SetLeaseExpiresAt(v)
-	return _c
-}
-
-// SetNillableLeaseExpiresAt sets the "lease_expires_at" field if the given value is not nil.
-func (_c *QueueJobCreate) SetNillableLeaseExpiresAt(v *time.Time) *QueueJobCreate {
-	if v != nil {
-		_c.SetLeaseExpiresAt(*v)
+		_c.SetVisibleAt(*v)
 	}
 	return _c
 }
@@ -243,9 +229,9 @@ func (_c *QueueJobCreate) defaults() {
 		v := queuejob.DefaultMaxAttempts
 		_c.mutation.SetMaxAttempts(v)
 	}
-	if _, ok := _c.mutation.AvailableAt(); !ok {
-		v := queuejob.DefaultAvailableAt()
-		_c.mutation.SetAvailableAt(v)
+	if _, ok := _c.mutation.VisibleAt(); !ok {
+		v := queuejob.DefaultVisibleAt()
+		_c.mutation.SetVisibleAt(v)
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := queuejob.DefaultCreatedAt()
@@ -288,8 +274,8 @@ func (_c *QueueJobCreate) check() error {
 	if _, ok := _c.mutation.MaxAttempts(); !ok {
 		return &ValidationError{Name: "max_attempts", err: errors.New(`ent: missing required field "QueueJob.max_attempts"`)}
 	}
-	if _, ok := _c.mutation.AvailableAt(); !ok {
-		return &ValidationError{Name: "available_at", err: errors.New(`ent: missing required field "QueueJob.available_at"`)}
+	if _, ok := _c.mutation.VisibleAt(); !ok {
+		return &ValidationError{Name: "visible_at", err: errors.New(`ent: missing required field "QueueJob.visible_at"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "QueueJob.created_at"`)}
@@ -357,13 +343,9 @@ func (_c *QueueJobCreate) createSpec() (*QueueJob, *sqlgraph.CreateSpec) {
 		_spec.SetField(queuejob.FieldMaxAttempts, field.TypeInt, value)
 		_node.MaxAttempts = value
 	}
-	if value, ok := _c.mutation.AvailableAt(); ok {
-		_spec.SetField(queuejob.FieldAvailableAt, field.TypeTime, value)
-		_node.AvailableAt = value
-	}
-	if value, ok := _c.mutation.LeaseExpiresAt(); ok {
-		_spec.SetField(queuejob.FieldLeaseExpiresAt, field.TypeTime, value)
-		_node.LeaseExpiresAt = &value
+	if value, ok := _c.mutation.VisibleAt(); ok {
+		_spec.SetField(queuejob.FieldVisibleAt, field.TypeTime, value)
+		_node.VisibleAt = value
 	}
 	if value, ok := _c.mutation.LeaseOwner(); ok {
 		_spec.SetField(queuejob.FieldLeaseOwner, field.TypeString, value)
@@ -503,33 +485,15 @@ func (u *QueueJobUpsert) AddMaxAttempts(v int) *QueueJobUpsert {
 	return u
 }
 
-// SetAvailableAt sets the "available_at" field.
-func (u *QueueJobUpsert) SetAvailableAt(v time.Time) *QueueJobUpsert {
-	u.Set(queuejob.FieldAvailableAt, v)
+// SetVisibleAt sets the "visible_at" field.
+func (u *QueueJobUpsert) SetVisibleAt(v time.Time) *QueueJobUpsert {
+	u.Set(queuejob.FieldVisibleAt, v)
 	return u
 }
 
-// UpdateAvailableAt sets the "available_at" field to the value that was provided on create.
-func (u *QueueJobUpsert) UpdateAvailableAt() *QueueJobUpsert {
-	u.SetExcluded(queuejob.FieldAvailableAt)
-	return u
-}
-
-// SetLeaseExpiresAt sets the "lease_expires_at" field.
-func (u *QueueJobUpsert) SetLeaseExpiresAt(v time.Time) *QueueJobUpsert {
-	u.Set(queuejob.FieldLeaseExpiresAt, v)
-	return u
-}
-
-// UpdateLeaseExpiresAt sets the "lease_expires_at" field to the value that was provided on create.
-func (u *QueueJobUpsert) UpdateLeaseExpiresAt() *QueueJobUpsert {
-	u.SetExcluded(queuejob.FieldLeaseExpiresAt)
-	return u
-}
-
-// ClearLeaseExpiresAt clears the value of the "lease_expires_at" field.
-func (u *QueueJobUpsert) ClearLeaseExpiresAt() *QueueJobUpsert {
-	u.SetNull(queuejob.FieldLeaseExpiresAt)
+// UpdateVisibleAt sets the "visible_at" field to the value that was provided on create.
+func (u *QueueJobUpsert) UpdateVisibleAt() *QueueJobUpsert {
+	u.SetExcluded(queuejob.FieldVisibleAt)
 	return u
 }
 
@@ -733,38 +697,17 @@ func (u *QueueJobUpsertOne) UpdateMaxAttempts() *QueueJobUpsertOne {
 	})
 }
 
-// SetAvailableAt sets the "available_at" field.
-func (u *QueueJobUpsertOne) SetAvailableAt(v time.Time) *QueueJobUpsertOne {
+// SetVisibleAt sets the "visible_at" field.
+func (u *QueueJobUpsertOne) SetVisibleAt(v time.Time) *QueueJobUpsertOne {
 	return u.Update(func(s *QueueJobUpsert) {
-		s.SetAvailableAt(v)
+		s.SetVisibleAt(v)
 	})
 }
 
-// UpdateAvailableAt sets the "available_at" field to the value that was provided on create.
-func (u *QueueJobUpsertOne) UpdateAvailableAt() *QueueJobUpsertOne {
+// UpdateVisibleAt sets the "visible_at" field to the value that was provided on create.
+func (u *QueueJobUpsertOne) UpdateVisibleAt() *QueueJobUpsertOne {
 	return u.Update(func(s *QueueJobUpsert) {
-		s.UpdateAvailableAt()
-	})
-}
-
-// SetLeaseExpiresAt sets the "lease_expires_at" field.
-func (u *QueueJobUpsertOne) SetLeaseExpiresAt(v time.Time) *QueueJobUpsertOne {
-	return u.Update(func(s *QueueJobUpsert) {
-		s.SetLeaseExpiresAt(v)
-	})
-}
-
-// UpdateLeaseExpiresAt sets the "lease_expires_at" field to the value that was provided on create.
-func (u *QueueJobUpsertOne) UpdateLeaseExpiresAt() *QueueJobUpsertOne {
-	return u.Update(func(s *QueueJobUpsert) {
-		s.UpdateLeaseExpiresAt()
-	})
-}
-
-// ClearLeaseExpiresAt clears the value of the "lease_expires_at" field.
-func (u *QueueJobUpsertOne) ClearLeaseExpiresAt() *QueueJobUpsertOne {
-	return u.Update(func(s *QueueJobUpsert) {
-		s.ClearLeaseExpiresAt()
+		s.UpdateVisibleAt()
 	})
 }
 
@@ -1146,38 +1089,17 @@ func (u *QueueJobUpsertBulk) UpdateMaxAttempts() *QueueJobUpsertBulk {
 	})
 }
 
-// SetAvailableAt sets the "available_at" field.
-func (u *QueueJobUpsertBulk) SetAvailableAt(v time.Time) *QueueJobUpsertBulk {
+// SetVisibleAt sets the "visible_at" field.
+func (u *QueueJobUpsertBulk) SetVisibleAt(v time.Time) *QueueJobUpsertBulk {
 	return u.Update(func(s *QueueJobUpsert) {
-		s.SetAvailableAt(v)
+		s.SetVisibleAt(v)
 	})
 }
 
-// UpdateAvailableAt sets the "available_at" field to the value that was provided on create.
-func (u *QueueJobUpsertBulk) UpdateAvailableAt() *QueueJobUpsertBulk {
+// UpdateVisibleAt sets the "visible_at" field to the value that was provided on create.
+func (u *QueueJobUpsertBulk) UpdateVisibleAt() *QueueJobUpsertBulk {
 	return u.Update(func(s *QueueJobUpsert) {
-		s.UpdateAvailableAt()
-	})
-}
-
-// SetLeaseExpiresAt sets the "lease_expires_at" field.
-func (u *QueueJobUpsertBulk) SetLeaseExpiresAt(v time.Time) *QueueJobUpsertBulk {
-	return u.Update(func(s *QueueJobUpsert) {
-		s.SetLeaseExpiresAt(v)
-	})
-}
-
-// UpdateLeaseExpiresAt sets the "lease_expires_at" field to the value that was provided on create.
-func (u *QueueJobUpsertBulk) UpdateLeaseExpiresAt() *QueueJobUpsertBulk {
-	return u.Update(func(s *QueueJobUpsert) {
-		s.UpdateLeaseExpiresAt()
-	})
-}
-
-// ClearLeaseExpiresAt clears the value of the "lease_expires_at" field.
-func (u *QueueJobUpsertBulk) ClearLeaseExpiresAt() *QueueJobUpsertBulk {
-	return u.Update(func(s *QueueJobUpsert) {
-		s.ClearLeaseExpiresAt()
+		s.UpdateVisibleAt()
 	})
 }
 

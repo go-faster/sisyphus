@@ -210,16 +210,16 @@ func init() {
 	queuejobDescMaxAttempts := queuejobFields[6].Descriptor()
 	// queuejob.DefaultMaxAttempts holds the default value on creation for the max_attempts field.
 	queuejob.DefaultMaxAttempts = queuejobDescMaxAttempts.Default.(int)
-	// queuejobDescAvailableAt is the schema descriptor for available_at field.
-	queuejobDescAvailableAt := queuejobFields[7].Descriptor()
-	// queuejob.DefaultAvailableAt holds the default value on creation for the available_at field.
-	queuejob.DefaultAvailableAt = queuejobDescAvailableAt.Default.(func() time.Time)
+	// queuejobDescVisibleAt is the schema descriptor for visible_at field.
+	queuejobDescVisibleAt := queuejobFields[7].Descriptor()
+	// queuejob.DefaultVisibleAt holds the default value on creation for the visible_at field.
+	queuejob.DefaultVisibleAt = queuejobDescVisibleAt.Default.(func() time.Time)
 	// queuejobDescCreatedAt is the schema descriptor for created_at field.
-	queuejobDescCreatedAt := queuejobFields[11].Descriptor()
+	queuejobDescCreatedAt := queuejobFields[10].Descriptor()
 	// queuejob.DefaultCreatedAt holds the default value on creation for the created_at field.
 	queuejob.DefaultCreatedAt = queuejobDescCreatedAt.Default.(func() time.Time)
 	// queuejobDescUpdatedAt is the schema descriptor for updated_at field.
-	queuejobDescUpdatedAt := queuejobFields[12].Descriptor()
+	queuejobDescUpdatedAt := queuejobFields[11].Descriptor()
 	// queuejob.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	queuejob.DefaultUpdatedAt = queuejobDescUpdatedAt.Default.(func() time.Time)
 	// queuejob.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

@@ -7,7 +7,7 @@
 -- ID as text, matching what internal/notify/store.Enqueue writes.
 INSERT INTO queue_jobs (
 	id, queue, dedup_key, payload,
-	status, attempts, max_attempts, available_at, created_at, updated_at
+	status, attempts, max_attempts, visible_at, created_at, updated_at
 )
 SELECT
 	n.id,

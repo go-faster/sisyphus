@@ -5188,28 +5188,27 @@ func (m *NotifySubscriptionMutation) ResetEdge(name string) error {
 // QueueJobMutation represents an operation that mutates the QueueJob nodes in the graph.
 type QueueJobMutation struct {
 	config
-	op               Op
-	typ              string
-	id               *uuid.UUID
-	queue            *string
-	dedup_key        *string
-	payload          *[]byte
-	status           *string
-	attempts         *int
-	addattempts      *int
-	max_attempts     *int
-	addmax_attempts  *int
-	available_at     *time.Time
-	lease_expires_at *time.Time
-	lease_owner      *string
-	error            *string
-	created_at       *time.Time
-	updated_at       *time.Time
-	completed_at     *time.Time
-	clearedFields    map[string]struct{}
-	done             bool
-	oldValue         func(context.Context) (*QueueJob, error)
-	predicates       []predicate.QueueJob
+	op              Op
+	typ             string
+	id              *uuid.UUID
+	queue           *string
+	dedup_key       *string
+	payload         *[]byte
+	status          *string
+	attempts        *int
+	addattempts     *int
+	max_attempts    *int
+	addmax_attempts *int
+	visible_at      *time.Time
+	lease_owner     *string
+	error           *string
+	created_at      *time.Time
+	updated_at      *time.Time
+	completed_at    *time.Time
+	clearedFields   map[string]struct{}
+	done            bool
+	oldValue        func(context.Context) (*QueueJob, error)
+	predicates      []predicate.QueueJob
 }
 
 var _ ent.Mutation = (*QueueJobMutation)(nil)
@@ -5585,89 +5584,40 @@ func (m *QueueJobMutation) ResetMaxAttempts() {
 	m.addmax_attempts = nil
 }
 
-// SetAvailableAt sets the "available_at" field.
-func (m *QueueJobMutation) SetAvailableAt(t time.Time) {
-	m.available_at = &t
+// SetVisibleAt sets the "visible_at" field.
+func (m *QueueJobMutation) SetVisibleAt(t time.Time) {
+	m.visible_at = &t
 }
 
-// AvailableAt returns the value of the "available_at" field in the mutation.
-func (m *QueueJobMutation) AvailableAt() (r time.Time, exists bool) {
-	v := m.available_at
+// VisibleAt returns the value of the "visible_at" field in the mutation.
+func (m *QueueJobMutation) VisibleAt() (r time.Time, exists bool) {
+	v := m.visible_at
 	if v == nil {
 		return
 	}
 	return *v, true
 }
 
-// OldAvailableAt returns the old "available_at" field's value of the QueueJob entity.
+// OldVisibleAt returns the old "visible_at" field's value of the QueueJob entity.
 // If the QueueJob object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *QueueJobMutation) OldAvailableAt(ctx context.Context) (v time.Time, err error) {
+func (m *QueueJobMutation) OldVisibleAt(ctx context.Context) (v time.Time, err error) {
 	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAvailableAt is only allowed on UpdateOne operations")
+		return v, errors.New("OldVisibleAt is only allowed on UpdateOne operations")
 	}
 	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAvailableAt requires an ID field in the mutation")
+		return v, errors.New("OldVisibleAt requires an ID field in the mutation")
 	}
 	oldValue, err := m.oldValue(ctx)
 	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAvailableAt: %w", err)
+		return v, fmt.Errorf("querying old value for OldVisibleAt: %w", err)
 	}
-	return oldValue.AvailableAt, nil
+	return oldValue.VisibleAt, nil
 }
 
-// ResetAvailableAt resets all changes to the "available_at" field.
-func (m *QueueJobMutation) ResetAvailableAt() {
-	m.available_at = nil
-}
-
-// SetLeaseExpiresAt sets the "lease_expires_at" field.
-func (m *QueueJobMutation) SetLeaseExpiresAt(t time.Time) {
-	m.lease_expires_at = &t
-}
-
-// LeaseExpiresAt returns the value of the "lease_expires_at" field in the mutation.
-func (m *QueueJobMutation) LeaseExpiresAt() (r time.Time, exists bool) {
-	v := m.lease_expires_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldLeaseExpiresAt returns the old "lease_expires_at" field's value of the QueueJob entity.
-// If the QueueJob object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *QueueJobMutation) OldLeaseExpiresAt(ctx context.Context) (v *time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldLeaseExpiresAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldLeaseExpiresAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldLeaseExpiresAt: %w", err)
-	}
-	return oldValue.LeaseExpiresAt, nil
-}
-
-// ClearLeaseExpiresAt clears the value of the "lease_expires_at" field.
-func (m *QueueJobMutation) ClearLeaseExpiresAt() {
-	m.lease_expires_at = nil
-	m.clearedFields[queuejob.FieldLeaseExpiresAt] = struct{}{}
-}
-
-// LeaseExpiresAtCleared returns if the "lease_expires_at" field was cleared in this mutation.
-func (m *QueueJobMutation) LeaseExpiresAtCleared() bool {
-	_, ok := m.clearedFields[queuejob.FieldLeaseExpiresAt]
-	return ok
-}
-
-// ResetLeaseExpiresAt resets all changes to the "lease_expires_at" field.
-func (m *QueueJobMutation) ResetLeaseExpiresAt() {
-	m.lease_expires_at = nil
-	delete(m.clearedFields, queuejob.FieldLeaseExpiresAt)
+// ResetVisibleAt resets all changes to the "visible_at" field.
+func (m *QueueJobMutation) ResetVisibleAt() {
+	m.visible_at = nil
 }
 
 // SetLeaseOwner sets the "lease_owner" field.
@@ -5923,7 +5873,7 @@ func (m *QueueJobMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *QueueJobMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 12)
 	if m.queue != nil {
 		fields = append(fields, queuejob.FieldQueue)
 	}
@@ -5942,11 +5892,8 @@ func (m *QueueJobMutation) Fields() []string {
 	if m.max_attempts != nil {
 		fields = append(fields, queuejob.FieldMaxAttempts)
 	}
-	if m.available_at != nil {
-		fields = append(fields, queuejob.FieldAvailableAt)
-	}
-	if m.lease_expires_at != nil {
-		fields = append(fields, queuejob.FieldLeaseExpiresAt)
+	if m.visible_at != nil {
+		fields = append(fields, queuejob.FieldVisibleAt)
 	}
 	if m.lease_owner != nil {
 		fields = append(fields, queuejob.FieldLeaseOwner)
@@ -5983,10 +5930,8 @@ func (m *QueueJobMutation) Field(name string) (ent.Value, bool) {
 		return m.Attempts()
 	case queuejob.FieldMaxAttempts:
 		return m.MaxAttempts()
-	case queuejob.FieldAvailableAt:
-		return m.AvailableAt()
-	case queuejob.FieldLeaseExpiresAt:
-		return m.LeaseExpiresAt()
+	case queuejob.FieldVisibleAt:
+		return m.VisibleAt()
 	case queuejob.FieldLeaseOwner:
 		return m.LeaseOwner()
 	case queuejob.FieldError:
@@ -6018,10 +5963,8 @@ func (m *QueueJobMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldAttempts(ctx)
 	case queuejob.FieldMaxAttempts:
 		return m.OldMaxAttempts(ctx)
-	case queuejob.FieldAvailableAt:
-		return m.OldAvailableAt(ctx)
-	case queuejob.FieldLeaseExpiresAt:
-		return m.OldLeaseExpiresAt(ctx)
+	case queuejob.FieldVisibleAt:
+		return m.OldVisibleAt(ctx)
 	case queuejob.FieldLeaseOwner:
 		return m.OldLeaseOwner(ctx)
 	case queuejob.FieldError:
@@ -6083,19 +6026,12 @@ func (m *QueueJobMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetMaxAttempts(v)
 		return nil
-	case queuejob.FieldAvailableAt:
+	case queuejob.FieldVisibleAt:
 		v, ok := value.(time.Time)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
-		m.SetAvailableAt(v)
-		return nil
-	case queuejob.FieldLeaseExpiresAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetLeaseExpiresAt(v)
+		m.SetVisibleAt(v)
 		return nil
 	case queuejob.FieldLeaseOwner:
 		v, ok := value.(string)
@@ -6192,9 +6128,6 @@ func (m *QueueJobMutation) ClearedFields() []string {
 	if m.FieldCleared(queuejob.FieldPayload) {
 		fields = append(fields, queuejob.FieldPayload)
 	}
-	if m.FieldCleared(queuejob.FieldLeaseExpiresAt) {
-		fields = append(fields, queuejob.FieldLeaseExpiresAt)
-	}
 	if m.FieldCleared(queuejob.FieldLeaseOwner) {
 		fields = append(fields, queuejob.FieldLeaseOwner)
 	}
@@ -6220,9 +6153,6 @@ func (m *QueueJobMutation) ClearField(name string) error {
 	switch name {
 	case queuejob.FieldPayload:
 		m.ClearPayload()
-		return nil
-	case queuejob.FieldLeaseExpiresAt:
-		m.ClearLeaseExpiresAt()
 		return nil
 	case queuejob.FieldLeaseOwner:
 		m.ClearLeaseOwner()
@@ -6259,11 +6189,8 @@ func (m *QueueJobMutation) ResetField(name string) error {
 	case queuejob.FieldMaxAttempts:
 		m.ResetMaxAttempts()
 		return nil
-	case queuejob.FieldAvailableAt:
-		m.ResetAvailableAt()
-		return nil
-	case queuejob.FieldLeaseExpiresAt:
-		m.ResetLeaseExpiresAt()
+	case queuejob.FieldVisibleAt:
+		m.ResetVisibleAt()
 		return nil
 	case queuejob.FieldLeaseOwner:
 		m.ResetLeaseOwner()

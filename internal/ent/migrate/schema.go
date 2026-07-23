@@ -214,8 +214,7 @@ var (
 		{Name: "status", Type: field.TypeString, Default: "pending"},
 		{Name: "attempts", Type: field.TypeInt, Default: 0},
 		{Name: "max_attempts", Type: field.TypeInt, Default: 5},
-		{Name: "available_at", Type: field.TypeTime},
-		{Name: "lease_expires_at", Type: field.TypeTime, Nullable: true},
+		{Name: "visible_at", Type: field.TypeTime},
 		{Name: "lease_owner", Type: field.TypeString, Nullable: true},
 		{Name: "error", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "created_at", Type: field.TypeTime},
@@ -234,14 +233,12 @@ var (
 				Columns: []*schema.Column{QueueJobsColumns[1], QueueJobsColumns[2]},
 			},
 			{
-				Name:    "queuejob_queue_status_available_at",
+				Name:    "queuejob_queue_visible_at",
 				Unique:  false,
-				Columns: []*schema.Column{QueueJobsColumns[1], QueueJobsColumns[4], QueueJobsColumns[7]},
-			},
-			{
-				Name:    "queuejob_status_lease_expires_at",
-				Unique:  false,
-				Columns: []*schema.Column{QueueJobsColumns[4], QueueJobsColumns[8]},
+				Columns: []*schema.Column{QueueJobsColumns[1], QueueJobsColumns[7]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "status IN ('pending', 'running')",
+				},
 			},
 		},
 	}

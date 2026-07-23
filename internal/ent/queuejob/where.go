@@ -85,14 +85,9 @@ func MaxAttempts(v int) predicate.QueueJob {
 	return predicate.QueueJob(sql.FieldEQ(FieldMaxAttempts, v))
 }
 
-// AvailableAt applies equality check predicate on the "available_at" field. It's identical to AvailableAtEQ.
-func AvailableAt(v time.Time) predicate.QueueJob {
-	return predicate.QueueJob(sql.FieldEQ(FieldAvailableAt, v))
-}
-
-// LeaseExpiresAt applies equality check predicate on the "lease_expires_at" field. It's identical to LeaseExpiresAtEQ.
-func LeaseExpiresAt(v time.Time) predicate.QueueJob {
-	return predicate.QueueJob(sql.FieldEQ(FieldLeaseExpiresAt, v))
+// VisibleAt applies equality check predicate on the "visible_at" field. It's identical to VisibleAtEQ.
+func VisibleAt(v time.Time) predicate.QueueJob {
+	return predicate.QueueJob(sql.FieldEQ(FieldVisibleAt, v))
 }
 
 // LeaseOwner applies equality check predicate on the "lease_owner" field. It's identical to LeaseOwnerEQ.
@@ -445,94 +440,44 @@ func MaxAttemptsLTE(v int) predicate.QueueJob {
 	return predicate.QueueJob(sql.FieldLTE(FieldMaxAttempts, v))
 }
 
-// AvailableAtEQ applies the EQ predicate on the "available_at" field.
-func AvailableAtEQ(v time.Time) predicate.QueueJob {
-	return predicate.QueueJob(sql.FieldEQ(FieldAvailableAt, v))
+// VisibleAtEQ applies the EQ predicate on the "visible_at" field.
+func VisibleAtEQ(v time.Time) predicate.QueueJob {
+	return predicate.QueueJob(sql.FieldEQ(FieldVisibleAt, v))
 }
 
-// AvailableAtNEQ applies the NEQ predicate on the "available_at" field.
-func AvailableAtNEQ(v time.Time) predicate.QueueJob {
-	return predicate.QueueJob(sql.FieldNEQ(FieldAvailableAt, v))
+// VisibleAtNEQ applies the NEQ predicate on the "visible_at" field.
+func VisibleAtNEQ(v time.Time) predicate.QueueJob {
+	return predicate.QueueJob(sql.FieldNEQ(FieldVisibleAt, v))
 }
 
-// AvailableAtIn applies the In predicate on the "available_at" field.
-func AvailableAtIn(vs ...time.Time) predicate.QueueJob {
-	return predicate.QueueJob(sql.FieldIn(FieldAvailableAt, vs...))
+// VisibleAtIn applies the In predicate on the "visible_at" field.
+func VisibleAtIn(vs ...time.Time) predicate.QueueJob {
+	return predicate.QueueJob(sql.FieldIn(FieldVisibleAt, vs...))
 }
 
-// AvailableAtNotIn applies the NotIn predicate on the "available_at" field.
-func AvailableAtNotIn(vs ...time.Time) predicate.QueueJob {
-	return predicate.QueueJob(sql.FieldNotIn(FieldAvailableAt, vs...))
+// VisibleAtNotIn applies the NotIn predicate on the "visible_at" field.
+func VisibleAtNotIn(vs ...time.Time) predicate.QueueJob {
+	return predicate.QueueJob(sql.FieldNotIn(FieldVisibleAt, vs...))
 }
 
-// AvailableAtGT applies the GT predicate on the "available_at" field.
-func AvailableAtGT(v time.Time) predicate.QueueJob {
-	return predicate.QueueJob(sql.FieldGT(FieldAvailableAt, v))
+// VisibleAtGT applies the GT predicate on the "visible_at" field.
+func VisibleAtGT(v time.Time) predicate.QueueJob {
+	return predicate.QueueJob(sql.FieldGT(FieldVisibleAt, v))
 }
 
-// AvailableAtGTE applies the GTE predicate on the "available_at" field.
-func AvailableAtGTE(v time.Time) predicate.QueueJob {
-	return predicate.QueueJob(sql.FieldGTE(FieldAvailableAt, v))
+// VisibleAtGTE applies the GTE predicate on the "visible_at" field.
+func VisibleAtGTE(v time.Time) predicate.QueueJob {
+	return predicate.QueueJob(sql.FieldGTE(FieldVisibleAt, v))
 }
 
-// AvailableAtLT applies the LT predicate on the "available_at" field.
-func AvailableAtLT(v time.Time) predicate.QueueJob {
-	return predicate.QueueJob(sql.FieldLT(FieldAvailableAt, v))
+// VisibleAtLT applies the LT predicate on the "visible_at" field.
+func VisibleAtLT(v time.Time) predicate.QueueJob {
+	return predicate.QueueJob(sql.FieldLT(FieldVisibleAt, v))
 }
 
-// AvailableAtLTE applies the LTE predicate on the "available_at" field.
-func AvailableAtLTE(v time.Time) predicate.QueueJob {
-	return predicate.QueueJob(sql.FieldLTE(FieldAvailableAt, v))
-}
-
-// LeaseExpiresAtEQ applies the EQ predicate on the "lease_expires_at" field.
-func LeaseExpiresAtEQ(v time.Time) predicate.QueueJob {
-	return predicate.QueueJob(sql.FieldEQ(FieldLeaseExpiresAt, v))
-}
-
-// LeaseExpiresAtNEQ applies the NEQ predicate on the "lease_expires_at" field.
-func LeaseExpiresAtNEQ(v time.Time) predicate.QueueJob {
-	return predicate.QueueJob(sql.FieldNEQ(FieldLeaseExpiresAt, v))
-}
-
-// LeaseExpiresAtIn applies the In predicate on the "lease_expires_at" field.
-func LeaseExpiresAtIn(vs ...time.Time) predicate.QueueJob {
-	return predicate.QueueJob(sql.FieldIn(FieldLeaseExpiresAt, vs...))
-}
-
-// LeaseExpiresAtNotIn applies the NotIn predicate on the "lease_expires_at" field.
-func LeaseExpiresAtNotIn(vs ...time.Time) predicate.QueueJob {
-	return predicate.QueueJob(sql.FieldNotIn(FieldLeaseExpiresAt, vs...))
-}
-
-// LeaseExpiresAtGT applies the GT predicate on the "lease_expires_at" field.
-func LeaseExpiresAtGT(v time.Time) predicate.QueueJob {
-	return predicate.QueueJob(sql.FieldGT(FieldLeaseExpiresAt, v))
-}
-
-// LeaseExpiresAtGTE applies the GTE predicate on the "lease_expires_at" field.
-func LeaseExpiresAtGTE(v time.Time) predicate.QueueJob {
-	return predicate.QueueJob(sql.FieldGTE(FieldLeaseExpiresAt, v))
-}
-
-// LeaseExpiresAtLT applies the LT predicate on the "lease_expires_at" field.
-func LeaseExpiresAtLT(v time.Time) predicate.QueueJob {
-	return predicate.QueueJob(sql.FieldLT(FieldLeaseExpiresAt, v))
-}
-
-// LeaseExpiresAtLTE applies the LTE predicate on the "lease_expires_at" field.
-func LeaseExpiresAtLTE(v time.Time) predicate.QueueJob {
-	return predicate.QueueJob(sql.FieldLTE(FieldLeaseExpiresAt, v))
-}
-
-// LeaseExpiresAtIsNil applies the IsNil predicate on the "lease_expires_at" field.
-func LeaseExpiresAtIsNil() predicate.QueueJob {
-	return predicate.QueueJob(sql.FieldIsNull(FieldLeaseExpiresAt))
-}
-
-// LeaseExpiresAtNotNil applies the NotNil predicate on the "lease_expires_at" field.
-func LeaseExpiresAtNotNil() predicate.QueueJob {
-	return predicate.QueueJob(sql.FieldNotNull(FieldLeaseExpiresAt))
+// VisibleAtLTE applies the LTE predicate on the "visible_at" field.
+func VisibleAtLTE(v time.Time) predicate.QueueJob {
+	return predicate.QueueJob(sql.FieldLTE(FieldVisibleAt, v))
 }
 
 // LeaseOwnerEQ applies the EQ predicate on the "lease_owner" field.

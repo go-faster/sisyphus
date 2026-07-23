@@ -26,10 +26,8 @@ const (
 	FieldAttempts = "attempts"
 	// FieldMaxAttempts holds the string denoting the max_attempts field in the database.
 	FieldMaxAttempts = "max_attempts"
-	// FieldAvailableAt holds the string denoting the available_at field in the database.
-	FieldAvailableAt = "available_at"
-	// FieldLeaseExpiresAt holds the string denoting the lease_expires_at field in the database.
-	FieldLeaseExpiresAt = "lease_expires_at"
+	// FieldVisibleAt holds the string denoting the visible_at field in the database.
+	FieldVisibleAt = "visible_at"
 	// FieldLeaseOwner holds the string denoting the lease_owner field in the database.
 	FieldLeaseOwner = "lease_owner"
 	// FieldError holds the string denoting the error field in the database.
@@ -53,8 +51,7 @@ var Columns = []string{
 	FieldStatus,
 	FieldAttempts,
 	FieldMaxAttempts,
-	FieldAvailableAt,
-	FieldLeaseExpiresAt,
+	FieldVisibleAt,
 	FieldLeaseOwner,
 	FieldError,
 	FieldCreatedAt,
@@ -83,8 +80,8 @@ var (
 	DefaultAttempts int
 	// DefaultMaxAttempts holds the default value on creation for the "max_attempts" field.
 	DefaultMaxAttempts int
-	// DefaultAvailableAt holds the default value on creation for the "available_at" field.
-	DefaultAvailableAt func() time.Time
+	// DefaultVisibleAt holds the default value on creation for the "visible_at" field.
+	DefaultVisibleAt func() time.Time
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -128,14 +125,9 @@ func ByMaxAttempts(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMaxAttempts, opts...).ToFunc()
 }
 
-// ByAvailableAt orders the results by the available_at field.
-func ByAvailableAt(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldAvailableAt, opts...).ToFunc()
-}
-
-// ByLeaseExpiresAt orders the results by the lease_expires_at field.
-func ByLeaseExpiresAt(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldLeaseExpiresAt, opts...).ToFunc()
+// ByVisibleAt orders the results by the visible_at field.
+func ByVisibleAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldVisibleAt, opts...).ToFunc()
 }
 
 // ByLeaseOwner orders the results by the lease_owner field.
