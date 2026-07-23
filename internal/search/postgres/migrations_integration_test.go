@@ -45,12 +45,21 @@ func TestMigrationsE2E(t *testing.T) {
 
 	r := entmigrate.NewRunner(db)
 
+	pendingBefore, err := r.Pending(ctx)
+	require.NoError(t, err)
+	wantCount := len(pendingBefore)
+	require.NotZero(t, wantCount, "expect embedded migrations before any run")
+
 	require.NoError(t, r.Run(ctx))
+
+	pendingAfter, err := r.Pending(ctx)
+	require.NoError(t, err)
+	require.Empty(t, pendingAfter, "Run should apply every embedded migration")
 
 	// Verify tracking table has entries.
 	var count int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&count))
-	require.Equal(t, 2, count)
+	require.Equal(t, wantCount, count)
 
 	// Verify tables exist.
 	tables := []string{"documents", "chunks", "support_requests", "sync_states", "telegram_messages"}
@@ -77,7 +86,7 @@ func TestMigrationsE2E(t *testing.T) {
 	// Idempotency.
 	require.NoError(t, r.Run(ctx))
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&count))
-	require.Equal(t, 2, count)
+	require.Equal(t, wantCount, count)
 
 	// postgres searcher still works.
 	searcher := New(db, client)

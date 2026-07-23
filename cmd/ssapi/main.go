@@ -29,7 +29,7 @@ func main() {
 			info, _ := cliversion.GetInfo("github.com/go-faster/sisyphus")
 			cmd := &cobra.Command{
 				Use:   "ssapi",
-				Short: "runs the hybrid-search HTTP API (owns DB + migrations)",
+				Short: "runs the hybrid-search HTTP API (owns the DB)",
 				RunE: func(cmd *cobra.Command, _ []string) error {
 					cfg, err := config.Load()
 					if err != nil {
@@ -43,6 +43,24 @@ func main() {
 			}
 			cmdutil.ConfigureVersion(cmd, info)
 			cmd.AddCommand(cmdutil.NewVersionCmd("ssapi", info))
+			cmd.AddCommand(&cobra.Command{
+				Use:   "migrate",
+				Short: "applies pending schema migrations and exits (run once per deploy, not per replica)",
+				RunE: func(cmd *cobra.Command, _ []string) error {
+					cfg, err := config.Load()
+					if err != nil {
+						return errors.Wrap(err, "config")
+					}
+					cfg.LogWarnings(lg)
+					if err := wire.Migrate(cmd.Context(), cfg); err != nil {
+						return errors.Wrap(err, "migrate")
+					}
+					lg.Info("schema migrated")
+					return nil
+				},
+				SilenceUsage:  true,
+				SilenceErrors: true,
+			})
 			cmd.SetContext(ctx)
 			return cmd.Execute()
 		},
@@ -60,7 +78,6 @@ func run(ctx context.Context, cfg config.Config, telemetry *app.Telemetry) error
 	comp, err := wire.New(ctx, cfg, wire.NewOptions{
 		TracerProvider: tp,
 		MeterProvider:  mp,
-		RunMigrations:  true,
 		UserAgent:      info.UserAgent("ssapi"),
 	})
 	if err != nil {

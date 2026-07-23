@@ -26,8 +26,12 @@ Never store only embeddings — always keep Documents+Chunks in Postgres so we c
 ## Layout
 
 ```
-cmd/ssapi              owns Postgres/ent + migrations; serves the HTTP API
-                        (bearer-token auth on /search, /context; /health public)
+cmd/ssapi              owns Postgres/ent; serves the HTTP API (bearer-token auth on
+                        /search, /context; /health public). Stateless, safe to run N
+                        replicas. Its `migrate` subcommand (wire.Migrate) is the only
+                        place schema migrations run, as a one-shot pre-install/
+                        pre-upgrade hook Job (Helm) or compose service — never a
+                        serving replica.
 cmd/ssbot              Exposes system as Telegram bot; talks to ssapi via internal/apiclient
 cmd/ssagent            HTTP service for /investigate: an async, Postgres-backed job
                         queue (internal/agentstore) over agent.Investigator's LLM
@@ -297,11 +301,25 @@ query that would also drop the caller's service/source-tier filters.
 ### Schema migrations
 
 `internal/ent/schema` is the single source of truth for the DB schema. Versioned SQL
-migration files live in `internal/ent/migrate/migrations/` and are applied at runtime
-by the hand-written `Runner` in `internal/ent/migrate/runner.go` (tracked via a
-`schema_migrations` table). Only `ssapi` runs migrations
-(`wire.NewOptions.RunMigrations: true`); `ssingest` connects without migrating (still holds its own DB connection via `wire.NewServices`), and `ssbot`/`ssmcp` don't touch the schema at all — they hold no DB connection whatsoever, only an HTTP client to `ssapi`. This ensures schema changes apply exactly once per deploy instead of racing across
-every process/replica sharing the database.
+migration files live in `internal/ent/migrate/migrations/` and are applied by the
+hand-written `Runner` in `internal/ent/migrate/runner.go` (tracked via a
+`schema_migrations` table). `Runner.Run` takes a Postgres advisory lock
+(`internal/ent/migrate/runner.go`'s `advisoryLockID`) for its whole duration, so
+concurrent callers serialize instead of racing a `schema_migrations` primary-key
+conflict — the second caller blocks, then finds nothing pending once the first
+commits.
+
+Migrations run out of the serving path entirely, via the one-shot `ssapi migrate`
+subcommand (`wire.Migrate`) — never a long-running replica. In Helm this is the
+`migrateJob` pre-install/pre-upgrade hook Job (`deploy/helm/sisyphus/templates/migrate-job.yaml`),
+which Helm blocks on before creating or updating any Deployment; in docker-compose
+it's the `ssmigrate` one-shot service, which `ssapi`/`ssingest` depend on via
+`condition: service_completed_successfully`. No serving process — `ssapi` (now safe
+to run as N replicas), `ssingest`, `ssbot`, `ssmcp` — migrates itself or holds any
+`RunMigrations`-style flag. `ssapi`'s own readiness check (`internal/wire.healthChecker`)
+fails `/ready` while `Runner.Pending` reports any migration not yet applied, so a
+serving replica never accepts traffic against a schema it doesn't know — this is also
+why `ssingest`'s `wait-for-ssapi` init container transitively waits for the schema too.
 
 After changing `internal/ent/schema`, generate the next migration file by diffing the
 ent schema against a throwaway Postgres container (requires a local Docker daemon,

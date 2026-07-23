@@ -170,7 +170,9 @@ ollama:
 # ---------------------------------------------------------------------------
 ssapi:
   enabled: true
-  replicas: 1 # >1 is fine (migrations run per-pod but are guarded by schema_migrations)
+  # Stateless read replica: no per-process state, schema migrations run
+  # separately by migrateJob before any replica starts. Safe to scale N.
+  replicas: 2
   service:
     type: ClusterIP
     port: 8080
@@ -294,6 +296,16 @@ sandbox:
 sshKeygenJob:
   enabled: true
   image: alpine:3.20
+
+# Runs `ssapi migrate` as a pre-install/pre-upgrade hook Job, once per
+# install/upgrade, before ssapi/ssingest are created or updated. This is the
+# only place schema migrations run — no serving replica migrates itself.
+migrateJob:
+  enabled: true
+  backoffLimit: 3
+  resources:
+    limits: {cpu: 500m, memory: 256Mi}
+    requests: {cpu: 100m, memory: 64Mi}
 
 sshMcp:
   image: ghcr.io/go-faster/gooners/ssh-mcp:0.4.1
