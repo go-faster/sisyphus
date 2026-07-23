@@ -15,7 +15,6 @@ import (
 
 	"github.com/go-faster/sisyphus/internal/agent"
 	"github.com/go-faster/sisyphus/internal/ent"
-	"github.com/go-faster/sisyphus/internal/ent/investigationjob"
 )
 
 // Status is an InvestigationJob's lifecycle state.
@@ -47,41 +46,18 @@ type Job struct {
 	CompletedAt  *time.Time
 }
 
-// Store persists InvestigationJob rows via ent.
+// Store persists InvestigationJob rows via ent and dispatches the work
+// through internal/queue. The row is the state of record a client polls; the
+// queue owns which worker runs it and when.
 type Store struct {
-	db *ent.Client
+	db   *ent.Client
+	opts Options
 }
 
 // New creates a Store backed by db.
-func New(db *ent.Client) *Store {
-	return &Store{db: db}
-}
-
-// Submit creates a new job for idempotencyKey, or returns the already
-// existing job if idempotencyKey was submitted before. created reports
-// whether this call created the job: callers must only dispatch a worker
-// to run the investigation when created is true, so a retried submission
-// (same idempotency key) never starts a second, duplicate run.
-func (s *Store) Submit(ctx context.Context, idempotencyKey, description string) (job Job, created bool, err error) {
-	m, err := s.db.InvestigationJob.Create().
-		SetIdempotencyKey(idempotencyKey).
-		SetDescription(description).
-		Save(ctx)
-	if err != nil {
-		if ent.IsConstraintError(err) {
-			existing, getErr := s.db.InvestigationJob.Query().
-				Where(investigationjob.IdempotencyKey(idempotencyKey)).
-				Only(ctx)
-			if getErr != nil {
-				return Job{}, false, errors.Wrap(getErr, "get existing job")
-			}
-			job, err = toJob(existing)
-			return job, false, err
-		}
-		return Job{}, false, errors.Wrap(err, "create job")
-	}
-	job, err = toJob(m)
-	return job, true, err
+func New(db *ent.Client, opts Options) *Store {
+	opts.setDefaults()
+	return &Store{db: db, opts: opts}
 }
 
 // MarkRunning transitions a job to StatusRunning.
@@ -137,23 +113,6 @@ func (s *Store) Get(ctx context.Context, id uuid.UUID) (Job, error) {
 		return Job{}, errors.Wrap(err, "get job")
 	}
 	return toJob(m)
-}
-
-// ReapStale marks any job still pending or running as failed. Call once at
-// startup: a job left pending or running only happens if the previous
-// ssagent process crashed or was killed mid-investigation, and without this
-// the row would sit unresolved forever, hanging any client still polling it.
-func (s *Store) ReapStale(ctx context.Context) (int, error) {
-	n, err := s.db.InvestigationJob.Update().
-		Where(investigationjob.StatusIn(string(StatusPending), string(StatusRunning))).
-		SetStatus(string(StatusError)).
-		SetErrorMessage("interrupted by ssagent restart").
-		SetCompletedAt(time.Now()).
-		Save(ctx)
-	if err != nil {
-		return n, errors.Wrap(err, "reap stale jobs")
-	}
-	return n, nil
 }
 
 func toJob(m *ent.InvestigationJob) (Job, error) {

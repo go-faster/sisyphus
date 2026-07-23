@@ -17,6 +17,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/notification"
 	"github.com/go-faster/sisyphus/internal/ent/notifysubscription"
 	"github.com/go-faster/sisyphus/internal/ent/predicate"
+	"github.com/go-faster/sisyphus/internal/ent/queuejob"
 	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 	"github.com/go-faster/sisyphus/internal/ent/telegrammessage"
@@ -39,6 +40,7 @@ const (
 	TypeInvestigationJob   = "InvestigationJob"
 	TypeNotification       = "Notification"
 	TypeNotifySubscription = "NotifySubscription"
+	TypeQueueJob           = "QueueJob"
 	TypeSupportRequest     = "SupportRequest"
 	TypeSyncState          = "SyncState"
 	TypeTelegramMessage    = "TelegramMessage"
@@ -5181,6 +5183,1080 @@ func (m *NotifySubscriptionMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown NotifySubscription edge %s", name)
+}
+
+// QueueJobMutation represents an operation that mutates the QueueJob nodes in the graph.
+type QueueJobMutation struct {
+	config
+	op              Op
+	typ             string
+	id              *uuid.UUID
+	queue           *string
+	dedup_key       *string
+	payload         *[]byte
+	status          *string
+	attempts        *int
+	addattempts     *int
+	max_attempts    *int
+	addmax_attempts *int
+	visible_at      *time.Time
+	lease_owner     *string
+	error           *string
+	created_at      *time.Time
+	updated_at      *time.Time
+	completed_at    *time.Time
+	clearedFields   map[string]struct{}
+	done            bool
+	oldValue        func(context.Context) (*QueueJob, error)
+	predicates      []predicate.QueueJob
+}
+
+var _ ent.Mutation = (*QueueJobMutation)(nil)
+
+// queuejobOption allows management of the mutation configuration using functional options.
+type queuejobOption func(*QueueJobMutation)
+
+// newQueueJobMutation creates new mutation for the QueueJob entity.
+func newQueueJobMutation(c config, op Op, opts ...queuejobOption) *QueueJobMutation {
+	m := &QueueJobMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeQueueJob,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withQueueJobID sets the ID field of the mutation.
+func withQueueJobID(id uuid.UUID) queuejobOption {
+	return func(m *QueueJobMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *QueueJob
+		)
+		m.oldValue = func(ctx context.Context) (*QueueJob, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().QueueJob.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withQueueJob sets the old QueueJob of the mutation.
+func withQueueJob(node *QueueJob) queuejobOption {
+	return func(m *QueueJobMutation) {
+		m.oldValue = func(context.Context) (*QueueJob, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m QueueJobMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m QueueJobMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of QueueJob entities.
+func (m *QueueJobMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *QueueJobMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *QueueJobMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().QueueJob.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetQueue sets the "queue" field.
+func (m *QueueJobMutation) SetQueue(s string) {
+	m.queue = &s
+}
+
+// Queue returns the value of the "queue" field in the mutation.
+func (m *QueueJobMutation) Queue() (r string, exists bool) {
+	v := m.queue
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldQueue returns the old "queue" field's value of the QueueJob entity.
+// If the QueueJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *QueueJobMutation) OldQueue(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldQueue is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldQueue requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldQueue: %w", err)
+	}
+	return oldValue.Queue, nil
+}
+
+// ResetQueue resets all changes to the "queue" field.
+func (m *QueueJobMutation) ResetQueue() {
+	m.queue = nil
+}
+
+// SetDedupKey sets the "dedup_key" field.
+func (m *QueueJobMutation) SetDedupKey(s string) {
+	m.dedup_key = &s
+}
+
+// DedupKey returns the value of the "dedup_key" field in the mutation.
+func (m *QueueJobMutation) DedupKey() (r string, exists bool) {
+	v := m.dedup_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDedupKey returns the old "dedup_key" field's value of the QueueJob entity.
+// If the QueueJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *QueueJobMutation) OldDedupKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDedupKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDedupKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDedupKey: %w", err)
+	}
+	return oldValue.DedupKey, nil
+}
+
+// ResetDedupKey resets all changes to the "dedup_key" field.
+func (m *QueueJobMutation) ResetDedupKey() {
+	m.dedup_key = nil
+}
+
+// SetPayload sets the "payload" field.
+func (m *QueueJobMutation) SetPayload(b []byte) {
+	m.payload = &b
+}
+
+// Payload returns the value of the "payload" field in the mutation.
+func (m *QueueJobMutation) Payload() (r []byte, exists bool) {
+	v := m.payload
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPayload returns the old "payload" field's value of the QueueJob entity.
+// If the QueueJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *QueueJobMutation) OldPayload(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPayload is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPayload requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPayload: %w", err)
+	}
+	return oldValue.Payload, nil
+}
+
+// ClearPayload clears the value of the "payload" field.
+func (m *QueueJobMutation) ClearPayload() {
+	m.payload = nil
+	m.clearedFields[queuejob.FieldPayload] = struct{}{}
+}
+
+// PayloadCleared returns if the "payload" field was cleared in this mutation.
+func (m *QueueJobMutation) PayloadCleared() bool {
+	_, ok := m.clearedFields[queuejob.FieldPayload]
+	return ok
+}
+
+// ResetPayload resets all changes to the "payload" field.
+func (m *QueueJobMutation) ResetPayload() {
+	m.payload = nil
+	delete(m.clearedFields, queuejob.FieldPayload)
+}
+
+// SetStatus sets the "status" field.
+func (m *QueueJobMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *QueueJobMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the QueueJob entity.
+// If the QueueJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *QueueJobMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *QueueJobMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetAttempts sets the "attempts" field.
+func (m *QueueJobMutation) SetAttempts(i int) {
+	m.attempts = &i
+	m.addattempts = nil
+}
+
+// Attempts returns the value of the "attempts" field in the mutation.
+func (m *QueueJobMutation) Attempts() (r int, exists bool) {
+	v := m.attempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAttempts returns the old "attempts" field's value of the QueueJob entity.
+// If the QueueJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *QueueJobMutation) OldAttempts(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAttempts is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAttempts requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAttempts: %w", err)
+	}
+	return oldValue.Attempts, nil
+}
+
+// AddAttempts adds i to the "attempts" field.
+func (m *QueueJobMutation) AddAttempts(i int) {
+	if m.addattempts != nil {
+		*m.addattempts += i
+	} else {
+		m.addattempts = &i
+	}
+}
+
+// AddedAttempts returns the value that was added to the "attempts" field in this mutation.
+func (m *QueueJobMutation) AddedAttempts() (r int, exists bool) {
+	v := m.addattempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAttempts resets all changes to the "attempts" field.
+func (m *QueueJobMutation) ResetAttempts() {
+	m.attempts = nil
+	m.addattempts = nil
+}
+
+// SetMaxAttempts sets the "max_attempts" field.
+func (m *QueueJobMutation) SetMaxAttempts(i int) {
+	m.max_attempts = &i
+	m.addmax_attempts = nil
+}
+
+// MaxAttempts returns the value of the "max_attempts" field in the mutation.
+func (m *QueueJobMutation) MaxAttempts() (r int, exists bool) {
+	v := m.max_attempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMaxAttempts returns the old "max_attempts" field's value of the QueueJob entity.
+// If the QueueJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *QueueJobMutation) OldMaxAttempts(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMaxAttempts is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMaxAttempts requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMaxAttempts: %w", err)
+	}
+	return oldValue.MaxAttempts, nil
+}
+
+// AddMaxAttempts adds i to the "max_attempts" field.
+func (m *QueueJobMutation) AddMaxAttempts(i int) {
+	if m.addmax_attempts != nil {
+		*m.addmax_attempts += i
+	} else {
+		m.addmax_attempts = &i
+	}
+}
+
+// AddedMaxAttempts returns the value that was added to the "max_attempts" field in this mutation.
+func (m *QueueJobMutation) AddedMaxAttempts() (r int, exists bool) {
+	v := m.addmax_attempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetMaxAttempts resets all changes to the "max_attempts" field.
+func (m *QueueJobMutation) ResetMaxAttempts() {
+	m.max_attempts = nil
+	m.addmax_attempts = nil
+}
+
+// SetVisibleAt sets the "visible_at" field.
+func (m *QueueJobMutation) SetVisibleAt(t time.Time) {
+	m.visible_at = &t
+}
+
+// VisibleAt returns the value of the "visible_at" field in the mutation.
+func (m *QueueJobMutation) VisibleAt() (r time.Time, exists bool) {
+	v := m.visible_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldVisibleAt returns the old "visible_at" field's value of the QueueJob entity.
+// If the QueueJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *QueueJobMutation) OldVisibleAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldVisibleAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldVisibleAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldVisibleAt: %w", err)
+	}
+	return oldValue.VisibleAt, nil
+}
+
+// ResetVisibleAt resets all changes to the "visible_at" field.
+func (m *QueueJobMutation) ResetVisibleAt() {
+	m.visible_at = nil
+}
+
+// SetLeaseOwner sets the "lease_owner" field.
+func (m *QueueJobMutation) SetLeaseOwner(s string) {
+	m.lease_owner = &s
+}
+
+// LeaseOwner returns the value of the "lease_owner" field in the mutation.
+func (m *QueueJobMutation) LeaseOwner() (r string, exists bool) {
+	v := m.lease_owner
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLeaseOwner returns the old "lease_owner" field's value of the QueueJob entity.
+// If the QueueJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *QueueJobMutation) OldLeaseOwner(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLeaseOwner is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLeaseOwner requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLeaseOwner: %w", err)
+	}
+	return oldValue.LeaseOwner, nil
+}
+
+// ClearLeaseOwner clears the value of the "lease_owner" field.
+func (m *QueueJobMutation) ClearLeaseOwner() {
+	m.lease_owner = nil
+	m.clearedFields[queuejob.FieldLeaseOwner] = struct{}{}
+}
+
+// LeaseOwnerCleared returns if the "lease_owner" field was cleared in this mutation.
+func (m *QueueJobMutation) LeaseOwnerCleared() bool {
+	_, ok := m.clearedFields[queuejob.FieldLeaseOwner]
+	return ok
+}
+
+// ResetLeaseOwner resets all changes to the "lease_owner" field.
+func (m *QueueJobMutation) ResetLeaseOwner() {
+	m.lease_owner = nil
+	delete(m.clearedFields, queuejob.FieldLeaseOwner)
+}
+
+// SetError sets the "error" field.
+func (m *QueueJobMutation) SetError(s string) {
+	m.error = &s
+}
+
+// Error returns the value of the "error" field in the mutation.
+func (m *QueueJobMutation) Error() (r string, exists bool) {
+	v := m.error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldError returns the old "error" field's value of the QueueJob entity.
+// If the QueueJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *QueueJobMutation) OldError(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldError: %w", err)
+	}
+	return oldValue.Error, nil
+}
+
+// ClearError clears the value of the "error" field.
+func (m *QueueJobMutation) ClearError() {
+	m.error = nil
+	m.clearedFields[queuejob.FieldError] = struct{}{}
+}
+
+// ErrorCleared returns if the "error" field was cleared in this mutation.
+func (m *QueueJobMutation) ErrorCleared() bool {
+	_, ok := m.clearedFields[queuejob.FieldError]
+	return ok
+}
+
+// ResetError resets all changes to the "error" field.
+func (m *QueueJobMutation) ResetError() {
+	m.error = nil
+	delete(m.clearedFields, queuejob.FieldError)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *QueueJobMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *QueueJobMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the QueueJob entity.
+// If the QueueJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *QueueJobMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *QueueJobMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *QueueJobMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *QueueJobMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the QueueJob entity.
+// If the QueueJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *QueueJobMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *QueueJobMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetCompletedAt sets the "completed_at" field.
+func (m *QueueJobMutation) SetCompletedAt(t time.Time) {
+	m.completed_at = &t
+}
+
+// CompletedAt returns the value of the "completed_at" field in the mutation.
+func (m *QueueJobMutation) CompletedAt() (r time.Time, exists bool) {
+	v := m.completed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCompletedAt returns the old "completed_at" field's value of the QueueJob entity.
+// If the QueueJob object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *QueueJobMutation) OldCompletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCompletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCompletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCompletedAt: %w", err)
+	}
+	return oldValue.CompletedAt, nil
+}
+
+// ClearCompletedAt clears the value of the "completed_at" field.
+func (m *QueueJobMutation) ClearCompletedAt() {
+	m.completed_at = nil
+	m.clearedFields[queuejob.FieldCompletedAt] = struct{}{}
+}
+
+// CompletedAtCleared returns if the "completed_at" field was cleared in this mutation.
+func (m *QueueJobMutation) CompletedAtCleared() bool {
+	_, ok := m.clearedFields[queuejob.FieldCompletedAt]
+	return ok
+}
+
+// ResetCompletedAt resets all changes to the "completed_at" field.
+func (m *QueueJobMutation) ResetCompletedAt() {
+	m.completed_at = nil
+	delete(m.clearedFields, queuejob.FieldCompletedAt)
+}
+
+// Where appends a list predicates to the QueueJobMutation builder.
+func (m *QueueJobMutation) Where(ps ...predicate.QueueJob) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the QueueJobMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *QueueJobMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.QueueJob, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *QueueJobMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *QueueJobMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (QueueJob).
+func (m *QueueJobMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *QueueJobMutation) Fields() []string {
+	fields := make([]string, 0, 12)
+	if m.queue != nil {
+		fields = append(fields, queuejob.FieldQueue)
+	}
+	if m.dedup_key != nil {
+		fields = append(fields, queuejob.FieldDedupKey)
+	}
+	if m.payload != nil {
+		fields = append(fields, queuejob.FieldPayload)
+	}
+	if m.status != nil {
+		fields = append(fields, queuejob.FieldStatus)
+	}
+	if m.attempts != nil {
+		fields = append(fields, queuejob.FieldAttempts)
+	}
+	if m.max_attempts != nil {
+		fields = append(fields, queuejob.FieldMaxAttempts)
+	}
+	if m.visible_at != nil {
+		fields = append(fields, queuejob.FieldVisibleAt)
+	}
+	if m.lease_owner != nil {
+		fields = append(fields, queuejob.FieldLeaseOwner)
+	}
+	if m.error != nil {
+		fields = append(fields, queuejob.FieldError)
+	}
+	if m.created_at != nil {
+		fields = append(fields, queuejob.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, queuejob.FieldUpdatedAt)
+	}
+	if m.completed_at != nil {
+		fields = append(fields, queuejob.FieldCompletedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *QueueJobMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case queuejob.FieldQueue:
+		return m.Queue()
+	case queuejob.FieldDedupKey:
+		return m.DedupKey()
+	case queuejob.FieldPayload:
+		return m.Payload()
+	case queuejob.FieldStatus:
+		return m.Status()
+	case queuejob.FieldAttempts:
+		return m.Attempts()
+	case queuejob.FieldMaxAttempts:
+		return m.MaxAttempts()
+	case queuejob.FieldVisibleAt:
+		return m.VisibleAt()
+	case queuejob.FieldLeaseOwner:
+		return m.LeaseOwner()
+	case queuejob.FieldError:
+		return m.Error()
+	case queuejob.FieldCreatedAt:
+		return m.CreatedAt()
+	case queuejob.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case queuejob.FieldCompletedAt:
+		return m.CompletedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *QueueJobMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case queuejob.FieldQueue:
+		return m.OldQueue(ctx)
+	case queuejob.FieldDedupKey:
+		return m.OldDedupKey(ctx)
+	case queuejob.FieldPayload:
+		return m.OldPayload(ctx)
+	case queuejob.FieldStatus:
+		return m.OldStatus(ctx)
+	case queuejob.FieldAttempts:
+		return m.OldAttempts(ctx)
+	case queuejob.FieldMaxAttempts:
+		return m.OldMaxAttempts(ctx)
+	case queuejob.FieldVisibleAt:
+		return m.OldVisibleAt(ctx)
+	case queuejob.FieldLeaseOwner:
+		return m.OldLeaseOwner(ctx)
+	case queuejob.FieldError:
+		return m.OldError(ctx)
+	case queuejob.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case queuejob.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case queuejob.FieldCompletedAt:
+		return m.OldCompletedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown QueueJob field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *QueueJobMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case queuejob.FieldQueue:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetQueue(v)
+		return nil
+	case queuejob.FieldDedupKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDedupKey(v)
+		return nil
+	case queuejob.FieldPayload:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPayload(v)
+		return nil
+	case queuejob.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case queuejob.FieldAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAttempts(v)
+		return nil
+	case queuejob.FieldMaxAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMaxAttempts(v)
+		return nil
+	case queuejob.FieldVisibleAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetVisibleAt(v)
+		return nil
+	case queuejob.FieldLeaseOwner:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLeaseOwner(v)
+		return nil
+	case queuejob.FieldError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetError(v)
+		return nil
+	case queuejob.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case queuejob.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case queuejob.FieldCompletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCompletedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown QueueJob field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *QueueJobMutation) AddedFields() []string {
+	var fields []string
+	if m.addattempts != nil {
+		fields = append(fields, queuejob.FieldAttempts)
+	}
+	if m.addmax_attempts != nil {
+		fields = append(fields, queuejob.FieldMaxAttempts)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *QueueJobMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case queuejob.FieldAttempts:
+		return m.AddedAttempts()
+	case queuejob.FieldMaxAttempts:
+		return m.AddedMaxAttempts()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *QueueJobMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case queuejob.FieldAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAttempts(v)
+		return nil
+	case queuejob.FieldMaxAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMaxAttempts(v)
+		return nil
+	}
+	return fmt.Errorf("unknown QueueJob numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *QueueJobMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(queuejob.FieldPayload) {
+		fields = append(fields, queuejob.FieldPayload)
+	}
+	if m.FieldCleared(queuejob.FieldLeaseOwner) {
+		fields = append(fields, queuejob.FieldLeaseOwner)
+	}
+	if m.FieldCleared(queuejob.FieldError) {
+		fields = append(fields, queuejob.FieldError)
+	}
+	if m.FieldCleared(queuejob.FieldCompletedAt) {
+		fields = append(fields, queuejob.FieldCompletedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *QueueJobMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *QueueJobMutation) ClearField(name string) error {
+	switch name {
+	case queuejob.FieldPayload:
+		m.ClearPayload()
+		return nil
+	case queuejob.FieldLeaseOwner:
+		m.ClearLeaseOwner()
+		return nil
+	case queuejob.FieldError:
+		m.ClearError()
+		return nil
+	case queuejob.FieldCompletedAt:
+		m.ClearCompletedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown QueueJob nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *QueueJobMutation) ResetField(name string) error {
+	switch name {
+	case queuejob.FieldQueue:
+		m.ResetQueue()
+		return nil
+	case queuejob.FieldDedupKey:
+		m.ResetDedupKey()
+		return nil
+	case queuejob.FieldPayload:
+		m.ResetPayload()
+		return nil
+	case queuejob.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case queuejob.FieldAttempts:
+		m.ResetAttempts()
+		return nil
+	case queuejob.FieldMaxAttempts:
+		m.ResetMaxAttempts()
+		return nil
+	case queuejob.FieldVisibleAt:
+		m.ResetVisibleAt()
+		return nil
+	case queuejob.FieldLeaseOwner:
+		m.ResetLeaseOwner()
+		return nil
+	case queuejob.FieldError:
+		m.ResetError()
+		return nil
+	case queuejob.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case queuejob.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case queuejob.FieldCompletedAt:
+		m.ResetCompletedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown QueueJob field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *QueueJobMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *QueueJobMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *QueueJobMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *QueueJobMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *QueueJobMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *QueueJobMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *QueueJobMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown QueueJob unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *QueueJobMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown QueueJob edge %s", name)
 }
 
 // SupportRequestMutation represents an operation that mutates the SupportRequest nodes in the graph.

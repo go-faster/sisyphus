@@ -69,6 +69,18 @@ func (f NotifySubscriptionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.NotifySubscriptionMutation", m)
 }
 
+// The QueueJobFunc type is an adapter to allow the use of ordinary
+// function as QueueJob mutator.
+type QueueJobFunc func(context.Context, *ent.QueueJobMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f QueueJobFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.QueueJobMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.QueueJobMutation", m)
+}
+
 // The SupportRequestFunc type is an adapter to allow the use of ordinary
 // function as SupportRequest mutator.
 type SupportRequestFunc func(context.Context, *ent.SupportRequestMutation) (ent.Value, error)

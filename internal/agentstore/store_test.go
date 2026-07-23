@@ -3,8 +3,11 @@ package agentstore
 import (
 	"context"
 	stdsql "database/sql"
+	"encoding/json"
 	"os"
+	"sync"
 	"testing"
+	"time"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -16,7 +19,31 @@ import (
 
 	"github.com/go-faster/sisyphus/internal/agent"
 	"github.com/go-faster/sisyphus/internal/ent"
+	"github.com/go-faster/sisyphus/internal/ent/queuejob"
 )
+
+// clock is an injectable time source, so lease expiry is testable without a
+// real sleep.
+type clock struct {
+	mu sync.Mutex
+	t  time.Time
+}
+
+func newClock() *clock {
+	return &clock{t: time.Date(2026, 7, 23, 12, 0, 0, 0, time.UTC)}
+}
+
+func (c *clock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.t
+}
+
+func (c *clock) Advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = c.t.Add(d)
+}
 
 func openTestDB(t *testing.T) *ent.Client {
 	t.Helper()
@@ -33,13 +60,15 @@ func openTestDB(t *testing.T) *ent.Client {
 	ctx := context.Background()
 	require.NoError(t, client.Schema.Create(ctx))
 	t.Cleanup(func() {
-		_, _ = client.InvestigationJob.Delete().Exec(context.Background())
+		ctx := context.Background()
+		_, _ = client.QueueJob.Delete().Where(queuejob.Queue(QueueName)).Exec(ctx)
+		_, _ = client.InvestigationJob.Delete().Exec(ctx)
 	})
 	return client
 }
 
 func TestStore_SubmitCreatesJob(t *testing.T) {
-	store := New(openTestDB(t))
+	store := New(openTestDB(t), Options{})
 	ctx := t.Context()
 
 	job, created, err := store.Submit(ctx, uuid.NewString(), "something is broken")
@@ -54,7 +83,7 @@ func TestStore_SubmitCreatesJob(t *testing.T) {
 }
 
 func TestStore_SubmitSameIdempotencyKeyReturnsExistingJob(t *testing.T) {
-	store := New(openTestDB(t))
+	store := New(openTestDB(t), Options{})
 	ctx := t.Context()
 	key := uuid.NewString()
 
@@ -69,7 +98,7 @@ func TestStore_SubmitSameIdempotencyKeyReturnsExistingJob(t *testing.T) {
 }
 
 func TestStore_CompleteAndFailTransitions(t *testing.T) {
-	store := New(openTestDB(t))
+	store := New(openTestDB(t), Options{})
 	ctx := t.Context()
 
 	job, _, err := store.Submit(ctx, uuid.NewString(), "issue")
@@ -101,38 +130,75 @@ func TestStore_CompleteAndFailTransitions(t *testing.T) {
 }
 
 func TestStore_GetUnknownReturnsErrNotFound(t *testing.T) {
-	store := New(openTestDB(t))
+	store := New(openTestDB(t), Options{})
 	_, err := store.Get(t.Context(), uuid.New())
 	require.ErrorIs(t, err, ErrNotFound)
 }
 
-func TestStore_ReapStaleMarksPendingAndRunningAsError(t *testing.T) {
-	store := New(openTestDB(t))
+// TestStore_ReapStaleSettlesOnlyAbandonedJobs pins the behavior change that
+// makes N ssagent replicas safe: reaping must settle jobs the queue gave up
+// on, and must NOT touch a job that is merely pending or that another replica
+// is still running.
+func TestStore_ReapStaleSettlesOnlyAbandonedJobs(t *testing.T) {
+	c := newClock()
+	store := New(openTestDB(t), Options{MaxAttempts: 1, Lease: time.Minute, Now: c.Now})
 	ctx := t.Context()
 
-	pending, _, err := store.Submit(ctx, uuid.NewString(), "pending job")
+	abandoned, _, err := store.Submit(ctx, uuid.NewString(), "abandoned job")
+	require.NoError(t, err)
+	queued, _, err := store.Submit(ctx, uuid.NewString(), "still queued job")
 	require.NoError(t, err)
 
-	running, _, err := store.Submit(ctx, uuid.NewString(), "running job")
+	// Claim the first and never acknowledge it: its worker died.
+	claimed, err := store.Queue().Fetch(ctx, 1)
 	require.NoError(t, err)
-	require.NoError(t, store.MarkRunning(ctx, running.ID))
+	require.Len(t, claimed, 1)
+	require.Equal(t, abandoned.ID, claimed[0].ID)
+	require.NoError(t, store.MarkRunning(ctx, abandoned.ID))
 
-	done, _, err := store.Submit(ctx, uuid.NewString(), "done job")
-	require.NoError(t, err)
-	require.NoError(t, store.Complete(ctx, done.ID, agent.Result{Report: agent.Report{Verdict: agent.VerdictSolved}}))
-
+	// While its lease is live, nothing is abandoned yet.
 	n, err := store.ReapStale(ctx)
 	require.NoError(t, err)
-	require.Equal(t, 2, n)
+	require.Zero(t, n)
 
-	for _, id := range []uuid.UUID{pending.ID, running.ID} {
-		job, err := store.Get(ctx, id)
-		require.NoError(t, err)
-		require.Equal(t, StatusError, job.Status)
-		require.NotEmpty(t, job.ErrorMessage)
-	}
-
-	stillDone, err := store.Get(ctx, done.ID)
+	c.Advance(2 * time.Minute)
+	n, err = store.ReapStale(ctx)
 	require.NoError(t, err)
-	require.Equal(t, StatusDone, stillDone.Status)
+	require.Equal(t, 1, n)
+
+	got, err := store.Get(ctx, abandoned.ID)
+	require.NoError(t, err)
+	require.Equal(t, StatusError, got.Status)
+	require.NotEmpty(t, got.ErrorMessage)
+
+	// The unclaimed job is real outstanding work, not wreckage.
+	got, err = store.Get(ctx, queued.ID)
+	require.NoError(t, err)
+	require.Equal(t, StatusPending, got.Status)
+}
+
+// TestStore_SubmitQueuesExactlyOneDelivery verifies a submission is dispatched
+// as queue work, and that an idempotent replay does not queue a second run.
+func TestStore_SubmitQueuesExactlyOneDelivery(t *testing.T) {
+	store := New(openTestDB(t), Options{})
+	ctx := t.Context()
+	key := uuid.NewString()
+
+	job, created, err := store.Submit(ctx, key, "something is broken")
+	require.NoError(t, err)
+	require.True(t, created)
+
+	replay, created, err := store.Submit(ctx, key, "something is broken")
+	require.NoError(t, err)
+	require.False(t, created)
+	require.Equal(t, job.ID, replay.ID)
+
+	claimed, err := store.Queue().Fetch(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, claimed, 1, "a replayed submission must not queue a second investigation")
+	require.Equal(t, job.ID, claimed[0].ID)
+
+	var payload Payload
+	require.NoError(t, json.Unmarshal(claimed[0].Payload, &payload))
+	require.Equal(t, "something is broken", payload.Description)
 }

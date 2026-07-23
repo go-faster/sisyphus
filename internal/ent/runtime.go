@@ -10,6 +10,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/investigationjob"
 	"github.com/go-faster/sisyphus/internal/ent/notification"
 	"github.com/go-faster/sisyphus/internal/ent/notifysubscription"
+	"github.com/go-faster/sisyphus/internal/ent/queuejob"
 	"github.com/go-faster/sisyphus/internal/ent/schema"
 	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
@@ -187,6 +188,46 @@ func init() {
 	notifysubscriptionDescID := notifysubscriptionFields[0].Descriptor()
 	// notifysubscription.DefaultID holds the default value on creation for the id field.
 	notifysubscription.DefaultID = notifysubscriptionDescID.Default.(func() uuid.UUID)
+	queuejobFields := schema.QueueJob{}.Fields()
+	_ = queuejobFields
+	// queuejobDescQueue is the schema descriptor for queue field.
+	queuejobDescQueue := queuejobFields[1].Descriptor()
+	// queuejob.QueueValidator is a validator for the "queue" field. It is called by the builders before save.
+	queuejob.QueueValidator = queuejobDescQueue.Validators[0].(func(string) error)
+	// queuejobDescDedupKey is the schema descriptor for dedup_key field.
+	queuejobDescDedupKey := queuejobFields[2].Descriptor()
+	// queuejob.DedupKeyValidator is a validator for the "dedup_key" field. It is called by the builders before save.
+	queuejob.DedupKeyValidator = queuejobDescDedupKey.Validators[0].(func(string) error)
+	// queuejobDescStatus is the schema descriptor for status field.
+	queuejobDescStatus := queuejobFields[4].Descriptor()
+	// queuejob.DefaultStatus holds the default value on creation for the status field.
+	queuejob.DefaultStatus = queuejobDescStatus.Default.(string)
+	// queuejobDescAttempts is the schema descriptor for attempts field.
+	queuejobDescAttempts := queuejobFields[5].Descriptor()
+	// queuejob.DefaultAttempts holds the default value on creation for the attempts field.
+	queuejob.DefaultAttempts = queuejobDescAttempts.Default.(int)
+	// queuejobDescMaxAttempts is the schema descriptor for max_attempts field.
+	queuejobDescMaxAttempts := queuejobFields[6].Descriptor()
+	// queuejob.DefaultMaxAttempts holds the default value on creation for the max_attempts field.
+	queuejob.DefaultMaxAttempts = queuejobDescMaxAttempts.Default.(int)
+	// queuejobDescVisibleAt is the schema descriptor for visible_at field.
+	queuejobDescVisibleAt := queuejobFields[7].Descriptor()
+	// queuejob.DefaultVisibleAt holds the default value on creation for the visible_at field.
+	queuejob.DefaultVisibleAt = queuejobDescVisibleAt.Default.(func() time.Time)
+	// queuejobDescCreatedAt is the schema descriptor for created_at field.
+	queuejobDescCreatedAt := queuejobFields[10].Descriptor()
+	// queuejob.DefaultCreatedAt holds the default value on creation for the created_at field.
+	queuejob.DefaultCreatedAt = queuejobDescCreatedAt.Default.(func() time.Time)
+	// queuejobDescUpdatedAt is the schema descriptor for updated_at field.
+	queuejobDescUpdatedAt := queuejobFields[11].Descriptor()
+	// queuejob.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	queuejob.DefaultUpdatedAt = queuejobDescUpdatedAt.Default.(func() time.Time)
+	// queuejob.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	queuejob.UpdateDefaultUpdatedAt = queuejobDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// queuejobDescID is the schema descriptor for id field.
+	queuejobDescID := queuejobFields[0].Descriptor()
+	// queuejob.DefaultID holds the default value on creation for the id field.
+	queuejob.DefaultID = queuejobDescID.Default.(func() uuid.UUID)
 	supportrequestFields := schema.SupportRequest{}.Fields()
 	_ = supportrequestFields
 	// supportrequestDescRawText is the schema descriptor for raw_text field.
