@@ -21,11 +21,14 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/investigationjob"
 	"github.com/go-faster/sisyphus/internal/ent/notification"
 	"github.com/go-faster/sisyphus/internal/ent/notifysubscription"
+	"github.com/go-faster/sisyphus/internal/ent/queuejob"
 	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 	"github.com/go-faster/sisyphus/internal/ent/telegrammessage"
 	"github.com/go-faster/sisyphus/internal/ent/user"
 	"github.com/go-faster/sisyphus/internal/ent/usertoken"
+
+	stdsql "database/sql"
 )
 
 // Client is the client that holds all ent builders.
@@ -43,6 +46,8 @@ type Client struct {
 	Notification *NotificationClient
 	// NotifySubscription is the client for interacting with the NotifySubscription builders.
 	NotifySubscription *NotifySubscriptionClient
+	// QueueJob is the client for interacting with the QueueJob builders.
+	QueueJob *QueueJobClient
 	// SupportRequest is the client for interacting with the SupportRequest builders.
 	SupportRequest *SupportRequestClient
 	// SyncState is the client for interacting with the SyncState builders.
@@ -69,6 +74,7 @@ func (c *Client) init() {
 	c.InvestigationJob = NewInvestigationJobClient(c.config)
 	c.Notification = NewNotificationClient(c.config)
 	c.NotifySubscription = NewNotifySubscriptionClient(c.config)
+	c.QueueJob = NewQueueJobClient(c.config)
 	c.SupportRequest = NewSupportRequestClient(c.config)
 	c.SyncState = NewSyncStateClient(c.config)
 	c.TelegramMessage = NewTelegramMessageClient(c.config)
@@ -171,6 +177,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		InvestigationJob:   NewInvestigationJobClient(cfg),
 		Notification:       NewNotificationClient(cfg),
 		NotifySubscription: NewNotifySubscriptionClient(cfg),
+		QueueJob:           NewQueueJobClient(cfg),
 		SupportRequest:     NewSupportRequestClient(cfg),
 		SyncState:          NewSyncStateClient(cfg),
 		TelegramMessage:    NewTelegramMessageClient(cfg),
@@ -200,6 +207,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		InvestigationJob:   NewInvestigationJobClient(cfg),
 		Notification:       NewNotificationClient(cfg),
 		NotifySubscription: NewNotifySubscriptionClient(cfg),
+		QueueJob:           NewQueueJobClient(cfg),
 		SupportRequest:     NewSupportRequestClient(cfg),
 		SyncState:          NewSyncStateClient(cfg),
 		TelegramMessage:    NewTelegramMessageClient(cfg),
@@ -235,7 +243,8 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Chunk, c.Document, c.InvestigationJob, c.Notification, c.NotifySubscription,
-		c.SupportRequest, c.SyncState, c.TelegramMessage, c.User, c.UserToken,
+		c.QueueJob, c.SupportRequest, c.SyncState, c.TelegramMessage, c.User,
+		c.UserToken,
 	} {
 		n.Use(hooks...)
 	}
@@ -246,7 +255,8 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Chunk, c.Document, c.InvestigationJob, c.Notification, c.NotifySubscription,
-		c.SupportRequest, c.SyncState, c.TelegramMessage, c.User, c.UserToken,
+		c.QueueJob, c.SupportRequest, c.SyncState, c.TelegramMessage, c.User,
+		c.UserToken,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -265,6 +275,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Notification.mutate(ctx, m)
 	case *NotifySubscriptionMutation:
 		return c.NotifySubscription.mutate(ctx, m)
+	case *QueueJobMutation:
+		return c.QueueJob.mutate(ctx, m)
 	case *SupportRequestMutation:
 		return c.SupportRequest.mutate(ctx, m)
 	case *SyncStateMutation:
@@ -1009,6 +1021,139 @@ func (c *NotifySubscriptionClient) mutate(ctx context.Context, m *NotifySubscrip
 	}
 }
 
+// QueueJobClient is a client for the QueueJob schema.
+type QueueJobClient struct {
+	config
+}
+
+// NewQueueJobClient returns a client for the QueueJob from the given config.
+func NewQueueJobClient(c config) *QueueJobClient {
+	return &QueueJobClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `queuejob.Hooks(f(g(h())))`.
+func (c *QueueJobClient) Use(hooks ...Hook) {
+	c.hooks.QueueJob = append(c.hooks.QueueJob, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `queuejob.Intercept(f(g(h())))`.
+func (c *QueueJobClient) Intercept(interceptors ...Interceptor) {
+	c.inters.QueueJob = append(c.inters.QueueJob, interceptors...)
+}
+
+// Create returns a builder for creating a QueueJob entity.
+func (c *QueueJobClient) Create() *QueueJobCreate {
+	mutation := newQueueJobMutation(c.config, OpCreate)
+	return &QueueJobCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of QueueJob entities.
+func (c *QueueJobClient) CreateBulk(builders ...*QueueJobCreate) *QueueJobCreateBulk {
+	return &QueueJobCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *QueueJobClient) MapCreateBulk(slice any, setFunc func(*QueueJobCreate, int)) *QueueJobCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &QueueJobCreateBulk{err: fmt.Errorf("calling to QueueJobClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*QueueJobCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &QueueJobCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for QueueJob.
+func (c *QueueJobClient) Update() *QueueJobUpdate {
+	mutation := newQueueJobMutation(c.config, OpUpdate)
+	return &QueueJobUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *QueueJobClient) UpdateOne(_m *QueueJob) *QueueJobUpdateOne {
+	mutation := newQueueJobMutation(c.config, OpUpdateOne, withQueueJob(_m))
+	return &QueueJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *QueueJobClient) UpdateOneID(id uuid.UUID) *QueueJobUpdateOne {
+	mutation := newQueueJobMutation(c.config, OpUpdateOne, withQueueJobID(id))
+	return &QueueJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for QueueJob.
+func (c *QueueJobClient) Delete() *QueueJobDelete {
+	mutation := newQueueJobMutation(c.config, OpDelete)
+	return &QueueJobDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *QueueJobClient) DeleteOne(_m *QueueJob) *QueueJobDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *QueueJobClient) DeleteOneID(id uuid.UUID) *QueueJobDeleteOne {
+	builder := c.Delete().Where(queuejob.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &QueueJobDeleteOne{builder}
+}
+
+// Query returns a query builder for QueueJob.
+func (c *QueueJobClient) Query() *QueueJobQuery {
+	return &QueueJobQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeQueueJob},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a QueueJob entity by its id.
+func (c *QueueJobClient) Get(ctx context.Context, id uuid.UUID) (*QueueJob, error) {
+	return c.Query().Where(queuejob.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *QueueJobClient) GetX(ctx context.Context, id uuid.UUID) *QueueJob {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *QueueJobClient) Hooks() []Hook {
+	return c.hooks.QueueJob
+}
+
+// Interceptors returns the client interceptors.
+func (c *QueueJobClient) Interceptors() []Interceptor {
+	return c.inters.QueueJob
+}
+
+func (c *QueueJobClient) mutate(ctx context.Context, m *QueueJobMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&QueueJobCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&QueueJobUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&QueueJobUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&QueueJobDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown QueueJob mutation op: %q", m.Op())
+	}
+}
+
 // SupportRequestClient is a client for the SupportRequest schema.
 type SupportRequestClient struct {
 	config
@@ -1741,11 +1886,35 @@ func (c *UserTokenClient) mutate(ctx context.Context, m *UserTokenMutation) (Val
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Chunk, Document, InvestigationJob, Notification, NotifySubscription,
+		Chunk, Document, InvestigationJob, Notification, NotifySubscription, QueueJob,
 		SupportRequest, SyncState, TelegramMessage, User, UserToken []ent.Hook
 	}
 	inters struct {
-		Chunk, Document, InvestigationJob, Notification, NotifySubscription,
+		Chunk, Document, InvestigationJob, Notification, NotifySubscription, QueueJob,
 		SupportRequest, SyncState, TelegramMessage, User, UserToken []ent.Interceptor
 	}
 )
+
+// ExecContext allows calling the underlying ExecContext method of the driver if it is supported by it.
+// See, database/sql#DB.ExecContext for more information.
+func (c *config) ExecContext(ctx context.Context, query string, args ...any) (stdsql.Result, error) {
+	ex, ok := c.driver.(interface {
+		ExecContext(context.Context, string, ...any) (stdsql.Result, error)
+	})
+	if !ok {
+		return nil, fmt.Errorf("Driver.ExecContext is not supported")
+	}
+	return ex.ExecContext(ctx, query, args...)
+}
+
+// QueryContext allows calling the underlying QueryContext method of the driver if it is supported by it.
+// See, database/sql#DB.QueryContext for more information.
+func (c *config) QueryContext(ctx context.Context, query string, args ...any) (*stdsql.Rows, error) {
+	q, ok := c.driver.(interface {
+		QueryContext(context.Context, string, ...any) (*stdsql.Rows, error)
+	})
+	if !ok {
+		return nil, fmt.Errorf("Driver.QueryContext is not supported")
+	}
+	return q.QueryContext(ctx, query, args...)
+}

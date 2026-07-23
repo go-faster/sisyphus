@@ -1,7 +1,8 @@
-h1:WPjXIbIvwjPtUJRL+0ZlhJ+eKO7tHk5J14y7cffYxGI=
+h1:3+Esq/nv+6+TQrEr/Bbg/zcMbfe4FjFyN2gmpRBryD0=
 00001_initial.sql h1:tBhzpMUm7qZMiwPMoN2kNLl1uFsdIb2wOnepKdw+I94=
 00002_fts.sql h1:H7dC1uDGKxr63BSeJ1MRXysflV5cK9juTJK4nketUhU=
 20260705170007_document_identity_source_source_id.sql h1:w8aQ/TJXnVUrAZezvo137M2JQeLJnL2BVnE7JIIfikw=
 20260712000000_investigation_jobs.sql h1:2PtTHz4OmbTKlf4AEqt/uUMvWvtcJqO1D9Ouzwfh1HQ=
 20260717103926_add_document_chunker_version.sql h1:eAXnIgefJTYyIR1xpSo2ZF31hkloIVG6Ny5Zn24BRkE=
 20260722142440_add_notify_tables.sql h1:KQoJs6311UfqlRNPNUhOH/S4FbzEp1eMEIYe0xvbMQ8=
+20260723060631_add_queue_jobs.sql h1:ykEvk1uEAHluHeeXW5Iik9mJehJo+AQtH5L2kD/2mKI=

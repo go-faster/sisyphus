@@ -17,6 +17,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/investigationjob"
 	"github.com/go-faster/sisyphus/internal/ent/notification"
 	"github.com/go-faster/sisyphus/internal/ent/notifysubscription"
+	"github.com/go-faster/sisyphus/internal/ent/queuejob"
 	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 	"github.com/go-faster/sisyphus/internal/ent/telegrammessage"
@@ -87,6 +88,7 @@ func checkColumn(t, c string) error {
 			investigationjob.Table:   investigationjob.ValidColumn,
 			notification.Table:       notification.ValidColumn,
 			notifysubscription.Table: notifysubscription.ValidColumn,
+			queuejob.Table:           queuejob.ValidColumn,
 			supportrequest.Table:     supportrequest.ValidColumn,
 			syncstate.Table:          syncstate.ValidColumn,
 			telegrammessage.Table:    telegrammessage.ValidColumn,

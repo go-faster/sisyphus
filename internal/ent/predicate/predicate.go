@@ -21,6 +21,9 @@ type Notification func(*sql.Selector)
 // NotifySubscription is the predicate function for notifysubscription builders.
 type NotifySubscription func(*sql.Selector)
 
+// QueueJob is the predicate function for queuejob builders.
+type QueueJob func(*sql.Selector)
+
 // SupportRequest is the predicate function for supportrequest builders.
 type SupportRequest func(*sql.Selector)
 

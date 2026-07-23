@@ -205,6 +205,46 @@ var (
 			},
 		},
 	}
+	// QueueJobsColumns holds the columns for the "queue_jobs" table.
+	QueueJobsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "queue", Type: field.TypeString},
+		{Name: "dedup_key", Type: field.TypeString},
+		{Name: "payload", Type: field.TypeBytes, Nullable: true},
+		{Name: "status", Type: field.TypeString, Default: "pending"},
+		{Name: "attempts", Type: field.TypeInt, Default: 0},
+		{Name: "max_attempts", Type: field.TypeInt, Default: 5},
+		{Name: "available_at", Type: field.TypeTime},
+		{Name: "lease_expires_at", Type: field.TypeTime, Nullable: true},
+		{Name: "lease_owner", Type: field.TypeString, Nullable: true},
+		{Name: "error", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "completed_at", Type: field.TypeTime, Nullable: true},
+	}
+	// QueueJobsTable holds the schema information for the "queue_jobs" table.
+	QueueJobsTable = &schema.Table{
+		Name:       "queue_jobs",
+		Columns:    QueueJobsColumns,
+		PrimaryKey: []*schema.Column{QueueJobsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "queuejob_queue_dedup_key",
+				Unique:  true,
+				Columns: []*schema.Column{QueueJobsColumns[1], QueueJobsColumns[2]},
+			},
+			{
+				Name:    "queuejob_queue_status_available_at",
+				Unique:  false,
+				Columns: []*schema.Column{QueueJobsColumns[1], QueueJobsColumns[4], QueueJobsColumns[7]},
+			},
+			{
+				Name:    "queuejob_status_lease_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{QueueJobsColumns[4], QueueJobsColumns[8]},
+			},
+		},
+	}
 	// SupportRequestsColumns holds the columns for the "support_requests" table.
 	SupportRequestsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -381,6 +421,7 @@ var (
 		InvestigationJobsTable,
 		NotificationsTable,
 		NotifySubscriptionsTable,
+		QueueJobsTable,
 		SupportRequestsTable,
 		SyncStatesTable,
 		TelegramMessagesTable,
