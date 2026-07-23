@@ -63,6 +63,16 @@ internal/embed/ollama   Ollama embedder (implements index.Embedder)
 internal/search/postgres FTS searcher over ent (implements index.Searcher)
 internal/search/qdrant  Qdrant client + searcher (implements index.Searcher)
                         Also implements pipeline.VectorStore (Upsert + Delete by point ID).
+                        chunkToPayload converts chunk metadata into the point payload and
+                        RETURNS the keys it could not convert, which Upsert logs. Do not go
+                        back to swallowing that error: qdrant.NewValue is a closed switch
+                        over JSON primitives plus map[string]any/[]any, and index.Chunk.
+                        Metadata is map[string]any, so a []string (GitLab/Jira labels and
+                        components are exactly that) used to vanish from the payload with no
+                        error and no log — the only symptom being a keyword filter that
+                        matched nothing forever. sanitizePayloadValue now lists the
+                        primitives explicitly (an int must stay a Qdrant integer, not become
+                        a double) and normalizes everything past them through JSON.
 internal/retrieval      merges Postgres+Qdrant results via Reciprocal Rank Fusion (RRF,
                         k=60), then applies authority/boost rules
 internal/ingest/git     git repo content (Markdown) + commits + tags walker; local or clone/pull via git

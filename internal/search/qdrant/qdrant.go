@@ -5,12 +5,15 @@ package qdrant
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
 	"github.com/go-faster/errors"
+	"github.com/go-faster/sdk/zctx"
 	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
+	"go.uber.org/zap"
 
 	"github.com/go-faster/sisyphus/internal/index"
 )
@@ -118,7 +121,17 @@ func (s *Store) Upsert(ctx context.Context, chunks []index.Chunk, vectors [][]fl
 
 	points := make([]*qdrant.PointStruct, len(chunks))
 	for i, chunk := range chunks {
-		payload := chunkToPayload(chunk)
+		payload, dropped := chunkToPayload(chunk)
+		if len(dropped) > 0 {
+			// Not fatal — the point is still searchable, and its text lives in
+			// Postgres regardless. But a missing payload field only ever shows
+			// up as a filter that quietly matches nothing, so it has to be said
+			// out loud somewhere.
+			zctx.From(ctx).Warn("dropped unconvertible payload fields",
+				zap.Stringer("chunk_id", chunk.ID),
+				zap.Strings("keys", dropped),
+			)
+		}
 
 		points[i] = &qdrant.PointStruct{
 			Id:      qdrant.NewIDUUID(chunk.ID.String()),
@@ -232,37 +245,68 @@ func (s *Store) Close() error {
 	return s.client.Close()
 }
 
-// chunkToPayload converts a Chunk to a Qdrant payload map.
-// It extracts metadata fields into the top-level payload.
-func chunkToPayload(chunk index.Chunk) map[string]*qdrant.Value {
-	payload := make(map[string]*qdrant.Value, 4+len(chunk.Metadata))
-	addPayloadValue(payload, "chunk_id", chunk.ID.String())
-	addPayloadValue(payload, "document_id", chunk.DocumentID.String())
-	addPayloadValue(payload, "chunk_type", string(chunk.Type))
-	addPayloadValue(payload, "title", chunk.Title)
-	addPayloadValue(payload, "text_hash", chunk.TextHash)
-
-	// If metadata exists, merge its fields into the payload
-	if chunk.Metadata != nil {
-		for k, v := range chunk.Metadata {
-			addPayloadValue(payload, k, v)
+// chunkToPayload converts a Chunk to a Qdrant payload map. It extracts metadata
+// fields into the top-level payload, and reports any key it could not convert.
+//
+// Dropped keys are returned rather than swallowed. A payload field that
+// silently fails to convert is invisible: the point is still written, search
+// still works, and the only symptom is a filter that never matches — see
+// [sanitizePayloadValue] for what used to fall into that hole.
+func chunkToPayload(chunk index.Chunk) (payload map[string]*qdrant.Value, dropped []string) {
+	payload = make(map[string]*qdrant.Value, 4+len(chunk.Metadata))
+	add := func(key string, value any) {
+		if !addPayloadValue(payload, key, value) {
+			dropped = append(dropped, key)
 		}
 	}
+	add("chunk_id", chunk.ID.String())
+	add("document_id", chunk.DocumentID.String())
+	add("chunk_type", string(chunk.Type))
+	add("title", chunk.Title)
+	add("text_hash", chunk.TextHash)
 
-	return payload
-}
-
-func addPayloadValue(payload map[string]*qdrant.Value, key string, value any) {
-	val, err := qdrant.NewValue(sanitizePayloadValue(value))
-	if err == nil && val != nil {
-		payload[strings.ToValidUTF8(key, "")] = val
+	// If metadata exists, merge its fields into the payload
+	for k, v := range chunk.Metadata {
+		add(k, v)
 	}
+
+	return payload, dropped
 }
 
+// addPayloadValue converts value and stores it under key, reporting whether it
+// made it into the payload.
+func addPayloadValue(payload map[string]*qdrant.Value, key string, value any) bool {
+	val, err := qdrant.NewValue(sanitizePayloadValue(value))
+	if err != nil || val == nil {
+		return false
+	}
+	payload[strings.ToValidUTF8(key, "")] = val
+	return true
+}
+
+// sanitizePayloadValue coerces value into a shape qdrant.NewValue accepts.
+//
+// NewValue is a closed type switch over the JSON-ish primitives plus
+// map[string]any and []any. Anything else — a []string, a map[string]string, a
+// struct — returns an error, and this used to reach it unchanged, so those
+// fields vanished from the payload. index.Chunk.Metadata is map[string]any, so
+// nothing in the type system stops a caller putting a typed slice in one: the
+// GitLab and Jira document metadata carries labels and components as []string,
+// and neither ever reached Qdrant.
+//
+// The primitives are listed explicitly so they keep their exact conversion
+// (an int must stay a Qdrant integer, not become a double via JSON), and
+// anything past them is normalized through JSON — the same normalization
+// documents already go through on the ingest path, so this converges on one
+// representation rather than inventing a second.
 func sanitizePayloadValue(value any) any {
 	switch v := value.(type) {
+	case nil:
+		return nil
 	case string:
 		return strings.ToValidUTF8(v, "")
+	case bool, int, int32, int64, uint, uint32, uint64, float32, float64, []byte:
+		return v
 	case map[string]any:
 		out := make(map[string]any, len(v))
 		for k, value := range v {
@@ -275,9 +319,24 @@ func sanitizePayloadValue(value any) any {
 			out[i] = sanitizePayloadValue(value)
 		}
 		return out
-	default:
+	}
+
+	// Everything else: normalize through JSON, then re-run the switch above,
+	// which now hits one of the handled cases. json.Unmarshal into `any` only
+	// ever produces nil, bool, float64, string, map[string]any or []any, so
+	// this recurses exactly once.
+	b, err := json.Marshal(value)
+	if err != nil {
+		// Not representable at all (a channel, a func, a cyclic value). Return
+		// it unchanged so NewValue reports the failure and the caller counts
+		// it as dropped.
 		return value
 	}
+	var normalized any
+	if err := json.Unmarshal(b, &normalized); err != nil {
+		return value
+	}
+	return sanitizePayloadValue(normalized)
 }
 
 // payloadToChunk reconstructs a Chunk from a Qdrant payload.
