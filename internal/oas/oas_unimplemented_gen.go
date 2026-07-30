@@ -67,6 +67,15 @@ func (UnimplementedHandler) GetPendingNotifications(ctx context.Context, params 
 	return r, ht.ErrNotImplemented
 }
 
+// ListNotifyChats implements listNotifyChats operation.
+//
+// List chats registered to receive broadcast notifications.
+//
+// GET /notifications/chats
+func (UnimplementedHandler) ListNotifyChats(ctx context.Context) (r *NotifyChatsResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // NotifyEnroll implements notifyEnroll operation.
 //
 // Upsert a NotifyUser's Telegram identity (access hash), called on first bot contact.
@@ -109,6 +118,16 @@ func (UnimplementedHandler) NotifySubscribe(ctx context.Context, req *NotifySubs
 //
 // POST /notify/unsubscribe
 func (UnimplementedHandler) NotifyUnsubscribe(ctx context.Context, req *NotifyUnsubscribeRequest) (r *Ack, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// RegisterNotifyChat implements registerNotifyChat operation.
+//
+// Register (or re-enable) a chat as a broadcast destination, or disable it. Called by the bot when
+// someone runs /alerts inside the chat, which is where the peer's access hash comes from.
+//
+// POST /notifications/chats
+func (UnimplementedHandler) RegisterNotifyChat(ctx context.Context, req *NotifyChatRequest) (r *Ack, _ error) {
 	return r, ht.ErrNotImplemented
 }
 

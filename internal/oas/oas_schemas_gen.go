@@ -670,6 +670,190 @@ func (s *NotificationAckRequestStatus) UnmarshalText(data []byte) error {
 	}
 }
 
+// Ref: #/components/schemas/NotifyChat
+type NotifyChat struct {
+	PeerType string    `json:"peer_type"`
+	PeerID   int64     `json:"peer_id"`
+	Title    OptString `json:"title"`
+	Enabled  bool      `json:"enabled"`
+}
+
+// GetPeerType returns the value of PeerType.
+func (s *NotifyChat) GetPeerType() string {
+	return s.PeerType
+}
+
+// GetPeerID returns the value of PeerID.
+func (s *NotifyChat) GetPeerID() int64 {
+	return s.PeerID
+}
+
+// GetTitle returns the value of Title.
+func (s *NotifyChat) GetTitle() OptString {
+	return s.Title
+}
+
+// GetEnabled returns the value of Enabled.
+func (s *NotifyChat) GetEnabled() bool {
+	return s.Enabled
+}
+
+// SetPeerType sets the value of PeerType.
+func (s *NotifyChat) SetPeerType(val string) {
+	s.PeerType = val
+}
+
+// SetPeerID sets the value of PeerID.
+func (s *NotifyChat) SetPeerID(val int64) {
+	s.PeerID = val
+}
+
+// SetTitle sets the value of Title.
+func (s *NotifyChat) SetTitle(val OptString) {
+	s.Title = val
+}
+
+// SetEnabled sets the value of Enabled.
+func (s *NotifyChat) SetEnabled(val bool) {
+	s.Enabled = val
+}
+
+// Ref: #/components/schemas/NotifyChatRequest
+type NotifyChatRequest struct {
+	PeerType NotifyChatRequestPeerType `json:"peer_type"`
+	PeerID   int64                     `json:"peer_id"`
+	// Required for channels and supergroups; a basic group has none.
+	AccessHash OptInt64  `json:"access_hash"`
+	Title      OptString `json:"title"`
+	// Telegram user who ran the command, for audit.
+	AddedBy OptInt64 `json:"added_by"`
+	// False disables the chat without forgetting its access hash.
+	Enabled bool `json:"enabled"`
+}
+
+// GetPeerType returns the value of PeerType.
+func (s *NotifyChatRequest) GetPeerType() NotifyChatRequestPeerType {
+	return s.PeerType
+}
+
+// GetPeerID returns the value of PeerID.
+func (s *NotifyChatRequest) GetPeerID() int64 {
+	return s.PeerID
+}
+
+// GetAccessHash returns the value of AccessHash.
+func (s *NotifyChatRequest) GetAccessHash() OptInt64 {
+	return s.AccessHash
+}
+
+// GetTitle returns the value of Title.
+func (s *NotifyChatRequest) GetTitle() OptString {
+	return s.Title
+}
+
+// GetAddedBy returns the value of AddedBy.
+func (s *NotifyChatRequest) GetAddedBy() OptInt64 {
+	return s.AddedBy
+}
+
+// GetEnabled returns the value of Enabled.
+func (s *NotifyChatRequest) GetEnabled() bool {
+	return s.Enabled
+}
+
+// SetPeerType sets the value of PeerType.
+func (s *NotifyChatRequest) SetPeerType(val NotifyChatRequestPeerType) {
+	s.PeerType = val
+}
+
+// SetPeerID sets the value of PeerID.
+func (s *NotifyChatRequest) SetPeerID(val int64) {
+	s.PeerID = val
+}
+
+// SetAccessHash sets the value of AccessHash.
+func (s *NotifyChatRequest) SetAccessHash(val OptInt64) {
+	s.AccessHash = val
+}
+
+// SetTitle sets the value of Title.
+func (s *NotifyChatRequest) SetTitle(val OptString) {
+	s.Title = val
+}
+
+// SetAddedBy sets the value of AddedBy.
+func (s *NotifyChatRequest) SetAddedBy(val OptInt64) {
+	s.AddedBy = val
+}
+
+// SetEnabled sets the value of Enabled.
+func (s *NotifyChatRequest) SetEnabled(val bool) {
+	s.Enabled = val
+}
+
+type NotifyChatRequestPeerType string
+
+const (
+	NotifyChatRequestPeerTypeUser    NotifyChatRequestPeerType = "user"
+	NotifyChatRequestPeerTypeChannel NotifyChatRequestPeerType = "channel"
+	NotifyChatRequestPeerTypeChat    NotifyChatRequestPeerType = "chat"
+)
+
+// AllValues returns all NotifyChatRequestPeerType values.
+func (NotifyChatRequestPeerType) AllValues() []NotifyChatRequestPeerType {
+	return []NotifyChatRequestPeerType{
+		NotifyChatRequestPeerTypeUser,
+		NotifyChatRequestPeerTypeChannel,
+		NotifyChatRequestPeerTypeChat,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s NotifyChatRequestPeerType) MarshalText() ([]byte, error) {
+	switch s {
+	case NotifyChatRequestPeerTypeUser:
+		return []byte(s), nil
+	case NotifyChatRequestPeerTypeChannel:
+		return []byte(s), nil
+	case NotifyChatRequestPeerTypeChat:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *NotifyChatRequestPeerType) UnmarshalText(data []byte) error {
+	switch NotifyChatRequestPeerType(data) {
+	case NotifyChatRequestPeerTypeUser:
+		*s = NotifyChatRequestPeerTypeUser
+		return nil
+	case NotifyChatRequestPeerTypeChannel:
+		*s = NotifyChatRequestPeerTypeChannel
+		return nil
+	case NotifyChatRequestPeerTypeChat:
+		*s = NotifyChatRequestPeerTypeChat
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/NotifyChatsResponse
+type NotifyChatsResponse struct {
+	Chats []NotifyChat `json:"chats"`
+}
+
+// GetChats returns the value of Chats.
+func (s *NotifyChatsResponse) GetChats() []NotifyChat {
+	return s.Chats
+}
+
+// SetChats sets the value of Chats.
+func (s *NotifyChatsResponse) SetChats(val []NotifyChat) {
+	s.Chats = val
+}
+
 // Ref: #/components/schemas/NotifyEnrollRequest
 type NotifyEnrollRequest struct {
 	TelegramUserID     int64 `json:"telegram_user_id"`

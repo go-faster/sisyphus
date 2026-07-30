@@ -9,6 +9,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/document"
 	"github.com/go-faster/sisyphus/internal/ent/investigationjob"
 	"github.com/go-faster/sisyphus/internal/ent/notification"
+	"github.com/go-faster/sisyphus/internal/ent/notifychat"
 	"github.com/go-faster/sisyphus/internal/ent/notifysubscription"
 	"github.com/go-faster/sisyphus/internal/ent/queuejob"
 	"github.com/go-faster/sisyphus/internal/ent/schema"
@@ -160,6 +161,30 @@ func init() {
 	notificationDescID := notificationFields[0].Descriptor()
 	// notification.DefaultID holds the default value on creation for the id field.
 	notification.DefaultID = notificationDescID.Default.(func() uuid.UUID)
+	notifychatFields := schema.NotifyChat{}.Fields()
+	_ = notifychatFields
+	// notifychatDescPeerType is the schema descriptor for peer_type field.
+	notifychatDescPeerType := notifychatFields[1].Descriptor()
+	// notifychat.DefaultPeerType holds the default value on creation for the peer_type field.
+	notifychat.DefaultPeerType = notifychatDescPeerType.Default.(string)
+	// notifychatDescEnabled is the schema descriptor for enabled field.
+	notifychatDescEnabled := notifychatFields[5].Descriptor()
+	// notifychat.DefaultEnabled holds the default value on creation for the enabled field.
+	notifychat.DefaultEnabled = notifychatDescEnabled.Default.(bool)
+	// notifychatDescCreatedAt is the schema descriptor for created_at field.
+	notifychatDescCreatedAt := notifychatFields[7].Descriptor()
+	// notifychat.DefaultCreatedAt holds the default value on creation for the created_at field.
+	notifychat.DefaultCreatedAt = notifychatDescCreatedAt.Default.(func() time.Time)
+	// notifychatDescUpdatedAt is the schema descriptor for updated_at field.
+	notifychatDescUpdatedAt := notifychatFields[8].Descriptor()
+	// notifychat.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	notifychat.DefaultUpdatedAt = notifychatDescUpdatedAt.Default.(func() time.Time)
+	// notifychat.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	notifychat.UpdateDefaultUpdatedAt = notifychatDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// notifychatDescID is the schema descriptor for id field.
+	notifychatDescID := notifychatFields[0].Descriptor()
+	// notifychat.DefaultID holds the default value on creation for the id field.
+	notifychat.DefaultID = notifychatDescID.Default.(func() uuid.UUID)
 	notifysubscriptionFields := schema.NotifySubscription{}.Fields()
 	_ = notifysubscriptionFields
 	// notifysubscriptionDescSource is the schema descriptor for source field.

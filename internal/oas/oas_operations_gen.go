@@ -12,10 +12,12 @@ const (
 	GetFileOperation                 OperationName = "GetFile"
 	GetHealthOperation               OperationName = "GetHealth"
 	GetPendingNotificationsOperation OperationName = "GetPendingNotifications"
+	ListNotifyChatsOperation         OperationName = "ListNotifyChats"
 	NotifyEnrollOperation            OperationName = "NotifyEnroll"
 	NotifyLinkOperation              OperationName = "NotifyLink"
 	NotifyListSubscriptionsOperation OperationName = "NotifyListSubscriptions"
 	NotifySubscribeOperation         OperationName = "NotifySubscribe"
 	NotifyUnsubscribeOperation       OperationName = "NotifyUnsubscribe"
+	RegisterNotifyChatOperation      OperationName = "RegisterNotifyChat"
 	SearchOperation                  OperationName = "Search"
 )

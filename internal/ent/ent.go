@@ -16,6 +16,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/document"
 	"github.com/go-faster/sisyphus/internal/ent/investigationjob"
 	"github.com/go-faster/sisyphus/internal/ent/notification"
+	"github.com/go-faster/sisyphus/internal/ent/notifychat"
 	"github.com/go-faster/sisyphus/internal/ent/notifysubscription"
 	"github.com/go-faster/sisyphus/internal/ent/queuejob"
 	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
@@ -87,6 +88,7 @@ func checkColumn(t, c string) error {
 			document.Table:           document.ValidColumn,
 			investigationjob.Table:   investigationjob.ValidColumn,
 			notification.Table:       notification.ValidColumn,
+			notifychat.Table:         notifychat.ValidColumn,
 			notifysubscription.Table: notifysubscription.ValidColumn,
 			queuejob.Table:           queuejob.ValidColumn,
 			supportrequest.Table:     supportrequest.ValidColumn,
