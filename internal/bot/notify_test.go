@@ -110,8 +110,16 @@ func captureSend(t *testing.T) (stub *fakeSender, sent *string) {
 
 func TestSendTo_NotReadyBeforeRun(t *testing.T) {
 	b := newNotifyTestBot(nil)
-	err := b.SendTo(context.Background(), uuid.New(), 1, 2, "hello")
+	err := b.SendTo(context.Background(), uuid.New(), "user", 1, 2, "hello")
 	require.ErrorIs(t, err, errBotNotReady)
+}
+
+func TestNotifyPeer(t *testing.T) {
+	require.Equal(t, &tg.InputPeerUser{UserID: 7, AccessHash: 9}, notifyPeer("user", 7, 9))
+	require.Equal(t, &tg.InputPeerUser{UserID: 7, AccessHash: 9}, notifyPeer("", 7, 9),
+		"an unset peer type is a user, as every row written before broadcasts existed is")
+	require.Equal(t, &tg.InputPeerChannel{ChannelID: 7, AccessHash: 9}, notifyPeer("channel", 7, 9))
+	require.Equal(t, &tg.InputPeerChat{ChatID: 7}, notifyPeer("chat", 7, 9))
 }
 
 func TestRandomIDFor_DeterministicPerNotification(t *testing.T) {

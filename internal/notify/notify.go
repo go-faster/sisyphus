@@ -28,6 +28,11 @@ type Source string
 const (
 	SourceGitLab Source = "gitlab"
 	SourceJira   Source = "jira"
+	// SourceAlerts covers what the alerting pipeline produces — today an
+	// agent investigation of a firing alert. Unlike GitLab and Jira it has no
+	// per-user identity to match on: its notifications are broadcast to the
+	// chats in deployment config (see Broadcaster).
+	SourceAlerts Source = "alerts"
 )
 
 // Channel identifies a delivery mechanism (Sink implementation).
@@ -51,6 +56,9 @@ const (
 	// EventIssueAssigned fires when the recipient is newly set as a Jira
 	// issue's assignee.
 	EventIssueAssigned EventType = "issue_assigned"
+	// EventInvestigationCompleted fires when an agent investigation finishes.
+	// It is addressed to a chat, not a user.
+	EventInvestigationCompleted EventType = "investigation_completed"
 )
 
 // Actor identifies a source-side user, either as the recipient of an Event
@@ -65,11 +73,14 @@ type Actor struct {
 
 // Event is a single source-side occurrence addressed to a Recipient.
 type Event struct {
-	Source     Source
-	Type       EventType
-	Recipient  Actor // the source-side user this event is FOR
-	Actor      Actor // who caused it (assigner); zero value if unknown
-	Title      string
+	Source    Source
+	Type      EventType
+	Recipient Actor // the source-side user this event is FOR
+	Actor     Actor // who caused it (assigner); zero value if unknown
+	Title     string
+	// Body is optional detail rendered under Title (an investigation's
+	// verdict and findings). Empty for the one-line assignment events.
+	Body       string
 	URL        string
 	ObjectID   string // stable id of the parent object, e.g. "group/proj!42"
 	EventID    string // stable id of this specific event; see dedup key
@@ -118,9 +129,25 @@ type EventCollector interface {
 // Target is the sink-specific address resolved from a subscribed user's
 // stored identity. A Sink reads only the fields it needs.
 type Target struct {
+	// TelegramUserID is the peer id: a user id for PeerUser, a channel or
+	// group id for PeerChannel/PeerChat.
 	TelegramUserID     int64
 	TelegramAccessHash int64
+	// PeerType says which kind of peer the id names. Empty means PeerUser,
+	// so every pre-existing per-user row keeps its meaning.
+	PeerType PeerType
 }
+
+// PeerType distinguishes the kinds of Telegram peer a Target can address.
+// Per-user notifications resolve to a user; broadcasts resolve to the channel
+// or group named in deployment config.
+type PeerType string
+
+const (
+	PeerUser    PeerType = "user"
+	PeerChannel PeerType = "channel"
+	PeerChat    PeerType = "chat"
+)
 
 // Sink delivers one Notification to one Target. Implementations must not
 // import ent or any gotd/MTProto type, so they stay unit-testable with a

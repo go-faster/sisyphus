@@ -150,7 +150,7 @@ func runClaimed(t *testing.T, store jobStore, inv agent.Investigator, id uuid.UU
 	t.Helper()
 	payload, err := json.Marshal(agentstore.Payload{Description: description})
 	require.NoError(t, err)
-	h := investigateHandler(store, inv, noop.NewTracerProvider().Tracer(""), nil, zaptest.NewLogger(t))
+	h := investigateHandler(store, inv, nil, noop.NewTracerProvider().Tracer(""), nil, zaptest.NewLogger(t))
 	return h(t.Context(), queue.Delivery{ID: id, Key: id.String(), Payload: payload, Attempts: 1, MaxAttempts: 2})
 }
 
@@ -401,6 +401,6 @@ func TestInvestigate_UndecodablePayloadIsRetired(t *testing.T) {
 	_, _, err := store.Submit(t.Context(), "key", "test issue")
 	require.NoError(t, err)
 
-	h := investigateHandler(store, &fakeInvestigator{}, noop.NewTracerProvider().Tracer(""), nil, zaptest.NewLogger(t))
+	h := investigateHandler(store, &fakeInvestigator{}, nil, noop.NewTracerProvider().Tracer(""), nil, zaptest.NewLogger(t))
 	require.NoError(t, h(t.Context(), queue.Delivery{ID: id, Payload: []byte("not json"), Attempts: 1, MaxAttempts: 2}))
 }

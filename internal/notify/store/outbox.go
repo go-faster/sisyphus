@@ -36,6 +36,7 @@ func queueName(channel notify.Channel) string { return "notify." + string(channe
 type payload struct {
 	TelegramUserID     int64  `json:"telegram_user_id,omitempty"`
 	TelegramAccessHash int64  `json:"telegram_access_hash,omitempty"`
+	TelegramPeerType   string `json:"telegram_peer_type,omitempty"`
 	Text               string `json:"text"`
 	URL                string `json:"url,omitempty"`
 }
@@ -64,16 +65,20 @@ func (s *Store) Enqueue(ctx context.Context, channel notify.Channel, target noti
 	create := tx.Notification.Create().
 		SetID(id).
 		SetDedupKey(n.DedupKey).
-		SetUserID(n.UserID).
 		SetChannel(string(channel)).
 		SetSource(string(n.Source)).
 		SetEventType(string(n.Type)).
 		SetText(n.Text).
 		SetURL(n.URL)
+	// A broadcast row has no user: it is addressed by target alone.
+	if n.UserID != uuid.Nil {
+		create = create.SetUserID(n.UserID)
+	}
 	if channel == notify.ChannelTelegram {
 		create = create.
 			SetTelegramUserID(target.TelegramUserID).
-			SetTelegramAccessHash(target.TelegramAccessHash)
+			SetTelegramAccessHash(target.TelegramAccessHash).
+			SetPeerType(string(peerType(target)))
 	}
 	if _, err := create.Save(ctx); err != nil {
 		if ent.IsConstraintError(err) {
@@ -85,6 +90,7 @@ func (s *Store) Enqueue(ctx context.Context, channel notify.Channel, target noti
 	body, err := json.Marshal(payload{
 		TelegramUserID:     target.TelegramUserID,
 		TelegramAccessHash: target.TelegramAccessHash,
+		TelegramPeerType:   string(peerType(target)),
 		Text:               n.Text,
 		URL:                n.URL,
 	})
@@ -111,11 +117,22 @@ func (s *Store) Enqueue(ctx context.Context, channel notify.Channel, target noti
 	return true, nil
 }
 
+// peerType defaults an unset Target.PeerType to a user, which is what every
+// per-user notification is and what every row written before broadcasts
+// existed means.
+func peerType(target notify.Target) notify.PeerType {
+	if target.PeerType == "" {
+		return notify.PeerUser
+	}
+	return target.PeerType
+}
+
 // OutboxItem is one claimed delivery, as drained by a sink's host process.
 type OutboxItem struct {
 	ID                 uuid.UUID
 	TelegramUserID     int64
 	TelegramAccessHash int64
+	TelegramPeerType   notify.PeerType
 	Text               string
 	URL                string
 	Attempts           int
@@ -146,6 +163,7 @@ func (s *Store) Pending(ctx context.Context, channel notify.Channel, limit int) 
 			ID:                 d.ID,
 			TelegramUserID:     p.TelegramUserID,
 			TelegramAccessHash: p.TelegramAccessHash,
+			TelegramPeerType:   peerType(notify.Target{PeerType: notify.PeerType(p.TelegramPeerType)}),
 			Text:               p.Text,
 			URL:                p.URL,
 			Attempts:           d.Attempts,

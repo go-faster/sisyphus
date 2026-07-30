@@ -16,11 +16,11 @@ type fakeSubmitter struct {
 	err  error
 }
 
-func (f *fakeSubmitter) Submit(_ context.Context, key, _ string) (Job, bool, error) {
+func (f *fakeSubmitter) SubmitEvent(_ context.Context, e event.Event, _ string) (Job, bool, error) {
 	if f.err != nil {
 		return Job{}, false, f.err
 	}
-	f.keys = append(f.keys, key)
+	f.keys = append(f.keys, e.ID)
 	return Job{}, true, nil
 }
 
