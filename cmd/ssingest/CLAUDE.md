@@ -56,6 +56,13 @@ only — `POST /webhooks/gitlab`, `/webhooks/jira` on `ingest.addr`, gated by
 `internal/webhook.Poller` ticker. A webhook and a poll tick racing on the same source
 coalesce into one run (`Trigger.Fire`'s debounce).
 
+`POST /webhooks/alertmanager` (gated by `alertmanager.webhook.enabled`, authenticated by
+`alertmanager.webhook.token`) is the exception: there is no fetcher to wake, so the
+handler decodes the body into alert events and routes them inline before answering 202 —
+Alertmanager retries a non-2xx, and every destination is idempotent on `Event.ID`. With
+`alertmanager.investigate.enabled`, the agent destination submits an investigation per
+firing alert, keyed by the event ID so a repeat_interval resend reuses the existing job.
+
 `cmd/ssapi` runs no ingestion, so exactly one process races to write a given source's rows.
 
 Trigger keys: `gitlab`, `jira`, `git`, `files`, `telegram` (see `cmd_serve.go`). There is

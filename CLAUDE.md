@@ -57,9 +57,9 @@ Keep the index below one line per package, and put the depth in the nested file.
 
 **Ingestion**
 
-- `internal/ingest` **†** (`git`, `gitlab`, `jira`, `telegram`) — per-source fetchers and their cursors. GitLab/Jira are also the event-spine source adapters: one fetch yields both an `index.Document` and a canonical `event.Event` (`EventFromMergeRequest`, `EventFromIssue`).
+- `internal/ingest` **†** (`git`, `gitlab`, `jira`, `telegram`, `alertmanager`) — per-source fetchers and their cursors. GitLab/Jira are also the event-spine source adapters: one fetch yields both an `index.Document` and a canonical `event.Event` (`EventFromMergeRequest`, `EventFromIssue`). `alertmanager` is push-only: it parses a webhook body into alert events and produces no documents.
 - `internal/ingestrun` — shared GitLab/Jira incremental-run logic (indexes documents and routes their events via `Runner.Router`) + `IndexBatch`/`ResetSource`/`UpsertSyncState`, and `WithSourceLock`.
-- `internal/webhook` — debounced `Trigger`, ticker `Poller`, GitLab/Jira webhook handlers. Used only by `ssingest serve`.
+- `internal/webhook` — debounced `Trigger`, ticker `Poller`, GitLab/Jira webhook handlers (wake a fetcher) and the Alertmanager handler (routes the body itself, bearer-token auth). Used only by `ssingest serve`.
 - `internal/indexjob` **†** — the boundary between ingestion's two halves, over the `ingest.index` queue.
 - `internal/pipeline` **†** — `Pipeline.Index`: idempotent doc+chunk upsert, embed, vector upsert/delete. `Skipper` answers the skip question without doing the work.
 - `internal/vectorgc` **†** — `ssingest gc`: drop vector points no chunk references.
@@ -80,7 +80,7 @@ Keep the index below one line per package, and put the depth in the nested file.
 - `internal/bot` — gotd bot, `/context` handler, `linksMarkup`.
 - `internal/agent` **†** — shared LLM tool-calling loop (`coreLoop`) behind both `/investigate` and agentic `/context`.
 - `internal/agentclient` — HTTP client (submit + poll) ssbot uses against ssagent.
-- `internal/agentstore` **†** — ent-backed `InvestigationJob` rows + dispatch through `internal/queue`.
+- `internal/agentstore` **†** — ent-backed `InvestigationJob` rows + dispatch through `internal/queue`; its `Subscriber` is the agent's `event.Handler`, turning a firing alert into a queued investigation.
 - `internal/answer` **†** — agentic `/context` answerer; `search_knowledge`/`fetch_url` plus optional ssh-mcp sandbox.
 - `internal/llm/openrouter` — non-agentic `/context` answerer.
 - `internal/mcpserver` — MCP tool impls (search/answer/file/fetch) + `BearerAuthMiddleware`.

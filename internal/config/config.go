@@ -38,15 +38,35 @@ type Config struct {
 	Proxies    ProxyConfig
 	Fetch      FetchConfig
 
-	Agent   AgentConfig
-	Context ContextConfig
-	Ingest  IngestConfig
-	Notify  NotifyConfig
+	Agent        AgentConfig
+	Alertmanager AlertmanagerConfig
+	Context      ContextConfig
+	Ingest       IngestConfig
+	Notify       NotifyConfig
 
 	// Warnings holds deprecation warnings collected while resolving the
 	// config (e.g. use of a field superseded by a per-service section). The
 	// caller should log these.
 	Warnings []string
+}
+
+// AlertmanagerConfig configures the Alertmanager event source: the webhook
+// endpoint `ssingest serve` exposes, and whether a firing alert should start
+// an agent investigation.
+//
+// Alertmanager signs nothing, so WebhookToken (a shared bearer token) is the
+// only authentication the endpoint can do. An enabled webhook with no token
+// serves anyone who can reach `ingest.addr`.
+type AlertmanagerConfig struct {
+	WebhookEnabled bool
+	WebhookToken   string
+
+	// Investigate submits an agent investigation for each qualifying firing
+	// alert. Off by default: it spends LLM budget per alert.
+	Investigate bool
+	// InvestigateMinSeverity drops alerts below this severity ("info",
+	// "warning", "critical"). Empty means no floor.
+	InvestigateMinSeverity string
 }
 
 // NotifyConfig controls the delivery half of the notification gateway:
@@ -266,10 +286,22 @@ type fileConfig struct {
 	// Deprecated: use mcp.auth_token.
 	MCPAuthToken Secret `yaml:"mcp_auth_token"`
 
-	Agent   fileAgentConfig   `yaml:"agent"`
-	Context fileContextConfig `yaml:"context"`
-	Ingest  fileIngestConfig  `yaml:"ingest"`
-	Notify  fileNotifyConfig  `yaml:"notify"`
+	Agent        fileAgentConfig        `yaml:"agent"`
+	Alertmanager fileAlertmanagerConfig `yaml:"alertmanager"`
+	Context      fileContextConfig      `yaml:"context"`
+	Ingest       fileIngestConfig       `yaml:"ingest"`
+	Notify       fileNotifyConfig       `yaml:"notify"`
+}
+
+type fileAlertmanagerConfig struct {
+	Webhook struct {
+		Enabled bool   `yaml:"enabled"`
+		Token   Secret `yaml:"token"`
+	} `yaml:"webhook"`
+	Investigate struct {
+		Enabled     bool   `yaml:"enabled"`
+		MinSeverity string `yaml:"min_severity"`
+	} `yaml:"investigate"`
 }
 
 type fileNotifyConfig struct {
@@ -858,6 +890,19 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 	if err != nil {
 		return Config{}, errors.Wrap(err, "agent auth_token")
 	}
+	alertWebhookToken, err := c.Alertmanager.Webhook.Token.Resolve(baseDir)
+	if err != nil {
+		return Config{}, errors.Wrap(err, "alertmanager webhook token")
+	}
+	if c.Alertmanager.Webhook.Enabled && alertWebhookToken == "" {
+		warnings = append(warnings, "alertmanager.webhook.enabled without alertmanager.webhook.token: the endpoint accepts alerts from anyone who can reach it")
+	}
+	alertMinSeverity := strings.ToLower(strings.TrimSpace(c.Alertmanager.Investigate.MinSeverity))
+	switch alertMinSeverity {
+	case "", "info", "warning", "critical":
+	default:
+		return Config{}, errors.Errorf("alertmanager.investigate.min_severity %q must be info, warning or critical", alertMinSeverity)
+	}
 
 	// notify.poll.interval_seconds no longer schedules any collection — the
 	// GitLab and Jira ingestion runs emit the events now — but a config that
@@ -955,6 +1000,12 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			MaxConcurrent:         c.Agent.MaxConcurrent,
 			MaxBodyBytes:          c.Agent.MaxBodyBytes,
 			ShowDebugInfo:         c.Agent.ShowDebugInfo,
+		},
+		Alertmanager: AlertmanagerConfig{
+			WebhookEnabled:         c.Alertmanager.Webhook.Enabled,
+			WebhookToken:           alertWebhookToken,
+			Investigate:            c.Alertmanager.Investigate.Enabled,
+			InvestigateMinSeverity: alertMinSeverity,
 		},
 		Context: ContextConfig{
 			Agentic:        c.Context.Agentic,
