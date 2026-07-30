@@ -57,6 +57,18 @@ func (f NotificationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.NotificationMutation", m)
 }
 
+// The NotifyChatFunc type is an adapter to allow the use of ordinary
+// function as NotifyChat mutator.
+type NotifyChatFunc func(context.Context, *ent.NotifyChatMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f NotifyChatFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.NotifyChatMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.NotifyChatMutation", m)
+}
+
 // The NotifySubscriptionFunc type is an adapter to allow the use of ordinary
 // function as NotifySubscription mutator.
 type NotifySubscriptionFunc func(context.Context, *ent.NotifySubscriptionMutation) (ent.Value, error)

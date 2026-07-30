@@ -22,6 +22,8 @@ type Tx struct {
 	InvestigationJob *InvestigationJobClient
 	// Notification is the client for interacting with the Notification builders.
 	Notification *NotificationClient
+	// NotifyChat is the client for interacting with the NotifyChat builders.
+	NotifyChat *NotifyChatClient
 	// NotifySubscription is the client for interacting with the NotifySubscription builders.
 	NotifySubscription *NotifySubscriptionClient
 	// QueueJob is the client for interacting with the QueueJob builders.
@@ -171,6 +173,7 @@ func (tx *Tx) init() {
 	tx.Document = NewDocumentClient(tx.config)
 	tx.InvestigationJob = NewInvestigationJobClient(tx.config)
 	tx.Notification = NewNotificationClient(tx.config)
+	tx.NotifyChat = NewNotifyChatClient(tx.config)
 	tx.NotifySubscription = NewNotifySubscriptionClient(tx.config)
 	tx.QueueJob = NewQueueJobClient(tx.config)
 	tx.SupportRequest = NewSupportRequestClient(tx.config)

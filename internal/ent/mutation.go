@@ -15,6 +15,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/document"
 	"github.com/go-faster/sisyphus/internal/ent/investigationjob"
 	"github.com/go-faster/sisyphus/internal/ent/notification"
+	"github.com/go-faster/sisyphus/internal/ent/notifychat"
 	"github.com/go-faster/sisyphus/internal/ent/notifysubscription"
 	"github.com/go-faster/sisyphus/internal/ent/predicate"
 	"github.com/go-faster/sisyphus/internal/ent/queuejob"
@@ -39,6 +40,7 @@ const (
 	TypeDocument           = "Document"
 	TypeInvestigationJob   = "InvestigationJob"
 	TypeNotification       = "Notification"
+	TypeNotifyChat         = "NotifyChat"
 	TypeNotifySubscription = "NotifySubscription"
 	TypeQueueJob           = "QueueJob"
 	TypeSupportRequest     = "SupportRequest"
@@ -4530,6 +4532,880 @@ func (m *NotificationMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown Notification edge %s", name)
+}
+
+// NotifyChatMutation represents an operation that mutates the NotifyChat nodes in the graph.
+type NotifyChatMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *uuid.UUID
+	peer_type      *string
+	peer_id        *int64
+	addpeer_id     *int64
+	access_hash    *int64
+	addaccess_hash *int64
+	title          *string
+	enabled        *bool
+	added_by       *int64
+	addadded_by    *int64
+	created_at     *time.Time
+	updated_at     *time.Time
+	clearedFields  map[string]struct{}
+	done           bool
+	oldValue       func(context.Context) (*NotifyChat, error)
+	predicates     []predicate.NotifyChat
+}
+
+var _ ent.Mutation = (*NotifyChatMutation)(nil)
+
+// notifychatOption allows management of the mutation configuration using functional options.
+type notifychatOption func(*NotifyChatMutation)
+
+// newNotifyChatMutation creates new mutation for the NotifyChat entity.
+func newNotifyChatMutation(c config, op Op, opts ...notifychatOption) *NotifyChatMutation {
+	m := &NotifyChatMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeNotifyChat,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withNotifyChatID sets the ID field of the mutation.
+func withNotifyChatID(id uuid.UUID) notifychatOption {
+	return func(m *NotifyChatMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *NotifyChat
+		)
+		m.oldValue = func(ctx context.Context) (*NotifyChat, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().NotifyChat.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withNotifyChat sets the old NotifyChat of the mutation.
+func withNotifyChat(node *NotifyChat) notifychatOption {
+	return func(m *NotifyChatMutation) {
+		m.oldValue = func(context.Context) (*NotifyChat, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m NotifyChatMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m NotifyChatMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of NotifyChat entities.
+func (m *NotifyChatMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *NotifyChatMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *NotifyChatMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().NotifyChat.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetPeerType sets the "peer_type" field.
+func (m *NotifyChatMutation) SetPeerType(s string) {
+	m.peer_type = &s
+}
+
+// PeerType returns the value of the "peer_type" field in the mutation.
+func (m *NotifyChatMutation) PeerType() (r string, exists bool) {
+	v := m.peer_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPeerType returns the old "peer_type" field's value of the NotifyChat entity.
+// If the NotifyChat object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotifyChatMutation) OldPeerType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPeerType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPeerType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPeerType: %w", err)
+	}
+	return oldValue.PeerType, nil
+}
+
+// ResetPeerType resets all changes to the "peer_type" field.
+func (m *NotifyChatMutation) ResetPeerType() {
+	m.peer_type = nil
+}
+
+// SetPeerID sets the "peer_id" field.
+func (m *NotifyChatMutation) SetPeerID(i int64) {
+	m.peer_id = &i
+	m.addpeer_id = nil
+}
+
+// PeerID returns the value of the "peer_id" field in the mutation.
+func (m *NotifyChatMutation) PeerID() (r int64, exists bool) {
+	v := m.peer_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPeerID returns the old "peer_id" field's value of the NotifyChat entity.
+// If the NotifyChat object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotifyChatMutation) OldPeerID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPeerID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPeerID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPeerID: %w", err)
+	}
+	return oldValue.PeerID, nil
+}
+
+// AddPeerID adds i to the "peer_id" field.
+func (m *NotifyChatMutation) AddPeerID(i int64) {
+	if m.addpeer_id != nil {
+		*m.addpeer_id += i
+	} else {
+		m.addpeer_id = &i
+	}
+}
+
+// AddedPeerID returns the value that was added to the "peer_id" field in this mutation.
+func (m *NotifyChatMutation) AddedPeerID() (r int64, exists bool) {
+	v := m.addpeer_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPeerID resets all changes to the "peer_id" field.
+func (m *NotifyChatMutation) ResetPeerID() {
+	m.peer_id = nil
+	m.addpeer_id = nil
+}
+
+// SetAccessHash sets the "access_hash" field.
+func (m *NotifyChatMutation) SetAccessHash(i int64) {
+	m.access_hash = &i
+	m.addaccess_hash = nil
+}
+
+// AccessHash returns the value of the "access_hash" field in the mutation.
+func (m *NotifyChatMutation) AccessHash() (r int64, exists bool) {
+	v := m.access_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccessHash returns the old "access_hash" field's value of the NotifyChat entity.
+// If the NotifyChat object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotifyChatMutation) OldAccessHash(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccessHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccessHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccessHash: %w", err)
+	}
+	return oldValue.AccessHash, nil
+}
+
+// AddAccessHash adds i to the "access_hash" field.
+func (m *NotifyChatMutation) AddAccessHash(i int64) {
+	if m.addaccess_hash != nil {
+		*m.addaccess_hash += i
+	} else {
+		m.addaccess_hash = &i
+	}
+}
+
+// AddedAccessHash returns the value that was added to the "access_hash" field in this mutation.
+func (m *NotifyChatMutation) AddedAccessHash() (r int64, exists bool) {
+	v := m.addaccess_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearAccessHash clears the value of the "access_hash" field.
+func (m *NotifyChatMutation) ClearAccessHash() {
+	m.access_hash = nil
+	m.addaccess_hash = nil
+	m.clearedFields[notifychat.FieldAccessHash] = struct{}{}
+}
+
+// AccessHashCleared returns if the "access_hash" field was cleared in this mutation.
+func (m *NotifyChatMutation) AccessHashCleared() bool {
+	_, ok := m.clearedFields[notifychat.FieldAccessHash]
+	return ok
+}
+
+// ResetAccessHash resets all changes to the "access_hash" field.
+func (m *NotifyChatMutation) ResetAccessHash() {
+	m.access_hash = nil
+	m.addaccess_hash = nil
+	delete(m.clearedFields, notifychat.FieldAccessHash)
+}
+
+// SetTitle sets the "title" field.
+func (m *NotifyChatMutation) SetTitle(s string) {
+	m.title = &s
+}
+
+// Title returns the value of the "title" field in the mutation.
+func (m *NotifyChatMutation) Title() (r string, exists bool) {
+	v := m.title
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTitle returns the old "title" field's value of the NotifyChat entity.
+// If the NotifyChat object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotifyChatMutation) OldTitle(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTitle is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTitle requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTitle: %w", err)
+	}
+	return oldValue.Title, nil
+}
+
+// ClearTitle clears the value of the "title" field.
+func (m *NotifyChatMutation) ClearTitle() {
+	m.title = nil
+	m.clearedFields[notifychat.FieldTitle] = struct{}{}
+}
+
+// TitleCleared returns if the "title" field was cleared in this mutation.
+func (m *NotifyChatMutation) TitleCleared() bool {
+	_, ok := m.clearedFields[notifychat.FieldTitle]
+	return ok
+}
+
+// ResetTitle resets all changes to the "title" field.
+func (m *NotifyChatMutation) ResetTitle() {
+	m.title = nil
+	delete(m.clearedFields, notifychat.FieldTitle)
+}
+
+// SetEnabled sets the "enabled" field.
+func (m *NotifyChatMutation) SetEnabled(b bool) {
+	m.enabled = &b
+}
+
+// Enabled returns the value of the "enabled" field in the mutation.
+func (m *NotifyChatMutation) Enabled() (r bool, exists bool) {
+	v := m.enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldEnabled returns the old "enabled" field's value of the NotifyChat entity.
+// If the NotifyChat object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotifyChatMutation) OldEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldEnabled: %w", err)
+	}
+	return oldValue.Enabled, nil
+}
+
+// ResetEnabled resets all changes to the "enabled" field.
+func (m *NotifyChatMutation) ResetEnabled() {
+	m.enabled = nil
+}
+
+// SetAddedBy sets the "added_by" field.
+func (m *NotifyChatMutation) SetAddedBy(i int64) {
+	m.added_by = &i
+	m.addadded_by = nil
+}
+
+// AddedBy returns the value of the "added_by" field in the mutation.
+func (m *NotifyChatMutation) AddedBy() (r int64, exists bool) {
+	v := m.added_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAddedBy returns the old "added_by" field's value of the NotifyChat entity.
+// If the NotifyChat object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotifyChatMutation) OldAddedBy(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAddedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAddedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAddedBy: %w", err)
+	}
+	return oldValue.AddedBy, nil
+}
+
+// AddAddedBy adds i to the "added_by" field.
+func (m *NotifyChatMutation) AddAddedBy(i int64) {
+	if m.addadded_by != nil {
+		*m.addadded_by += i
+	} else {
+		m.addadded_by = &i
+	}
+}
+
+// AddedAddedBy returns the value that was added to the "added_by" field in this mutation.
+func (m *NotifyChatMutation) AddedAddedBy() (r int64, exists bool) {
+	v := m.addadded_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearAddedBy clears the value of the "added_by" field.
+func (m *NotifyChatMutation) ClearAddedBy() {
+	m.added_by = nil
+	m.addadded_by = nil
+	m.clearedFields[notifychat.FieldAddedBy] = struct{}{}
+}
+
+// AddedByCleared returns if the "added_by" field was cleared in this mutation.
+func (m *NotifyChatMutation) AddedByCleared() bool {
+	_, ok := m.clearedFields[notifychat.FieldAddedBy]
+	return ok
+}
+
+// ResetAddedBy resets all changes to the "added_by" field.
+func (m *NotifyChatMutation) ResetAddedBy() {
+	m.added_by = nil
+	m.addadded_by = nil
+	delete(m.clearedFields, notifychat.FieldAddedBy)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *NotifyChatMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *NotifyChatMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the NotifyChat entity.
+// If the NotifyChat object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotifyChatMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *NotifyChatMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *NotifyChatMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *NotifyChatMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the NotifyChat entity.
+// If the NotifyChat object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotifyChatMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *NotifyChatMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the NotifyChatMutation builder.
+func (m *NotifyChatMutation) Where(ps ...predicate.NotifyChat) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the NotifyChatMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *NotifyChatMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.NotifyChat, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *NotifyChatMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *NotifyChatMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (NotifyChat).
+func (m *NotifyChatMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *NotifyChatMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.peer_type != nil {
+		fields = append(fields, notifychat.FieldPeerType)
+	}
+	if m.peer_id != nil {
+		fields = append(fields, notifychat.FieldPeerID)
+	}
+	if m.access_hash != nil {
+		fields = append(fields, notifychat.FieldAccessHash)
+	}
+	if m.title != nil {
+		fields = append(fields, notifychat.FieldTitle)
+	}
+	if m.enabled != nil {
+		fields = append(fields, notifychat.FieldEnabled)
+	}
+	if m.added_by != nil {
+		fields = append(fields, notifychat.FieldAddedBy)
+	}
+	if m.created_at != nil {
+		fields = append(fields, notifychat.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, notifychat.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *NotifyChatMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case notifychat.FieldPeerType:
+		return m.PeerType()
+	case notifychat.FieldPeerID:
+		return m.PeerID()
+	case notifychat.FieldAccessHash:
+		return m.AccessHash()
+	case notifychat.FieldTitle:
+		return m.Title()
+	case notifychat.FieldEnabled:
+		return m.Enabled()
+	case notifychat.FieldAddedBy:
+		return m.AddedBy()
+	case notifychat.FieldCreatedAt:
+		return m.CreatedAt()
+	case notifychat.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *NotifyChatMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case notifychat.FieldPeerType:
+		return m.OldPeerType(ctx)
+	case notifychat.FieldPeerID:
+		return m.OldPeerID(ctx)
+	case notifychat.FieldAccessHash:
+		return m.OldAccessHash(ctx)
+	case notifychat.FieldTitle:
+		return m.OldTitle(ctx)
+	case notifychat.FieldEnabled:
+		return m.OldEnabled(ctx)
+	case notifychat.FieldAddedBy:
+		return m.OldAddedBy(ctx)
+	case notifychat.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case notifychat.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown NotifyChat field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *NotifyChatMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case notifychat.FieldPeerType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPeerType(v)
+		return nil
+	case notifychat.FieldPeerID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPeerID(v)
+		return nil
+	case notifychat.FieldAccessHash:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccessHash(v)
+		return nil
+	case notifychat.FieldTitle:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTitle(v)
+		return nil
+	case notifychat.FieldEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetEnabled(v)
+		return nil
+	case notifychat.FieldAddedBy:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAddedBy(v)
+		return nil
+	case notifychat.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case notifychat.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown NotifyChat field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *NotifyChatMutation) AddedFields() []string {
+	var fields []string
+	if m.addpeer_id != nil {
+		fields = append(fields, notifychat.FieldPeerID)
+	}
+	if m.addaccess_hash != nil {
+		fields = append(fields, notifychat.FieldAccessHash)
+	}
+	if m.addadded_by != nil {
+		fields = append(fields, notifychat.FieldAddedBy)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *NotifyChatMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case notifychat.FieldPeerID:
+		return m.AddedPeerID()
+	case notifychat.FieldAccessHash:
+		return m.AddedAccessHash()
+	case notifychat.FieldAddedBy:
+		return m.AddedAddedBy()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *NotifyChatMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case notifychat.FieldPeerID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPeerID(v)
+		return nil
+	case notifychat.FieldAccessHash:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAccessHash(v)
+		return nil
+	case notifychat.FieldAddedBy:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAddedBy(v)
+		return nil
+	}
+	return fmt.Errorf("unknown NotifyChat numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *NotifyChatMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(notifychat.FieldAccessHash) {
+		fields = append(fields, notifychat.FieldAccessHash)
+	}
+	if m.FieldCleared(notifychat.FieldTitle) {
+		fields = append(fields, notifychat.FieldTitle)
+	}
+	if m.FieldCleared(notifychat.FieldAddedBy) {
+		fields = append(fields, notifychat.FieldAddedBy)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *NotifyChatMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *NotifyChatMutation) ClearField(name string) error {
+	switch name {
+	case notifychat.FieldAccessHash:
+		m.ClearAccessHash()
+		return nil
+	case notifychat.FieldTitle:
+		m.ClearTitle()
+		return nil
+	case notifychat.FieldAddedBy:
+		m.ClearAddedBy()
+		return nil
+	}
+	return fmt.Errorf("unknown NotifyChat nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *NotifyChatMutation) ResetField(name string) error {
+	switch name {
+	case notifychat.FieldPeerType:
+		m.ResetPeerType()
+		return nil
+	case notifychat.FieldPeerID:
+		m.ResetPeerID()
+		return nil
+	case notifychat.FieldAccessHash:
+		m.ResetAccessHash()
+		return nil
+	case notifychat.FieldTitle:
+		m.ResetTitle()
+		return nil
+	case notifychat.FieldEnabled:
+		m.ResetEnabled()
+		return nil
+	case notifychat.FieldAddedBy:
+		m.ResetAddedBy()
+		return nil
+	case notifychat.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case notifychat.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown NotifyChat field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *NotifyChatMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *NotifyChatMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *NotifyChatMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *NotifyChatMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *NotifyChatMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *NotifyChatMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *NotifyChatMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown NotifyChat unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *NotifyChatMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown NotifyChat edge %s", name)
 }
 
 // NotifySubscriptionMutation represents an operation that mutates the NotifySubscription nodes in the graph.

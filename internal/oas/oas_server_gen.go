@@ -44,6 +44,12 @@ type Handler interface {
 	//
 	// GET /notifications/pending
 	GetPendingNotifications(ctx context.Context, params GetPendingNotificationsParams) (*PendingNotificationsResponse, error)
+	// ListNotifyChats implements listNotifyChats operation.
+	//
+	// List chats registered to receive broadcast notifications.
+	//
+	// GET /notifications/chats
+	ListNotifyChats(ctx context.Context) (*NotifyChatsResponse, error)
 	// NotifyEnroll implements notifyEnroll operation.
 	//
 	// Upsert a NotifyUser's Telegram identity (access hash), called on first bot contact.
@@ -74,6 +80,13 @@ type Handler interface {
 	//
 	// POST /notify/unsubscribe
 	NotifyUnsubscribe(ctx context.Context, req *NotifyUnsubscribeRequest) (*Ack, error)
+	// RegisterNotifyChat implements registerNotifyChat operation.
+	//
+	// Register (or re-enable) a chat as a broadcast destination, or disable it. Called by the bot when
+	// someone runs /alerts inside the chat, which is where the peer's access hash comes from.
+	//
+	// POST /notifications/chats
+	RegisterNotifyChat(ctx context.Context, req *NotifyChatRequest) (*Ack, error)
 	// Search implements search operation.
 	//
 	// Hybrid (FTS + vector) chunk search.

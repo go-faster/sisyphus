@@ -166,6 +166,36 @@ var (
 			},
 		},
 	}
+	// NotifyChatsColumns holds the columns for the "notify_chats" table.
+	NotifyChatsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "peer_type", Type: field.TypeString, Default: "channel"},
+		{Name: "peer_id", Type: field.TypeInt64},
+		{Name: "access_hash", Type: field.TypeInt64, Nullable: true},
+		{Name: "title", Type: field.TypeString, Nullable: true},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "added_by", Type: field.TypeInt64, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// NotifyChatsTable holds the schema information for the "notify_chats" table.
+	NotifyChatsTable = &schema.Table{
+		Name:       "notify_chats",
+		Columns:    NotifyChatsColumns,
+		PrimaryKey: []*schema.Column{NotifyChatsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "notifychat_peer_type_peer_id",
+				Unique:  true,
+				Columns: []*schema.Column{NotifyChatsColumns[1], NotifyChatsColumns[2]},
+			},
+			{
+				Name:    "notifychat_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{NotifyChatsColumns[5]},
+			},
+		},
+	}
 	// NotifySubscriptionsColumns holds the columns for the "notify_subscriptions" table.
 	NotifySubscriptionsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
@@ -418,6 +448,7 @@ var (
 		DocumentsTable,
 		InvestigationJobsTable,
 		NotificationsTable,
+		NotifyChatsTable,
 		NotifySubscriptionsTable,
 		QueueJobsTable,
 		SupportRequestsTable,
