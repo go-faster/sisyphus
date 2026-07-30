@@ -87,6 +87,16 @@ func runServe(ctx context.Context, deps *ingestDeps) error {
 		lg.Warn("jira webhook disabled", zap.Bool("enabled", cfg.Jira.WebhookEnabled), zap.Bool("has_secret", cfg.Jira.WebhookSecret != ""))
 	}
 
+	if cfg.Alertmanager.WebhookEnabled {
+		mux.Handle("POST /webhooks/alertmanager", webhook.NewAlertmanagerHandler(r.router, webhook.AlertmanagerOptions{
+			Token:  cfg.Alertmanager.WebhookToken,
+			Logger: lg.Named("alertmanager"),
+		}))
+		lg.Info("alertmanager webhook enabled",
+			zap.String("path", "/webhooks/alertmanager"),
+			zap.Bool("investigate", cfg.Alertmanager.Investigate))
+	}
+
 	httpSrv := &http.Server{
 		Addr:              cfg.Ingest.Addr,
 		Handler:           httpmw.Wrap(lg, deps.telemetry, mux),

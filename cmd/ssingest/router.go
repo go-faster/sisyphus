@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/go-faster/sisyphus/internal/agentstore"
 	"github.com/go-faster/sisyphus/internal/event"
 	"github.com/go-faster/sisyphus/internal/notify"
 	notifygitlab "github.com/go-faster/sisyphus/internal/notify/gitlab"
@@ -8,8 +9,10 @@ import (
 	notifystore "github.com/go-faster/sisyphus/internal/notify/store"
 )
 
-// eventRouter builds the event spine every ingestion run publishes to, with
-// the notification gateway subscribed per source.
+// eventRouter builds the event spine every ingestion run and the Alertmanager
+// webhook publish to, with the notification gateway subscribed per source and
+// — when alertmanager.investigate.enabled is set — the agent subscribed to
+// firing alerts.
 //
 // This is what makes one poll serve both destinations: the GitLab/Jira source
 // adapters fetch once, hand each item to the knowledge-graph indexer and to
@@ -24,6 +27,18 @@ func (d *ingestDeps) eventRouter() event.Router {
 	dispatcher := notify.NewDispatcher(store, store, notify.ChannelTelegram, nil)
 
 	router := event.NewMux()
+	if d.cfg.Alertmanager.Investigate {
+		router.Subscribe(event.Subscription{
+			Name:    "agent-investigate",
+			Sources: []event.Source{event.SourceAlertmanager},
+			Handler: agentstore.NewSubscriber(
+				agentstore.New(d.services.DB, agentstore.Options{}),
+				agentstore.SubscriberOptions{
+					MinSeverity: event.Severity(d.cfg.Alertmanager.InvestigateMinSeverity),
+				},
+			),
+		})
+	}
 	router.Subscribe(event.Subscription{
 		Name:    "notify-gitlab",
 		Sources: []event.Source{event.SourceGitLab},
