@@ -105,6 +105,31 @@ func drainOnce(ctx context.Context, t *testing.T, apiClient *apiclient.Client, s
 	}
 }
 
+// collectMRs runs the GitLab source adapter's fetch-and-emit step the way
+// ingestrun does: page through merge requests, turn each into its canonical
+// event. Reimplemented here (rather than imported) because ingestrun.RunGitLab
+// also needs an embedder and a vector store, which this test deliberately does
+// not stand up — it is the notification half that is under test.
+func collectMRs(ctx context.Context, t *testing.T, f *fakeGitLabFetcher, cursor ingestgitlab.Cursor) ([]event.Event, ingestgitlab.Cursor) {
+	t.Helper()
+	var events []event.Event
+	page := 1
+	for {
+		refs, next, hasMore, err := f.FetchMergeRequests(ctx, page, cursor)
+		require.NoError(t, err)
+		for _, ref := range refs {
+			e, err := ingestgitlab.EventFromMergeRequest(ref)
+			require.NoError(t, err)
+			events = append(events, e)
+		}
+		cursor = next
+		if !hasMore {
+			return events, cursor
+		}
+		page++
+	}
+}
+
 func openTestDB(t *testing.T) *ent.Client {
 	t.Helper()
 	dsn := os.Getenv("SISYPHUS_TEST_DB")
@@ -161,12 +186,11 @@ func TestE2E_GitLabMRAssignment_ToTelegramDelivery(t *testing.T) {
 			},
 		},
 	}}
-	collector := notifygitlab.New(fetcher)
-
-	// --- Real collector + real event router + real projector + real
-	// Dispatcher + real Postgres-backed outbox.
-	events, cursor, err := collector.Collect(ctx, "")
-	require.NoError(t, err)
+	// --- Real source adapter + real event router + real projector + real
+	// Dispatcher + real Postgres-backed outbox. The adapter is the same one
+	// knowledge-graph ingestion drives: one fetch, one event, both
+	// destinations.
+	events, cursor := collectMRs(ctx, t, fetcher, ingestgitlab.Cursor{})
 	require.Len(t, events, 1, "one canonical mr.updated event (fan-out to recipients happens in the projector)")
 
 	dispatcher := notify.NewDispatcher(store, store, notify.ChannelTelegram, nil)
@@ -212,8 +236,7 @@ func TestE2E_GitLabMRAssignment_ToTelegramDelivery(t *testing.T) {
 	// --- Re-emitting the same MR event (the fake source ignores the cursor and
 	// returns it again) produces no new delivery: the outbox DedupKey — not a
 	// collector-side diff — is what guarantees idempotence now.
-	events2, _, err := collector.Collect(ctx, cursor)
-	require.NoError(t, err)
+	events2, _ := collectMRs(ctx, t, fetcher, cursor)
 	require.Len(t, events2, 1)
 	for _, e := range events2 {
 		require.NoError(t, router.Route(ctx, e))

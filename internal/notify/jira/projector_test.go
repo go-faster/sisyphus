@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-faster/sisyphus/internal/event"
+	ingestjira "github.com/go-faster/sisyphus/internal/ingest/jira"
 	"github.com/go-faster/sisyphus/internal/notify"
 )
 
@@ -19,7 +20,7 @@ func issueEvent(t *testing.T, accountID, display string) event.Event {
 		Actor:      event.Actor{Display: "Rachel"},
 		OccurredAt: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC),
 	}
-	e, err := e.WithPayload(IssuePayload{AssigneeAccountID: accountID, AssigneeDisplay: display})
+	e, err := e.WithPayload(ingestjira.IssuePayload{AssigneeAccountID: accountID, AssigneeDisplay: display})
 	require.NoError(t, err)
 	return e
 }

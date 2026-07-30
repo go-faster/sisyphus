@@ -49,7 +49,7 @@ Keep the index below one line per package, and put the depth in the nested file.
 - `cmd/ssbot` — Telegram bot; reaches ssapi via `internal/apiclient`. Single replica (two bots double-answer).
 - `cmd/ssagent` — `/investigate` HTTP service. Persists job + queue row in one tx, returns 202; any replica's worker runs it. Never migrates.
 - `cmd/ssmcp` — MCP server (Streamable HTTP or stdio); calls ssapi via `internal/apiclient`.
-- `cmd/ssingest` **†** — ingestion CLI (`git|files|gitlab|jira|telegram|all|index|notify`), the `serve` daemon, the `worker` drain loop, plus `gc`/`repair`. The only webhook/poll owner.
+- `cmd/ssingest` **†** — ingestion CLI (`git|files|gitlab|jira|telegram|all|index`), the `serve` daemon, the `worker` drain loop, plus `gc`/`repair`. The only webhook/poll owner.
 
 **The contract**
 
@@ -57,8 +57,8 @@ Keep the index below one line per package, and put the depth in the nested file.
 
 **Ingestion**
 
-- `internal/ingest` **†** (`git`, `gitlab`, `jira`, `telegram`) — per-source fetchers and their cursors.
-- `internal/ingestrun` — shared GitLab/Jira incremental-run logic + `IndexBatch`/`ResetSource`/`UpsertSyncState`, and `WithSourceLock`.
+- `internal/ingest` **†** (`git`, `gitlab`, `jira`, `telegram`) — per-source fetchers and their cursors. GitLab/Jira are also the event-spine source adapters: one fetch yields both an `index.Document` and a canonical `event.Event` (`EventFromMergeRequest`, `EventFromIssue`).
+- `internal/ingestrun` — shared GitLab/Jira incremental-run logic (indexes documents and routes their events via `Runner.Router`) + `IndexBatch`/`ResetSource`/`UpsertSyncState`, and `WithSourceLock`.
 - `internal/webhook` — debounced `Trigger`, ticker `Poller`, GitLab/Jira webhook handlers. Used only by `ssingest serve`.
 - `internal/indexjob` **†** — the boundary between ingestion's two halves, over the `ingest.index` queue.
 - `internal/pipeline` **†** — `Pipeline.Index`: idempotent doc+chunk upsert, embed, vector upsert/delete. `Skipper` answers the skip question without doing the work.
@@ -87,7 +87,7 @@ Keep the index below one line per package, and put the depth in the nested file.
 - `internal/mcpclient` — MCP client used to call tools exposed by ssmcp.
 - `internal/content` — `index.ContentResolver`: `DatabaseReader`, `LocalRepoReader` (traversal-guarded), `ChainResolver`.
 - `internal/fetch` — `index.URLFetcher` with a per-site allowlist (globs, methods, credentials, byte cap).
-- `internal/notify` (+ `gitlab`, `jira`, `store`) — per-user GitLab MR-assignment / Jira issue-assignment notifications: collector → `event.Router` → projector → dispatcher → outbox → sink. Contract and rationale are in `notify.go`'s package doc; delivery rides `internal/queue`.
+- `internal/notify` (+ `gitlab`, `jira`, `store`) — per-user GitLab MR-assignment / Jira issue-assignment notifications: `event.Router` → projector → dispatcher → outbox → sink. It fetches nothing; the GitLab/Jira source adapters emit the events (see `internal/ingest`). Contract and rationale are in `notify.go`'s package doc; delivery rides `internal/queue`.
 
 **Infrastructure**
 
