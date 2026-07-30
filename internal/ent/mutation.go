@@ -3123,6 +3123,7 @@ type NotificationMutation struct {
 	id                      *uuid.UUID
 	dedup_key               *string
 	channel                 *string
+	peer_type               *string
 	telegram_user_id        *int64
 	addtelegram_user_id     *int64
 	telegram_access_hash    *int64
@@ -3303,7 +3304,7 @@ func (m *NotificationMutation) UserID() (r uuid.UUID, exists bool) {
 // OldUserID returns the old "user_id" field's value of the Notification entity.
 // If the Notification object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *NotificationMutation) OldUserID(ctx context.Context) (v uuid.UUID, err error) {
+func (m *NotificationMutation) OldUserID(ctx context.Context) (v *uuid.UUID, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
 	}
@@ -3317,9 +3318,22 @@ func (m *NotificationMutation) OldUserID(ctx context.Context) (v uuid.UUID, err 
 	return oldValue.UserID, nil
 }
 
+// ClearUserID clears the value of the "user_id" field.
+func (m *NotificationMutation) ClearUserID() {
+	m.user = nil
+	m.clearedFields[notification.FieldUserID] = struct{}{}
+}
+
+// UserIDCleared returns if the "user_id" field was cleared in this mutation.
+func (m *NotificationMutation) UserIDCleared() bool {
+	_, ok := m.clearedFields[notification.FieldUserID]
+	return ok
+}
+
 // ResetUserID resets all changes to the "user_id" field.
 func (m *NotificationMutation) ResetUserID() {
 	m.user = nil
+	delete(m.clearedFields, notification.FieldUserID)
 }
 
 // SetChannel sets the "channel" field.
@@ -3356,6 +3370,42 @@ func (m *NotificationMutation) OldChannel(ctx context.Context) (v string, err er
 // ResetChannel resets all changes to the "channel" field.
 func (m *NotificationMutation) ResetChannel() {
 	m.channel = nil
+}
+
+// SetPeerType sets the "peer_type" field.
+func (m *NotificationMutation) SetPeerType(s string) {
+	m.peer_type = &s
+}
+
+// PeerType returns the value of the "peer_type" field in the mutation.
+func (m *NotificationMutation) PeerType() (r string, exists bool) {
+	v := m.peer_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPeerType returns the old "peer_type" field's value of the Notification entity.
+// If the Notification object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NotificationMutation) OldPeerType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPeerType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPeerType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPeerType: %w", err)
+	}
+	return oldValue.PeerType, nil
+}
+
+// ResetPeerType resets all changes to the "peer_type" field.
+func (m *NotificationMutation) ResetPeerType() {
+	m.peer_type = nil
 }
 
 // SetTelegramUserID sets the "telegram_user_id" field.
@@ -3925,7 +3975,7 @@ func (m *NotificationMutation) ClearUser() {
 
 // UserCleared reports if the "user" edge to the User entity was cleared.
 func (m *NotificationMutation) UserCleared() bool {
-	return m.cleareduser
+	return m.UserIDCleared() || m.cleareduser
 }
 
 // UserIDs returns the "user" edge IDs in the mutation.
@@ -3978,7 +4028,7 @@ func (m *NotificationMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *NotificationMutation) Fields() []string {
-	fields := make([]string, 0, 15)
+	fields := make([]string, 0, 16)
 	if m.dedup_key != nil {
 		fields = append(fields, notification.FieldDedupKey)
 	}
@@ -3987,6 +4037,9 @@ func (m *NotificationMutation) Fields() []string {
 	}
 	if m.channel != nil {
 		fields = append(fields, notification.FieldChannel)
+	}
+	if m.peer_type != nil {
+		fields = append(fields, notification.FieldPeerType)
 	}
 	if m.telegram_user_id != nil {
 		fields = append(fields, notification.FieldTelegramUserID)
@@ -4038,6 +4091,8 @@ func (m *NotificationMutation) Field(name string) (ent.Value, bool) {
 		return m.UserID()
 	case notification.FieldChannel:
 		return m.Channel()
+	case notification.FieldPeerType:
+		return m.PeerType()
 	case notification.FieldTelegramUserID:
 		return m.TelegramUserID()
 	case notification.FieldTelegramAccessHash:
@@ -4077,6 +4132,8 @@ func (m *NotificationMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldUserID(ctx)
 	case notification.FieldChannel:
 		return m.OldChannel(ctx)
+	case notification.FieldPeerType:
+		return m.OldPeerType(ctx)
 	case notification.FieldTelegramUserID:
 		return m.OldTelegramUserID(ctx)
 	case notification.FieldTelegramAccessHash:
@@ -4130,6 +4187,13 @@ func (m *NotificationMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetChannel(v)
+		return nil
+	case notification.FieldPeerType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPeerType(v)
 		return nil
 	case notification.FieldTelegramUserID:
 		v, ok := value.(int64)
@@ -4284,6 +4348,9 @@ func (m *NotificationMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *NotificationMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(notification.FieldUserID) {
+		fields = append(fields, notification.FieldUserID)
+	}
 	if m.FieldCleared(notification.FieldTelegramUserID) {
 		fields = append(fields, notification.FieldTelegramUserID)
 	}
@@ -4313,6 +4380,9 @@ func (m *NotificationMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *NotificationMutation) ClearField(name string) error {
 	switch name {
+	case notification.FieldUserID:
+		m.ClearUserID()
+		return nil
 	case notification.FieldTelegramUserID:
 		m.ClearTelegramUserID()
 		return nil
@@ -4344,6 +4414,9 @@ func (m *NotificationMutation) ResetField(name string) error {
 		return nil
 	case notification.FieldChannel:
 		m.ResetChannel()
+		return nil
+	case notification.FieldPeerType:
+		m.ResetPeerType()
 		return nil
 	case notification.FieldTelegramUserID:
 		m.ResetTelegramUserID()

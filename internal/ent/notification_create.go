@@ -37,9 +37,31 @@ func (_c *NotificationCreate) SetUserID(v uuid.UUID) *NotificationCreate {
 	return _c
 }
 
+// SetNillableUserID sets the "user_id" field if the given value is not nil.
+func (_c *NotificationCreate) SetNillableUserID(v *uuid.UUID) *NotificationCreate {
+	if v != nil {
+		_c.SetUserID(*v)
+	}
+	return _c
+}
+
 // SetChannel sets the "channel" field.
 func (_c *NotificationCreate) SetChannel(v string) *NotificationCreate {
 	_c.mutation.SetChannel(v)
+	return _c
+}
+
+// SetPeerType sets the "peer_type" field.
+func (_c *NotificationCreate) SetPeerType(v string) *NotificationCreate {
+	_c.mutation.SetPeerType(v)
+	return _c
+}
+
+// SetNillablePeerType sets the "peer_type" field if the given value is not nil.
+func (_c *NotificationCreate) SetNillablePeerType(v *string) *NotificationCreate {
+	if v != nil {
+		_c.SetPeerType(*v)
+	}
 	return _c
 }
 
@@ -241,6 +263,10 @@ func (_c *NotificationCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *NotificationCreate) defaults() {
+	if _, ok := _c.mutation.PeerType(); !ok {
+		v := notification.DefaultPeerType
+		_c.mutation.SetPeerType(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := notification.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -273,9 +299,6 @@ func (_c *NotificationCreate) check() error {
 			return &ValidationError{Name: "dedup_key", err: fmt.Errorf(`ent: validator failed for field "Notification.dedup_key": %w`, err)}
 		}
 	}
-	if _, ok := _c.mutation.UserID(); !ok {
-		return &ValidationError{Name: "user_id", err: errors.New(`ent: missing required field "Notification.user_id"`)}
-	}
 	if _, ok := _c.mutation.Channel(); !ok {
 		return &ValidationError{Name: "channel", err: errors.New(`ent: missing required field "Notification.channel"`)}
 	}
@@ -283,6 +306,9 @@ func (_c *NotificationCreate) check() error {
 		if err := notification.ChannelValidator(v); err != nil {
 			return &ValidationError{Name: "channel", err: fmt.Errorf(`ent: validator failed for field "Notification.channel": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.PeerType(); !ok {
+		return &ValidationError{Name: "peer_type", err: errors.New(`ent: missing required field "Notification.peer_type"`)}
 	}
 	if _, ok := _c.mutation.Source(); !ok {
 		return &ValidationError{Name: "source", err: errors.New(`ent: missing required field "Notification.source"`)}
@@ -319,9 +345,6 @@ func (_c *NotificationCreate) check() error {
 	}
 	if _, ok := _c.mutation.UpdatedAt(); !ok {
 		return &ValidationError{Name: "updated_at", err: errors.New(`ent: missing required field "Notification.updated_at"`)}
-	}
-	if len(_c.mutation.UserIDs()) == 0 {
-		return &ValidationError{Name: "user", err: errors.New(`ent: missing required edge "Notification.user"`)}
 	}
 	return nil
 }
@@ -366,6 +389,10 @@ func (_c *NotificationCreate) createSpec() (*Notification, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.Channel(); ok {
 		_spec.SetField(notification.FieldChannel, field.TypeString, value)
 		_node.Channel = value
+	}
+	if value, ok := _c.mutation.PeerType(); ok {
+		_spec.SetField(notification.FieldPeerType, field.TypeString, value)
+		_node.PeerType = value
 	}
 	if value, ok := _c.mutation.TelegramUserID(); ok {
 		_spec.SetField(notification.FieldTelegramUserID, field.TypeInt64, value)
@@ -429,7 +456,7 @@ func (_c *NotificationCreate) createSpec() (*Notification, *sqlgraph.CreateSpec)
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
-		_node.UserID = nodes[0]
+		_node.UserID = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
@@ -493,6 +520,24 @@ func (u *NotificationUpsert) SetUserID(v uuid.UUID) *NotificationUpsert {
 // UpdateUserID sets the "user_id" field to the value that was provided on create.
 func (u *NotificationUpsert) UpdateUserID() *NotificationUpsert {
 	u.SetExcluded(notification.FieldUserID)
+	return u
+}
+
+// ClearUserID clears the value of the "user_id" field.
+func (u *NotificationUpsert) ClearUserID() *NotificationUpsert {
+	u.SetNull(notification.FieldUserID)
+	return u
+}
+
+// SetPeerType sets the "peer_type" field.
+func (u *NotificationUpsert) SetPeerType(v string) *NotificationUpsert {
+	u.Set(notification.FieldPeerType, v)
+	return u
+}
+
+// UpdatePeerType sets the "peer_type" field to the value that was provided on create.
+func (u *NotificationUpsert) UpdatePeerType() *NotificationUpsert {
+	u.SetExcluded(notification.FieldPeerType)
 	return u
 }
 
@@ -717,6 +762,27 @@ func (u *NotificationUpsertOne) SetUserID(v uuid.UUID) *NotificationUpsertOne {
 func (u *NotificationUpsertOne) UpdateUserID() *NotificationUpsertOne {
 	return u.Update(func(s *NotificationUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// ClearUserID clears the value of the "user_id" field.
+func (u *NotificationUpsertOne) ClearUserID() *NotificationUpsertOne {
+	return u.Update(func(s *NotificationUpsert) {
+		s.ClearUserID()
+	})
+}
+
+// SetPeerType sets the "peer_type" field.
+func (u *NotificationUpsertOne) SetPeerType(v string) *NotificationUpsertOne {
+	return u.Update(func(s *NotificationUpsert) {
+		s.SetPeerType(v)
+	})
+}
+
+// UpdatePeerType sets the "peer_type" field to the value that was provided on create.
+func (u *NotificationUpsertOne) UpdatePeerType() *NotificationUpsertOne {
+	return u.Update(func(s *NotificationUpsert) {
+		s.UpdatePeerType()
 	})
 }
 
@@ -1132,6 +1198,27 @@ func (u *NotificationUpsertBulk) SetUserID(v uuid.UUID) *NotificationUpsertBulk 
 func (u *NotificationUpsertBulk) UpdateUserID() *NotificationUpsertBulk {
 	return u.Update(func(s *NotificationUpsert) {
 		s.UpdateUserID()
+	})
+}
+
+// ClearUserID clears the value of the "user_id" field.
+func (u *NotificationUpsertBulk) ClearUserID() *NotificationUpsertBulk {
+	return u.Update(func(s *NotificationUpsert) {
+		s.ClearUserID()
+	})
+}
+
+// SetPeerType sets the "peer_type" field.
+func (u *NotificationUpsertBulk) SetPeerType(v string) *NotificationUpsertBulk {
+	return u.Update(func(s *NotificationUpsert) {
+		s.SetPeerType(v)
+	})
+}
+
+// UpdatePeerType sets the "peer_type" field to the value that was provided on create.
+func (u *NotificationUpsertBulk) UpdatePeerType() *NotificationUpsertBulk {
+	return u.Update(func(s *NotificationUpsert) {
+		s.UpdatePeerType()
 	})
 }
 
