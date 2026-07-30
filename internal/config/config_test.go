@@ -543,51 +543,6 @@ embed:
 // the section it is about.
 const minimalConfig = "database:\n  dsn: postgres://u:p@127.0.0.1:5432/db?sslmode=disable\n"
 
-func TestLoadAlertChats(t *testing.T) {
-	for _, tt := range []struct {
-		name    string
-		yaml    string
-		wantErr string
-		want    []AlertChat
-	}{
-		{
-			name: "defaults type to channel",
-			yaml: "notify:\n  alert_chats:\n    - id: -1001234567890\n      access_hash: 42\n",
-			want: []AlertChat{{ID: -1001234567890, AccessHash: 42, Type: "channel"}},
-		},
-		{
-			name: "explicit basic group",
-			yaml: "notify:\n  alert_chats:\n    - id: -42\n      type: chat\n",
-			want: []AlertChat{{ID: -42, Type: "chat"}},
-		},
-		{
-			name:    "id is required",
-			yaml:    "notify:\n  alert_chats:\n    - access_hash: 42\n",
-			wantErr: "needs an id",
-		},
-		{
-			name:    "unknown type",
-			yaml:    "notify:\n  alert_chats:\n    - id: -42\n      type: supergroup\n",
-			wantErr: "must be channel, chat or user",
-		},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			clearEnv(t)
-			path := filepath.Join(t.TempDir(), "config.yml")
-			require.NoError(t, os.WriteFile(path, []byte(minimalConfig+tt.yaml), 0o600))
-			t.Setenv("SISYPHUS_CONFIG", path)
-
-			cfg, err := Load()
-			if tt.wantErr != "" {
-				require.ErrorContains(t, err, tt.wantErr)
-				return
-			}
-			require.NoError(t, err)
-			require.Equal(t, tt.want, cfg.Notify.AlertChats)
-		})
-	}
-}
-
 func TestLoadAlertmanagerInvestigateSeverity(t *testing.T) {
 	clearEnv(t)
 	path := filepath.Join(t.TempDir(), "config.yml")

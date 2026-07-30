@@ -9,9 +9,28 @@ import (
 	"github.com/gotd/td/tg"
 )
 
-// commandHandler serves a single command invocation. senderID is the user who
-// sent the message; rest is the command's whitespace-trimmed argument text.
-type commandHandler func(ctx context.Context, s messageSender, senderID int64, rest string) error
+// invocation is one command call: who sent it, where they sent it, and the
+// argument text. The chat matters because a command may act on the chat it
+// was sent in rather than on its sender — /alerts registers the current
+// channel, and the peer it needs (access hash included) exists only in the
+// update that carried the command.
+type invocation struct {
+	SenderID int64
+	Chat     chatPeer
+	Rest     string
+}
+
+// chatPeer is the MTProto peer a command arrived from, flattened to what the
+// notification store persists.
+type chatPeer struct {
+	Type       string // "user", "chat" (basic group) or "channel" (channel/supergroup)
+	ID         int64
+	AccessHash int64 // zero for a basic group, which needs none
+	Title      string
+}
+
+// commandHandler serves a single command invocation.
+type commandHandler func(ctx context.Context, s messageSender, inv invocation) error
 
 // command is a registered Telegram bot command.
 type command struct {

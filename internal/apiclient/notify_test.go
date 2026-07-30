@@ -24,6 +24,7 @@ type fakeNotifyStore struct {
 	subs        map[int64][]notifystore.Subscription
 	pending     []notifystore.OutboxItem
 	acked       map[uuid.UUID]error
+	chats       []notifystore.Chat
 }
 
 func newFakeNotifyStore() *fakeNotifyStore {
@@ -159,3 +160,20 @@ func TestClientNotifyEndpointsWithoutStoreReturn503(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "503")
 }
+
+func (f *fakeNotifyStore) RegisterChat(_ context.Context, target notify.Target, title string, addedBy int64) error {
+	f.chats = append(f.chats, notifystore.Chat{Target: target, Title: title, Enabled: true, AddedBy: addedBy})
+	return nil
+}
+
+func (f *fakeNotifyStore) UnregisterChat(_ context.Context, target notify.Target) (bool, error) {
+	for i, c := range f.chats {
+		if c.Target.TelegramUserID == target.TelegramUserID {
+			f.chats[i].Enabled = false
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (f *fakeNotifyStore) ListChats(context.Context) ([]notifystore.Chat, error) { return f.chats, nil }

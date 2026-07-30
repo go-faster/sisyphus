@@ -145,15 +145,24 @@ One loop spanning four packages, so the rule lives here.
 `event.TypeAlertFiring` events. With `alertmanager.investigate.enabled`, `agentstore.Subscriber`
 submits each as an investigation keyed by `Event.ID`. A worker in `ssagent` runs it, persists the
 report, then routes `event.TypeInvestigationCompleted` back onto the spine, where
-`notify.Broadcaster` writes one outbox row per `notify.alert_chats` entry for ssbot to deliver.
+`notify.Broadcaster` writes one outbox row per **registered chat** for ssbot to deliver.
 
 **Every hop dedups on an id, and no hop is per-user.** The alert's id pins the
 firing/resolved transition (not the delivery, so a `repeat_interval` resend is the same
 occurrence); the investigation's id is the job's (not its finish time); the outbox key is
-per (chat, event). An alert is addressed to whoever watches the channel, so the target is
-`notify.alert_chats` in deployment config — not a linked GitLab/Jira identity, which an
-alert does not have. That is why `Notification.user_id` is nullable and `peer_type` exists:
-a broadcast row is addressed by its Telegram peer alone.
+per (chat, event). An alert is addressed to whoever watches the channel, not to a linked GitLab/Jira identity,
+which an alert does not have. That is why `Notification.user_id` is nullable and
+`peer_type` exists: a broadcast row is addressed by its Telegram peer alone.
+
+**Chats register themselves, from inside the chat.** `/alerts on` in a channel or group
+writes a `notify_chats` row (`internal/notify/store.RegisterChat`), and the peer it stores
+comes from the update that carried the command. That is not a convenience: over MTProto an
+`InputPeerChannel` needs an access hash, a private channel has no username to resolve one
+from later, and a bare `-100…` id addresses nothing on its own. The update is the only
+place that hash exists, so capturing it there is what makes a private channel a valid
+target at all. Re-running `/alerts on` re-stores the hash, which is how a rotated bot
+session heals; `/alerts off` keeps the row so the hash survives. The bot must be an admin
+in a channel to receive the command there in the first place.
 
 ## API auth
 

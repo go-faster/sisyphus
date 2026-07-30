@@ -23,6 +23,9 @@ type NotifyStore interface {
 	Subscribe(ctx context.Context, telegramUserID int64, source notify.Source, eventTypes []notify.EventType) error
 	Unsubscribe(ctx context.Context, telegramUserID int64, source notify.Source) error
 	ListSubscriptions(ctx context.Context, telegramUserID int64) ([]notifystore.Subscription, error)
+	RegisterChat(ctx context.Context, target notify.Target, title string, addedBy int64) error
+	UnregisterChat(ctx context.Context, target notify.Target) (bool, error)
+	ListChats(ctx context.Context) ([]notifystore.Chat, error)
 	Pending(ctx context.Context, channel notify.Channel, limit int) ([]notifystore.OutboxItem, error)
 	Ack(ctx context.Context, id uuid.UUID, deliverErr error) error
 }
@@ -177,4 +180,58 @@ func (h *Handler) AckNotification(ctx context.Context, req *oas.NotificationAckR
 		return nil, errors.Wrap(err, "ack notification")
 	}
 	return &oas.Ack{Ok: true}, nil
+}
+
+// RegisterNotifyChat registers, re-enables or disables a broadcast chat.
+//
+// The bot calls this from inside the chat, which is the only place the peer's
+// access hash exists without an operator copying it into config — and for a
+// private channel, the only place at all.
+func (h *Handler) RegisterNotifyChat(ctx context.Context, req *oas.NotifyChatRequest) (*oas.Ack, error) {
+	if h.notify == nil {
+		return nil, errNotifyNotConfigured
+	}
+	target := notify.Target{
+		TelegramUserID:     req.PeerID,
+		TelegramAccessHash: req.AccessHash.Or(0),
+		PeerType:           notify.PeerType(req.PeerType),
+	}
+	if target.TelegramUserID == 0 {
+		return nil, notifyBadRequest(errors.New("peer_id is required"))
+	}
+
+	if !req.Enabled {
+		if _, err := h.notify.UnregisterChat(ctx, target); err != nil {
+			return nil, errors.Wrap(err, "unregister notify chat")
+		}
+		return &oas.Ack{Ok: true}, nil
+	}
+	if err := h.notify.RegisterChat(ctx, target, req.Title.Or(""), req.AddedBy.Or(0)); err != nil {
+		return nil, errors.Wrap(err, "register notify chat")
+	}
+	return &oas.Ack{Ok: true}, nil
+}
+
+// ListNotifyChats lists registered broadcast chats.
+func (h *Handler) ListNotifyChats(ctx context.Context) (*oas.NotifyChatsResponse, error) {
+	if h.notify == nil {
+		return nil, errNotifyNotConfigured
+	}
+	chats, err := h.notify.ListChats(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "list notify chats")
+	}
+	out := make([]oas.NotifyChat, 0, len(chats))
+	for _, c := range chats {
+		item := oas.NotifyChat{
+			PeerType: string(c.Target.PeerType),
+			PeerID:   c.Target.TelegramUserID,
+			Enabled:  c.Enabled,
+		}
+		if c.Title != "" {
+			item.Title = oas.NewOptString(c.Title)
+		}
+		out = append(out, item)
+	}
+	return &oas.NotifyChatsResponse{Chats: out}, nil
 }
