@@ -177,8 +177,15 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry, info cli
 	// No job timeout here: the claim's lease is the timeout (see
 	// agentstore.Options.Lease below), so an investigation cannot outlive the
 	// claim that authorizes it.
+	// Reports of event-triggered investigations go back onto the spine, where
+	// the alert chats are subscribed. Nil when none is configured.
+	reports := newReportRouter(db, cfg)
+	if reports != nil {
+		lg.Info("investigation reports broadcast to alert chats", zap.Int("chats", len(cfg.Notify.AlertChats)))
+	}
+
 	worker := queue.NewWorker(store.Queue(),
-		investigateHandler(store, inv, tracer, metrics, lg),
+		investigateHandler(store, inv, reports, tracer, metrics, lg),
 		queue.WorkerOptions{
 			Concurrency: maxConcurrent,
 			Logger:      lg,

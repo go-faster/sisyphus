@@ -27,6 +27,10 @@ const (
 	SourceJira         Source = "jira"
 	SourceTelegram     Source = "telegram"
 	SourceAlertmanager Source = "alertmanager"
+	// SourceAgent is the agent itself, which is both a destination (it
+	// investigates events) and a source (its finished investigation is an
+	// occurrence other destinations react to).
+	SourceAgent Source = "agent"
 )
 
 // Type classifies what happened. It drives both subscription matching and each
@@ -42,6 +46,9 @@ const (
 	TypeMessagePosted Type = "message.posted"
 	TypeAlertFiring   Type = "alert.firing"
 	TypeAlertResolved Type = "alert.resolved"
+	// TypeInvestigationCompleted is emitted by the agent when a queued
+	// investigation finishes, carrying its report.
+	TypeInvestigationCompleted Type = "investigation.completed"
 )
 
 // Severity is an optional coarse importance, set by sources that have one

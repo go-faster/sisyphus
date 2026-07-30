@@ -155,6 +155,10 @@ func (h *Handler) GetPendingNotifications(ctx context.Context, params oas.GetPen
 		if it.URL != "" {
 			pn.URL = oas.NewOptString(it.URL)
 		}
+		if it.TelegramPeerType != "" && it.TelegramPeerType != notify.PeerUser {
+			pn.TelegramPeerType = oas.NewOptPendingNotificationTelegramPeerType(
+				oas.PendingNotificationTelegramPeerType(it.TelegramPeerType))
+		}
 		out = append(out, pn)
 	}
 	return &oas.PendingNotificationsResponse{Notifications: out}, nil

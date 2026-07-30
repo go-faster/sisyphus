@@ -125,9 +125,13 @@ type PendingNotification struct {
 	ID                 uuid.UUID
 	TelegramUserID     int64
 	TelegramAccessHash int64
-	Text               string
-	URL                string
-	Attempts           int
+	// TelegramPeerType says what TelegramUserID names: "user" (the default,
+	// and every per-user notification), or the "channel"/"chat" a broadcast
+	// goes to.
+	TelegramPeerType string
+	Text             string
+	URL              string
+	Attempts         int
 }
 
 // PendingNotifications drains up to limit pending Telegram-channel
@@ -155,6 +159,7 @@ func (c *Client) PendingNotifications(ctx context.Context, limit int) (_ []Pendi
 			ID:                 n.ID,
 			TelegramUserID:     n.TelegramUserID,
 			TelegramAccessHash: n.TelegramAccessHash,
+			TelegramPeerType:   string(n.TelegramPeerType.Or("user")),
 			Text:               n.Text,
 			URL:                n.URL.Or(""),
 			Attempts:           n.Attempts,

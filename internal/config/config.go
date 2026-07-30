@@ -78,6 +78,24 @@ type AlertmanagerConfig struct {
 // intervals.
 type NotifyConfig struct {
 	PollIntervalSeconds int
+
+	// AlertChats receive broadcast notifications — today an agent
+	// investigation of a firing alert. These are addressed by deployment
+	// config rather than by per-user subscription: an alert is for whoever
+	// watches the channel, not for whoever linked a GitLab account. Empty
+	// means finished investigations are recorded but announced nowhere.
+	AlertChats []AlertChat
+}
+
+// AlertChat is one Telegram chat broadcast notifications are delivered to.
+//
+// Type distinguishes a supergroup/channel (needs AccessHash) from a basic
+// group (does not). Empty defaults to "channel", which is what a chat id
+// starting with -100 is.
+type AlertChat struct {
+	ID         int64  `yaml:"id"`
+	AccessHash int64  `yaml:"access_hash"`
+	Type       string `yaml:"type"`
 }
 
 // IngestConfig configures ssingest's `serve` daemon mode: the address its
@@ -308,6 +326,7 @@ type fileNotifyConfig struct {
 	Poll struct {
 		IntervalSeconds int `yaml:"interval_seconds"`
 	} `yaml:"poll"`
+	AlertChats []AlertChat `yaml:"alert_chats"`
 }
 
 type fileIngestConfig struct {
@@ -897,6 +916,23 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 	if c.Alertmanager.Webhook.Enabled && alertWebhookToken == "" {
 		warnings = append(warnings, "alertmanager.webhook.enabled without alertmanager.webhook.token: the endpoint accepts alerts from anyone who can reach it")
 	}
+	alertChats := make([]AlertChat, 0, len(c.Notify.AlertChats))
+	for _, chat := range c.Notify.AlertChats {
+		if chat.ID == 0 {
+			return Config{}, errors.New("notify.alert_chats entry needs an id")
+		}
+		switch strings.ToLower(strings.TrimSpace(chat.Type)) {
+		case "", "channel":
+			chat.Type = "channel"
+		case "chat":
+			chat.Type = "chat"
+		case "user":
+			chat.Type = "user"
+		default:
+			return Config{}, errors.Errorf("notify.alert_chats type %q must be channel, chat or user", chat.Type)
+		}
+		alertChats = append(alertChats, chat)
+	}
 	alertMinSeverity := strings.ToLower(strings.TrimSpace(c.Alertmanager.Investigate.MinSeverity))
 	switch alertMinSeverity {
 	case "", "info", "warning", "critical":
@@ -1021,6 +1057,7 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 		},
 		Notify: NotifyConfig{
 			PollIntervalSeconds: c.Notify.Poll.IntervalSeconds,
+			AlertChats:          alertChats,
 		},
 		Ingest: IngestConfig{
 			Addr:                        c.Ingest.Addr,

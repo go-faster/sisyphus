@@ -71,7 +71,7 @@ func (b *Bot) captureNotifyIdentity(ctx context.Context, e tg.Entities, senderID
 // already-sent message instead of creating a duplicate. Without this, a
 // drain-loop retry of the same outbox row (e.g. ssbot crashes between
 // SendTo succeeding and the row being acked) would DM the user twice.
-func (b *Bot) SendTo(ctx context.Context, notificationID uuid.UUID, userID, accessHash int64, text string) error {
+func (b *Bot) SendTo(ctx context.Context, notificationID uuid.UUID, peerType string, peerID, accessHash int64, text string) error {
 	if b.silent {
 		return nil
 	}
@@ -79,7 +79,7 @@ func (b *Bot) SendTo(ctx context.Context, notificationID uuid.UUID, userID, acce
 	if sender == nil {
 		return errBotNotReady
 	}
-	peer := &tg.InputPeerUser{UserID: userID, AccessHash: accessHash}
+	peer := notifyPeer(peerType, peerID, accessHash)
 	randomID := randomIDFor(notificationID)
 	_, err := sender.To(peer).RandomID(randomID).StyledText(ctx, styling.Custom(func(eb *entity.Builder) error {
 		return renderMarkdown(eb, text)
@@ -89,6 +89,21 @@ func (b *Bot) SendTo(ctx context.Context, notificationID uuid.UUID, userID, acce
 	}
 	_, err = sender.To(peer).RandomID(randomID).Text(ctx, text)
 	return err
+}
+
+// notifyPeer resolves an outbox row's target into the peer to send to. A
+// broadcast names a channel or a basic group; everything else is a user, which
+// is also what an unset peer type means (every row written before broadcasts
+// existed).
+func notifyPeer(peerType string, peerID, accessHash int64) tg.InputPeerClass {
+	switch peerType {
+	case "channel":
+		return &tg.InputPeerChannel{ChannelID: peerID, AccessHash: accessHash}
+	case "chat":
+		return &tg.InputPeerChat{ChatID: peerID}
+	default:
+		return &tg.InputPeerUser{UserID: peerID, AccessHash: accessHash}
+	}
 }
 
 // randomIDFor deterministically derives a messages.sendMessage random_id

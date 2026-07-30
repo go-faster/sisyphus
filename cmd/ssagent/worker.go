@@ -21,7 +21,7 @@ import (
 // LLM run on work that will fail the same way. Only a worker that dies
 // before acknowledging leaves the delivery unsettled, and that is exactly the
 // case a retry should cover.
-func investigateHandler(store jobStore, inv agent.Investigator, tracer trace.Tracer, metrics *agentMetrics, lg *zap.Logger) queue.Handler {
+func investigateHandler(store jobStore, inv agent.Investigator, router reportRouter, tracer trace.Tracer, metrics *agentMetrics, lg *zap.Logger) queue.Handler {
 	return func(ctx context.Context, d queue.Delivery) error {
 		var p agentstore.Payload
 		if err := json.Unmarshal(d.Payload, &p); err != nil {
@@ -34,7 +34,7 @@ func investigateHandler(store jobStore, inv agent.Investigator, tracer trace.Tra
 			return nil
 		}
 
-		runJob(ctx, store, inv, d.ID, p.Description, tracer, metrics, lg)
+		runJobWithTrigger(ctx, store, inv, d.ID, p.Description, p.Trigger, router, tracer, metrics, lg)
 		return nil
 	}
 }

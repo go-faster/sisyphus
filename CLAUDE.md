@@ -78,7 +78,7 @@ Keep the index below one line per package, and put the depth in the nested file.
 - `internal/api` — the generated ogen `Handler`; bridges HTTP to retrieval + answerer.
 - `internal/apiclient` — `oas.Client` adapter satisfying bot/mcpserver's `Retriever` + `index.Answerer` over HTTP.
 - `internal/bot` — gotd bot, `/context` handler, `linksMarkup`.
-- `internal/agent` **†** — shared LLM tool-calling loop (`coreLoop`) behind both `/investigate` and agentic `/context`.
+- `internal/agent` **†** — shared LLM tool-calling loop (`coreLoop`) behind both `/investigate` and agentic `/context`; `EventFromReport` publishes a finished investigation back onto the spine.
 - `internal/agentclient` — HTTP client (submit + poll) ssbot uses against ssagent.
 - `internal/agentstore` **†** — ent-backed `InvestigationJob` rows + dispatch through `internal/queue`; its `Subscriber` is the agent's `event.Handler`, turning a firing alert into a queued investigation.
 - `internal/answer` **†** — agentic `/context` answerer; `search_knowledge`/`fetch_url` plus optional ssh-mcp sandbox.
@@ -87,7 +87,7 @@ Keep the index below one line per package, and put the depth in the nested file.
 - `internal/mcpclient` — MCP client used to call tools exposed by ssmcp.
 - `internal/content` — `index.ContentResolver`: `DatabaseReader`, `LocalRepoReader` (traversal-guarded), `ChainResolver`.
 - `internal/fetch` — `index.URLFetcher` with a per-site allowlist (globs, methods, credentials, byte cap).
-- `internal/notify` (+ `gitlab`, `jira`, `store`) — per-user GitLab MR-assignment / Jira issue-assignment notifications: `event.Router` → projector → dispatcher → outbox → sink. It fetches nothing; the GitLab/Jira source adapters emit the events (see `internal/ingest`). Contract and rationale are in `notify.go`'s package doc; delivery rides `internal/queue`.
+- `internal/notify` (+ `gitlab`, `jira`, `investigation`, `store`) — notifications: `event.Router` → projector → dispatcher/broadcaster → outbox → sink. Two addressing modes: `Dispatcher` matches an event's recipient to subscribed users (GitLab MR assignment, Jira issue assignment); `Broadcaster` writes one row per chat in `notify.alert_chats`, for events addressed to nobody in particular (`investigation` — an agent report on a firing alert). It fetches nothing; the GitLab/Jira source adapters emit the events (see `internal/ingest`). Contract and rationale are in `notify.go`'s package doc; delivery rides `internal/queue`.
 
 **Infrastructure**
 
@@ -136,6 +136,24 @@ link merely *mentioned* there into a clickable button. Keep this restriction if
 `/investigate` is deliberately looser: `Report.Links` may be any http(s) URL the agent got
 from tool results (dashboards, tickets). `Report.normalize` drops invalid/duplicate links
 and caps at `maxReportLinks`.
+
+## Alerts: fire → investigate → announce
+
+One loop spanning four packages, so the rule lives here.
+
+`POST /webhooks/alertmanager` (on `ssingest serve`) decodes an Alertmanager group into
+`event.TypeAlertFiring` events. With `alertmanager.investigate.enabled`, `agentstore.Subscriber`
+submits each as an investigation keyed by `Event.ID`. A worker in `ssagent` runs it, persists the
+report, then routes `event.TypeInvestigationCompleted` back onto the spine, where
+`notify.Broadcaster` writes one outbox row per `notify.alert_chats` entry for ssbot to deliver.
+
+**Every hop dedups on an id, and no hop is per-user.** The alert's id pins the
+firing/resolved transition (not the delivery, so a `repeat_interval` resend is the same
+occurrence); the investigation's id is the job's (not its finish time); the outbox key is
+per (chat, event). An alert is addressed to whoever watches the channel, so the target is
+`notify.alert_chats` in deployment config — not a linked GitLab/Jira identity, which an
+alert does not have. That is why `Notification.user_id` is nullable and `peer_type` exists:
+a broadcast row is addressed by its Telegram peer alone.
 
 ## API auth
 
