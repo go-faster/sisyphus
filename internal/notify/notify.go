@@ -67,6 +67,11 @@ const (
 	// EventInvestigationCompleted fires when an agent investigation finishes.
 	// It is addressed to a chat, not a user.
 	EventInvestigationCompleted EventType = "investigation_completed"
+	// EventAlertFiring and EventAlertResolved announce the alert itself,
+	// independently of whether an agent investigates it. Also chat-addressed:
+	// an alert names no GitLab or Jira identity to deliver to.
+	EventAlertFiring   EventType = "alert_firing"
+	EventAlertResolved EventType = "alert_resolved"
 )
 
 // Actor identifies a source-side user, either as the recipient of an Event
