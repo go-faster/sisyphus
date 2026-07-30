@@ -46,6 +46,7 @@ var operationRolesBearerAuth = map[string][]string{
 	NotifyUnsubscribeOperation:       []string{},
 	RegisterNotifyChatOperation:      []string{},
 	SearchOperation:                  []string{},
+	UpsertTelegramPeersOperation:     []string{},
 }
 
 // GetRolesForBearerAuth returns the required roles for the given operation.

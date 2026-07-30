@@ -19,4 +19,5 @@ const (
 	NotifyUnsubscribeOperation       OperationName = "NotifyUnsubscribe"
 	RegisterNotifyChatOperation      OperationName = "RegisterNotifyChat"
 	SearchOperation                  OperationName = "Search"
+	UpsertTelegramPeersOperation     OperationName = "UpsertTelegramPeers"
 )
