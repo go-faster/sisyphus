@@ -187,3 +187,72 @@ func (c *Client) AckNotification(ctx context.Context, id uuid.UUID, deliverErr e
 	}
 	return rerr
 }
+
+// NotifyRegisterChat registers, re-enables (enabled=true) or disables
+// (enabled=false) a chat as a broadcast destination.
+//
+// peerType/peerID/accessHash come from the update the bot handled inside the
+// chat: that is where a private channel's access hash exists, and it exists
+// nowhere else.
+func (c *Client) NotifyRegisterChat(ctx context.Context, peerType string, peerID, accessHash int64, title string, addedBy int64, enabled bool) (rerr error) {
+	start := time.Now()
+	ctx, span := c.tracer.Start(ctx, "apiclient.NotifyRegisterChat", trace.WithSpanKind(trace.SpanKindClient))
+	defer func() {
+		c.m.record(ctx, "notify_register_chat", time.Since(start).Seconds(), 0, rerr)
+		span.End()
+	}()
+
+	req := &oas.NotifyChatRequest{
+		PeerType: oas.NotifyChatRequestPeerType(peerType),
+		PeerID:   peerID,
+		Enabled:  enabled,
+	}
+	if accessHash != 0 {
+		req.AccessHash = oas.NewOptInt64(accessHash)
+	}
+	if title != "" {
+		req.Title = oas.NewOptString(title)
+	}
+	if addedBy != 0 {
+		req.AddedBy = oas.NewOptInt64(addedBy)
+	}
+	if _, err := c.inv.RegisterNotifyChat(ctx, req); err != nil {
+		rerr = errors.Wrap(err, "register notify chat")
+		return rerr
+	}
+	return nil
+}
+
+// NotifyChat is one registered broadcast destination.
+type NotifyChat struct {
+	PeerType string
+	PeerID   int64
+	Title    string
+	Enabled  bool
+}
+
+// NotifyListChats lists registered broadcast chats.
+func (c *Client) NotifyListChats(ctx context.Context) (_ []NotifyChat, rerr error) {
+	start := time.Now()
+	ctx, span := c.tracer.Start(ctx, "apiclient.NotifyListChats", trace.WithSpanKind(trace.SpanKindClient))
+	defer func() {
+		c.m.record(ctx, "notify_list_chats", time.Since(start).Seconds(), 0, rerr)
+		span.End()
+	}()
+
+	resp, err := c.inv.ListNotifyChats(ctx)
+	if err != nil {
+		rerr = errors.Wrap(err, "list notify chats")
+		return nil, rerr
+	}
+	out := make([]NotifyChat, 0, len(resp.Chats))
+	for _, ch := range resp.Chats {
+		out = append(out, NotifyChat{
+			PeerType: ch.PeerType,
+			PeerID:   ch.PeerID,
+			Title:    ch.Title.Or(""),
+			Enabled:  ch.Enabled,
+		})
+	}
+	return out, nil
+}

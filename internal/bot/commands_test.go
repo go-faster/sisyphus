@@ -30,15 +30,16 @@ func TestCommandRegistryHelpText(t *testing.T) {
 		"/link <gitlab|jira> <identity> [display name] \u2014 link your GitLab/Jira identity for notifications\n" +
 		"/subscribe <gitlab|jira> [event_type ...] \u2014 subscribe to GitLab/Jira notifications\n" +
 		"/unsubscribe <gitlab|jira> \u2014 unsubscribe from notifications\n" +
-		"/notifications \u2014 list your notification subscriptions"
+		"/notifications \u2014 list your notification subscriptions\n" +
+		"/alerts \u2014 send alert notifications to this chat (/alerts on|off|status)"
 	require.Equal(t, want, reg.helpText())
 }
 
 func TestCommandRegistryHelpTextHidesHiddenAndEmptyDesc(t *testing.T) {
 	reg := newCommandRegistry()
-	reg.add("visible", "", "a visible command", false, func(context.Context, messageSender, int64, string) error { return nil })
-	reg.add("hidden", "", "should not appear", true, func(context.Context, messageSender, int64, string) error { return nil })
-	reg.add("nodesc", "<arg>", "", false, func(context.Context, messageSender, int64, string) error { return nil })
+	reg.add("visible", "", "a visible command", false, func(context.Context, messageSender, invocation) error { return nil })
+	reg.add("hidden", "", "should not appear", true, func(context.Context, messageSender, invocation) error { return nil })
+	reg.add("nodesc", "<arg>", "", false, func(context.Context, messageSender, invocation) error { return nil })
 
 	text := reg.helpText()
 	require.Contains(t, text, "/visible \u2014 a visible command")
@@ -49,7 +50,7 @@ func TestCommandRegistryHelpTextHidesHiddenAndEmptyDesc(t *testing.T) {
 func TestCommandRegistryLookup(t *testing.T) {
 	reg := newCommandRegistry()
 	called := 0
-	reg.add("ping", "", "ping", false, func(context.Context, messageSender, int64, string) error {
+	reg.add("ping", "", "ping", false, func(context.Context, messageSender, invocation) error {
 		called++
 		return nil
 	})
@@ -61,16 +62,16 @@ func TestCommandRegistryLookup(t *testing.T) {
 	_, ok = reg.lookup("nonexistent")
 	require.False(t, ok)
 
-	require.NoError(t, c.handler(context.Background(), silentSender{}, 1, ""))
+	require.NoError(t, c.handler(context.Background(), silentSender{}, invocation{SenderID: 1, Rest: ""}))
 	require.Equal(t, 1, called)
 }
 
 func TestCommandRegistryBotCommands(t *testing.T) {
 	reg := newCommandRegistry()
-	reg.add("a", "<x>", "alpha", false, func(context.Context, messageSender, int64, string) error { return nil })
-	reg.add("b", "", "beta", false, func(context.Context, messageSender, int64, string) error { return nil })
-	reg.add("hidden", "", "secret", true, func(context.Context, messageSender, int64, string) error { return nil })
-	reg.add("nodesc", "<y>", "", false, func(context.Context, messageSender, int64, string) error { return nil })
+	reg.add("a", "<x>", "alpha", false, func(context.Context, messageSender, invocation) error { return nil })
+	reg.add("b", "", "beta", false, func(context.Context, messageSender, invocation) error { return nil })
+	reg.add("hidden", "", "secret", true, func(context.Context, messageSender, invocation) error { return nil })
+	reg.add("nodesc", "<y>", "", false, func(context.Context, messageSender, invocation) error { return nil })
 
 	cmds := reg.botCommands()
 	require.Len(t, cmds, 2)
@@ -87,7 +88,7 @@ func TestBuildCommandRegistryOrder(t *testing.T) {
 	})
 	reg := b.buildCommandRegistry(context.Background())
 
-	expected := []string{"start", "help", "context", "search", "investigate", "link", "subscribe", "unsubscribe", "notifications"}
+	expected := []string{"start", "help", "context", "search", "investigate", "link", "subscribe", "unsubscribe", "notifications", "alerts"}
 	require.Len(t, reg.cmds, len(expected))
 	for i, name := range expected {
 		require.Equal(t, name, reg.cmds[i].name, "command %d", i)
@@ -123,7 +124,7 @@ func TestHandleStartCmdIncludesUserIDAndHelp(t *testing.T) {
 		return 0, nil
 	}}
 
-	require.NoError(t, c.handler(context.Background(), stub, 42, ""))
+	require.NoError(t, c.handler(context.Background(), stub, invocation{SenderID: 42, Rest: ""}))
 	require.Contains(t, sent, "Your ID: 42")
 	require.Contains(t, sent, "/context")
 	require.Contains(t, sent, "/help")
@@ -145,7 +146,7 @@ func TestHandleHelpCmdSendsGeneratedHelp(t *testing.T) {
 		return 0, nil
 	}}
 
-	require.NoError(t, c.handler(context.Background(), stub, 0, ""))
+	require.NoError(t, c.handler(context.Background(), stub, invocation{SenderID: 0, Rest: ""}))
 	require.Equal(t, b.commands.helpText(), sent)
 }
 
@@ -170,7 +171,7 @@ func TestHandleInvestigateCmdAcksAndOffloads(t *testing.T) {
 		onSendStyled: func(_ context.Context, _ string, _ tg.ReplyMarkupClass) error { return nil },
 	}
 
-	require.NoError(t, c.handler(context.Background(), stub, 0, "something bad"))
+	require.NoError(t, c.handler(context.Background(), stub, invocation{SenderID: 0, Rest: "something bad"}))
 	require.Len(t, sent, 1)
 	require.Contains(t, sent[0], "Investigating, this may take a few minutes")
 }

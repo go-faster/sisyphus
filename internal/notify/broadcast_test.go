@@ -27,12 +27,21 @@ func (f *broadcastOutbox) Enqueue(_ context.Context, _ Channel, target Target, n
 	return true, nil
 }
 
+// fakeChats is a registered-chat list, standing in for the notify store the
+// bot writes when someone runs /alerts on in a chat.
+type fakeChats struct {
+	targets []Target
+	err     error
+}
+
+func (f fakeChats) BroadcastTargets(context.Context) ([]Target, error) { return f.targets, f.err }
+
 func TestBroadcasterDispatch(t *testing.T) {
 	out := newBroadcastOutbox()
-	b := NewBroadcaster(out, ChannelTelegram, []Target{
+	b := NewBroadcaster(fakeChats{targets: []Target{
 		{TelegramUserID: -1001, TelegramAccessHash: 7, PeerType: PeerChannel},
 		{TelegramUserID: -42, PeerType: PeerChat},
-	}, nil)
+	}}, out, ChannelTelegram, nil)
 
 	e := Event{
 		Source:  SourceAlerts,
@@ -64,7 +73,7 @@ func TestBroadcasterDispatch(t *testing.T) {
 
 func TestBroadcasterNoTargets(t *testing.T) {
 	out := newBroadcastOutbox()
-	b := NewBroadcaster(out, ChannelTelegram, nil, nil)
+	b := NewBroadcaster(fakeChats{}, out, ChannelTelegram, nil)
 	n, err := b.Dispatch(context.Background(), []Event{{EventID: "x"}})
 	require.NoError(t, err)
 	require.Zero(t, n)
@@ -87,7 +96,7 @@ func (s stubProjector) Project(event.Event) ([]Event, error) { return s.events, 
 
 func TestBroadcastSubscriber(t *testing.T) {
 	out := newBroadcastOutbox()
-	b := NewBroadcaster(out, ChannelTelegram, []Target{{TelegramUserID: -1001, PeerType: PeerChannel}}, nil)
+	b := NewBroadcaster(fakeChats{targets: []Target{{TelegramUserID: -1001, PeerType: PeerChannel}}}, out, ChannelTelegram, nil)
 	sub := NewBroadcastSubscriber(stubProjector{events: []Event{{
 		Source: SourceAlerts, Type: EventInvestigationCompleted, Title: "t", EventID: "e1",
 	}}}, b)

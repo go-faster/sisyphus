@@ -20,29 +20,30 @@ func (b *Bot) buildCommandRegistry(runCtx context.Context) *commandRegistry {
 	reg.add("context", "<question>", "search indexed knowledge and answer a question", false, b.handleContextCmd)
 	reg.add("search", "<query>", "raw ranked search results, no summary", false, b.handleSearchCmd)
 	reg.add("investigate", "<description>", "run an on-demand investigation", false,
-		func(ctx context.Context, s messageSender, _ int64, rest string) error {
-			return b.handleInvestigateCmd(runCtx, ctx, s, rest)
+		func(ctx context.Context, s messageSender, inv invocation) error {
+			return b.handleInvestigateCmd(runCtx, ctx, s, inv.Rest)
 		},
 	)
 	reg.add("link", "<gitlab|jira> <identity> [display name]", "link your GitLab/Jira identity for notifications", false, b.handleLinkCmd)
 	reg.add("subscribe", "<gitlab|jira> [event_type ...]", "subscribe to GitLab/Jira notifications", false, b.handleSubscribeCmd)
 	reg.add("unsubscribe", "<gitlab|jira>", "unsubscribe from notifications", false, b.handleUnsubscribeCmd)
 	reg.add("notifications", "", "list your notification subscriptions", false, b.handleNotificationsCmd)
+	reg.add("alerts", "", "send alert notifications to this chat (/alerts on|off|status)", false, b.handleAlertsCmd)
 	return reg
 }
 
 // handleStartCmd replies with the user's ID and the generated help text.
-func (b *Bot) handleStartCmd(ctx context.Context, s messageSender, senderID int64, _ string) error {
-	zctx.From(ctx).Info("start command", zap.Int64("user_id", senderID))
+func (b *Bot) handleStartCmd(ctx context.Context, s messageSender, inv invocation) error {
+	zctx.From(ctx).Info("start command", zap.Int64("user_id", inv.SenderID))
 	if b.silent {
 		return nil
 	}
-	b.sendTextReply(ctx, s, fmt.Sprintf("Your ID: %d\n\n%s", senderID, b.commands.helpText()))
+	b.sendTextReply(ctx, s, fmt.Sprintf("Your ID: %d\n\n%s", inv.SenderID, b.commands.helpText()))
 	return nil
 }
 
 // handleHelpCmd replies with the generated help text.
-func (b *Bot) handleHelpCmd(ctx context.Context, s messageSender, _ int64, _ string) error {
+func (b *Bot) handleHelpCmd(ctx context.Context, s messageSender, _ invocation) error {
 	zctx.From(ctx).Info("help command")
 	if b.silent {
 		return nil
@@ -52,16 +53,16 @@ func (b *Bot) handleHelpCmd(ctx context.Context, s messageSender, _ int64, _ str
 }
 
 // handleContextCmd runs /context with the send-then-edit progress flow.
-func (b *Bot) handleContextCmd(ctx context.Context, s messageSender, _ int64, rest string) error {
-	zctx.From(ctx).Info("context command", zap.String("query", rest))
-	b.handleWithProgress(ctx, s, rest, b.handle, "context")
+func (b *Bot) handleContextCmd(ctx context.Context, s messageSender, inv invocation) error {
+	zctx.From(ctx).Info("context command", zap.String("query", inv.Rest))
+	b.handleWithProgress(ctx, s, inv.Rest, b.handle, "context")
 	return nil
 }
 
 // handleSearchCmd runs /search with the send-then-edit progress flow.
-func (b *Bot) handleSearchCmd(ctx context.Context, s messageSender, _ int64, rest string) error {
-	zctx.From(ctx).Info("search command", zap.String("query", rest))
-	b.handleWithProgress(ctx, s, rest, b.handleSearch, "search")
+func (b *Bot) handleSearchCmd(ctx context.Context, s messageSender, inv invocation) error {
+	zctx.From(ctx).Info("search command", zap.String("query", inv.Rest))
+	b.handleWithProgress(ctx, s, inv.Rest, b.handleSearch, "search")
 	return nil
 }
 

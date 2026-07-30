@@ -239,7 +239,11 @@ func (b *Bot) Run(ctx context.Context) error {
 		} else {
 			s = silentSender{}
 		}
-		return c.handler(ctx, s, senderID, rest)
+		return c.handler(ctx, s, invocation{
+			SenderID: senderID,
+			Chat:     chatPeerFrom(e, msg.PeerID),
+			Rest:     rest,
+		})
 	})
 
 	dispatcher.OnBotInlineQuery(func(ctx context.Context, _ tg.Entities, u *tg.UpdateBotInlineQuery) error {
@@ -322,6 +326,40 @@ func (b *Bot) Run(ctx context.Context) error {
 
 func isStaleInlineQueryError(err error) bool {
 	return tgerr.Is(err, "QUERY_ID_INVALID")
+}
+
+// chatPeerFrom flattens the peer a message arrived from, taking the access
+// hash out of the update's entities.
+//
+// This is the only place a chat's access hash is available: a private channel
+// has no username to resolve later, and a bare -100… id is not addressable
+// over MTProto on its own. A command that registers the current chat has to
+// capture the peer here, at the moment it is handed to us.
+func chatPeerFrom(e tg.Entities, peer tg.PeerClass) chatPeer {
+	switch p := peer.(type) {
+	case *tg.PeerChannel:
+		out := chatPeer{Type: "channel", ID: p.ChannelID}
+		if ch, ok := e.Channels[p.ChannelID]; ok {
+			out.AccessHash = ch.AccessHash
+			out.Title = ch.Title
+		}
+		return out
+	case *tg.PeerChat:
+		out := chatPeer{Type: "chat", ID: p.ChatID}
+		if c, ok := e.Chats[p.ChatID]; ok {
+			out.Title = c.Title
+		}
+		return out
+	case *tg.PeerUser:
+		out := chatPeer{Type: "user", ID: p.UserID}
+		if u, ok := e.Users[p.UserID]; ok {
+			out.AccessHash = u.AccessHash
+			out.Title = strings.TrimSpace(u.FirstName + " " + u.LastName)
+		}
+		return out
+	default:
+		return chatPeer{}
+	}
 }
 
 func (b *Bot) sendTextReply(ctx context.Context, s messageSender, answer string) {

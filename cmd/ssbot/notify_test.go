@@ -35,6 +35,7 @@ type fakeNotifyStore struct {
 	pending []notifystore.OutboxItem
 	acked   map[uuid.UUID]error
 	ackedN  int
+	chats   []notifystore.Chat
 }
 
 func (f *fakeNotifyStore) EnrollTelegram(context.Context, int64, int64) (uuid.UUID, error) {
@@ -97,3 +98,20 @@ func TestDrainPendingNotifications_DeliversAndAcks(t *testing.T) {
 	require.Equal(t, 1, store.ackedN)
 	require.NoError(t, store.acked[id])
 }
+
+func (f *fakeNotifyStore) RegisterChat(_ context.Context, target notify.Target, title string, addedBy int64) error {
+	f.chats = append(f.chats, notifystore.Chat{Target: target, Title: title, Enabled: true, AddedBy: addedBy})
+	return nil
+}
+
+func (f *fakeNotifyStore) UnregisterChat(_ context.Context, target notify.Target) (bool, error) {
+	for i, c := range f.chats {
+		if c.Target.TelegramUserID == target.TelegramUserID {
+			f.chats[i].Enabled = false
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (f *fakeNotifyStore) ListChats(context.Context) ([]notifystore.Chat, error) { return f.chats, nil }
