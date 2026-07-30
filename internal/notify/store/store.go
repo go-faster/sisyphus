@@ -89,42 +89,6 @@ func (s *Store) EnrollTelegram(ctx context.Context, telegramUserID, accessHash i
 	return u.ID, nil
 }
 
-// LinkGitLab associates telegramUserID with a GitLab username. Returns an
-// error if that username is already linked to a different user.
-func (s *Store) LinkGitLab(ctx context.Context, telegramUserID int64, username string) error {
-	u, err := s.db.User.Query().Where(user.TelegramUserID(telegramUserID)).Only(ctx)
-	if err != nil {
-		return errors.Wrap(err, "get notify user")
-	}
-	if err := s.db.User.UpdateOneID(u.ID).SetGitlabUsername(username).Exec(ctx); err != nil {
-		if ent.IsConstraintError(err) {
-			return errors.Errorf("gitlab username %q is already linked to another user", username)
-		}
-		return errors.Wrap(err, "link gitlab username")
-	}
-	return nil
-}
-
-// LinkJira associates telegramUserID with a Jira accountId. Returns an error
-// if that accountId is already linked to a different user.
-func (s *Store) LinkJira(ctx context.Context, telegramUserID int64, accountID, displayName string) error {
-	u, err := s.db.User.Query().Where(user.TelegramUserID(telegramUserID)).Only(ctx)
-	if err != nil {
-		return errors.Wrap(err, "get notify user")
-	}
-	upd := s.db.User.UpdateOneID(u.ID).SetJiraAccountID(accountID)
-	if displayName != "" {
-		upd = upd.SetJiraDisplayName(displayName)
-	}
-	if err := upd.Exec(ctx); err != nil {
-		if ent.IsConstraintError(err) {
-			return errors.Errorf("jira account %q is already linked to another user", accountID)
-		}
-		return errors.Wrap(err, "link jira account")
-	}
-	return nil
-}
-
 // Subscribe upserts telegramUserID's subscription to source, replacing its
 // event type list. Calling it again with a different eventTypes list updates
 // the subscription in place rather than creating a second row (unique on

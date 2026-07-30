@@ -29,42 +29,6 @@ func (c *Client) NotifyEnroll(ctx context.Context, telegramUserID, accessHash in
 	return rerr
 }
 
-// NotifyLinkGitLab links telegramUserID to a GitLab username.
-func (c *Client) NotifyLinkGitLab(ctx context.Context, telegramUserID int64, username string) (rerr error) {
-	start := time.Now()
-	defer func() { c.m.record(ctx, "notify_link_gitlab", time.Since(start).Seconds(), 0, rerr) }()
-
-	_, err := c.inv.NotifyLink(ctx, &oas.NotifyLinkRequest{
-		TelegramUserID: telegramUserID,
-		Source:         oas.NotifyLinkRequestSourceGitlab,
-		Identity:       username,
-	})
-	if err != nil {
-		rerr = errors.Wrap(err, "notify link gitlab")
-	}
-	return rerr
-}
-
-// NotifyLinkJira links telegramUserID to a Jira accountId.
-func (c *Client) NotifyLinkJira(ctx context.Context, telegramUserID int64, accountID, displayName string) (rerr error) {
-	start := time.Now()
-	defer func() { c.m.record(ctx, "notify_link_jira", time.Since(start).Seconds(), 0, rerr) }()
-
-	req := &oas.NotifyLinkRequest{
-		TelegramUserID: telegramUserID,
-		Source:         oas.NotifyLinkRequestSourceJira,
-		Identity:       accountID,
-	}
-	if displayName != "" {
-		req.DisplayName = oas.NewOptString(displayName)
-	}
-	_, err := c.inv.NotifyLink(ctx, req)
-	if err != nil {
-		rerr = errors.Wrap(err, "notify link jira")
-	}
-	return rerr
-}
-
 // NotifySubscribe subscribes telegramUserID to source's event types.
 func (c *Client) NotifySubscribe(ctx context.Context, telegramUserID int64, source string, eventTypes []string) (rerr error) {
 	start := time.Now()

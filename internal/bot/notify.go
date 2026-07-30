@@ -25,13 +25,13 @@ type NotifySubscription struct {
 }
 
 // Notifier is the notification-system client the bot needs: enrollment
-// (access-hash capture), identity linking, and subscription management.
+// (access-hash capture) and subscription management. There is deliberately no
+// identity-linking call: who a Telegram user is on GitLab/Jira is decided in
+// deployment config (notify.identities), not by what a user types.
 // Satisfied by internal/apiclient.Client via a thin adapter in cmd/ssbot
 // (the return types don't match exactly, so it's not implemented directly).
 type Notifier interface {
 	NotifyEnroll(ctx context.Context, telegramUserID, accessHash int64) error
-	NotifyLinkGitLab(ctx context.Context, telegramUserID int64, username string) error
-	NotifyLinkJira(ctx context.Context, telegramUserID int64, accountID, displayName string) error
 	NotifySubscribe(ctx context.Context, telegramUserID int64, source string, eventTypes []string) error
 	NotifyUnsubscribe(ctx context.Context, telegramUserID int64, source string) error
 	NotifyListSubscriptions(ctx context.Context, telegramUserID int64) ([]NotifySubscription, error)
@@ -133,40 +133,6 @@ func (b *Bot) Ready() <-chan struct{} {
 var defaultEventTypesBySource = map[string][]string{
 	"gitlab": {"mr_assigned", "mr_review_requested"},
 	"jira":   {"issue_assigned"},
-}
-
-func (b *Bot) handleLinkCmd(ctx context.Context, s messageSender, inv invocation) error {
-	if b.notifier == nil {
-		b.sendTextReply(ctx, s, "Notifications are not configured.")
-		return nil
-	}
-	fields := strings.Fields(inv.Rest)
-	if len(fields) < 2 {
-		b.sendTextReply(ctx, s, "Usage: /link gitlab <username>  or  /link jira <accountId> [display name]")
-		return nil
-	}
-
-	source := strings.ToLower(fields[0])
-	identity := fields[1]
-
-	var err error
-	switch source {
-	case "gitlab":
-		err = b.notifier.NotifyLinkGitLab(ctx, inv.SenderID, identity)
-	case "jira":
-		displayName := strings.Join(fields[2:], " ")
-		err = b.notifier.NotifyLinkJira(ctx, inv.SenderID, identity, displayName)
-	default:
-		b.sendTextReply(ctx, s, "Unknown source: "+source+" (expected gitlab or jira)")
-		return nil
-	}
-	if err != nil {
-		zctx.From(ctx).Error("notify link failed", zap.Error(err))
-		b.sendTextReply(ctx, s, "Failed to link: "+err.Error())
-		return nil
-	}
-	b.sendTextReply(ctx, s, fmt.Sprintf("Linked %s identity: %s", source, identity))
-	return nil
 }
 
 func (b *Bot) handleSubscribeCmd(ctx context.Context, s messageSender, inv invocation) error {

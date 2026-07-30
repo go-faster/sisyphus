@@ -19,9 +19,6 @@ type fakeNotifier struct {
 	lastHash                     int64
 	lastAddedBy                  int64
 	enrolledUserID, enrolledHash int64
-	gitlabLinks                  map[int64]string
-	jiraLinks                    map[int64]string
-	jiraDisplayNames             map[int64]string
 	subscribed                   map[int64][2]string // telegramUserID -> [source, joined event types]
 	unsubscribed                 map[int64]string
 	subs                         []NotifySubscription
@@ -30,9 +27,6 @@ type fakeNotifier struct {
 
 func newFakeNotifier() *fakeNotifier {
 	return &fakeNotifier{
-		gitlabLinks:      map[int64]string{},
-		jiraLinks:        map[int64]string{},
-		jiraDisplayNames: map[int64]string{},
 		subscribed:       map[int64][2]string{},
 		unsubscribed:     map[int64]string{},
 	}
@@ -41,23 +35,6 @@ func newFakeNotifier() *fakeNotifier {
 func (f *fakeNotifier) NotifyEnroll(_ context.Context, telegramUserID, accessHash int64) error {
 	f.enrolledUserID, f.enrolledHash = telegramUserID, accessHash
 	return f.err
-}
-
-func (f *fakeNotifier) NotifyLinkGitLab(_ context.Context, telegramUserID int64, username string) error {
-	if f.err != nil {
-		return f.err
-	}
-	f.gitlabLinks[telegramUserID] = username
-	return nil
-}
-
-func (f *fakeNotifier) NotifyLinkJira(_ context.Context, telegramUserID int64, accountID, displayName string) error {
-	if f.err != nil {
-		return f.err
-	}
-	f.jiraLinks[telegramUserID] = accountID
-	f.jiraDisplayNames[telegramUserID] = displayName
-	return nil
 }
 
 func (f *fakeNotifier) NotifySubscribe(_ context.Context, telegramUserID int64, source string, eventTypes []string) error {
@@ -146,47 +123,12 @@ func TestRandomIDFor_DeterministicPerNotification(t *testing.T) {
 	require.NotEqual(t, randomIDFor(id1), randomIDFor(id2))
 }
 
-func TestHandleLinkCmd_GitLab(t *testing.T) {
-	n := newFakeNotifier()
-	b := newNotifyTestBot(n)
-	c, _ := b.commands.lookup("link")
-	stub, sent := captureSend(t)
-
-	require.NoError(t, c.handler(context.Background(), stub, invocation{SenderID: 42, Rest: "gitlab alice"}))
-	require.Equal(t, "alice", n.gitlabLinks[42])
-	require.Contains(t, *sent, "Linked gitlab identity: alice")
-}
-
-func TestHandleLinkCmd_Jira(t *testing.T) {
-	n := newFakeNotifier()
-	b := newNotifyTestBot(n)
-	c, _ := b.commands.lookup("link")
-	stub, sent := captureSend(t)
-
-	require.NoError(t, c.handler(context.Background(), stub, invocation{SenderID: 42, Rest: "jira acc-1 Alice A"}))
-	require.Equal(t, "acc-1", n.jiraLinks[42])
-	require.Equal(t, "Alice A", n.jiraDisplayNames[42])
-	require.Contains(t, *sent, "Linked jira identity: acc-1")
-}
-
-func TestHandleLinkCmd_UnknownSource(t *testing.T) {
-	n := newFakeNotifier()
-	b := newNotifyTestBot(n)
-	c, _ := b.commands.lookup("link")
-	stub, sent := captureSend(t)
-
-	require.NoError(t, c.handler(context.Background(), stub, invocation{SenderID: 42, Rest: "slack alice"}))
-	require.Contains(t, *sent, "Unknown source")
-	require.Empty(t, n.gitlabLinks)
-}
-
-func TestHandleLinkCmd_NoNotifierConfigured(t *testing.T) {
-	b := newNotifyTestBot(nil)
-	c, _ := b.commands.lookup("link")
-	stub, sent := captureSend(t)
-
-	require.NoError(t, c.handler(context.Background(), stub, invocation{SenderID: 42, Rest: "gitlab alice"}))
-	require.Contains(t, *sent, "not configured")
+// /link is gone: identity is decided in deployment config (notify.identities),
+// so the command must not be registered at all.
+func TestLinkCommandRemoved(t *testing.T) {
+	b := newNotifyTestBot(newFakeNotifier())
+	_, ok := b.commands.lookup("link")
+	require.False(t, ok)
 }
 
 func TestHandleSubscribeCmd_DefaultsEventTypes(t *testing.T) {

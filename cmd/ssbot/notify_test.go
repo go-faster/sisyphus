@@ -41,8 +41,6 @@ type fakeNotifyStore struct {
 func (f *fakeNotifyStore) EnrollTelegram(context.Context, int64, int64) (uuid.UUID, error) {
 	return uuid.Nil, nil
 }
-func (f *fakeNotifyStore) LinkGitLab(context.Context, int64, string) error       { return nil }
-func (f *fakeNotifyStore) LinkJira(context.Context, int64, string, string) error { return nil }
 func (f *fakeNotifyStore) Subscribe(context.Context, int64, notify.Source, []notify.EventType) error {
 	return nil
 }

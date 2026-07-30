@@ -22,14 +22,6 @@ func (n notifierAdapter) NotifyEnroll(ctx context.Context, telegramUserID, acces
 	return n.api.NotifyEnroll(ctx, telegramUserID, accessHash)
 }
 
-func (n notifierAdapter) NotifyLinkGitLab(ctx context.Context, telegramUserID int64, username string) error {
-	return n.api.NotifyLinkGitLab(ctx, telegramUserID, username)
-}
-
-func (n notifierAdapter) NotifyLinkJira(ctx context.Context, telegramUserID int64, accountID, displayName string) error {
-	return n.api.NotifyLinkJira(ctx, telegramUserID, accountID, displayName)
-}
-
 func (n notifierAdapter) NotifySubscribe(ctx context.Context, telegramUserID int64, source string, eventTypes []string) error {
 	return n.api.NotifySubscribe(ctx, telegramUserID, source, eventTypes)
 }
