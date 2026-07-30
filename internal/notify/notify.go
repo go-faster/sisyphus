@@ -1,10 +1,14 @@
-// Package notify defines the shared contract for the per-user notification
-// system: EventCollector polls a source and emits Events; Dispatcher matches
-// Events against subscriptions and writes Notifications to an outbox; Sink
-// delivers one Notification to one user's Target address. Kept
-// dependency-light (stdlib + google/uuid), like internal/index, so it stays
-// import-cycle-free for both the ent-backed store (internal/notify/store)
-// and the source-specific collectors (internal/notify/gitlab, .../jira).
+// Package notify is the notification gateway's destination-side contract. It
+// consumes canonical events from the event spine (internal/event) and turns
+// them into per-user deliveries: a Projector fans one event.Event into the
+// per-recipient notify.Events this system delivers (see subscriber.go), a
+// Dispatcher matches those against subscriptions and writes Notifications to an
+// outbox, and a Sink delivers one Notification to one user's Target address.
+//
+// It depends only on stdlib, google/uuid, and internal/event (itself
+// stdlib-only), so it stays import-cycle-free for both the ent-backed store
+// (internal/notify/store) and the source collectors + projectors
+// (internal/notify/gitlab, .../jira).
 package notify
 
 import (
@@ -14,6 +18,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/go-faster/sisyphus/internal/event"
 )
 
 // Source identifies which upstream system an Event/Notification came from.
@@ -96,13 +102,17 @@ func DedupKey(userID uuid.UUID, eventID string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// EventCollector polls its source and returns events new since cursor, along
-// with the advanced cursor to persist. cursor/nextCursor are opaque
-// collector-defined JSON, stored the same way ingestion's SyncState.last_cursor
-// is: as an opaque string keyed by a Source-specific SyncState row.
+// EventCollector polls its source and returns canonical events new since
+// cursor, along with the advanced cursor to persist. It emits one event per
+// source occurrence (an MR updated, an issue updated) carrying the object's
+// current state; the per-recipient fan-out is the destination's job (Projector,
+// see subscriber.go), and duplicate suppression rests on the outbox DedupKey,
+// not a collector-side diff. cursor/nextCursor are opaque collector-defined
+// JSON, stored the same way ingestion's SyncState.last_cursor is: as an opaque
+// string keyed by a Source-specific SyncState row.
 type EventCollector interface {
-	Source() Source
-	Collect(ctx context.Context, cursor string) (events []Event, nextCursor string, err error)
+	Source() event.Source
+	Collect(ctx context.Context, cursor string) (events []event.Event, nextCursor string, err error)
 }
 
 // Target is the sink-specific address resolved from a subscribed user's

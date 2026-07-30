@@ -87,10 +87,11 @@ Keep the index below one line per package, and put the depth in the nested file.
 - `internal/mcpclient` — MCP client used to call tools exposed by ssmcp.
 - `internal/content` — `index.ContentResolver`: `DatabaseReader`, `LocalRepoReader` (traversal-guarded), `ChainResolver`.
 - `internal/fetch` — `index.URLFetcher` with a per-site allowlist (globs, methods, credentials, byte cap).
-- `internal/notify` (+ `gitlab`, `jira`, `store`) — per-user GitLab MR-assignment / Jira issue-assignment notifications: collector → dispatcher → outbox → sink. Contract and rationale are in `notify.go`'s package doc; delivery rides `internal/queue`.
+- `internal/notify` (+ `gitlab`, `jira`, `store`) — per-user GitLab MR-assignment / Jira issue-assignment notifications: collector → `event.Router` → projector → dispatcher → outbox → sink. Contract and rationale are in `notify.go`'s package doc; delivery rides `internal/queue`.
 
 **Infrastructure**
 
+- `internal/event` — canonical `Event` (routable envelope + opaque `Payload`) and `Router`/`Handler`/`Subscription`, with an in-process `Mux`. Handlers must be idempotent on `Event.ID`.
 - `internal/queue` **†** — shared background-work substrate (one `queue_jobs` table, `queue` column). Notify delivery, agent investigations, ingest indexing.
 - `internal/ent` — ent schema + generated code. `internal/ent/migrate` **†** holds the versioned SQL and the `Runner`.
 - `internal/config` **†** — YAML + env config loading.
