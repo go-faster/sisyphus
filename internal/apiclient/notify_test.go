@@ -19,35 +19,21 @@ import (
 // notify endpoints through a real HTTP server/client, mirroring the rest of
 // this file's fakeRetriever/fakeAnswerer pattern.
 type fakeNotifyStore struct {
-	gitlabLinks map[int64]string
-	jiraLinks   map[int64]string
-	subs        map[int64][]notifystore.Subscription
-	pending     []notifystore.OutboxItem
-	acked       map[uuid.UUID]error
-	chats       []notifystore.Chat
+	subs    map[int64][]notifystore.Subscription
+	pending []notifystore.OutboxItem
+	acked   map[uuid.UUID]error
+	chats   []notifystore.Chat
 }
 
 func newFakeNotifyStore() *fakeNotifyStore {
 	return &fakeNotifyStore{
-		gitlabLinks: map[int64]string{},
-		jiraLinks:   map[int64]string{},
-		subs:        map[int64][]notifystore.Subscription{},
-		acked:       map[uuid.UUID]error{},
+		subs:  map[int64][]notifystore.Subscription{},
+		acked: map[uuid.UUID]error{},
 	}
 }
 
 func (f *fakeNotifyStore) EnrollTelegram(_ context.Context, telegramUserID, _ int64) (uuid.UUID, error) {
 	return uuid.NewSHA1(uuid.NameSpaceOID, []byte{byte(telegramUserID)}), nil
-}
-
-func (f *fakeNotifyStore) LinkGitLab(_ context.Context, telegramUserID int64, username string) error {
-	f.gitlabLinks[telegramUserID] = username
-	return nil
-}
-
-func (f *fakeNotifyStore) LinkJira(_ context.Context, telegramUserID int64, accountID, _ string) error {
-	f.jiraLinks[telegramUserID] = accountID
-	return nil
 }
 
 func (f *fakeNotifyStore) Subscribe(_ context.Context, telegramUserID int64, source notify.Source, eventTypes []notify.EventType) error {
@@ -93,18 +79,13 @@ func newNotifyTestServer(t *testing.T, store *fakeNotifyStore) (client *Client, 
 	return client, httpServer.Close
 }
 
-func TestClientNotifyEnrollLinkSubscribeRoundTrip(t *testing.T) {
+func TestClientNotifyEnrollSubscribeRoundTrip(t *testing.T) {
 	store := newFakeNotifyStore()
 	client, closeServer := newNotifyTestServer(t, store)
 	defer closeServer()
 	ctx := context.Background()
 
 	require.NoError(t, client.NotifyEnroll(ctx, 1001, 555))
-	require.NoError(t, client.NotifyLinkGitLab(ctx, 1001, "alice"))
-	assert.Equal(t, "alice", store.gitlabLinks[1001])
-
-	require.NoError(t, client.NotifyLinkJira(ctx, 1001, "acc-1", "Alice A"))
-	assert.Equal(t, "acc-1", store.jiraLinks[1001])
 
 	require.NoError(t, client.NotifySubscribe(ctx, 1001, "gitlab", []string{"mr_assigned"}))
 	subs, err := client.NotifyListSubscriptions(ctx, 1001)

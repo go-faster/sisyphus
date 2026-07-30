@@ -166,7 +166,10 @@ func TestE2E_GitLabMRAssignment_ToTelegramDelivery(t *testing.T) {
 	// --- Enrollment/linking/subscription, as the bot commands would do it.
 	_, err := store.EnrollTelegram(ctx, telegramUserID, telegramAccessHash)
 	require.NoError(t, err)
-	require.NoError(t, store.LinkGitLab(ctx, telegramUserID, "e2e-alice"))
+	_, err = store.SyncIdentities(ctx, []notifystore.Identity{
+		{TelegramUserID: telegramUserID, GitLabUsername: "e2e-alice"},
+	})
+	require.NoError(t, err)
 	require.NoError(t, store.Subscribe(ctx, telegramUserID, notify.SourceGitLab,
 		[]notify.EventType{notify.EventMRAssigned, notify.EventMRReviewRequested}))
 

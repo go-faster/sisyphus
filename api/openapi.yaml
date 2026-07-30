@@ -115,25 +115,6 @@ paths:
                 $ref: "#/components/schemas/Ack"
         default:
           $ref: "#/components/responses/Error"
-  /notify/link:
-    post:
-      operationId: notifyLink
-      summary: Link a Telegram user's GitLab/Jira identity.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/NotifyLinkRequest"
-      responses:
-        "200":
-          description: Link acknowledged.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Ack"
-        default:
-          $ref: "#/components/responses/Error"
   /notify/subscribe:
     post:
       operationId: notifySubscribe
@@ -538,23 +519,6 @@ components:
         telegram_access_hash:
           type: integer
           format: int64
-    NotifyLinkRequest:
-      type: object
-      required: [telegram_user_id, source, identity]
-      properties:
-        telegram_user_id:
-          type: integer
-          format: int64
-        source:
-          type: string
-          description: "gitlab or jira."
-          enum: [gitlab, jira]
-        identity:
-          type: string
-          description: GitLab username, or Jira accountId.
-        display_name:
-          type: string
-          description: Optional human-readable name (Jira only).
     NotifySubscribeRequest:
       type: object
       required: [telegram_user_id, source, event_types]

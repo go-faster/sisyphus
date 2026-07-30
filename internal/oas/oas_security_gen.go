@@ -41,7 +41,6 @@ var operationRolesBearerAuth = map[string][]string{
 	GetPendingNotificationsOperation: []string{},
 	ListNotifyChatsOperation:         []string{},
 	NotifyEnrollOperation:            []string{},
-	NotifyLinkOperation:              []string{},
 	NotifyListSubscriptionsOperation: []string{},
 	NotifySubscribeOperation:         []string{},
 	NotifyUnsubscribeOperation:       []string{},

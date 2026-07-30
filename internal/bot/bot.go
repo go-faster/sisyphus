@@ -223,15 +223,6 @@ func (b *Bot) Run(ctx context.Context) error {
 		if !ok {
 			return nil
 		}
-		c, ok := b.commands.lookup(cmd)
-		if !ok {
-			return nil
-		}
-		// Commands with a non-empty usage require arguments; silently ignore
-		// bare invocations (preserves the old switch's behavior).
-		if rest == "" && c.usage != "" {
-			return nil
-		}
 
 		var s messageSender
 		if !b.silent {
@@ -239,11 +230,13 @@ func (b *Bot) Run(ctx context.Context) error {
 		} else {
 			s = silentSender{}
 		}
-		return c.handler(ctx, s, invocation{
+
+		b.dispatch(ctx, s, cmd, rest, invocation{
 			SenderID: senderID,
 			Chat:     chatPeerFrom(e, msg.PeerID),
 			Rest:     rest,
 		})
+		return nil
 	})
 
 	dispatcher.OnBotInlineQuery(func(ctx context.Context, _ tg.Entities, u *tg.UpdateBotInlineQuery) error {
@@ -338,20 +331,20 @@ func isStaleInlineQueryError(err error) bool {
 func chatPeerFrom(e tg.Entities, peer tg.PeerClass) chatPeer {
 	switch p := peer.(type) {
 	case *tg.PeerChannel:
-		out := chatPeer{Type: "channel", ID: p.ChannelID}
+		out := chatPeer{Type: peerTypeChannel, ID: p.ChannelID}
 		if ch, ok := e.Channels[p.ChannelID]; ok {
 			out.AccessHash = ch.AccessHash
 			out.Title = ch.Title
 		}
 		return out
 	case *tg.PeerChat:
-		out := chatPeer{Type: "chat", ID: p.ChatID}
+		out := chatPeer{Type: peerTypeChat, ID: p.ChatID}
 		if c, ok := e.Chats[p.ChatID]; ok {
 			out.Title = c.Title
 		}
 		return out
 	case *tg.PeerUser:
-		out := chatPeer{Type: "user", ID: p.UserID}
+		out := chatPeer{Type: peerTypeUser, ID: p.UserID}
 		if u, ok := e.Users[p.UserID]; ok {
 			out.AccessHash = u.AccessHash
 			out.Title = strings.TrimSpace(u.FirstName + " " + u.LastName)

@@ -86,8 +86,10 @@ func TestStore_EnrollLinkSubscribeRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, userID, userID2)
 
-	require.NoError(t, s.LinkGitLab(ctx, telegramUserID, "alice"))
-	require.NoError(t, s.LinkJira(ctx, telegramUserID, "acc-1", "Alice A"))
+	_, err = s.SyncIdentities(ctx, []Identity{
+		{TelegramUserID: telegramUserID, GitLabUsername: "alice", JiraAccountID: "acc-1", JiraDisplayName: "Alice A"},
+	})
+	require.NoError(t, err)
 
 	require.NoError(t, s.Subscribe(ctx, telegramUserID, notify.SourceGitLab,
 		[]notify.EventType{notify.EventMRAssigned, notify.EventMRReviewRequested}))
@@ -120,7 +122,8 @@ func TestStore_SubscribersMatchesLinkedIdentity(t *testing.T) {
 	const telegramUserID int64 = 2002
 	_, err := s.EnrollTelegram(ctx, telegramUserID, 999)
 	require.NoError(t, err)
-	require.NoError(t, s.LinkGitLab(ctx, telegramUserID, "bob"))
+	_, err = s.SyncIdentities(ctx, []Identity{{TelegramUserID: telegramUserID, GitLabUsername: "bob"}})
+	require.NoError(t, err)
 	require.NoError(t, s.Subscribe(ctx, telegramUserID, notify.SourceGitLab, []notify.EventType{notify.EventMRAssigned}))
 
 	subs, err := s.Subscribers(ctx, notify.SourceGitLab, notify.EventMRAssigned, notify.Actor{Source: notify.SourceGitLab, Key: "bob"})

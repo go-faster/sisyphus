@@ -18,8 +18,6 @@ import (
 // loop). Satisfied by *internal/notify/store.Store.
 type NotifyStore interface {
 	EnrollTelegram(ctx context.Context, telegramUserID, accessHash int64) (uuid.UUID, error)
-	LinkGitLab(ctx context.Context, telegramUserID int64, username string) error
-	LinkJira(ctx context.Context, telegramUserID int64, accountID, displayName string) error
 	Subscribe(ctx context.Context, telegramUserID int64, source notify.Source, eventTypes []notify.EventType) error
 	Unsubscribe(ctx context.Context, telegramUserID int64, source notify.Source) error
 	ListSubscriptions(ctx context.Context, telegramUserID int64) ([]notifystore.Subscription, error)
@@ -61,26 +59,6 @@ func (h *Handler) NotifyEnroll(ctx context.Context, req *oas.NotifyEnrollRequest
 	}
 	if _, err := h.notify.EnrollTelegram(ctx, req.TelegramUserID, req.TelegramAccessHash); err != nil {
 		return nil, errors.Wrap(err, "enroll telegram user")
-	}
-	return &oas.Ack{Ok: true}, nil
-}
-
-// NotifyLink links a Telegram user's GitLab/Jira identity.
-func (h *Handler) NotifyLink(ctx context.Context, req *oas.NotifyLinkRequest) (*oas.Ack, error) {
-	if h.notify == nil {
-		return nil, errNotifyNotConfigured
-	}
-	var err error
-	switch req.Source {
-	case oas.NotifyLinkRequestSourceGitlab:
-		err = h.notify.LinkGitLab(ctx, req.TelegramUserID, req.Identity)
-	case oas.NotifyLinkRequestSourceJira:
-		err = h.notify.LinkJira(ctx, req.TelegramUserID, req.Identity, req.DisplayName.Or(""))
-	default:
-		return nil, notifyBadRequest(errors.Errorf("unknown source %q", req.Source))
-	}
-	if err != nil {
-		return nil, notifyBadRequest(err)
 	}
 	return &oas.Ack{Ok: true}, nil
 }

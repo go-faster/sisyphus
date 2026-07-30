@@ -89,10 +89,14 @@ func run(ctx context.Context, cfg config.Config, telemetry *app.Telemetry) error
 		return errors.New("api.auth_token is required")
 	}
 
-	handler := api.New(comp.Retriever, comp.Answerer, info.Short(),
-		api.WithContentResolver(comp.ContentResolver),
-		api.WithURLFetcher(comp.URLFetcher),
-	)
+	res, err := syncNotifyIdentities(ctx, comp.DB, cfg.Notify.Identities)
+	if err != nil {
+		return err
+	}
+	lg.Info("notify identities reconciled",
+		zap.Int("linked", res.Linked), zap.Int("cleared", res.Cleared))
+
+	handler := newHandler(comp, info.Short())
 	sec := api.NewSecurityHandler(cfg.API.AuthToken)
 	oasSrv, err := oas.NewServer(handler, sec,
 		oas.WithTracerProvider(tp),

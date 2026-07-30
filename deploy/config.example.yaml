@@ -166,6 +166,27 @@ telegram:
   allowed_chats: []
   allowed_user_ids: []
 
+# notify: the notification gateway.
+#
+# poll.interval_seconds is ssbot's outbox drain interval; 0 (the default)
+# disables delivery entirely, alert reports included.
+#
+# identities maps Telegram users to the GitLab/Jira accounts events are
+# addressed to, and is the only way that mapping is made: whoever holds a
+# GitLab username receives every notification sent to it, and nothing a user
+# types over Telegram proves the account is theirs. ssapi reconciles the list
+# on startup, so removing an entry revokes it. Each entry needs telegram_id
+# plus at least one of gitlab/jira.
+notify:
+  poll:
+    interval_seconds: 15
+  identities: []
+  # identities:
+  #   - telegram_id: 123456789
+  #     gitlab: a.example
+  #     jira: "557058:0000-0000"
+  #     jira_display: "A. Example"
+
 # agent: ssagent, the on-demand investigation service. base_url is read by
 # ssbot to reach ssagent for the /investigate command (leave empty to disable
 # /investigate in ssbot). gateway_url points at the mcpgateway instance that

@@ -5,8 +5,10 @@ import (
 	"strings"
 
 	"github.com/go-faster/errors"
-
 	"github.com/gotd/td/tg"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // invocation is one command call: who sent it, where they sent it, and the
@@ -20,10 +22,18 @@ type invocation struct {
 	Rest     string
 }
 
+// Peer kinds a command can arrive from. They match notify.PeerType's values,
+// which is what the notification store persists.
+const (
+	peerTypeUser    = "user"
+	peerTypeChat    = "chat"    // basic group
+	peerTypeChannel = "channel" // channel or supergroup
+)
+
 // chatPeer is the MTProto peer a command arrived from, flattened to what the
 // notification store persists.
 type chatPeer struct {
-	Type       string // "user", "chat" (basic group) or "channel" (channel/supergroup)
+	Type       string
 	ID         int64
 	AccessHash int64 // zero for a basic group, which needs none
 	Title      string
@@ -39,6 +49,51 @@ type command struct {
 	desc    string // shown in /help and Telegram's /-menu; empty hides it
 	hidden  bool   // hidden commands are omitted from /help and the /-menu
 	handler commandHandler
+}
+
+// dispatch runs one command: it resolves the name, enforces the usage
+// contract, and — the reason it exists as one function — turns whatever the
+// handler returns into the single reply path for failures.
+//
+// A handler reports a failure by returning the error, not by writing to the
+// chat. Doing it per-handler is how raw ssapi errors (DSNs, hostnames,
+// constraint names, other users' identities) ended up in messages, and every
+// new command would have to remember the rule. Here it cannot be forgotten.
+//
+// /context, /search and /investigate still answer their own failures: they
+// edit a progress placeholder and distinguish a timeout or an exhausted
+// iteration budget from a plain failure, which a generic reply cannot. They
+// return nil, so this path stays out of their way.
+func (b *Bot) dispatch(ctx context.Context, s messageSender, name, rest string, inv invocation) {
+	c, ok := b.commands.lookup(name)
+	if !ok {
+		// Answer with the command list in a private chat, but stay quiet in a
+		// group or channel, where a slash command is just as likely addressed
+		// to some other bot.
+		if inv.Chat.Type == peerTypeUser {
+			b.sendTextReply(ctx, s, "Unknown command /"+name+".\n\n"+b.commands.helpText())
+		}
+		return
+	}
+	// A command whose usage is non-empty needs arguments. Answering with that
+	// usage is the whole point of recording it — a bare /link used to do
+	// nothing at all, which reads as a broken bot.
+	if rest == "" && c.usage != "" {
+		b.sendTextReply(ctx, s, "Usage: /"+c.name+" "+c.usage)
+		return
+	}
+
+	// One span per command: it is what makes the trace_id in a failure reply
+	// resolve to something an operator can open.
+	ctx, span := b.tracer.Start(ctx, "bot.command",
+		trace.WithAttributes(attribute.String("command", c.name)))
+	defer span.End()
+
+	if err := c.handler(ctx, s, inv); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		b.replyFailure(ctx, s, c.name, err)
+	}
 }
 
 // commandRegistry is the Bot's single source of truth for command dispatch,

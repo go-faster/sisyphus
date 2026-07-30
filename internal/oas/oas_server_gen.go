@@ -56,12 +56,6 @@ type Handler interface {
 	//
 	// POST /notify/enroll
 	NotifyEnroll(ctx context.Context, req *NotifyEnrollRequest) (*Ack, error)
-	// NotifyLink implements notifyLink operation.
-	//
-	// Link a Telegram user's GitLab/Jira identity.
-	//
-	// POST /notify/link
-	NotifyLink(ctx context.Context, req *NotifyLinkRequest) (*Ack, error)
 	// NotifyListSubscriptions implements notifyListSubscriptions operation.
 	//
 	// List a Telegram user's subscriptions.

@@ -78,6 +78,21 @@ type AlertmanagerConfig struct {
 // intervals.
 type NotifyConfig struct {
 	PollIntervalSeconds int
+
+	// Identities maps Telegram users to the GitLab/Jira identities events are
+	// addressed to. It is the *only* way that mapping is established: a bot
+	// user cannot claim an identity, because nothing they type proves they own
+	// it — anyone could name a colleague's account and receive their
+	// notifications. ssapi reconciles this list into the database on startup.
+	Identities []NotifyIdentity
+}
+
+// NotifyIdentity is one configured Telegram to GitLab/Jira mapping.
+type NotifyIdentity struct {
+	TelegramUserID  int64
+	GitLabUsername  string
+	JiraAccountID   string
+	JiraDisplayName string
 }
 
 // IngestConfig configures ssingest's `serve` daemon mode: the address its
@@ -308,6 +323,14 @@ type fileNotifyConfig struct {
 	Poll struct {
 		IntervalSeconds int `yaml:"interval_seconds"`
 	} `yaml:"poll"`
+	Identities []fileNotifyIdentity `yaml:"identities"`
+}
+
+type fileNotifyIdentity struct {
+	TelegramID  int64  `yaml:"telegram_id"`
+	GitLab      string `yaml:"gitlab"`
+	Jira        string `yaml:"jira"`
+	JiraDisplay string `yaml:"jira_display"`
 }
 
 type fileIngestConfig struct {
@@ -904,6 +927,30 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 		return Config{}, errors.Errorf("alertmanager.investigate.min_severity %q must be info, warning or critical", alertMinSeverity)
 	}
 
+	// An identity with no Telegram id addresses nobody, and one that names
+	// neither a GitLab nor a Jira account matches no event: both are edits
+	// that look done but silently deliver nothing, so fail instead.
+	notifyIdentities := make([]NotifyIdentity, 0, len(c.Notify.Identities))
+	seenTelegram := make(map[int64]struct{}, len(c.Notify.Identities))
+	for i, id := range c.Notify.Identities {
+		if id.TelegramID == 0 {
+			return Config{}, errors.Errorf("notify.identities[%d]: telegram_id is required", i)
+		}
+		if id.GitLab == "" && id.Jira == "" {
+			return Config{}, errors.Errorf("notify.identities[%d]: set gitlab, jira, or both", i)
+		}
+		if _, dup := seenTelegram[id.TelegramID]; dup {
+			return Config{}, errors.Errorf("notify.identities[%d]: telegram_id %d listed twice", i, id.TelegramID)
+		}
+		seenTelegram[id.TelegramID] = struct{}{}
+		notifyIdentities = append(notifyIdentities, NotifyIdentity{
+			TelegramUserID:  id.TelegramID,
+			GitLabUsername:  id.GitLab,
+			JiraAccountID:   id.Jira,
+			JiraDisplayName: id.JiraDisplay,
+		})
+	}
+
 	// notify.poll.interval_seconds no longer schedules any collection — the
 	// GitLab and Jira ingestion runs emit the events now — but a config that
 	// only set the notify cadence would stop notifying silently, so it seeds
@@ -1021,6 +1068,7 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 		},
 		Notify: NotifyConfig{
 			PollIntervalSeconds: c.Notify.Poll.IntervalSeconds,
+			Identities:          notifyIdentities,
 		},
 		Ingest: IngestConfig{
 			Addr:                        c.Ingest.Addr,

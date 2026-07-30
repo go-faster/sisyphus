@@ -14,7 +14,6 @@ const (
 	GetPendingNotificationsOperation OperationName = "GetPendingNotifications"
 	ListNotifyChatsOperation         OperationName = "ListNotifyChats"
 	NotifyEnrollOperation            OperationName = "NotifyEnroll"
-	NotifyLinkOperation              OperationName = "NotifyLink"
 	NotifyListSubscriptionsOperation OperationName = "NotifyListSubscriptions"
 	NotifySubscribeOperation         OperationName = "NotifySubscribe"
 	NotifyUnsubscribeOperation       OperationName = "NotifyUnsubscribe"

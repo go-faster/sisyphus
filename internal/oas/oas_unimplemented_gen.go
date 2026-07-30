@@ -85,15 +85,6 @@ func (UnimplementedHandler) NotifyEnroll(ctx context.Context, req *NotifyEnrollR
 	return r, ht.ErrNotImplemented
 }
 
-// NotifyLink implements notifyLink operation.
-//
-// Link a Telegram user's GitLab/Jira identity.
-//
-// POST /notify/link
-func (UnimplementedHandler) NotifyLink(ctx context.Context, req *NotifyLinkRequest) (r *Ack, _ error) {
-	return r, ht.ErrNotImplemented
-}
-
 // NotifyListSubscriptions implements notifyListSubscriptions operation.
 //
 // List a Telegram user's subscriptions.
