@@ -4,9 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	"github.com/go-faster/sdk/zctx"
-	"go.uber.org/zap"
 )
 
 // handleAlertsCmd registers the chat the command was sent in as a destination
@@ -48,8 +45,7 @@ func (b *Bot) handleAlertsCmd(ctx context.Context, s messageSender, inv invocati
 func (b *Bot) setAlerts(ctx context.Context, s messageSender, inv invocation, enabled bool) error {
 	err := b.notifier.NotifyRegisterChat(ctx, inv.Chat.Type, inv.Chat.ID, inv.Chat.AccessHash, inv.Chat.Title, inv.SenderID, enabled)
 	if err != nil {
-		zctx.From(ctx).Error("notify register chat failed", zap.Error(err), zap.Bool("enabled", enabled))
-		b.sendTextReply(ctx, s, "Failed: "+err.Error())
+		b.replyFailure(ctx, s, "updating alert notifications for this chat", err)
 		return nil
 	}
 	if enabled {
@@ -63,8 +59,7 @@ func (b *Bot) setAlerts(ctx context.Context, s messageSender, inv invocation, en
 func (b *Bot) alertsStatus(ctx context.Context, s messageSender, inv invocation) error {
 	chats, err := b.notifier.NotifyListChats(ctx)
 	if err != nil {
-		zctx.From(ctx).Error("notify list chats failed", zap.Error(err))
-		b.sendTextReply(ctx, s, "Failed: "+err.Error())
+		b.replyFailure(ctx, s, "reading the alert chat list", err)
 		return nil
 	}
 

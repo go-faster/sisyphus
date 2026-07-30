@@ -157,8 +157,7 @@ func (b *Bot) handleSubscribeCmd(ctx context.Context, s messageSender, inv invoc
 	}
 
 	if err := b.notifier.NotifySubscribe(ctx, inv.SenderID, source, eventTypes); err != nil {
-		zctx.From(ctx).Error("notify subscribe failed", zap.Error(err))
-		b.sendTextReply(ctx, s, "Failed to subscribe: "+err.Error())
+		b.replyFailure(ctx, s, "subscribing", err)
 		return nil
 	}
 	b.sendTextReply(ctx, s, fmt.Sprintf("Subscribed to %s: %s", source, strings.Join(eventTypes, ", ")))
@@ -176,8 +175,7 @@ func (b *Bot) handleUnsubscribeCmd(ctx context.Context, s messageSender, inv inv
 		return nil
 	}
 	if err := b.notifier.NotifyUnsubscribe(ctx, inv.SenderID, source); err != nil {
-		zctx.From(ctx).Error("notify unsubscribe failed", zap.Error(err))
-		b.sendTextReply(ctx, s, "Failed to unsubscribe: "+err.Error())
+		b.replyFailure(ctx, s, "unsubscribing", err)
 		return nil
 	}
 	b.sendTextReply(ctx, s, "Unsubscribed from "+source)
@@ -191,8 +189,7 @@ func (b *Bot) handleNotificationsCmd(ctx context.Context, s messageSender, inv i
 	}
 	subs, err := b.notifier.NotifyListSubscriptions(ctx, inv.SenderID)
 	if err != nil {
-		zctx.From(ctx).Error("notify list subscriptions failed", zap.Error(err))
-		b.sendTextReply(ctx, s, "Failed to list subscriptions: "+err.Error())
+		b.replyFailure(ctx, s, "reading your subscriptions", err)
 		return nil
 	}
 	if len(subs) == 0 {

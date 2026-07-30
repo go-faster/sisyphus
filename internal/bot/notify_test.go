@@ -27,8 +27,8 @@ type fakeNotifier struct {
 
 func newFakeNotifier() *fakeNotifier {
 	return &fakeNotifier{
-		subscribed:       map[int64][2]string{},
-		unsubscribed:     map[int64]string{},
+		subscribed:   map[int64][2]string{},
+		unsubscribed: map[int64]string{},
 	}
 }
 

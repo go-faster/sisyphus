@@ -250,6 +250,12 @@ func (b *Bot) Run(ctx context.Context) error {
 			return nil
 		}
 
+		// One span per command: it is what makes the trace_id in a failure
+		// reply (replyFailure) resolve to something an operator can open.
+		ctx, span := b.tracer.Start(ctx, "bot.command",
+			trace.WithAttributes(attribute.String("command", c.name)))
+		defer span.End()
+
 		return c.handler(ctx, s, invocation{
 			SenderID: senderID,
 			Chat:     chatPeerFrom(e, msg.PeerID),
