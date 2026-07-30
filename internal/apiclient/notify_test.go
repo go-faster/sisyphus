@@ -19,16 +19,16 @@ import (
 // notify endpoints through a real HTTP server/client, mirroring the rest of
 // this file's fakeRetriever/fakeAnswerer pattern.
 type fakeNotifyStore struct {
-	subs        map[int64][]notifystore.Subscription
-	pending     []notifystore.OutboxItem
-	acked       map[uuid.UUID]error
-	chats       []notifystore.Chat
+	subs    map[int64][]notifystore.Subscription
+	pending []notifystore.OutboxItem
+	acked   map[uuid.UUID]error
+	chats   []notifystore.Chat
 }
 
 func newFakeNotifyStore() *fakeNotifyStore {
 	return &fakeNotifyStore{
-		subs:        map[int64][]notifystore.Subscription{},
-		acked:       map[uuid.UUID]error{},
+		subs:  map[int64][]notifystore.Subscription{},
+		acked: map[uuid.UUID]error{},
 	}
 }
 
