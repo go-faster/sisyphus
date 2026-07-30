@@ -89,10 +89,7 @@ func run(ctx context.Context, cfg config.Config, telemetry *app.Telemetry) error
 		return errors.New("api.auth_token is required")
 	}
 
-	handler := api.New(comp.Retriever, comp.Answerer, info.Short(),
-		api.WithContentResolver(comp.ContentResolver),
-		api.WithURLFetcher(comp.URLFetcher),
-	)
+	handler := newHandler(comp, info.Short())
 	sec := api.NewSecurityHandler(cfg.API.AuthToken)
 	oasSrv, err := oas.NewServer(handler, sec,
 		oas.WithTracerProvider(tp),
