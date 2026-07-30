@@ -167,6 +167,23 @@ func peerChatID(p tg.PeerClass) int64 {
 	}
 }
 
+// messageSenderID resolves who sent msg.
+//
+// In a private chat MTProto omits from_id: peer_id already names the other
+// party, and repeating it would be redundant. So reading from_id alone yields
+// sender 0 for every direct message — which then enrolls nobody and asks the
+// notification store for "user 0", i.e. exactly the DMs that most need a
+// sender.
+func messageSenderID(msg *tg.Message) int64 {
+	if id := peerChatID(msg.FromID); id != 0 {
+		return id
+	}
+	if p, ok := msg.PeerID.(*tg.PeerUser); ok {
+		return p.UserID
+	}
+	return 0
+}
+
 // isAllowed checks if a chat/user combination is in the allowlist.
 func (b *Bot) isAllowed(chatID, userID int64) bool {
 	_, isChat := b.allowedChats[chatID]
@@ -210,7 +227,7 @@ func (b *Bot) Run(ctx context.Context) error {
 		}
 
 		chatID := peerChatID(msg.PeerID)
-		senderID := peerChatID(msg.FromID)
+		senderID := messageSenderID(msg)
 		if !b.isAllowed(chatID, senderID) {
 			zctx.From(ctx).Debug("bot: ignoring message from non-allowlisted chat/user",
 				zap.Int64("chat_id", chatID), zap.Int64("sender_id", senderID))

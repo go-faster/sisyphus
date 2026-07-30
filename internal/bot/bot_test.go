@@ -233,3 +233,39 @@ func TestHandleUsesQueryAnswererWithDefaultTimeout(t *testing.T) {
 	require.Positive(t, time.Until(a.deadline))
 	require.LessOrEqual(t, time.Until(a.deadline), defaultAnswerTimeout)
 }
+
+// A direct message carries no from_id — peer_id already names the sender — so
+// reading from_id alone made every DM look like it came from user 0: nobody
+// was enrolled, and /subscribe asked the store for a user that cannot exist.
+func TestMessageSenderID(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		msg  *tg.Message
+		want int64
+	}{
+		{
+			name: "direct message has no from_id",
+			msg:  &tg.Message{PeerID: &tg.PeerUser{UserID: 4242}},
+			want: 4242,
+		},
+		{
+			name: "group message names its sender",
+			msg:  &tg.Message{PeerID: &tg.PeerChat{ChatID: 77}, FromID: &tg.PeerUser{UserID: 4242}},
+			want: 4242,
+		},
+		{
+			name: "channel post is sent by the channel",
+			msg:  &tg.Message{PeerID: &tg.PeerChannel{ChannelID: 99}, FromID: &tg.PeerChannel{ChannelID: 99}},
+			want: 99,
+		},
+		{
+			name: "anonymous channel post has neither",
+			msg:  &tg.Message{PeerID: &tg.PeerChannel{ChannelID: 99}},
+			want: 0,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, messageSenderID(tt.msg))
+		})
+	}
+}
