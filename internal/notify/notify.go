@@ -5,6 +5,14 @@
 // Dispatcher matches those against subscriptions and writes Notifications to an
 // outbox, and a Sink delivers one Notification to one user's Target address.
 //
+// Matching a GitLab/Jira actor to a Telegram user needs a stored identity, and
+// that identity comes from deployment config alone (`notify.identities`,
+// reconciled by ssapi through store.SyncIdentities). A user cannot claim one
+// over the bot: nothing they type proves the account is theirs, so a
+// self-service /link let anyone name a colleague and read their
+// notifications. Subscriptions stay self-service — they only decide what a
+// user hears about events already addressed to them.
+//
 // It depends only on stdlib, google/uuid, and internal/event (itself
 // stdlib-only), so it stays import-cycle-free for both the ent-backed store
 // (internal/notify/store) and the source collectors + projectors
