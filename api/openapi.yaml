@@ -192,6 +192,40 @@ paths:
                 $ref: "#/components/schemas/NotifySubscriptionsResponse"
         default:
           $ref: "#/components/responses/Error"
+  /notifications/chats:
+    get:
+      operationId: listNotifyChats
+      summary: List chats registered to receive broadcast notifications.
+      responses:
+        "200":
+          description: Registered chats.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotifyChatsResponse"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      operationId: registerNotifyChat
+      summary: >-
+        Register (or re-enable) a chat as a broadcast destination, or disable
+        it. Called by the bot when someone runs /alerts inside the chat, which
+        is where the peer's access hash comes from.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotifyChatRequest"
+      responses:
+        "200":
+          description: Registration recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ack"
+        default:
+          $ref: "#/components/responses/Error"
   /notifications/pending:
     get:
       operationId: getPendingNotifications
@@ -566,6 +600,50 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/NotifySubscription"
+    NotifyChatRequest:
+      type: object
+      required: [peer_type, peer_id, enabled]
+      properties:
+        peer_type:
+          type: string
+          enum: [user, channel, chat]
+        peer_id:
+          type: integer
+          format: int64
+        access_hash:
+          type: integer
+          format: int64
+          description: Required for channels and supergroups; a basic group has none.
+        title:
+          type: string
+        added_by:
+          type: integer
+          format: int64
+          description: Telegram user who ran the command, for audit.
+        enabled:
+          type: boolean
+          description: false disables the chat without forgetting its access hash.
+    NotifyChat:
+      type: object
+      required: [peer_type, peer_id, enabled]
+      properties:
+        peer_type:
+          type: string
+        peer_id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        enabled:
+          type: boolean
+    NotifyChatsResponse:
+      type: object
+      required: [chats]
+      properties:
+        chats:
+          type: array
+          items:
+            $ref: "#/components/schemas/NotifyChat"
     PendingNotification:
       type: object
       required: [id, telegram_user_id, telegram_access_hash, text, attempts]
