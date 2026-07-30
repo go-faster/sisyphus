@@ -57,20 +57,14 @@ func (DefaultRenderer) Render(e Event) (string, error) {
 		if e.URL != "" {
 			text = prefix + "[" + e.Title + "](" + e.URL + ")"
 		}
-		if e.Body != "" {
-			text += "\n" + e.Body
-		}
-		return text, nil
+		return Lines(text, e.Body), nil
 	case EventInvestigationCompleted:
 		// Broadcast events have no actor and no "you" to address.
 		text := "*Investigation:* " + e.Title
 		if e.URL != "" {
 			text = "*Investigation:* [" + e.Title + "](" + e.URL + ")"
 		}
-		if e.Body != "" {
-			text += "\n" + e.Body
-		}
-		return text, nil
+		return Lines(text, e.Body), nil
 	default:
 		verb = "notified you about"
 	}

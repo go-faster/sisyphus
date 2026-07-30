@@ -50,17 +50,17 @@ func body(p agent.ReportPayload) string {
 	if p.Verdict != "" {
 		b.WriteString("Verdict: ")
 		b.WriteString(string(p.Verdict))
-		b.WriteString("\n")
+		b.WriteString(notify.LineBreak)
 	}
 	if f := strings.TrimSpace(p.Findings); f != "" {
 		b.WriteString(truncate(f, maxFindingsChars))
-		b.WriteString("\n")
+		b.WriteString(notify.LineBreak)
 	}
 	for _, action := range p.Actions {
 		if a := strings.TrimSpace(action); a != "" {
 			b.WriteString("- ")
 			b.WriteString(a)
-			b.WriteString("\n")
+			b.WriteString(notify.LineBreak)
 		}
 	}
 	return strings.TrimRight(b.String(), "\n")

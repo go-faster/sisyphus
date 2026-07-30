@@ -82,3 +82,18 @@ func TestRenderFiringAndResolved(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, resolved, "Resolved:")
 }
+
+// A bare newline is a CommonMark soft break, which the Telegram renderer turns
+// into a space — that collapsed the whole alert onto one line.
+func TestBodyUsesHardLineBreaks(t *testing.T) {
+	out, err := Projector{}.Project(firingEvent(t))
+	require.NoError(t, err)
+	for _, line := range []string{"error ratio 12%", "severity=critical service=checkout"} {
+		require.Contains(t, out[0].Body, line)
+	}
+	require.Contains(t, out[0].Body, notify.LineBreak)
+
+	text, err := notify.DefaultRenderer{}.Render(out[0])
+	require.NoError(t, err)
+	require.Contains(t, text, notify.LineBreak, "the title must not run into the body either")
+}

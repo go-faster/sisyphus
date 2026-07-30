@@ -56,13 +56,10 @@ func (Projector) Project(e event.Event) ([]notify.Event, error) {
 	}}, nil
 }
 
-// body renders the description annotation plus a few identifying labels.
+// body renders the description annotation plus a few identifying labels, one
+// per line (notify.Lines, since a bare newline renders as a space).
 func body(p ingestalert.AlertPayload) string {
-	var b strings.Builder
-	if d := strings.TrimSpace(p.Annotations["description"]); d != "" {
-		b.WriteString(d)
-		b.WriteString("\n")
-	}
+	lines := []string{strings.TrimSpace(p.Annotations["description"])}
 
 	var pairs []string
 	for _, k := range labelsShown {
@@ -70,20 +67,14 @@ func body(p ingestalert.AlertPayload) string {
 			pairs = append(pairs, k+"="+v)
 		}
 	}
-	if len(pairs) > 0 {
-		b.WriteString(strings.Join(pairs, " "))
-		b.WriteString("\n")
-	}
+	lines = append(lines, strings.Join(pairs, " "))
 
 	// A runbook is the one annotation an on-call reader acts on, so it earns
 	// its own line even though the label block is deliberately short.
 	for _, k := range runbookKeys(p.Annotations) {
-		b.WriteString(k)
-		b.WriteString(": ")
-		b.WriteString(p.Annotations[k])
-		b.WriteString("\n")
+		lines = append(lines, k+": "+p.Annotations[k])
 	}
-	return strings.TrimSpace(b.String())
+	return notify.Lines(lines...)
 }
 
 func runbookKeys(annotations map[string]string) []string {
