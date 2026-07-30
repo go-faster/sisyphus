@@ -20,10 +20,18 @@ type invocation struct {
 	Rest     string
 }
 
+// Peer kinds a command can arrive from. They match notify.PeerType's values,
+// which is what the notification store persists.
+const (
+	peerTypeUser    = "user"
+	peerTypeChat    = "chat"    // basic group
+	peerTypeChannel = "channel" // channel or supergroup
+)
+
 // chatPeer is the MTProto peer a command arrived from, flattened to what the
 // notification store persists.
 type chatPeer struct {
-	Type       string // "user", "chat" (basic group) or "channel" (channel/supergroup)
+	Type       string
 	ID         int64
 	AccessHash int64 // zero for a basic group, which needs none
 	Title      string

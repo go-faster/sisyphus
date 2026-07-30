@@ -223,15 +223,6 @@ func (b *Bot) Run(ctx context.Context) error {
 		if !ok {
 			return nil
 		}
-		c, ok := b.commands.lookup(cmd)
-		if !ok {
-			return nil
-		}
-		// Commands with a non-empty usage require arguments; silently ignore
-		// bare invocations (preserves the old switch's behavior).
-		if rest == "" && c.usage != "" {
-			return nil
-		}
 
 		var s messageSender
 		if !b.silent {
@@ -239,6 +230,26 @@ func (b *Bot) Run(ctx context.Context) error {
 		} else {
 			s = silentSender{}
 		}
+
+		chat := chatPeerFrom(e, msg.PeerID)
+		c, ok := b.commands.lookup(cmd)
+		if !ok {
+			// Unknown command: answer with the command list in a private chat,
+			// but stay quiet in a group or channel, where a slash command is
+			// just as likely addressed to some other bot.
+			if chat.Type == peerTypeUser {
+				b.sendTextReply(ctx, s, "Unknown command /"+cmd+".\n\n"+b.commands.helpText())
+			}
+			return nil
+		}
+		// A command whose usage is non-empty needs arguments. Answering with
+		// that usage is the whole point of recording it — a bare /link used to
+		// do nothing at all, which reads as a broken bot.
+		if rest == "" && c.usage != "" {
+			b.sendTextReply(ctx, s, "Usage: /"+c.name+" "+c.usage)
+			return nil
+		}
+
 		return c.handler(ctx, s, invocation{
 			SenderID: senderID,
 			Chat:     chatPeerFrom(e, msg.PeerID),
@@ -338,20 +349,20 @@ func isStaleInlineQueryError(err error) bool {
 func chatPeerFrom(e tg.Entities, peer tg.PeerClass) chatPeer {
 	switch p := peer.(type) {
 	case *tg.PeerChannel:
-		out := chatPeer{Type: "channel", ID: p.ChannelID}
+		out := chatPeer{Type: peerTypeChannel, ID: p.ChannelID}
 		if ch, ok := e.Channels[p.ChannelID]; ok {
 			out.AccessHash = ch.AccessHash
 			out.Title = ch.Title
 		}
 		return out
 	case *tg.PeerChat:
-		out := chatPeer{Type: "chat", ID: p.ChatID}
+		out := chatPeer{Type: peerTypeChat, ID: p.ChatID}
 		if c, ok := e.Chats[p.ChatID]; ok {
 			out.Title = c.Title
 		}
 		return out
 	case *tg.PeerUser:
-		out := chatPeer{Type: "user", ID: p.UserID}
+		out := chatPeer{Type: peerTypeUser, ID: p.UserID}
 		if u, ok := e.Users[p.UserID]; ok {
 			out.AccessHash = u.AccessHash
 			out.Title = strings.TrimSpace(u.FirstName + " " + u.LastName)
