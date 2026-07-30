@@ -11,7 +11,6 @@ Ingestion CLI and daemon. Wires its dependencies inline — it does **not** reus
 | `serve` | long-lived daemon: webhooks + pollers trigger the same per-source runs |
 | `worker` | drains the `ingest.index` queue and does nothing else |
 | `index` | index documents directly |
-| `notify` | one pass of the notify collectors + dispatcher (`internal/notify`) |
 | `gc` | sweep vector points no chunk references (`internal/vectorgc`) |
 | `repair` | rebind chunks whose point is keyed by the wrong ID (`internal/vectorrepair`) |
 
@@ -59,7 +58,9 @@ coalesce into one run (`Trigger.Fire`'s debounce).
 
 `cmd/ssapi` runs no ingestion, so exactly one process races to write a given source's rows.
 
-Trigger keys: `gitlab`, `jira`, `git`, `files`, `telegram`, `notify` (see `cmd_serve.go`).
+Trigger keys: `gitlab`, `jira`, `git`, `files`, `telegram` (see `cmd_serve.go`). There is
+no `notify` key: notifications are a *destination* of the gitlab/jira runs now, not a
+source of their own — see "One poll, two destinations" below.
 
 ## Flags
 
@@ -75,5 +76,23 @@ Each source (per-repo for git, per-resource-type for gitlab REST) has a `SyncSta
 `document_count`. The cursor is read before the run and written back per batch (jira,
 gitlab pagination) or per repo (git commits), so a partial run resumes.
 
-The notify collectors keep their own cursors under distinct sources (`notify_gitlab`,
-`notify_jira`) so notify's poll cadence and diff state never interact with ingestion's.
+## One poll, two destinations
+
+The GitLab and Jira runs are **source adapters**: each fetched item becomes both an
+`index.Document` (handed to the indexer) and a canonical `event.Event`
+(`ingest/gitlab.EventFromMergeRequest`, `ingest/jira.EventFromIssue`), routed through
+`ingestrun.Runner.Router` — the `event.Mux` built in `router.go`, with the notification
+gateway subscribed per source. Notify used to run a second fetcher over the same REST
+APIs on its own `notify_gitlab`/`notify_jira` cursors; those are gone, along with the
+`notify` subcommand and trigger. Rows for the old sources may still sit in `sync_states`;
+nothing reads them.
+
+Two consequences worth knowing:
+
+- **A routing failure holds the cursor back.** Indexing and routing are both idempotent,
+  but a cursor advanced past a window no destination was told about loses that
+  notification permanently, so a failed route pins the cursor and the window is
+  re-fetched. `--dry-run` routes nothing.
+- **`--reset` does not spam notifications.** The projected `EventID`s are keyed by
+  (object, recipient) with no timestamp, so re-emitting a re-fetched MR hits the outbox
+  `DedupKey` and produces nothing.

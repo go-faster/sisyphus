@@ -1,3 +1,8 @@
+// Package jira is the Jira half of the notification gateway: a Projector that
+// turns canonical internal/event Events — emitted by the Jira source adapter
+// in internal/ingest/jira — into per-recipient notify.Events. It does not
+// fetch anything; the source adapter polls Jira exactly once and the router
+// delivers the same event here and to the knowledge-graph ingest.
 package jira
 
 import (
@@ -6,6 +11,7 @@ import (
 	"github.com/go-faster/errors"
 
 	"github.com/go-faster/sisyphus/internal/event"
+	ingestjira "github.com/go-faster/sisyphus/internal/ingest/jira"
 	"github.com/go-faster/sisyphus/internal/notify"
 )
 
@@ -17,7 +23,7 @@ import (
 type Projector struct{}
 
 func (Projector) Project(e event.Event) ([]notify.Event, error) {
-	var p IssuePayload
+	var p ingestjira.IssuePayload
 	if err := e.DecodePayload(&p); err != nil {
 		return nil, errors.Wrap(err, "decode issue payload")
 	}

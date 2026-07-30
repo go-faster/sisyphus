@@ -1,3 +1,8 @@
+// Package gitlab is the GitLab half of the notification gateway: a Projector
+// that fans canonical internal/event Events — emitted by the GitLab source
+// adapter in internal/ingest/gitlab — into per-recipient notify.Events. It
+// does not fetch anything; the source adapter polls GitLab exactly once and
+// the router delivers the same event here and to the knowledge-graph ingest.
 package gitlab
 
 import (
@@ -6,6 +11,7 @@ import (
 	"github.com/go-faster/errors"
 
 	"github.com/go-faster/sisyphus/internal/event"
+	ingestgitlab "github.com/go-faster/sisyphus/internal/ingest/gitlab"
 	"github.com/go-faster/sisyphus/internal/notify"
 )
 
@@ -17,7 +23,7 @@ import (
 type Projector struct{}
 
 func (Projector) Project(e event.Event) ([]notify.Event, error) {
-	var p MRPayload
+	var p ingestgitlab.MRPayload
 	if err := e.DecodePayload(&p); err != nil {
 		return nil, errors.Wrap(err, "decode mr payload")
 	}

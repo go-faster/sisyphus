@@ -19,6 +19,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/chunk"
 	"github.com/go-faster/sisyphus/internal/ent/document"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
+	"github.com/go-faster/sisyphus/internal/event"
 	"github.com/go-faster/sisyphus/internal/index"
 	"github.com/go-faster/sisyphus/internal/indexjob"
 	filesingest "github.com/go-faster/sisyphus/internal/ingest/files"
@@ -53,6 +54,9 @@ type runner struct {
 	mp        metric.MeterProvider
 	embedder  index.Embedder
 	userAgent string
+	// router receives the canonical events the GitLab/Jira source adapters
+	// emit as they fetch, so notifications ride the same poll ingestion does.
+	router event.Router
 	// newIndexer decides where indexing happens — in this process, or on a
 	// worker via the queue. The runs below do not know which.
 	newIndexer indexerFactory
@@ -524,6 +528,7 @@ func (r *runner) sharedRunner() ingestrun.Runner {
 		Config:    r.cfg,
 		TP:        r.tp,
 		MP:        r.mp,
+		Router:    r.router,
 		UserAgent: r.userAgent,
 	}
 }

@@ -59,6 +59,7 @@ func (d *ingestDeps) runnerWith(f indexerFactory) runner {
 		mp:         d.mp,
 		embedder:   d.services.Embedder,
 		userAgent:  d.userAgent,
+		router:     d.eventRouter(),
 		newIndexer: f,
 	}
 }

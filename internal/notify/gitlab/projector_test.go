@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-faster/sisyphus/internal/event"
+	ingestgitlab "github.com/go-faster/sisyphus/internal/ingest/gitlab"
 	"github.com/go-faster/sisyphus/internal/notify"
 )
 
@@ -19,7 +20,7 @@ func mrEvent(t *testing.T, assignees, reviewers []string) event.Event {
 		Actor:      event.Actor{Key: "carol"},
 		OccurredAt: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC),
 	}
-	e, err := e.WithPayload(MRPayload{Assignees: assignees, Reviewers: reviewers})
+	e, err := e.WithPayload(ingestgitlab.MRPayload{Assignees: assignees, Reviewers: reviewers})
 	require.NoError(t, err)
 	return e
 }

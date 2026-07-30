@@ -29,6 +29,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/chunk"
 	"github.com/go-faster/sisyphus/internal/ent/document"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
+	"github.com/go-faster/sisyphus/internal/event"
 	"github.com/go-faster/sisyphus/internal/index"
 	"github.com/go-faster/sisyphus/internal/indexjob"
 	gitlabingest "github.com/go-faster/sisyphus/internal/ingest/gitlab"
@@ -45,13 +46,35 @@ const indexConcurrency = 8
 
 // Runner runs ingestion sources against the shared pipeline infrastructure.
 type Runner struct {
-	DB        *ent.Client
-	Vectors   pipeline.VectorStore
-	Embedder  index.Embedder
-	Config    config.Config
-	TP        trace.TracerProvider
-	MP        metric.MeterProvider
+	DB       *ent.Client
+	Vectors  pipeline.VectorStore
+	Embedder index.Embedder
+	Config   config.Config
+	TP       trace.TracerProvider
+	MP       metric.MeterProvider
+	// Router receives the canonical events a source adapter emits while it
+	// fetches, so one poll feeds every destination (knowledge-graph ingest
+	// inline here, notification gateway and anything else via subscriptions).
+	// Nil routes nothing, which is what a run that only wants documents wants.
+	Router    event.Router
 	UserAgent string
+}
+
+// route hands a page's events to the router. It is a no-op without a router
+// or in a dry run, and it never aborts the run: a destination that fails is
+// reported so the caller can hold the cursor back and re-fetch the window,
+// which every destination is idempotent under.
+func (r Runner) route(ctx context.Context, events []event.Event, dry bool) error {
+	if r.Router == nil || dry || len(events) == 0 {
+		return nil
+	}
+	var errs []error
+	for _, e := range events {
+		if err := r.Router.Route(ctx, e); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // Indexer builds an in-process indexer for a source chunker.
@@ -142,9 +165,10 @@ func (r Runner) RunGitLab(ctx context.Context, opts GitLabOptions) error {
 	}
 
 	// ingestResource pages a GitLab resource via fetch (which returns
-	// documents already converted from the structured fetch, plus the
-	// advanced cursor and whether more pages remain), indexing each page.
-	ingestResource := func(resourceName string, enabled bool, src index.Source, fetch func(context.Context, int, gitlabingest.Cursor) ([]index.Document, gitlabingest.Cursor, bool, error)) error {
+	// documents already converted from the structured fetch, the canonical
+	// events the same page produces, plus the advanced cursor and whether more
+	// pages remain), indexing and routing each page.
+	ingestResource := func(resourceName string, enabled bool, src index.Source, fetch func(context.Context, int, gitlabingest.Cursor) ([]index.Document, []event.Event, gitlabingest.Cursor, bool, error)) error {
 		if !enabled {
 			return nil
 		}
@@ -165,12 +189,13 @@ func (r Runner) RunGitLab(ctx context.Context, opts GitLabOptions) error {
 
 		processed := 0
 		anyErr := false
+		routeFailed := false
 		page := 1
 		limReached := false
 		maxObserved := startCur.UpdatedAfter
 
 		for {
-			docs, nextCur, hasMore, err := fetch(ctx, page, startCur)
+			docs, events, nextCur, hasMore, err := fetch(ctx, page, startCur)
 			if err != nil {
 				lg.Error("gitlab fetch failed", zap.Error(err))
 				anyErr = true
@@ -188,10 +213,24 @@ func (r Runner) RunGitLab(ctx context.Context, opts GitLabOptions) error {
 					limReached = true
 				}
 			}
+			// Events are built in lockstep with docs, so --limit truncates
+			// both: an item the run stopped short of is not "handled" for any
+			// destination, and the held-back cursor will bring it round again.
+			pageEvents := events
+			if len(pageEvents) == len(docs) {
+				pageEvents = pageEvents[:len(pageBatch)]
+			}
+
 			n, errFound := IndexBatch(ctx, lg, pipe, pageBatch, opts.DryRun, "gitlab "+resourceName)
 			processed += n
 			if errFound {
 				anyErr = true
+			}
+
+			if rerr := r.route(ctx, pageEvents, opts.DryRun); rerr != nil {
+				lg.Error("route gitlab events failed", zap.Error(rerr))
+				anyErr = true
+				routeFailed = true
 			}
 
 			if nextCur.UpdatedAfter > maxObserved {
@@ -201,6 +240,14 @@ func (r Runner) RunGitLab(ctx context.Context, opts GitLabOptions) error {
 				break
 			}
 			page++
+		}
+
+		// A destination that refused the event holds the cursor where it was:
+		// advancing past a window nothing was told about would lose the
+		// notification for good, while re-fetching it costs one page and every
+		// destination dedups.
+		if routeFailed {
+			maxObserved = startCur.UpdatedAfter
 		}
 
 		curStr, _ := json.Marshal(gitlabingest.Cursor{UpdatedAfter: maxObserved})
@@ -219,46 +266,52 @@ func (r Runner) RunGitLab(ctx context.Context, opts GitLabOptions) error {
 	}
 
 	if err := ingestResource("issues", cfg.GitLab.Issues, index.SourceGitLabIssue,
-		func(ctx context.Context, page int, cur gitlabingest.Cursor) ([]index.Document, gitlabingest.Cursor, bool, error) {
+		func(ctx context.Context, page int, cur gitlabingest.Cursor) ([]index.Document, []event.Event, gitlabingest.Cursor, bool, error) {
 			refs, nextCur, hasMore, err := fetcher.FetchIssues(ctx, page, cur)
 			if err != nil {
-				return nil, gitlabingest.Cursor{}, false, err
+				return nil, nil, gitlabingest.Cursor{}, false, err
 			}
 			docs := make([]index.Document, 0, len(refs))
 			for _, ref := range refs {
 				docs = append(docs, chunkgitlab.DocumentFromIssue(ref.Project, ref.Issue))
 			}
-			return docs, nextCur, hasMore, nil
+			return docs, nil, nextCur, hasMore, nil
 		},
 	); err != nil && !errors.Is(err, ErrNotConfigured) {
 		return err
 	}
 	if err := ingestResource("merge_requests", cfg.GitLab.MergeRequests, index.SourceGitLabMR,
-		func(ctx context.Context, page int, cur gitlabingest.Cursor) ([]index.Document, gitlabingest.Cursor, bool, error) {
+		func(ctx context.Context, page int, cur gitlabingest.Cursor) ([]index.Document, []event.Event, gitlabingest.Cursor, bool, error) {
 			refs, nextCur, hasMore, err := fetcher.FetchMergeRequests(ctx, page, cur)
 			if err != nil {
-				return nil, gitlabingest.Cursor{}, false, err
+				return nil, nil, gitlabingest.Cursor{}, false, err
 			}
 			docs := make([]index.Document, 0, len(refs))
+			events := make([]event.Event, 0, len(refs))
 			for _, ref := range refs {
 				docs = append(docs, chunkgitlab.DocumentFromMergeRequest(ref.Project, ref.MR))
+				e, eerr := gitlabingest.EventFromMergeRequest(ref)
+				if eerr != nil {
+					return nil, nil, gitlabingest.Cursor{}, false, eerr
+				}
+				events = append(events, e)
 			}
-			return docs, nextCur, hasMore, nil
+			return docs, events, nextCur, hasMore, nil
 		},
 	); err != nil && !errors.Is(err, ErrNotConfigured) {
 		return err
 	}
 	if err := ingestResource("releases", cfg.GitLab.Releases, index.SourceGitLabRelease,
-		func(ctx context.Context, page int, cur gitlabingest.Cursor) ([]index.Document, gitlabingest.Cursor, bool, error) {
+		func(ctx context.Context, page int, cur gitlabingest.Cursor) ([]index.Document, []event.Event, gitlabingest.Cursor, bool, error) {
 			refs, nextCur, hasMore, err := fetcher.FetchReleases(ctx, page, cur)
 			if err != nil {
-				return nil, gitlabingest.Cursor{}, false, err
+				return nil, nil, gitlabingest.Cursor{}, false, err
 			}
 			docs := make([]index.Document, 0, len(refs))
 			for _, ref := range refs {
 				docs = append(docs, chunkgitlab.DocumentFromRelease(ref.Project, ref.Release))
 			}
-			return docs, nextCur, hasMore, nil
+			return docs, nil, nextCur, hasMore, nil
 		},
 	); err != nil && !errors.Is(err, ErrNotConfigured) {
 		return err
@@ -350,12 +403,19 @@ func (r Runner) RunJira(ctx context.Context, opts JiraOptions) error {
 		}
 
 		batch := make([]index.Document, 0, len(issues))
+		events := make([]event.Event, 0, len(issues))
 		for _, iss := range issues {
 			batch = append(batch, chunkjira.DocumentFromIssue(iss))
+			e, eerr := jiraingest.EventFromIssue(iss)
+			if eerr != nil {
+				return errors.Wrap(eerr, "build jira event")
+			}
+			events = append(events, e)
 		}
 		if opts.Limit > 0 {
 			if remaining := opts.Limit - processed; remaining < len(batch) {
 				batch = batch[:remaining]
+				events = events[:remaining]
 			}
 		}
 
@@ -363,6 +423,14 @@ func (r Runner) RunJira(ctx context.Context, opts JiraOptions) error {
 		processed += n
 		if errFound {
 			anyErr = true
+		}
+
+		if rerr := r.route(ctx, events, opts.DryRun); rerr != nil {
+			// Stop before writing the advanced cursor: this batch's window
+			// must be re-fetched so the destination that failed sees it again.
+			lg.Error("route jira events failed", zap.Error(rerr))
+			anyErr = true
+			break
 		}
 
 		curStr, _ := json.Marshal(nextCur)

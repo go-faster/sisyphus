@@ -49,10 +49,13 @@ type Config struct {
 	Warnings []string
 }
 
-// NotifyConfig controls ssingest serve's notify collector/dispatcher: the
-// per-user GitLab MR assignment/review-request and Jira issue-assignment
-// notifications delivered via internal/notify. PollIntervalSeconds is 0
-// (disabled) by default, like ingest.*.poll.interval_seconds.
+// NotifyConfig controls the delivery half of the notification gateway:
+// PollIntervalSeconds is how often ssbot drains the outbox and pushes pending
+// notifications to Telegram. 0 (the default) disables the drain loop.
+//
+// It no longer schedules any fetching: the events notifications are built from
+// are emitted by the GitLab and Jira ingestion runs, on those sources' own poll
+// intervals.
 type NotifyConfig struct {
 	PollIntervalSeconds int
 }
@@ -856,6 +859,24 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 		return Config{}, errors.Wrap(err, "agent auth_token")
 	}
 
+	// notify.poll.interval_seconds no longer schedules any collection — the
+	// GitLab and Jira ingestion runs emit the events now — but a config that
+	// only set the notify cadence would stop notifying silently, so it seeds
+	// whichever source poll is still unset. It keeps its delivery meaning
+	// (ssbot's outbox drain).
+	gitlabPoll, jiraPoll := c.GitLab.Poll.IntervalSeconds, c.Jira.Poll.IntervalSeconds
+	if n := c.Notify.Poll.IntervalSeconds; n > 0 {
+		if c.GitLab.Poll.IntervalSeconds <= 0 || c.Jira.Poll.IntervalSeconds <= 0 {
+			warnings = append(warnings, "notify.poll.interval_seconds now only sets ssbot's outbox drain interval; notification events come from the gitlab/jira ingestion runs, so set gitlab.poll.interval_seconds and jira.poll.interval_seconds")
+		}
+		if gitlabPoll <= 0 {
+			gitlabPoll = n
+		}
+		if jiraPoll <= 0 {
+			jiraPoll = n
+		}
+	}
+
 	return Config{
 		DatabaseDSN:      dsn,
 		QdrantAddr:       qdrantAddr,
@@ -879,7 +900,7 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			Releases:            c.GitLab.Releases,
 			WebhookSecret:       gitlabWebhookSecret,
 			WebhookEnabled:      c.GitLab.Webhook.Enabled,
-			PollIntervalSeconds: c.GitLab.Poll.IntervalSeconds,
+			PollIntervalSeconds: gitlabPoll,
 		},
 		Jira: JiraConfig{
 			BaseURL:             c.Jira.BaseURL,
@@ -891,7 +912,7 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			Projects:            c.Jira.Projects,
 			WebhookSecret:       jiraWebhookSecret,
 			WebhookEnabled:      c.Jira.Webhook.Enabled,
-			PollIntervalSeconds: c.Jira.Poll.IntervalSeconds,
+			PollIntervalSeconds: jiraPoll,
 		},
 		API: APIConfig{
 			HTTPAddr:  httpAddr,
@@ -947,15 +968,15 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			PreSearchLimit: c.Context.PreSearchLimit,
 			ShowDebugInfo:  c.Context.ShowDebugInfo,
 		},
+		Notify: NotifyConfig{
+			PollIntervalSeconds: c.Notify.Poll.IntervalSeconds,
+		},
 		Ingest: IngestConfig{
 			Addr:                        c.Ingest.Addr,
 			GitPollIntervalSeconds:      c.Ingest.Git.Poll.IntervalSeconds,
 			FilesPollIntervalSeconds:    c.Ingest.Files.Poll.IntervalSeconds,
 			TelegramPollIntervalSeconds: c.Ingest.Telegram.Poll.IntervalSeconds,
 			Worker:                      c.Ingest.Worker.resolve(),
-		},
-		Notify: NotifyConfig{
-			PollIntervalSeconds: c.Notify.Poll.IntervalSeconds,
 		},
 	}, nil
 }
