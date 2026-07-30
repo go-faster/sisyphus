@@ -174,6 +174,22 @@ type jiraNamed struct {
 type jiraUser struct {
 	AccountID   string `json:"accountId"`
 	DisplayName string `json:"displayName"`
+	// Name and Key are what Jira Server/Data Center returns; only Cloud has
+	// accountId. Without them a Server deployment reports an empty identity
+	// for every assignee, and no notification can ever match a user.
+	Name string `json:"name"`
+	Key  string `json:"key"`
+}
+
+// identity is the assignee's stable id: accountId on Cloud, name (or key) on
+// Server/DC. It is what notify.identities is matched against.
+func (u jiraUser) identity() string {
+	for _, s := range []string{u.AccountID, u.Name, u.Key} {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 type jiraCommentContainer struct {
@@ -265,7 +281,7 @@ func convertIssue(jiraIss jiraIssue) (chunkjira.Issue, error) {
 
 	if jiraIss.Fields.Assignee != nil {
 		iss.Assignee = jiraIss.Fields.Assignee.DisplayName
-		iss.AssigneeAccountID = jiraIss.Fields.Assignee.AccountID
+		iss.AssigneeAccountID = jiraIss.Fields.Assignee.identity()
 	}
 	if jiraIss.Fields.Reporter != nil {
 		iss.Reporter = jiraIss.Fields.Reporter.DisplayName

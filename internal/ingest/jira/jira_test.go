@@ -14,6 +14,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/stretchr/testify/require"
+
 	chunkjira "github.com/go-faster/sisyphus/internal/chunk/jira"
 )
 
@@ -970,5 +972,28 @@ func TestBadTimeSkipsIssue(t *testing.T) {
 	}
 	if got[0].Key != "TEST-1" {
 		t.Errorf("expected TEST-1, got %s", got[0].Key)
+	}
+}
+
+// Jira Server/DC has no accountId, so an assignee's username has to stand in
+// for it — otherwise every Server deployment reports an empty identity and no
+// notification can match a configured user.
+func TestJiraUserIdentityFallsBackToServerFields(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name string
+		user jiraUser
+		want string
+	}{
+		{"cloud", jiraUser{AccountID: "acc-1", Name: "ignored"}, "acc-1"},
+		{"server name", jiraUser{Name: "a.example"}, "a.example"},
+		{"server key only", jiraUser{Key: "a.example"}, "a.example"},
+		{"anonymous", jiraUser{DisplayName: "A. Example"}, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, tt.user.identity())
+		})
 	}
 }

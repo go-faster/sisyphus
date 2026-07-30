@@ -30,9 +30,10 @@ type Issue struct {
 	Components  []string
 	Labels      []string
 	Assignee    string
-	// AssigneeAccountID is the assignee's stable Jira accountId, used to match
-	// against a NotifyUser's linked identity (DisplayName is not stable: it
-	// changes on rename and is not guaranteed unique).
+	// AssigneeAccountID is the assignee's stable Jira id, used to match against
+	// a configured notify identity (DisplayName is not stable: it changes on
+	// rename and is not guaranteed unique). It is the accountId on Jira Cloud
+	// and the username on Server/DC, which has no accountId at all.
 	AssigneeAccountID string
 	Reporter          string
 	Created           time.Time
