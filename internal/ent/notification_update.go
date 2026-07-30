@@ -91,33 +91,6 @@ func (_u *NotificationUpdate) ClearTelegramUserID() *NotificationUpdate {
 	return _u
 }
 
-// SetTelegramAccessHash sets the "telegram_access_hash" field.
-func (_u *NotificationUpdate) SetTelegramAccessHash(v int64) *NotificationUpdate {
-	_u.mutation.ResetTelegramAccessHash()
-	_u.mutation.SetTelegramAccessHash(v)
-	return _u
-}
-
-// SetNillableTelegramAccessHash sets the "telegram_access_hash" field if the given value is not nil.
-func (_u *NotificationUpdate) SetNillableTelegramAccessHash(v *int64) *NotificationUpdate {
-	if v != nil {
-		_u.SetTelegramAccessHash(*v)
-	}
-	return _u
-}
-
-// AddTelegramAccessHash adds value to the "telegram_access_hash" field.
-func (_u *NotificationUpdate) AddTelegramAccessHash(v int64) *NotificationUpdate {
-	_u.mutation.AddTelegramAccessHash(v)
-	return _u
-}
-
-// ClearTelegramAccessHash clears the value of the "telegram_access_hash" field.
-func (_u *NotificationUpdate) ClearTelegramAccessHash() *NotificationUpdate {
-	_u.mutation.ClearTelegramAccessHash()
-	return _u
-}
-
 // SetURL sets the "url" field.
 func (_u *NotificationUpdate) SetURL(v string) *NotificationUpdate {
 	_u.mutation.SetURL(v)
@@ -292,15 +265,6 @@ func (_u *NotificationUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if _u.mutation.TelegramUserIDCleared() {
 		_spec.ClearField(notification.FieldTelegramUserID, field.TypeInt64)
 	}
-	if value, ok := _u.mutation.TelegramAccessHash(); ok {
-		_spec.SetField(notification.FieldTelegramAccessHash, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedTelegramAccessHash(); ok {
-		_spec.AddField(notification.FieldTelegramAccessHash, field.TypeInt64, value)
-	}
-	if _u.mutation.TelegramAccessHashCleared() {
-		_spec.ClearField(notification.FieldTelegramAccessHash, field.TypeInt64)
-	}
 	if value, ok := _u.mutation.URL(); ok {
 		_spec.SetField(notification.FieldURL, field.TypeString, value)
 	}
@@ -438,33 +402,6 @@ func (_u *NotificationUpdateOne) AddTelegramUserID(v int64) *NotificationUpdateO
 // ClearTelegramUserID clears the value of the "telegram_user_id" field.
 func (_u *NotificationUpdateOne) ClearTelegramUserID() *NotificationUpdateOne {
 	_u.mutation.ClearTelegramUserID()
-	return _u
-}
-
-// SetTelegramAccessHash sets the "telegram_access_hash" field.
-func (_u *NotificationUpdateOne) SetTelegramAccessHash(v int64) *NotificationUpdateOne {
-	_u.mutation.ResetTelegramAccessHash()
-	_u.mutation.SetTelegramAccessHash(v)
-	return _u
-}
-
-// SetNillableTelegramAccessHash sets the "telegram_access_hash" field if the given value is not nil.
-func (_u *NotificationUpdateOne) SetNillableTelegramAccessHash(v *int64) *NotificationUpdateOne {
-	if v != nil {
-		_u.SetTelegramAccessHash(*v)
-	}
-	return _u
-}
-
-// AddTelegramAccessHash adds value to the "telegram_access_hash" field.
-func (_u *NotificationUpdateOne) AddTelegramAccessHash(v int64) *NotificationUpdateOne {
-	_u.mutation.AddTelegramAccessHash(v)
-	return _u
-}
-
-// ClearTelegramAccessHash clears the value of the "telegram_access_hash" field.
-func (_u *NotificationUpdateOne) ClearTelegramAccessHash() *NotificationUpdateOne {
-	_u.mutation.ClearTelegramAccessHash()
 	return _u
 }
 
@@ -671,15 +608,6 @@ func (_u *NotificationUpdateOne) sqlSave(ctx context.Context) (_node *Notificati
 	}
 	if _u.mutation.TelegramUserIDCleared() {
 		_spec.ClearField(notification.FieldTelegramUserID, field.TypeInt64)
-	}
-	if value, ok := _u.mutation.TelegramAccessHash(); ok {
-		_spec.SetField(notification.FieldTelegramAccessHash, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedTelegramAccessHash(); ok {
-		_spec.AddField(notification.FieldTelegramAccessHash, field.TypeInt64, value)
-	}
-	if _u.mutation.TelegramAccessHashCleared() {
-		_spec.ClearField(notification.FieldTelegramAccessHash, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.URL(); ok {
 		_spec.SetField(notification.FieldURL, field.TypeString, value)

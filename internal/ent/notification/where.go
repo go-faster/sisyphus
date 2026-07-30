@@ -81,11 +81,6 @@ func TelegramUserID(v int64) predicate.Notification {
 	return predicate.Notification(sql.FieldEQ(FieldTelegramUserID, v))
 }
 
-// TelegramAccessHash applies equality check predicate on the "telegram_access_hash" field. It's identical to TelegramAccessHashEQ.
-func TelegramAccessHash(v int64) predicate.Notification {
-	return predicate.Notification(sql.FieldEQ(FieldTelegramAccessHash, v))
-}
-
 // Source applies equality check predicate on the "source" field. It's identical to SourceEQ.
 func Source(v string) predicate.Notification {
 	return predicate.Notification(sql.FieldEQ(FieldSource, v))
@@ -409,56 +404,6 @@ func TelegramUserIDIsNil() predicate.Notification {
 // TelegramUserIDNotNil applies the NotNil predicate on the "telegram_user_id" field.
 func TelegramUserIDNotNil() predicate.Notification {
 	return predicate.Notification(sql.FieldNotNull(FieldTelegramUserID))
-}
-
-// TelegramAccessHashEQ applies the EQ predicate on the "telegram_access_hash" field.
-func TelegramAccessHashEQ(v int64) predicate.Notification {
-	return predicate.Notification(sql.FieldEQ(FieldTelegramAccessHash, v))
-}
-
-// TelegramAccessHashNEQ applies the NEQ predicate on the "telegram_access_hash" field.
-func TelegramAccessHashNEQ(v int64) predicate.Notification {
-	return predicate.Notification(sql.FieldNEQ(FieldTelegramAccessHash, v))
-}
-
-// TelegramAccessHashIn applies the In predicate on the "telegram_access_hash" field.
-func TelegramAccessHashIn(vs ...int64) predicate.Notification {
-	return predicate.Notification(sql.FieldIn(FieldTelegramAccessHash, vs...))
-}
-
-// TelegramAccessHashNotIn applies the NotIn predicate on the "telegram_access_hash" field.
-func TelegramAccessHashNotIn(vs ...int64) predicate.Notification {
-	return predicate.Notification(sql.FieldNotIn(FieldTelegramAccessHash, vs...))
-}
-
-// TelegramAccessHashGT applies the GT predicate on the "telegram_access_hash" field.
-func TelegramAccessHashGT(v int64) predicate.Notification {
-	return predicate.Notification(sql.FieldGT(FieldTelegramAccessHash, v))
-}
-
-// TelegramAccessHashGTE applies the GTE predicate on the "telegram_access_hash" field.
-func TelegramAccessHashGTE(v int64) predicate.Notification {
-	return predicate.Notification(sql.FieldGTE(FieldTelegramAccessHash, v))
-}
-
-// TelegramAccessHashLT applies the LT predicate on the "telegram_access_hash" field.
-func TelegramAccessHashLT(v int64) predicate.Notification {
-	return predicate.Notification(sql.FieldLT(FieldTelegramAccessHash, v))
-}
-
-// TelegramAccessHashLTE applies the LTE predicate on the "telegram_access_hash" field.
-func TelegramAccessHashLTE(v int64) predicate.Notification {
-	return predicate.Notification(sql.FieldLTE(FieldTelegramAccessHash, v))
-}
-
-// TelegramAccessHashIsNil applies the IsNil predicate on the "telegram_access_hash" field.
-func TelegramAccessHashIsNil() predicate.Notification {
-	return predicate.Notification(sql.FieldIsNull(FieldTelegramAccessHash))
-}
-
-// TelegramAccessHashNotNil applies the NotNil predicate on the "telegram_access_hash" field.
-func TelegramAccessHashNotNil() predicate.Notification {
-	return predicate.Notification(sql.FieldNotNull(FieldTelegramAccessHash))
 }
 
 // SourceEQ applies the EQ predicate on the "source" field.

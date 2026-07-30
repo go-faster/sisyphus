@@ -29,8 +29,6 @@ type Notification struct {
 	PeerType string `json:"peer_type,omitempty"`
 	// TelegramUserID holds the value of the "telegram_user_id" field.
 	TelegramUserID int64 `json:"telegram_user_id,omitempty"`
-	// TelegramAccessHash holds the value of the "telegram_access_hash" field.
-	TelegramAccessHash *int64 `json:"telegram_access_hash,omitempty"`
 	// Source holds the value of the "source" field.
 	Source string `json:"source,omitempty"`
 	// EventType holds the value of the "event_type" field.
@@ -84,7 +82,7 @@ func (*Notification) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case notification.FieldUserID:
 			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
-		case notification.FieldTelegramUserID, notification.FieldTelegramAccessHash, notification.FieldAttempts:
+		case notification.FieldTelegramUserID, notification.FieldAttempts:
 			values[i] = new(sql.NullInt64)
 		case notification.FieldDedupKey, notification.FieldChannel, notification.FieldPeerType, notification.FieldSource, notification.FieldEventType, notification.FieldText, notification.FieldURL, notification.FieldStatus, notification.FieldError:
 			values[i] = new(sql.NullString)
@@ -143,13 +141,6 @@ func (_m *Notification) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field telegram_user_id", values[i])
 			} else if value.Valid {
 				_m.TelegramUserID = value.Int64
-			}
-		case notification.FieldTelegramAccessHash:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field telegram_access_hash", values[i])
-			} else if value.Valid {
-				_m.TelegramAccessHash = new(int64)
-				*_m.TelegramAccessHash = value.Int64
 			}
 		case notification.FieldSource:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -270,11 +261,6 @@ func (_m *Notification) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("telegram_user_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.TelegramUserID))
-	builder.WriteString(", ")
-	if v := _m.TelegramAccessHash; v != nil {
-		builder.WriteString("telegram_access_hash=")
-		builder.WriteString(fmt.Sprintf("%v", *v))
-	}
 	builder.WriteString(", ")
 	builder.WriteString("source=")
 	builder.WriteString(_m.Source)

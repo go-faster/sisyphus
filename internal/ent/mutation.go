@@ -22,6 +22,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 	"github.com/go-faster/sisyphus/internal/ent/telegrammessage"
+	"github.com/go-faster/sisyphus/internal/ent/telegrampeer"
 	"github.com/go-faster/sisyphus/internal/ent/user"
 	"github.com/go-faster/sisyphus/internal/ent/usertoken"
 	"github.com/google/uuid"
@@ -46,6 +47,7 @@ const (
 	TypeSupportRequest     = "SupportRequest"
 	TypeSyncState          = "SyncState"
 	TypeTelegramMessage    = "TelegramMessage"
+	TypeTelegramPeer       = "TelegramPeer"
 	TypeUser               = "User"
 	TypeUserToken          = "UserToken"
 )
@@ -3120,33 +3122,31 @@ func (m *InvestigationJobMutation) ResetEdge(name string) error {
 // NotificationMutation represents an operation that mutates the Notification nodes in the graph.
 type NotificationMutation struct {
 	config
-	op                      Op
-	typ                     string
-	id                      *uuid.UUID
-	dedup_key               *string
-	channel                 *string
-	peer_type               *string
-	telegram_user_id        *int64
-	addtelegram_user_id     *int64
-	telegram_access_hash    *int64
-	addtelegram_access_hash *int64
-	source                  *string
-	event_type              *string
-	text                    *string
-	url                     *string
-	status                  *string
-	attempts                *int
-	addattempts             *int
-	error                   *string
-	created_at              *time.Time
-	updated_at              *time.Time
-	delivered_at            *time.Time
-	clearedFields           map[string]struct{}
-	user                    *uuid.UUID
-	cleareduser             bool
-	done                    bool
-	oldValue                func(context.Context) (*Notification, error)
-	predicates              []predicate.Notification
+	op                  Op
+	typ                 string
+	id                  *uuid.UUID
+	dedup_key           *string
+	channel             *string
+	peer_type           *string
+	telegram_user_id    *int64
+	addtelegram_user_id *int64
+	source              *string
+	event_type          *string
+	text                *string
+	url                 *string
+	status              *string
+	attempts            *int
+	addattempts         *int
+	error               *string
+	created_at          *time.Time
+	updated_at          *time.Time
+	delivered_at        *time.Time
+	clearedFields       map[string]struct{}
+	user                *uuid.UUID
+	cleareduser         bool
+	done                bool
+	oldValue            func(context.Context) (*Notification, error)
+	predicates          []predicate.Notification
 }
 
 var _ ent.Mutation = (*NotificationMutation)(nil)
@@ -3478,76 +3478,6 @@ func (m *NotificationMutation) ResetTelegramUserID() {
 	m.telegram_user_id = nil
 	m.addtelegram_user_id = nil
 	delete(m.clearedFields, notification.FieldTelegramUserID)
-}
-
-// SetTelegramAccessHash sets the "telegram_access_hash" field.
-func (m *NotificationMutation) SetTelegramAccessHash(i int64) {
-	m.telegram_access_hash = &i
-	m.addtelegram_access_hash = nil
-}
-
-// TelegramAccessHash returns the value of the "telegram_access_hash" field in the mutation.
-func (m *NotificationMutation) TelegramAccessHash() (r int64, exists bool) {
-	v := m.telegram_access_hash
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldTelegramAccessHash returns the old "telegram_access_hash" field's value of the Notification entity.
-// If the Notification object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *NotificationMutation) OldTelegramAccessHash(ctx context.Context) (v *int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldTelegramAccessHash is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldTelegramAccessHash requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldTelegramAccessHash: %w", err)
-	}
-	return oldValue.TelegramAccessHash, nil
-}
-
-// AddTelegramAccessHash adds i to the "telegram_access_hash" field.
-func (m *NotificationMutation) AddTelegramAccessHash(i int64) {
-	if m.addtelegram_access_hash != nil {
-		*m.addtelegram_access_hash += i
-	} else {
-		m.addtelegram_access_hash = &i
-	}
-}
-
-// AddedTelegramAccessHash returns the value that was added to the "telegram_access_hash" field in this mutation.
-func (m *NotificationMutation) AddedTelegramAccessHash() (r int64, exists bool) {
-	v := m.addtelegram_access_hash
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearTelegramAccessHash clears the value of the "telegram_access_hash" field.
-func (m *NotificationMutation) ClearTelegramAccessHash() {
-	m.telegram_access_hash = nil
-	m.addtelegram_access_hash = nil
-	m.clearedFields[notification.FieldTelegramAccessHash] = struct{}{}
-}
-
-// TelegramAccessHashCleared returns if the "telegram_access_hash" field was cleared in this mutation.
-func (m *NotificationMutation) TelegramAccessHashCleared() bool {
-	_, ok := m.clearedFields[notification.FieldTelegramAccessHash]
-	return ok
-}
-
-// ResetTelegramAccessHash resets all changes to the "telegram_access_hash" field.
-func (m *NotificationMutation) ResetTelegramAccessHash() {
-	m.telegram_access_hash = nil
-	m.addtelegram_access_hash = nil
-	delete(m.clearedFields, notification.FieldTelegramAccessHash)
 }
 
 // SetSource sets the "source" field.
@@ -4030,7 +3960,7 @@ func (m *NotificationMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *NotificationMutation) Fields() []string {
-	fields := make([]string, 0, 16)
+	fields := make([]string, 0, 15)
 	if m.dedup_key != nil {
 		fields = append(fields, notification.FieldDedupKey)
 	}
@@ -4045,9 +3975,6 @@ func (m *NotificationMutation) Fields() []string {
 	}
 	if m.telegram_user_id != nil {
 		fields = append(fields, notification.FieldTelegramUserID)
-	}
-	if m.telegram_access_hash != nil {
-		fields = append(fields, notification.FieldTelegramAccessHash)
 	}
 	if m.source != nil {
 		fields = append(fields, notification.FieldSource)
@@ -4097,8 +4024,6 @@ func (m *NotificationMutation) Field(name string) (ent.Value, bool) {
 		return m.PeerType()
 	case notification.FieldTelegramUserID:
 		return m.TelegramUserID()
-	case notification.FieldTelegramAccessHash:
-		return m.TelegramAccessHash()
 	case notification.FieldSource:
 		return m.Source()
 	case notification.FieldEventType:
@@ -4138,8 +4063,6 @@ func (m *NotificationMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldPeerType(ctx)
 	case notification.FieldTelegramUserID:
 		return m.OldTelegramUserID(ctx)
-	case notification.FieldTelegramAccessHash:
-		return m.OldTelegramAccessHash(ctx)
 	case notification.FieldSource:
 		return m.OldSource(ctx)
 	case notification.FieldEventType:
@@ -4203,13 +4126,6 @@ func (m *NotificationMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTelegramUserID(v)
-		return nil
-	case notification.FieldTelegramAccessHash:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetTelegramAccessHash(v)
 		return nil
 	case notification.FieldSource:
 		v, ok := value.(string)
@@ -4292,9 +4208,6 @@ func (m *NotificationMutation) AddedFields() []string {
 	if m.addtelegram_user_id != nil {
 		fields = append(fields, notification.FieldTelegramUserID)
 	}
-	if m.addtelegram_access_hash != nil {
-		fields = append(fields, notification.FieldTelegramAccessHash)
-	}
 	if m.addattempts != nil {
 		fields = append(fields, notification.FieldAttempts)
 	}
@@ -4308,8 +4221,6 @@ func (m *NotificationMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case notification.FieldTelegramUserID:
 		return m.AddedTelegramUserID()
-	case notification.FieldTelegramAccessHash:
-		return m.AddedTelegramAccessHash()
 	case notification.FieldAttempts:
 		return m.AddedAttempts()
 	}
@@ -4327,13 +4238,6 @@ func (m *NotificationMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddTelegramUserID(v)
-		return nil
-	case notification.FieldTelegramAccessHash:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddTelegramAccessHash(v)
 		return nil
 	case notification.FieldAttempts:
 		v, ok := value.(int)
@@ -4355,9 +4259,6 @@ func (m *NotificationMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(notification.FieldTelegramUserID) {
 		fields = append(fields, notification.FieldTelegramUserID)
-	}
-	if m.FieldCleared(notification.FieldTelegramAccessHash) {
-		fields = append(fields, notification.FieldTelegramAccessHash)
 	}
 	if m.FieldCleared(notification.FieldURL) {
 		fields = append(fields, notification.FieldURL)
@@ -4387,9 +4288,6 @@ func (m *NotificationMutation) ClearField(name string) error {
 		return nil
 	case notification.FieldTelegramUserID:
 		m.ClearTelegramUserID()
-		return nil
-	case notification.FieldTelegramAccessHash:
-		m.ClearTelegramAccessHash()
 		return nil
 	case notification.FieldURL:
 		m.ClearURL()
@@ -4422,9 +4320,6 @@ func (m *NotificationMutation) ResetField(name string) error {
 		return nil
 	case notification.FieldTelegramUserID:
 		m.ResetTelegramUserID()
-		return nil
-	case notification.FieldTelegramAccessHash:
-		m.ResetTelegramAccessHash()
 		return nil
 	case notification.FieldSource:
 		m.ResetSource()
@@ -4537,24 +4432,22 @@ func (m *NotificationMutation) ResetEdge(name string) error {
 // NotifyChatMutation represents an operation that mutates the NotifyChat nodes in the graph.
 type NotifyChatMutation struct {
 	config
-	op             Op
-	typ            string
-	id             *uuid.UUID
-	peer_type      *string
-	peer_id        *int64
-	addpeer_id     *int64
-	access_hash    *int64
-	addaccess_hash *int64
-	title          *string
-	enabled        *bool
-	added_by       *int64
-	addadded_by    *int64
-	created_at     *time.Time
-	updated_at     *time.Time
-	clearedFields  map[string]struct{}
-	done           bool
-	oldValue       func(context.Context) (*NotifyChat, error)
-	predicates     []predicate.NotifyChat
+	op            Op
+	typ           string
+	id            *uuid.UUID
+	peer_type     *string
+	peer_id       *int64
+	addpeer_id    *int64
+	title         *string
+	enabled       *bool
+	added_by      *int64
+	addadded_by   *int64
+	created_at    *time.Time
+	updated_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*NotifyChat, error)
+	predicates    []predicate.NotifyChat
 }
 
 var _ ent.Mutation = (*NotifyChatMutation)(nil)
@@ -4751,76 +4644,6 @@ func (m *NotifyChatMutation) AddedPeerID() (r int64, exists bool) {
 func (m *NotifyChatMutation) ResetPeerID() {
 	m.peer_id = nil
 	m.addpeer_id = nil
-}
-
-// SetAccessHash sets the "access_hash" field.
-func (m *NotifyChatMutation) SetAccessHash(i int64) {
-	m.access_hash = &i
-	m.addaccess_hash = nil
-}
-
-// AccessHash returns the value of the "access_hash" field in the mutation.
-func (m *NotifyChatMutation) AccessHash() (r int64, exists bool) {
-	v := m.access_hash
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldAccessHash returns the old "access_hash" field's value of the NotifyChat entity.
-// If the NotifyChat object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *NotifyChatMutation) OldAccessHash(ctx context.Context) (v *int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldAccessHash is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldAccessHash requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldAccessHash: %w", err)
-	}
-	return oldValue.AccessHash, nil
-}
-
-// AddAccessHash adds i to the "access_hash" field.
-func (m *NotifyChatMutation) AddAccessHash(i int64) {
-	if m.addaccess_hash != nil {
-		*m.addaccess_hash += i
-	} else {
-		m.addaccess_hash = &i
-	}
-}
-
-// AddedAccessHash returns the value that was added to the "access_hash" field in this mutation.
-func (m *NotifyChatMutation) AddedAccessHash() (r int64, exists bool) {
-	v := m.addaccess_hash
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearAccessHash clears the value of the "access_hash" field.
-func (m *NotifyChatMutation) ClearAccessHash() {
-	m.access_hash = nil
-	m.addaccess_hash = nil
-	m.clearedFields[notifychat.FieldAccessHash] = struct{}{}
-}
-
-// AccessHashCleared returns if the "access_hash" field was cleared in this mutation.
-func (m *NotifyChatMutation) AccessHashCleared() bool {
-	_, ok := m.clearedFields[notifychat.FieldAccessHash]
-	return ok
-}
-
-// ResetAccessHash resets all changes to the "access_hash" field.
-func (m *NotifyChatMutation) ResetAccessHash() {
-	m.access_hash = nil
-	m.addaccess_hash = nil
-	delete(m.clearedFields, notifychat.FieldAccessHash)
 }
 
 // SetTitle sets the "title" field.
@@ -5084,15 +4907,12 @@ func (m *NotifyChatMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *NotifyChatMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 7)
 	if m.peer_type != nil {
 		fields = append(fields, notifychat.FieldPeerType)
 	}
 	if m.peer_id != nil {
 		fields = append(fields, notifychat.FieldPeerID)
-	}
-	if m.access_hash != nil {
-		fields = append(fields, notifychat.FieldAccessHash)
 	}
 	if m.title != nil {
 		fields = append(fields, notifychat.FieldTitle)
@@ -5121,8 +4941,6 @@ func (m *NotifyChatMutation) Field(name string) (ent.Value, bool) {
 		return m.PeerType()
 	case notifychat.FieldPeerID:
 		return m.PeerID()
-	case notifychat.FieldAccessHash:
-		return m.AccessHash()
 	case notifychat.FieldTitle:
 		return m.Title()
 	case notifychat.FieldEnabled:
@@ -5146,8 +4964,6 @@ func (m *NotifyChatMutation) OldField(ctx context.Context, name string) (ent.Val
 		return m.OldPeerType(ctx)
 	case notifychat.FieldPeerID:
 		return m.OldPeerID(ctx)
-	case notifychat.FieldAccessHash:
-		return m.OldAccessHash(ctx)
 	case notifychat.FieldTitle:
 		return m.OldTitle(ctx)
 	case notifychat.FieldEnabled:
@@ -5180,13 +4996,6 @@ func (m *NotifyChatMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetPeerID(v)
-		return nil
-	case notifychat.FieldAccessHash:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetAccessHash(v)
 		return nil
 	case notifychat.FieldTitle:
 		v, ok := value.(string)
@@ -5234,9 +5043,6 @@ func (m *NotifyChatMutation) AddedFields() []string {
 	if m.addpeer_id != nil {
 		fields = append(fields, notifychat.FieldPeerID)
 	}
-	if m.addaccess_hash != nil {
-		fields = append(fields, notifychat.FieldAccessHash)
-	}
 	if m.addadded_by != nil {
 		fields = append(fields, notifychat.FieldAddedBy)
 	}
@@ -5250,8 +5056,6 @@ func (m *NotifyChatMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case notifychat.FieldPeerID:
 		return m.AddedPeerID()
-	case notifychat.FieldAccessHash:
-		return m.AddedAccessHash()
 	case notifychat.FieldAddedBy:
 		return m.AddedAddedBy()
 	}
@@ -5270,13 +5074,6 @@ func (m *NotifyChatMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddPeerID(v)
 		return nil
-	case notifychat.FieldAccessHash:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddAccessHash(v)
-		return nil
 	case notifychat.FieldAddedBy:
 		v, ok := value.(int64)
 		if !ok {
@@ -5292,9 +5089,6 @@ func (m *NotifyChatMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *NotifyChatMutation) ClearedFields() []string {
 	var fields []string
-	if m.FieldCleared(notifychat.FieldAccessHash) {
-		fields = append(fields, notifychat.FieldAccessHash)
-	}
 	if m.FieldCleared(notifychat.FieldTitle) {
 		fields = append(fields, notifychat.FieldTitle)
 	}
@@ -5315,9 +5109,6 @@ func (m *NotifyChatMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *NotifyChatMutation) ClearField(name string) error {
 	switch name {
-	case notifychat.FieldAccessHash:
-		m.ClearAccessHash()
-		return nil
 	case notifychat.FieldTitle:
 		m.ClearTitle()
 		return nil
@@ -5337,9 +5128,6 @@ func (m *NotifyChatMutation) ResetField(name string) error {
 		return nil
 	case notifychat.FieldPeerID:
 		m.ResetPeerID()
-		return nil
-	case notifychat.FieldAccessHash:
-		m.ResetAccessHash()
 		return nil
 	case notifychat.FieldTitle:
 		m.ResetTitle()
@@ -10262,35 +10050,819 @@ func (m *TelegramMessageMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown TelegramMessage edge %s", name)
 }
 
+// TelegramPeerMutation represents an operation that mutates the TelegramPeer nodes in the graph.
+type TelegramPeerMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *uuid.UUID
+	peer_type      *string
+	peer_id        *int64
+	addpeer_id     *int64
+	access_hash    *int64
+	addaccess_hash *int64
+	username       *string
+	title          *string
+	last_seen_at   *time.Time
+	created_at     *time.Time
+	clearedFields  map[string]struct{}
+	done           bool
+	oldValue       func(context.Context) (*TelegramPeer, error)
+	predicates     []predicate.TelegramPeer
+}
+
+var _ ent.Mutation = (*TelegramPeerMutation)(nil)
+
+// telegrampeerOption allows management of the mutation configuration using functional options.
+type telegrampeerOption func(*TelegramPeerMutation)
+
+// newTelegramPeerMutation creates new mutation for the TelegramPeer entity.
+func newTelegramPeerMutation(c config, op Op, opts ...telegrampeerOption) *TelegramPeerMutation {
+	m := &TelegramPeerMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeTelegramPeer,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withTelegramPeerID sets the ID field of the mutation.
+func withTelegramPeerID(id uuid.UUID) telegrampeerOption {
+	return func(m *TelegramPeerMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *TelegramPeer
+		)
+		m.oldValue = func(ctx context.Context) (*TelegramPeer, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().TelegramPeer.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withTelegramPeer sets the old TelegramPeer of the mutation.
+func withTelegramPeer(node *TelegramPeer) telegrampeerOption {
+	return func(m *TelegramPeerMutation) {
+		m.oldValue = func(context.Context) (*TelegramPeer, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m TelegramPeerMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m TelegramPeerMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of TelegramPeer entities.
+func (m *TelegramPeerMutation) SetID(id uuid.UUID) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *TelegramPeerMutation) ID() (id uuid.UUID, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *TelegramPeerMutation) IDs(ctx context.Context) ([]uuid.UUID, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []uuid.UUID{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().TelegramPeer.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetPeerType sets the "peer_type" field.
+func (m *TelegramPeerMutation) SetPeerType(s string) {
+	m.peer_type = &s
+}
+
+// PeerType returns the value of the "peer_type" field in the mutation.
+func (m *TelegramPeerMutation) PeerType() (r string, exists bool) {
+	v := m.peer_type
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPeerType returns the old "peer_type" field's value of the TelegramPeer entity.
+// If the TelegramPeer object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TelegramPeerMutation) OldPeerType(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPeerType is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPeerType requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPeerType: %w", err)
+	}
+	return oldValue.PeerType, nil
+}
+
+// ResetPeerType resets all changes to the "peer_type" field.
+func (m *TelegramPeerMutation) ResetPeerType() {
+	m.peer_type = nil
+}
+
+// SetPeerID sets the "peer_id" field.
+func (m *TelegramPeerMutation) SetPeerID(i int64) {
+	m.peer_id = &i
+	m.addpeer_id = nil
+}
+
+// PeerID returns the value of the "peer_id" field in the mutation.
+func (m *TelegramPeerMutation) PeerID() (r int64, exists bool) {
+	v := m.peer_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPeerID returns the old "peer_id" field's value of the TelegramPeer entity.
+// If the TelegramPeer object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TelegramPeerMutation) OldPeerID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPeerID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPeerID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPeerID: %w", err)
+	}
+	return oldValue.PeerID, nil
+}
+
+// AddPeerID adds i to the "peer_id" field.
+func (m *TelegramPeerMutation) AddPeerID(i int64) {
+	if m.addpeer_id != nil {
+		*m.addpeer_id += i
+	} else {
+		m.addpeer_id = &i
+	}
+}
+
+// AddedPeerID returns the value that was added to the "peer_id" field in this mutation.
+func (m *TelegramPeerMutation) AddedPeerID() (r int64, exists bool) {
+	v := m.addpeer_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPeerID resets all changes to the "peer_id" field.
+func (m *TelegramPeerMutation) ResetPeerID() {
+	m.peer_id = nil
+	m.addpeer_id = nil
+}
+
+// SetAccessHash sets the "access_hash" field.
+func (m *TelegramPeerMutation) SetAccessHash(i int64) {
+	m.access_hash = &i
+	m.addaccess_hash = nil
+}
+
+// AccessHash returns the value of the "access_hash" field in the mutation.
+func (m *TelegramPeerMutation) AccessHash() (r int64, exists bool) {
+	v := m.access_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccessHash returns the old "access_hash" field's value of the TelegramPeer entity.
+// If the TelegramPeer object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TelegramPeerMutation) OldAccessHash(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccessHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccessHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccessHash: %w", err)
+	}
+	return oldValue.AccessHash, nil
+}
+
+// AddAccessHash adds i to the "access_hash" field.
+func (m *TelegramPeerMutation) AddAccessHash(i int64) {
+	if m.addaccess_hash != nil {
+		*m.addaccess_hash += i
+	} else {
+		m.addaccess_hash = &i
+	}
+}
+
+// AddedAccessHash returns the value that was added to the "access_hash" field in this mutation.
+func (m *TelegramPeerMutation) AddedAccessHash() (r int64, exists bool) {
+	v := m.addaccess_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearAccessHash clears the value of the "access_hash" field.
+func (m *TelegramPeerMutation) ClearAccessHash() {
+	m.access_hash = nil
+	m.addaccess_hash = nil
+	m.clearedFields[telegrampeer.FieldAccessHash] = struct{}{}
+}
+
+// AccessHashCleared returns if the "access_hash" field was cleared in this mutation.
+func (m *TelegramPeerMutation) AccessHashCleared() bool {
+	_, ok := m.clearedFields[telegrampeer.FieldAccessHash]
+	return ok
+}
+
+// ResetAccessHash resets all changes to the "access_hash" field.
+func (m *TelegramPeerMutation) ResetAccessHash() {
+	m.access_hash = nil
+	m.addaccess_hash = nil
+	delete(m.clearedFields, telegrampeer.FieldAccessHash)
+}
+
+// SetUsername sets the "username" field.
+func (m *TelegramPeerMutation) SetUsername(s string) {
+	m.username = &s
+}
+
+// Username returns the value of the "username" field in the mutation.
+func (m *TelegramPeerMutation) Username() (r string, exists bool) {
+	v := m.username
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUsername returns the old "username" field's value of the TelegramPeer entity.
+// If the TelegramPeer object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TelegramPeerMutation) OldUsername(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUsername is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUsername requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUsername: %w", err)
+	}
+	return oldValue.Username, nil
+}
+
+// ClearUsername clears the value of the "username" field.
+func (m *TelegramPeerMutation) ClearUsername() {
+	m.username = nil
+	m.clearedFields[telegrampeer.FieldUsername] = struct{}{}
+}
+
+// UsernameCleared returns if the "username" field was cleared in this mutation.
+func (m *TelegramPeerMutation) UsernameCleared() bool {
+	_, ok := m.clearedFields[telegrampeer.FieldUsername]
+	return ok
+}
+
+// ResetUsername resets all changes to the "username" field.
+func (m *TelegramPeerMutation) ResetUsername() {
+	m.username = nil
+	delete(m.clearedFields, telegrampeer.FieldUsername)
+}
+
+// SetTitle sets the "title" field.
+func (m *TelegramPeerMutation) SetTitle(s string) {
+	m.title = &s
+}
+
+// Title returns the value of the "title" field in the mutation.
+func (m *TelegramPeerMutation) Title() (r string, exists bool) {
+	v := m.title
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTitle returns the old "title" field's value of the TelegramPeer entity.
+// If the TelegramPeer object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TelegramPeerMutation) OldTitle(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTitle is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTitle requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTitle: %w", err)
+	}
+	return oldValue.Title, nil
+}
+
+// ClearTitle clears the value of the "title" field.
+func (m *TelegramPeerMutation) ClearTitle() {
+	m.title = nil
+	m.clearedFields[telegrampeer.FieldTitle] = struct{}{}
+}
+
+// TitleCleared returns if the "title" field was cleared in this mutation.
+func (m *TelegramPeerMutation) TitleCleared() bool {
+	_, ok := m.clearedFields[telegrampeer.FieldTitle]
+	return ok
+}
+
+// ResetTitle resets all changes to the "title" field.
+func (m *TelegramPeerMutation) ResetTitle() {
+	m.title = nil
+	delete(m.clearedFields, telegrampeer.FieldTitle)
+}
+
+// SetLastSeenAt sets the "last_seen_at" field.
+func (m *TelegramPeerMutation) SetLastSeenAt(t time.Time) {
+	m.last_seen_at = &t
+}
+
+// LastSeenAt returns the value of the "last_seen_at" field in the mutation.
+func (m *TelegramPeerMutation) LastSeenAt() (r time.Time, exists bool) {
+	v := m.last_seen_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastSeenAt returns the old "last_seen_at" field's value of the TelegramPeer entity.
+// If the TelegramPeer object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TelegramPeerMutation) OldLastSeenAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastSeenAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastSeenAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastSeenAt: %w", err)
+	}
+	return oldValue.LastSeenAt, nil
+}
+
+// ResetLastSeenAt resets all changes to the "last_seen_at" field.
+func (m *TelegramPeerMutation) ResetLastSeenAt() {
+	m.last_seen_at = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *TelegramPeerMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *TelegramPeerMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the TelegramPeer entity.
+// If the TelegramPeer object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *TelegramPeerMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *TelegramPeerMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// Where appends a list predicates to the TelegramPeerMutation builder.
+func (m *TelegramPeerMutation) Where(ps ...predicate.TelegramPeer) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the TelegramPeerMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *TelegramPeerMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.TelegramPeer, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *TelegramPeerMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *TelegramPeerMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (TelegramPeer).
+func (m *TelegramPeerMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *TelegramPeerMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.peer_type != nil {
+		fields = append(fields, telegrampeer.FieldPeerType)
+	}
+	if m.peer_id != nil {
+		fields = append(fields, telegrampeer.FieldPeerID)
+	}
+	if m.access_hash != nil {
+		fields = append(fields, telegrampeer.FieldAccessHash)
+	}
+	if m.username != nil {
+		fields = append(fields, telegrampeer.FieldUsername)
+	}
+	if m.title != nil {
+		fields = append(fields, telegrampeer.FieldTitle)
+	}
+	if m.last_seen_at != nil {
+		fields = append(fields, telegrampeer.FieldLastSeenAt)
+	}
+	if m.created_at != nil {
+		fields = append(fields, telegrampeer.FieldCreatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *TelegramPeerMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case telegrampeer.FieldPeerType:
+		return m.PeerType()
+	case telegrampeer.FieldPeerID:
+		return m.PeerID()
+	case telegrampeer.FieldAccessHash:
+		return m.AccessHash()
+	case telegrampeer.FieldUsername:
+		return m.Username()
+	case telegrampeer.FieldTitle:
+		return m.Title()
+	case telegrampeer.FieldLastSeenAt:
+		return m.LastSeenAt()
+	case telegrampeer.FieldCreatedAt:
+		return m.CreatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *TelegramPeerMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case telegrampeer.FieldPeerType:
+		return m.OldPeerType(ctx)
+	case telegrampeer.FieldPeerID:
+		return m.OldPeerID(ctx)
+	case telegrampeer.FieldAccessHash:
+		return m.OldAccessHash(ctx)
+	case telegrampeer.FieldUsername:
+		return m.OldUsername(ctx)
+	case telegrampeer.FieldTitle:
+		return m.OldTitle(ctx)
+	case telegrampeer.FieldLastSeenAt:
+		return m.OldLastSeenAt(ctx)
+	case telegrampeer.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown TelegramPeer field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TelegramPeerMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case telegrampeer.FieldPeerType:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPeerType(v)
+		return nil
+	case telegrampeer.FieldPeerID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPeerID(v)
+		return nil
+	case telegrampeer.FieldAccessHash:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccessHash(v)
+		return nil
+	case telegrampeer.FieldUsername:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUsername(v)
+		return nil
+	case telegrampeer.FieldTitle:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTitle(v)
+		return nil
+	case telegrampeer.FieldLastSeenAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastSeenAt(v)
+		return nil
+	case telegrampeer.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TelegramPeer field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *TelegramPeerMutation) AddedFields() []string {
+	var fields []string
+	if m.addpeer_id != nil {
+		fields = append(fields, telegrampeer.FieldPeerID)
+	}
+	if m.addaccess_hash != nil {
+		fields = append(fields, telegrampeer.FieldAccessHash)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *TelegramPeerMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case telegrampeer.FieldPeerID:
+		return m.AddedPeerID()
+	case telegrampeer.FieldAccessHash:
+		return m.AddedAccessHash()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *TelegramPeerMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case telegrampeer.FieldPeerID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPeerID(v)
+		return nil
+	case telegrampeer.FieldAccessHash:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAccessHash(v)
+		return nil
+	}
+	return fmt.Errorf("unknown TelegramPeer numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *TelegramPeerMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(telegrampeer.FieldAccessHash) {
+		fields = append(fields, telegrampeer.FieldAccessHash)
+	}
+	if m.FieldCleared(telegrampeer.FieldUsername) {
+		fields = append(fields, telegrampeer.FieldUsername)
+	}
+	if m.FieldCleared(telegrampeer.FieldTitle) {
+		fields = append(fields, telegrampeer.FieldTitle)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *TelegramPeerMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *TelegramPeerMutation) ClearField(name string) error {
+	switch name {
+	case telegrampeer.FieldAccessHash:
+		m.ClearAccessHash()
+		return nil
+	case telegrampeer.FieldUsername:
+		m.ClearUsername()
+		return nil
+	case telegrampeer.FieldTitle:
+		m.ClearTitle()
+		return nil
+	}
+	return fmt.Errorf("unknown TelegramPeer nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *TelegramPeerMutation) ResetField(name string) error {
+	switch name {
+	case telegrampeer.FieldPeerType:
+		m.ResetPeerType()
+		return nil
+	case telegrampeer.FieldPeerID:
+		m.ResetPeerID()
+		return nil
+	case telegrampeer.FieldAccessHash:
+		m.ResetAccessHash()
+		return nil
+	case telegrampeer.FieldUsername:
+		m.ResetUsername()
+		return nil
+	case telegrampeer.FieldTitle:
+		m.ResetTitle()
+		return nil
+	case telegrampeer.FieldLastSeenAt:
+		m.ResetLastSeenAt()
+		return nil
+	case telegrampeer.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown TelegramPeer field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *TelegramPeerMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *TelegramPeerMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *TelegramPeerMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *TelegramPeerMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *TelegramPeerMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *TelegramPeerMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *TelegramPeerMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown TelegramPeer unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *TelegramPeerMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown TelegramPeer edge %s", name)
+}
+
 // UserMutation represents an operation that mutates the User nodes in the graph.
 type UserMutation struct {
 	config
-	op                      Op
-	typ                     string
-	id                      *uuid.UUID
-	telegram_user_id        *int64
-	addtelegram_user_id     *int64
-	telegram_access_hash    *int64
-	addtelegram_access_hash *int64
-	gitlab_username         *string
-	jira_account_id         *string
-	jira_display_name       *string
-	enabled                 *bool
-	created_at              *time.Time
-	updated_at              *time.Time
-	clearedFields           map[string]struct{}
-	subscriptions           map[uuid.UUID]struct{}
-	removedsubscriptions    map[uuid.UUID]struct{}
-	clearedsubscriptions    bool
-	notifications           map[uuid.UUID]struct{}
-	removednotifications    map[uuid.UUID]struct{}
-	clearednotifications    bool
-	tokens                  map[uuid.UUID]struct{}
-	removedtokens           map[uuid.UUID]struct{}
-	clearedtokens           bool
-	done                    bool
-	oldValue                func(context.Context) (*User, error)
-	predicates              []predicate.User
+	op                   Op
+	typ                  string
+	id                   *uuid.UUID
+	telegram_user_id     *int64
+	addtelegram_user_id  *int64
+	gitlab_username      *string
+	jira_account_id      *string
+	jira_display_name    *string
+	enabled              *bool
+	created_at           *time.Time
+	updated_at           *time.Time
+	clearedFields        map[string]struct{}
+	subscriptions        map[uuid.UUID]struct{}
+	removedsubscriptions map[uuid.UUID]struct{}
+	clearedsubscriptions bool
+	notifications        map[uuid.UUID]struct{}
+	removednotifications map[uuid.UUID]struct{}
+	clearednotifications bool
+	tokens               map[uuid.UUID]struct{}
+	removedtokens        map[uuid.UUID]struct{}
+	clearedtokens        bool
+	done                 bool
+	oldValue             func(context.Context) (*User, error)
+	predicates           []predicate.User
 }
 
 var _ ent.Mutation = (*UserMutation)(nil)
@@ -10451,76 +11023,6 @@ func (m *UserMutation) AddedTelegramUserID() (r int64, exists bool) {
 func (m *UserMutation) ResetTelegramUserID() {
 	m.telegram_user_id = nil
 	m.addtelegram_user_id = nil
-}
-
-// SetTelegramAccessHash sets the "telegram_access_hash" field.
-func (m *UserMutation) SetTelegramAccessHash(i int64) {
-	m.telegram_access_hash = &i
-	m.addtelegram_access_hash = nil
-}
-
-// TelegramAccessHash returns the value of the "telegram_access_hash" field in the mutation.
-func (m *UserMutation) TelegramAccessHash() (r int64, exists bool) {
-	v := m.telegram_access_hash
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldTelegramAccessHash returns the old "telegram_access_hash" field's value of the User entity.
-// If the User object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserMutation) OldTelegramAccessHash(ctx context.Context) (v *int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldTelegramAccessHash is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldTelegramAccessHash requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldTelegramAccessHash: %w", err)
-	}
-	return oldValue.TelegramAccessHash, nil
-}
-
-// AddTelegramAccessHash adds i to the "telegram_access_hash" field.
-func (m *UserMutation) AddTelegramAccessHash(i int64) {
-	if m.addtelegram_access_hash != nil {
-		*m.addtelegram_access_hash += i
-	} else {
-		m.addtelegram_access_hash = &i
-	}
-}
-
-// AddedTelegramAccessHash returns the value that was added to the "telegram_access_hash" field in this mutation.
-func (m *UserMutation) AddedTelegramAccessHash() (r int64, exists bool) {
-	v := m.addtelegram_access_hash
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearTelegramAccessHash clears the value of the "telegram_access_hash" field.
-func (m *UserMutation) ClearTelegramAccessHash() {
-	m.telegram_access_hash = nil
-	m.addtelegram_access_hash = nil
-	m.clearedFields[user.FieldTelegramAccessHash] = struct{}{}
-}
-
-// TelegramAccessHashCleared returns if the "telegram_access_hash" field was cleared in this mutation.
-func (m *UserMutation) TelegramAccessHashCleared() bool {
-	_, ok := m.clearedFields[user.FieldTelegramAccessHash]
-	return ok
-}
-
-// ResetTelegramAccessHash resets all changes to the "telegram_access_hash" field.
-func (m *UserMutation) ResetTelegramAccessHash() {
-	m.telegram_access_hash = nil
-	m.addtelegram_access_hash = nil
-	delete(m.clearedFields, user.FieldTelegramAccessHash)
 }
 
 // SetGitlabUsername sets the "gitlab_username" field.
@@ -10974,12 +11476,9 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 7)
 	if m.telegram_user_id != nil {
 		fields = append(fields, user.FieldTelegramUserID)
-	}
-	if m.telegram_access_hash != nil {
-		fields = append(fields, user.FieldTelegramAccessHash)
 	}
 	if m.gitlab_username != nil {
 		fields = append(fields, user.FieldGitlabUsername)
@@ -11009,8 +11508,6 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 	switch name {
 	case user.FieldTelegramUserID:
 		return m.TelegramUserID()
-	case user.FieldTelegramAccessHash:
-		return m.TelegramAccessHash()
 	case user.FieldGitlabUsername:
 		return m.GitlabUsername()
 	case user.FieldJiraAccountID:
@@ -11034,8 +11531,6 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 	switch name {
 	case user.FieldTelegramUserID:
 		return m.OldTelegramUserID(ctx)
-	case user.FieldTelegramAccessHash:
-		return m.OldTelegramAccessHash(ctx)
 	case user.FieldGitlabUsername:
 		return m.OldGitlabUsername(ctx)
 	case user.FieldJiraAccountID:
@@ -11063,13 +11558,6 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetTelegramUserID(v)
-		return nil
-	case user.FieldTelegramAccessHash:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetTelegramAccessHash(v)
 		return nil
 	case user.FieldGitlabUsername:
 		v, ok := value.(string)
@@ -11124,9 +11612,6 @@ func (m *UserMutation) AddedFields() []string {
 	if m.addtelegram_user_id != nil {
 		fields = append(fields, user.FieldTelegramUserID)
 	}
-	if m.addtelegram_access_hash != nil {
-		fields = append(fields, user.FieldTelegramAccessHash)
-	}
 	return fields
 }
 
@@ -11137,8 +11622,6 @@ func (m *UserMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case user.FieldTelegramUserID:
 		return m.AddedTelegramUserID()
-	case user.FieldTelegramAccessHash:
-		return m.AddedTelegramAccessHash()
 	}
 	return nil, false
 }
@@ -11155,13 +11638,6 @@ func (m *UserMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddTelegramUserID(v)
 		return nil
-	case user.FieldTelegramAccessHash:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddTelegramAccessHash(v)
-		return nil
 	}
 	return fmt.Errorf("unknown User numeric field %s", name)
 }
@@ -11170,9 +11646,6 @@ func (m *UserMutation) AddField(name string, value ent.Value) error {
 // mutation.
 func (m *UserMutation) ClearedFields() []string {
 	var fields []string
-	if m.FieldCleared(user.FieldTelegramAccessHash) {
-		fields = append(fields, user.FieldTelegramAccessHash)
-	}
 	if m.FieldCleared(user.FieldGitlabUsername) {
 		fields = append(fields, user.FieldGitlabUsername)
 	}
@@ -11196,9 +11669,6 @@ func (m *UserMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *UserMutation) ClearField(name string) error {
 	switch name {
-	case user.FieldTelegramAccessHash:
-		m.ClearTelegramAccessHash()
-		return nil
 	case user.FieldGitlabUsername:
 		m.ClearGitlabUsername()
 		return nil
@@ -11218,9 +11688,6 @@ func (m *UserMutation) ResetField(name string) error {
 	switch name {
 	case user.FieldTelegramUserID:
 		m.ResetTelegramUserID()
-		return nil
-	case user.FieldTelegramAccessHash:
-		m.ResetTelegramAccessHash()
 		return nil
 	case user.FieldGitlabUsername:
 		m.ResetGitlabUsername()

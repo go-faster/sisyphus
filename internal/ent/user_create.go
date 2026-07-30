@@ -33,20 +33,6 @@ func (_c *UserCreate) SetTelegramUserID(v int64) *UserCreate {
 	return _c
 }
 
-// SetTelegramAccessHash sets the "telegram_access_hash" field.
-func (_c *UserCreate) SetTelegramAccessHash(v int64) *UserCreate {
-	_c.mutation.SetTelegramAccessHash(v)
-	return _c
-}
-
-// SetNillableTelegramAccessHash sets the "telegram_access_hash" field if the given value is not nil.
-func (_c *UserCreate) SetNillableTelegramAccessHash(v *int64) *UserCreate {
-	if v != nil {
-		_c.SetTelegramAccessHash(*v)
-	}
-	return _c
-}
-
 // SetGitlabUsername sets the "gitlab_username" field.
 func (_c *UserCreate) SetGitlabUsername(v string) *UserCreate {
 	_c.mutation.SetGitlabUsername(v)
@@ -297,10 +283,6 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		_spec.SetField(user.FieldTelegramUserID, field.TypeInt64, value)
 		_node.TelegramUserID = value
 	}
-	if value, ok := _c.mutation.TelegramAccessHash(); ok {
-		_spec.SetField(user.FieldTelegramAccessHash, field.TypeInt64, value)
-		_node.TelegramAccessHash = &value
-	}
 	if value, ok := _c.mutation.GitlabUsername(); ok {
 		_spec.SetField(user.FieldGitlabUsername, field.TypeString, value)
 		_node.GitlabUsername = &value
@@ -440,30 +422,6 @@ func (u *UserUpsert) UpdateTelegramUserID() *UserUpsert {
 // AddTelegramUserID adds v to the "telegram_user_id" field.
 func (u *UserUpsert) AddTelegramUserID(v int64) *UserUpsert {
 	u.Add(user.FieldTelegramUserID, v)
-	return u
-}
-
-// SetTelegramAccessHash sets the "telegram_access_hash" field.
-func (u *UserUpsert) SetTelegramAccessHash(v int64) *UserUpsert {
-	u.Set(user.FieldTelegramAccessHash, v)
-	return u
-}
-
-// UpdateTelegramAccessHash sets the "telegram_access_hash" field to the value that was provided on create.
-func (u *UserUpsert) UpdateTelegramAccessHash() *UserUpsert {
-	u.SetExcluded(user.FieldTelegramAccessHash)
-	return u
-}
-
-// AddTelegramAccessHash adds v to the "telegram_access_hash" field.
-func (u *UserUpsert) AddTelegramAccessHash(v int64) *UserUpsert {
-	u.Add(user.FieldTelegramAccessHash, v)
-	return u
-}
-
-// ClearTelegramAccessHash clears the value of the "telegram_access_hash" field.
-func (u *UserUpsert) ClearTelegramAccessHash() *UserUpsert {
-	u.SetNull(user.FieldTelegramAccessHash)
 	return u
 }
 
@@ -614,34 +572,6 @@ func (u *UserUpsertOne) AddTelegramUserID(v int64) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateTelegramUserID() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateTelegramUserID()
-	})
-}
-
-// SetTelegramAccessHash sets the "telegram_access_hash" field.
-func (u *UserUpsertOne) SetTelegramAccessHash(v int64) *UserUpsertOne {
-	return u.Update(func(s *UserUpsert) {
-		s.SetTelegramAccessHash(v)
-	})
-}
-
-// AddTelegramAccessHash adds v to the "telegram_access_hash" field.
-func (u *UserUpsertOne) AddTelegramAccessHash(v int64) *UserUpsertOne {
-	return u.Update(func(s *UserUpsert) {
-		s.AddTelegramAccessHash(v)
-	})
-}
-
-// UpdateTelegramAccessHash sets the "telegram_access_hash" field to the value that was provided on create.
-func (u *UserUpsertOne) UpdateTelegramAccessHash() *UserUpsertOne {
-	return u.Update(func(s *UserUpsert) {
-		s.UpdateTelegramAccessHash()
-	})
-}
-
-// ClearTelegramAccessHash clears the value of the "telegram_access_hash" field.
-func (u *UserUpsertOne) ClearTelegramAccessHash() *UserUpsertOne {
-	return u.Update(func(s *UserUpsert) {
-		s.ClearTelegramAccessHash()
 	})
 }
 
@@ -972,34 +902,6 @@ func (u *UserUpsertBulk) AddTelegramUserID(v int64) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateTelegramUserID() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateTelegramUserID()
-	})
-}
-
-// SetTelegramAccessHash sets the "telegram_access_hash" field.
-func (u *UserUpsertBulk) SetTelegramAccessHash(v int64) *UserUpsertBulk {
-	return u.Update(func(s *UserUpsert) {
-		s.SetTelegramAccessHash(v)
-	})
-}
-
-// AddTelegramAccessHash adds v to the "telegram_access_hash" field.
-func (u *UserUpsertBulk) AddTelegramAccessHash(v int64) *UserUpsertBulk {
-	return u.Update(func(s *UserUpsert) {
-		s.AddTelegramAccessHash(v)
-	})
-}
-
-// UpdateTelegramAccessHash sets the "telegram_access_hash" field to the value that was provided on create.
-func (u *UserUpsertBulk) UpdateTelegramAccessHash() *UserUpsertBulk {
-	return u.Update(func(s *UserUpsert) {
-		s.UpdateTelegramAccessHash()
-	})
-}
-
-// ClearTelegramAccessHash clears the value of the "telegram_access_hash" field.
-func (u *UserUpsertBulk) ClearTelegramAccessHash() *UserUpsertBulk {
-	return u.Update(func(s *UserUpsert) {
-		s.ClearTelegramAccessHash()
 	})
 }
 

@@ -53,33 +53,6 @@ func (_u *UserUpdate) AddTelegramUserID(v int64) *UserUpdate {
 	return _u
 }
 
-// SetTelegramAccessHash sets the "telegram_access_hash" field.
-func (_u *UserUpdate) SetTelegramAccessHash(v int64) *UserUpdate {
-	_u.mutation.ResetTelegramAccessHash()
-	_u.mutation.SetTelegramAccessHash(v)
-	return _u
-}
-
-// SetNillableTelegramAccessHash sets the "telegram_access_hash" field if the given value is not nil.
-func (_u *UserUpdate) SetNillableTelegramAccessHash(v *int64) *UserUpdate {
-	if v != nil {
-		_u.SetTelegramAccessHash(*v)
-	}
-	return _u
-}
-
-// AddTelegramAccessHash adds value to the "telegram_access_hash" field.
-func (_u *UserUpdate) AddTelegramAccessHash(v int64) *UserUpdate {
-	_u.mutation.AddTelegramAccessHash(v)
-	return _u
-}
-
-// ClearTelegramAccessHash clears the value of the "telegram_access_hash" field.
-func (_u *UserUpdate) ClearTelegramAccessHash() *UserUpdate {
-	_u.mutation.ClearTelegramAccessHash()
-	return _u
-}
-
 // SetGitlabUsername sets the "gitlab_username" field.
 func (_u *UserUpdate) SetGitlabUsername(v string) *UserUpdate {
 	_u.mutation.SetGitlabUsername(v)
@@ -324,15 +297,6 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedTelegramUserID(); ok {
 		_spec.AddField(user.FieldTelegramUserID, field.TypeInt64, value)
 	}
-	if value, ok := _u.mutation.TelegramAccessHash(); ok {
-		_spec.SetField(user.FieldTelegramAccessHash, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedTelegramAccessHash(); ok {
-		_spec.AddField(user.FieldTelegramAccessHash, field.TypeInt64, value)
-	}
-	if _u.mutation.TelegramAccessHashCleared() {
-		_spec.ClearField(user.FieldTelegramAccessHash, field.TypeInt64)
-	}
 	if value, ok := _u.mutation.GitlabUsername(); ok {
 		_spec.SetField(user.FieldGitlabUsername, field.TypeString, value)
 	}
@@ -530,33 +494,6 @@ func (_u *UserUpdateOne) SetNillableTelegramUserID(v *int64) *UserUpdateOne {
 // AddTelegramUserID adds value to the "telegram_user_id" field.
 func (_u *UserUpdateOne) AddTelegramUserID(v int64) *UserUpdateOne {
 	_u.mutation.AddTelegramUserID(v)
-	return _u
-}
-
-// SetTelegramAccessHash sets the "telegram_access_hash" field.
-func (_u *UserUpdateOne) SetTelegramAccessHash(v int64) *UserUpdateOne {
-	_u.mutation.ResetTelegramAccessHash()
-	_u.mutation.SetTelegramAccessHash(v)
-	return _u
-}
-
-// SetNillableTelegramAccessHash sets the "telegram_access_hash" field if the given value is not nil.
-func (_u *UserUpdateOne) SetNillableTelegramAccessHash(v *int64) *UserUpdateOne {
-	if v != nil {
-		_u.SetTelegramAccessHash(*v)
-	}
-	return _u
-}
-
-// AddTelegramAccessHash adds value to the "telegram_access_hash" field.
-func (_u *UserUpdateOne) AddTelegramAccessHash(v int64) *UserUpdateOne {
-	_u.mutation.AddTelegramAccessHash(v)
-	return _u
-}
-
-// ClearTelegramAccessHash clears the value of the "telegram_access_hash" field.
-func (_u *UserUpdateOne) ClearTelegramAccessHash() *UserUpdateOne {
-	_u.mutation.ClearTelegramAccessHash()
 	return _u
 }
 
@@ -833,15 +770,6 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.AddedTelegramUserID(); ok {
 		_spec.AddField(user.FieldTelegramUserID, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.TelegramAccessHash(); ok {
-		_spec.SetField(user.FieldTelegramAccessHash, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedTelegramAccessHash(); ok {
-		_spec.AddField(user.FieldTelegramAccessHash, field.TypeInt64, value)
-	}
-	if _u.mutation.TelegramAccessHashCleared() {
-		_spec.ClearField(user.FieldTelegramAccessHash, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.GitlabUsername(); ok {
 		_spec.SetField(user.FieldGitlabUsername, field.TypeString, value)

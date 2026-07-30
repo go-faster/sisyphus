@@ -36,6 +36,9 @@ type SyncState func(*sql.Selector)
 // TelegramMessage is the predicate function for telegrammessage builders.
 type TelegramMessage func(*sql.Selector)
 
+// TelegramPeer is the predicate function for telegrampeer builders.
+type TelegramPeer func(*sql.Selector)
+
 // User is the predicate function for user builders.
 type User func(*sql.Selector)
 

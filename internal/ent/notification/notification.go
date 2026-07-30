@@ -25,8 +25,6 @@ const (
 	FieldPeerType = "peer_type"
 	// FieldTelegramUserID holds the string denoting the telegram_user_id field in the database.
 	FieldTelegramUserID = "telegram_user_id"
-	// FieldTelegramAccessHash holds the string denoting the telegram_access_hash field in the database.
-	FieldTelegramAccessHash = "telegram_access_hash"
 	// FieldSource holds the string denoting the source field in the database.
 	FieldSource = "source"
 	// FieldEventType holds the string denoting the event_type field in the database.
@@ -68,7 +66,6 @@ var Columns = []string{
 	FieldChannel,
 	FieldPeerType,
 	FieldTelegramUserID,
-	FieldTelegramAccessHash,
 	FieldSource,
 	FieldEventType,
 	FieldText,
@@ -149,11 +146,6 @@ func ByPeerType(opts ...sql.OrderTermOption) OrderOption {
 // ByTelegramUserID orders the results by the telegram_user_id field.
 func ByTelegramUserID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTelegramUserID, opts...).ToFunc()
-}
-
-// ByTelegramAccessHash orders the results by the telegram_access_hash field.
-func ByTelegramAccessHash(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldTelegramAccessHash, opts...).ToFunc()
 }
 
 // BySource orders the results by the source field.

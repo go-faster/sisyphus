@@ -63,33 +63,6 @@ func (_u *NotifyChatUpdate) AddPeerID(v int64) *NotifyChatUpdate {
 	return _u
 }
 
-// SetAccessHash sets the "access_hash" field.
-func (_u *NotifyChatUpdate) SetAccessHash(v int64) *NotifyChatUpdate {
-	_u.mutation.ResetAccessHash()
-	_u.mutation.SetAccessHash(v)
-	return _u
-}
-
-// SetNillableAccessHash sets the "access_hash" field if the given value is not nil.
-func (_u *NotifyChatUpdate) SetNillableAccessHash(v *int64) *NotifyChatUpdate {
-	if v != nil {
-		_u.SetAccessHash(*v)
-	}
-	return _u
-}
-
-// AddAccessHash adds value to the "access_hash" field.
-func (_u *NotifyChatUpdate) AddAccessHash(v int64) *NotifyChatUpdate {
-	_u.mutation.AddAccessHash(v)
-	return _u
-}
-
-// ClearAccessHash clears the value of the "access_hash" field.
-func (_u *NotifyChatUpdate) ClearAccessHash() *NotifyChatUpdate {
-	_u.mutation.ClearAccessHash()
-	return _u
-}
-
 // SetTitle sets the "title" field.
 func (_u *NotifyChatUpdate) SetTitle(v string) *NotifyChatUpdate {
 	_u.mutation.SetTitle(v)
@@ -216,15 +189,6 @@ func (_u *NotifyChatUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 	if value, ok := _u.mutation.AddedPeerID(); ok {
 		_spec.AddField(notifychat.FieldPeerID, field.TypeInt64, value)
 	}
-	if value, ok := _u.mutation.AccessHash(); ok {
-		_spec.SetField(notifychat.FieldAccessHash, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedAccessHash(); ok {
-		_spec.AddField(notifychat.FieldAccessHash, field.TypeInt64, value)
-	}
-	if _u.mutation.AccessHashCleared() {
-		_spec.ClearField(notifychat.FieldAccessHash, field.TypeInt64)
-	}
 	if value, ok := _u.mutation.Title(); ok {
 		_spec.SetField(notifychat.FieldTitle, field.TypeString, value)
 	}
@@ -298,33 +262,6 @@ func (_u *NotifyChatUpdateOne) SetNillablePeerID(v *int64) *NotifyChatUpdateOne 
 // AddPeerID adds value to the "peer_id" field.
 func (_u *NotifyChatUpdateOne) AddPeerID(v int64) *NotifyChatUpdateOne {
 	_u.mutation.AddPeerID(v)
-	return _u
-}
-
-// SetAccessHash sets the "access_hash" field.
-func (_u *NotifyChatUpdateOne) SetAccessHash(v int64) *NotifyChatUpdateOne {
-	_u.mutation.ResetAccessHash()
-	_u.mutation.SetAccessHash(v)
-	return _u
-}
-
-// SetNillableAccessHash sets the "access_hash" field if the given value is not nil.
-func (_u *NotifyChatUpdateOne) SetNillableAccessHash(v *int64) *NotifyChatUpdateOne {
-	if v != nil {
-		_u.SetAccessHash(*v)
-	}
-	return _u
-}
-
-// AddAccessHash adds value to the "access_hash" field.
-func (_u *NotifyChatUpdateOne) AddAccessHash(v int64) *NotifyChatUpdateOne {
-	_u.mutation.AddAccessHash(v)
-	return _u
-}
-
-// ClearAccessHash clears the value of the "access_hash" field.
-func (_u *NotifyChatUpdateOne) ClearAccessHash() *NotifyChatUpdateOne {
-	_u.mutation.ClearAccessHash()
 	return _u
 }
 
@@ -483,15 +420,6 @@ func (_u *NotifyChatUpdateOne) sqlSave(ctx context.Context) (_node *NotifyChat, 
 	}
 	if value, ok := _u.mutation.AddedPeerID(); ok {
 		_spec.AddField(notifychat.FieldPeerID, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AccessHash(); ok {
-		_spec.SetField(notifychat.FieldAccessHash, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedAccessHash(); ok {
-		_spec.AddField(notifychat.FieldAccessHash, field.TypeInt64, value)
-	}
-	if _u.mutation.AccessHashCleared() {
-		_spec.ClearField(notifychat.FieldAccessHash, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.Title(); ok {
 		_spec.SetField(notifychat.FieldTitle, field.TypeString, value)

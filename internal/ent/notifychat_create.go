@@ -44,20 +44,6 @@ func (_c *NotifyChatCreate) SetPeerID(v int64) *NotifyChatCreate {
 	return _c
 }
 
-// SetAccessHash sets the "access_hash" field.
-func (_c *NotifyChatCreate) SetAccessHash(v int64) *NotifyChatCreate {
-	_c.mutation.SetAccessHash(v)
-	return _c
-}
-
-// SetNillableAccessHash sets the "access_hash" field if the given value is not nil.
-func (_c *NotifyChatCreate) SetNillableAccessHash(v *int64) *NotifyChatCreate {
-	if v != nil {
-		_c.SetAccessHash(*v)
-	}
-	return _c
-}
-
 // SetTitle sets the "title" field.
 func (_c *NotifyChatCreate) SetTitle(v string) *NotifyChatCreate {
 	_c.mutation.SetTitle(v)
@@ -260,10 +246,6 @@ func (_c *NotifyChatCreate) createSpec() (*NotifyChat, *sqlgraph.CreateSpec) {
 		_spec.SetField(notifychat.FieldPeerID, field.TypeInt64, value)
 		_node.PeerID = value
 	}
-	if value, ok := _c.mutation.AccessHash(); ok {
-		_spec.SetField(notifychat.FieldAccessHash, field.TypeInt64, value)
-		_node.AccessHash = &value
-	}
 	if value, ok := _c.mutation.Title(); ok {
 		_spec.SetField(notifychat.FieldTitle, field.TypeString, value)
 		_node.Title = value
@@ -363,30 +345,6 @@ func (u *NotifyChatUpsert) UpdatePeerID() *NotifyChatUpsert {
 // AddPeerID adds v to the "peer_id" field.
 func (u *NotifyChatUpsert) AddPeerID(v int64) *NotifyChatUpsert {
 	u.Add(notifychat.FieldPeerID, v)
-	return u
-}
-
-// SetAccessHash sets the "access_hash" field.
-func (u *NotifyChatUpsert) SetAccessHash(v int64) *NotifyChatUpsert {
-	u.Set(notifychat.FieldAccessHash, v)
-	return u
-}
-
-// UpdateAccessHash sets the "access_hash" field to the value that was provided on create.
-func (u *NotifyChatUpsert) UpdateAccessHash() *NotifyChatUpsert {
-	u.SetExcluded(notifychat.FieldAccessHash)
-	return u
-}
-
-// AddAccessHash adds v to the "access_hash" field.
-func (u *NotifyChatUpsert) AddAccessHash(v int64) *NotifyChatUpsert {
-	u.Add(notifychat.FieldAccessHash, v)
-	return u
-}
-
-// ClearAccessHash clears the value of the "access_hash" field.
-func (u *NotifyChatUpsert) ClearAccessHash() *NotifyChatUpsert {
-	u.SetNull(notifychat.FieldAccessHash)
 	return u
 }
 
@@ -539,34 +497,6 @@ func (u *NotifyChatUpsertOne) AddPeerID(v int64) *NotifyChatUpsertOne {
 func (u *NotifyChatUpsertOne) UpdatePeerID() *NotifyChatUpsertOne {
 	return u.Update(func(s *NotifyChatUpsert) {
 		s.UpdatePeerID()
-	})
-}
-
-// SetAccessHash sets the "access_hash" field.
-func (u *NotifyChatUpsertOne) SetAccessHash(v int64) *NotifyChatUpsertOne {
-	return u.Update(func(s *NotifyChatUpsert) {
-		s.SetAccessHash(v)
-	})
-}
-
-// AddAccessHash adds v to the "access_hash" field.
-func (u *NotifyChatUpsertOne) AddAccessHash(v int64) *NotifyChatUpsertOne {
-	return u.Update(func(s *NotifyChatUpsert) {
-		s.AddAccessHash(v)
-	})
-}
-
-// UpdateAccessHash sets the "access_hash" field to the value that was provided on create.
-func (u *NotifyChatUpsertOne) UpdateAccessHash() *NotifyChatUpsertOne {
-	return u.Update(func(s *NotifyChatUpsert) {
-		s.UpdateAccessHash()
-	})
-}
-
-// ClearAccessHash clears the value of the "access_hash" field.
-func (u *NotifyChatUpsertOne) ClearAccessHash() *NotifyChatUpsertOne {
-	return u.Update(func(s *NotifyChatUpsert) {
-		s.ClearAccessHash()
 	})
 }
 
@@ -897,34 +827,6 @@ func (u *NotifyChatUpsertBulk) AddPeerID(v int64) *NotifyChatUpsertBulk {
 func (u *NotifyChatUpsertBulk) UpdatePeerID() *NotifyChatUpsertBulk {
 	return u.Update(func(s *NotifyChatUpsert) {
 		s.UpdatePeerID()
-	})
-}
-
-// SetAccessHash sets the "access_hash" field.
-func (u *NotifyChatUpsertBulk) SetAccessHash(v int64) *NotifyChatUpsertBulk {
-	return u.Update(func(s *NotifyChatUpsert) {
-		s.SetAccessHash(v)
-	})
-}
-
-// AddAccessHash adds v to the "access_hash" field.
-func (u *NotifyChatUpsertBulk) AddAccessHash(v int64) *NotifyChatUpsertBulk {
-	return u.Update(func(s *NotifyChatUpsert) {
-		s.AddAccessHash(v)
-	})
-}
-
-// UpdateAccessHash sets the "access_hash" field to the value that was provided on create.
-func (u *NotifyChatUpsertBulk) UpdateAccessHash() *NotifyChatUpsertBulk {
-	return u.Update(func(s *NotifyChatUpsert) {
-		s.UpdateAccessHash()
-	})
-}
-
-// ClearAccessHash clears the value of the "access_hash" field.
-func (u *NotifyChatUpsertBulk) ClearAccessHash() *NotifyChatUpsertBulk {
-	return u.Update(func(s *NotifyChatUpsert) {
-		s.ClearAccessHash()
 	})
 }
 

@@ -22,6 +22,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 	"github.com/go-faster/sisyphus/internal/ent/telegrammessage"
+	"github.com/go-faster/sisyphus/internal/ent/telegrampeer"
 	"github.com/go-faster/sisyphus/internal/ent/user"
 	"github.com/go-faster/sisyphus/internal/ent/usertoken"
 )
@@ -94,6 +95,7 @@ func checkColumn(t, c string) error {
 			supportrequest.Table:     supportrequest.ValidColumn,
 			syncstate.Table:          syncstate.ValidColumn,
 			telegrammessage.Table:    telegrammessage.ValidColumn,
+			telegrampeer.Table:       telegrampeer.ValidColumn,
 			user.Table:               user.ValidColumn,
 			usertoken.Table:          usertoken.ValidColumn,
 		})

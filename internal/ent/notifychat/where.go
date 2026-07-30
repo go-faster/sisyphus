@@ -65,11 +65,6 @@ func PeerID(v int64) predicate.NotifyChat {
 	return predicate.NotifyChat(sql.FieldEQ(FieldPeerID, v))
 }
 
-// AccessHash applies equality check predicate on the "access_hash" field. It's identical to AccessHashEQ.
-func AccessHash(v int64) predicate.NotifyChat {
-	return predicate.NotifyChat(sql.FieldEQ(FieldAccessHash, v))
-}
-
 // Title applies equality check predicate on the "title" field. It's identical to TitleEQ.
 func Title(v string) predicate.NotifyChat {
 	return predicate.NotifyChat(sql.FieldEQ(FieldTitle, v))
@@ -198,56 +193,6 @@ func PeerIDLT(v int64) predicate.NotifyChat {
 // PeerIDLTE applies the LTE predicate on the "peer_id" field.
 func PeerIDLTE(v int64) predicate.NotifyChat {
 	return predicate.NotifyChat(sql.FieldLTE(FieldPeerID, v))
-}
-
-// AccessHashEQ applies the EQ predicate on the "access_hash" field.
-func AccessHashEQ(v int64) predicate.NotifyChat {
-	return predicate.NotifyChat(sql.FieldEQ(FieldAccessHash, v))
-}
-
-// AccessHashNEQ applies the NEQ predicate on the "access_hash" field.
-func AccessHashNEQ(v int64) predicate.NotifyChat {
-	return predicate.NotifyChat(sql.FieldNEQ(FieldAccessHash, v))
-}
-
-// AccessHashIn applies the In predicate on the "access_hash" field.
-func AccessHashIn(vs ...int64) predicate.NotifyChat {
-	return predicate.NotifyChat(sql.FieldIn(FieldAccessHash, vs...))
-}
-
-// AccessHashNotIn applies the NotIn predicate on the "access_hash" field.
-func AccessHashNotIn(vs ...int64) predicate.NotifyChat {
-	return predicate.NotifyChat(sql.FieldNotIn(FieldAccessHash, vs...))
-}
-
-// AccessHashGT applies the GT predicate on the "access_hash" field.
-func AccessHashGT(v int64) predicate.NotifyChat {
-	return predicate.NotifyChat(sql.FieldGT(FieldAccessHash, v))
-}
-
-// AccessHashGTE applies the GTE predicate on the "access_hash" field.
-func AccessHashGTE(v int64) predicate.NotifyChat {
-	return predicate.NotifyChat(sql.FieldGTE(FieldAccessHash, v))
-}
-
-// AccessHashLT applies the LT predicate on the "access_hash" field.
-func AccessHashLT(v int64) predicate.NotifyChat {
-	return predicate.NotifyChat(sql.FieldLT(FieldAccessHash, v))
-}
-
-// AccessHashLTE applies the LTE predicate on the "access_hash" field.
-func AccessHashLTE(v int64) predicate.NotifyChat {
-	return predicate.NotifyChat(sql.FieldLTE(FieldAccessHash, v))
-}
-
-// AccessHashIsNil applies the IsNil predicate on the "access_hash" field.
-func AccessHashIsNil() predicate.NotifyChat {
-	return predicate.NotifyChat(sql.FieldIsNull(FieldAccessHash))
-}
-
-// AccessHashNotNil applies the NotNil predicate on the "access_hash" field.
-func AccessHashNotNil() predicate.NotifyChat {
-	return predicate.NotifyChat(sql.FieldNotNull(FieldAccessHash))
 }
 
 // TitleEQ applies the EQ predicate on the "title" field.
