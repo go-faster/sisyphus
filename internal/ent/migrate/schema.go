@@ -125,6 +125,7 @@ var (
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "dedup_key", Type: field.TypeString},
 		{Name: "channel", Type: field.TypeString},
+		{Name: "peer_type", Type: field.TypeString, Default: "user"},
 		{Name: "telegram_user_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "telegram_access_hash", Type: field.TypeInt64, Nullable: true},
 		{Name: "source", Type: field.TypeString},
@@ -137,7 +138,7 @@ var (
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "delivered_at", Type: field.TypeTime, Nullable: true},
-		{Name: "user_id", Type: field.TypeUUID},
+		{Name: "user_id", Type: field.TypeUUID, Nullable: true},
 	}
 	// NotificationsTable holds the schema information for the "notifications" table.
 	NotificationsTable = &schema.Table{
@@ -147,9 +148,9 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "notifications_users_notifications",
-				Columns:    []*schema.Column{NotificationsColumns[15]},
+				Columns:    []*schema.Column{NotificationsColumns[16]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
-				OnDelete:   schema.NoAction,
+				OnDelete:   schema.SetNull,
 			},
 		},
 		Indexes: []*schema.Index{
@@ -161,7 +162,7 @@ var (
 			{
 				Name:    "notification_status",
 				Unique:  false,
-				Columns: []*schema.Column{NotificationsColumns[9]},
+				Columns: []*schema.Column{NotificationsColumns[10]},
 			},
 		},
 	}

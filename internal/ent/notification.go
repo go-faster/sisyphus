@@ -22,9 +22,11 @@ type Notification struct {
 	// DedupKey holds the value of the "dedup_key" field.
 	DedupKey string `json:"dedup_key,omitempty"`
 	// UserID holds the value of the "user_id" field.
-	UserID uuid.UUID `json:"user_id,omitempty"`
+	UserID *uuid.UUID `json:"user_id,omitempty"`
 	// Channel holds the value of the "channel" field.
 	Channel string `json:"channel,omitempty"`
+	// PeerType holds the value of the "peer_type" field.
+	PeerType string `json:"peer_type,omitempty"`
 	// TelegramUserID holds the value of the "telegram_user_id" field.
 	TelegramUserID int64 `json:"telegram_user_id,omitempty"`
 	// TelegramAccessHash holds the value of the "telegram_access_hash" field.
@@ -80,13 +82,15 @@ func (*Notification) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case notification.FieldUserID:
+			values[i] = &sql.NullScanner{S: new(uuid.UUID)}
 		case notification.FieldTelegramUserID, notification.FieldTelegramAccessHash, notification.FieldAttempts:
 			values[i] = new(sql.NullInt64)
-		case notification.FieldDedupKey, notification.FieldChannel, notification.FieldSource, notification.FieldEventType, notification.FieldText, notification.FieldURL, notification.FieldStatus, notification.FieldError:
+		case notification.FieldDedupKey, notification.FieldChannel, notification.FieldPeerType, notification.FieldSource, notification.FieldEventType, notification.FieldText, notification.FieldURL, notification.FieldStatus, notification.FieldError:
 			values[i] = new(sql.NullString)
 		case notification.FieldCreatedAt, notification.FieldUpdatedAt, notification.FieldDeliveredAt:
 			values[i] = new(sql.NullTime)
-		case notification.FieldID, notification.FieldUserID:
+		case notification.FieldID:
 			values[i] = new(uuid.UUID)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -116,16 +120,23 @@ func (_m *Notification) assignValues(columns []string, values []any) error {
 				_m.DedupKey = value.String
 			}
 		case notification.FieldUserID:
-			if value, ok := values[i].(*uuid.UUID); !ok {
+			if value, ok := values[i].(*sql.NullScanner); !ok {
 				return fmt.Errorf("unexpected type %T for field user_id", values[i])
-			} else if value != nil {
-				_m.UserID = *value
+			} else if value.Valid {
+				_m.UserID = new(uuid.UUID)
+				*_m.UserID = *value.S.(*uuid.UUID)
 			}
 		case notification.FieldChannel:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field channel", values[i])
 			} else if value.Valid {
 				_m.Channel = value.String
+			}
+		case notification.FieldPeerType:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field peer_type", values[i])
+			} else if value.Valid {
+				_m.PeerType = value.String
 			}
 		case notification.FieldTelegramUserID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -246,11 +257,16 @@ func (_m *Notification) String() string {
 	builder.WriteString("dedup_key=")
 	builder.WriteString(_m.DedupKey)
 	builder.WriteString(", ")
-	builder.WriteString("user_id=")
-	builder.WriteString(fmt.Sprintf("%v", _m.UserID))
+	if v := _m.UserID; v != nil {
+		builder.WriteString("user_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("channel=")
 	builder.WriteString(_m.Channel)
+	builder.WriteString(", ")
+	builder.WriteString("peer_type=")
+	builder.WriteString(_m.PeerType)
 	builder.WriteString(", ")
 	builder.WriteString("telegram_user_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.TelegramUserID))

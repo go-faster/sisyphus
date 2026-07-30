@@ -3017,6 +3017,39 @@ func (s *OptInt64) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode encodes PendingNotificationTelegramPeerType as json.
+func (o OptPendingNotificationTelegramPeerType) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	e.Str(string(o.Value))
+}
+
+// Decode decodes PendingNotificationTelegramPeerType from json.
+func (o *OptPendingNotificationTelegramPeerType) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptPendingNotificationTelegramPeerType to nil")
+	}
+	o.Set = true
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptPendingNotificationTelegramPeerType) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptPendingNotificationTelegramPeerType) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes SearchRequestFilters as json.
 func (o OptSearchRequestFilters) Encode(e *jx.Encoder) {
 	if !o.Set {
@@ -3108,6 +3141,12 @@ func (s *PendingNotification) encodeFields(e *jx.Encoder) {
 		e.Int64(s.TelegramAccessHash)
 	}
 	{
+		if s.TelegramPeerType.Set {
+			e.FieldStart("telegram_peer_type")
+			s.TelegramPeerType.Encode(e)
+		}
+	}
+	{
 		e.FieldStart("text")
 		e.Str(s.Text)
 	}
@@ -3123,13 +3162,14 @@ func (s *PendingNotification) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfPendingNotification = [6]string{
+var jsonFieldsNameOfPendingNotification = [7]string{
 	0: "id",
 	1: "telegram_user_id",
 	2: "telegram_access_hash",
-	3: "text",
-	4: "url",
-	5: "attempts",
+	3: "telegram_peer_type",
+	4: "text",
+	5: "url",
+	6: "attempts",
 }
 
 // Decode decodes PendingNotification from json.
@@ -3177,8 +3217,18 @@ func (s *PendingNotification) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"telegram_access_hash\"")
 			}
+		case "telegram_peer_type":
+			if err := func() error {
+				s.TelegramPeerType.Reset()
+				if err := s.TelegramPeerType.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"telegram_peer_type\"")
+			}
 		case "text":
-			requiredBitSet[0] |= 1 << 3
+			requiredBitSet[0] |= 1 << 4
 			if err := func() error {
 				v, err := d.Str()
 				s.Text = string(v)
@@ -3200,7 +3250,7 @@ func (s *PendingNotification) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"url\"")
 			}
 		case "attempts":
-			requiredBitSet[0] |= 1 << 5
+			requiredBitSet[0] |= 1 << 6
 			if err := func() error {
 				v, err := d.Int()
 				s.Attempts = int(v)
@@ -3221,7 +3271,7 @@ func (s *PendingNotification) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [1]uint8{
-		0b00101111,
+		0b01010111,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -3263,6 +3313,48 @@ func (s *PendingNotification) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *PendingNotification) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes PendingNotificationTelegramPeerType as json.
+func (s PendingNotificationTelegramPeerType) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes PendingNotificationTelegramPeerType from json.
+func (s *PendingNotificationTelegramPeerType) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode PendingNotificationTelegramPeerType to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch PendingNotificationTelegramPeerType(v) {
+	case PendingNotificationTelegramPeerTypeUser:
+		*s = PendingNotificationTelegramPeerTypeUser
+	case PendingNotificationTelegramPeerTypeChannel:
+		*s = PendingNotificationTelegramPeerTypeChannel
+	case PendingNotificationTelegramPeerTypeChat:
+		*s = PendingNotificationTelegramPeerTypeChat
+	default:
+		*s = PendingNotificationTelegramPeerType(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s PendingNotificationTelegramPeerType) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *PendingNotificationTelegramPeerType) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }

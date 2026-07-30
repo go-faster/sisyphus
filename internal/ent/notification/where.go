@@ -71,6 +71,11 @@ func Channel(v string) predicate.Notification {
 	return predicate.Notification(sql.FieldEQ(FieldChannel, v))
 }
 
+// PeerType applies equality check predicate on the "peer_type" field. It's identical to PeerTypeEQ.
+func PeerType(v string) predicate.Notification {
+	return predicate.Notification(sql.FieldEQ(FieldPeerType, v))
+}
+
 // TelegramUserID applies equality check predicate on the "telegram_user_id" field. It's identical to TelegramUserIDEQ.
 func TelegramUserID(v int64) predicate.Notification {
 	return predicate.Notification(sql.FieldEQ(FieldTelegramUserID, v))
@@ -216,6 +221,16 @@ func UserIDNotIn(vs ...uuid.UUID) predicate.Notification {
 	return predicate.Notification(sql.FieldNotIn(FieldUserID, vs...))
 }
 
+// UserIDIsNil applies the IsNil predicate on the "user_id" field.
+func UserIDIsNil() predicate.Notification {
+	return predicate.Notification(sql.FieldIsNull(FieldUserID))
+}
+
+// UserIDNotNil applies the NotNil predicate on the "user_id" field.
+func UserIDNotNil() predicate.Notification {
+	return predicate.Notification(sql.FieldNotNull(FieldUserID))
+}
+
 // ChannelEQ applies the EQ predicate on the "channel" field.
 func ChannelEQ(v string) predicate.Notification {
 	return predicate.Notification(sql.FieldEQ(FieldChannel, v))
@@ -279,6 +294,71 @@ func ChannelEqualFold(v string) predicate.Notification {
 // ChannelContainsFold applies the ContainsFold predicate on the "channel" field.
 func ChannelContainsFold(v string) predicate.Notification {
 	return predicate.Notification(sql.FieldContainsFold(FieldChannel, v))
+}
+
+// PeerTypeEQ applies the EQ predicate on the "peer_type" field.
+func PeerTypeEQ(v string) predicate.Notification {
+	return predicate.Notification(sql.FieldEQ(FieldPeerType, v))
+}
+
+// PeerTypeNEQ applies the NEQ predicate on the "peer_type" field.
+func PeerTypeNEQ(v string) predicate.Notification {
+	return predicate.Notification(sql.FieldNEQ(FieldPeerType, v))
+}
+
+// PeerTypeIn applies the In predicate on the "peer_type" field.
+func PeerTypeIn(vs ...string) predicate.Notification {
+	return predicate.Notification(sql.FieldIn(FieldPeerType, vs...))
+}
+
+// PeerTypeNotIn applies the NotIn predicate on the "peer_type" field.
+func PeerTypeNotIn(vs ...string) predicate.Notification {
+	return predicate.Notification(sql.FieldNotIn(FieldPeerType, vs...))
+}
+
+// PeerTypeGT applies the GT predicate on the "peer_type" field.
+func PeerTypeGT(v string) predicate.Notification {
+	return predicate.Notification(sql.FieldGT(FieldPeerType, v))
+}
+
+// PeerTypeGTE applies the GTE predicate on the "peer_type" field.
+func PeerTypeGTE(v string) predicate.Notification {
+	return predicate.Notification(sql.FieldGTE(FieldPeerType, v))
+}
+
+// PeerTypeLT applies the LT predicate on the "peer_type" field.
+func PeerTypeLT(v string) predicate.Notification {
+	return predicate.Notification(sql.FieldLT(FieldPeerType, v))
+}
+
+// PeerTypeLTE applies the LTE predicate on the "peer_type" field.
+func PeerTypeLTE(v string) predicate.Notification {
+	return predicate.Notification(sql.FieldLTE(FieldPeerType, v))
+}
+
+// PeerTypeContains applies the Contains predicate on the "peer_type" field.
+func PeerTypeContains(v string) predicate.Notification {
+	return predicate.Notification(sql.FieldContains(FieldPeerType, v))
+}
+
+// PeerTypeHasPrefix applies the HasPrefix predicate on the "peer_type" field.
+func PeerTypeHasPrefix(v string) predicate.Notification {
+	return predicate.Notification(sql.FieldHasPrefix(FieldPeerType, v))
+}
+
+// PeerTypeHasSuffix applies the HasSuffix predicate on the "peer_type" field.
+func PeerTypeHasSuffix(v string) predicate.Notification {
+	return predicate.Notification(sql.FieldHasSuffix(FieldPeerType, v))
+}
+
+// PeerTypeEqualFold applies the EqualFold predicate on the "peer_type" field.
+func PeerTypeEqualFold(v string) predicate.Notification {
+	return predicate.Notification(sql.FieldEqualFold(FieldPeerType, v))
+}
+
+// PeerTypeContainsFold applies the ContainsFold predicate on the "peer_type" field.
+func PeerTypeContainsFold(v string) predicate.Notification {
+	return predicate.Notification(sql.FieldContainsFold(FieldPeerType, v))
 }
 
 // TelegramUserIDEQ applies the EQ predicate on the "telegram_user_id" field.

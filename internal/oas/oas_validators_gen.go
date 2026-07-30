@@ -259,6 +259,49 @@ func (s NotifyUnsubscribeRequestSource) Validate() error {
 	}
 }
 
+func (s *PendingNotification) Validate() error {
+	if s == nil {
+		return validate.ErrNilPointer
+	}
+
+	var failures []validate.FieldError
+	if err := func() error {
+		if value, ok := s.TelegramPeerType.Get(); ok {
+			if err := func() error {
+				if err := value.Validate(); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "telegram_peer_type",
+			Error: err,
+		})
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+	return nil
+}
+
+func (s PendingNotificationTelegramPeerType) Validate() error {
+	switch s {
+	case "user":
+		return nil
+	case "channel":
+		return nil
+	case "chat":
+		return nil
+	default:
+		return errors.Errorf("invalid value: %v", s)
+	}
+}
+
 func (s *PendingNotificationsResponse) Validate() error {
 	if s == nil {
 		return validate.ErrNilPointer
@@ -268,6 +311,23 @@ func (s *PendingNotificationsResponse) Validate() error {
 	if err := func() error {
 		if s.Notifications == nil {
 			return errors.New("nil is invalid value")
+		}
+		var failures []validate.FieldError
+		for i, elem := range s.Notifications {
+			if err := func() error {
+				if err := elem.Validate(); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				failures = append(failures, validate.FieldError{
+					Name:  fmt.Sprintf("[%d]", i),
+					Error: err,
+				})
+			}
+		}
+		if len(failures) > 0 {
+			return &validate.Error{Fields: failures}
 		}
 		return nil
 	}(); err != nil {

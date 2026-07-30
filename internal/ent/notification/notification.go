@@ -21,6 +21,8 @@ const (
 	FieldUserID = "user_id"
 	// FieldChannel holds the string denoting the channel field in the database.
 	FieldChannel = "channel"
+	// FieldPeerType holds the string denoting the peer_type field in the database.
+	FieldPeerType = "peer_type"
 	// FieldTelegramUserID holds the string denoting the telegram_user_id field in the database.
 	FieldTelegramUserID = "telegram_user_id"
 	// FieldTelegramAccessHash holds the string denoting the telegram_access_hash field in the database.
@@ -64,6 +66,7 @@ var Columns = []string{
 	FieldDedupKey,
 	FieldUserID,
 	FieldChannel,
+	FieldPeerType,
 	FieldTelegramUserID,
 	FieldTelegramAccessHash,
 	FieldSource,
@@ -93,6 +96,8 @@ var (
 	DedupKeyValidator func(string) error
 	// ChannelValidator is a validator for the "channel" field. It is called by the builders before save.
 	ChannelValidator func(string) error
+	// DefaultPeerType holds the default value on creation for the "peer_type" field.
+	DefaultPeerType string
 	// SourceValidator is a validator for the "source" field. It is called by the builders before save.
 	SourceValidator func(string) error
 	// EventTypeValidator is a validator for the "event_type" field. It is called by the builders before save.
@@ -134,6 +139,11 @@ func ByUserID(opts ...sql.OrderTermOption) OrderOption {
 // ByChannel orders the results by the channel field.
 func ByChannel(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldChannel, opts...).ToFunc()
+}
+
+// ByPeerType orders the results by the peer_type field.
+func ByPeerType(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPeerType, opts...).ToFunc()
 }
 
 // ByTelegramUserID orders the results by the telegram_user_id field.
