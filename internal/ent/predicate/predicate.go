@@ -18,6 +18,9 @@ type InvestigationJob func(*sql.Selector)
 // Notification is the predicate function for notification builders.
 type Notification func(*sql.Selector)
 
+// NotifyChat is the predicate function for notifychat builders.
+type NotifyChat func(*sql.Selector)
+
 // NotifySubscription is the predicate function for notifysubscription builders.
 type NotifySubscription func(*sql.Selector)
 

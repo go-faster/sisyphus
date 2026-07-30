@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -536,4 +537,33 @@ embed:
 			require.Error(t, err)
 		})
 	}
+}
+
+// minimalConfig is the smallest config Load accepts, so a test can add just
+// the section it is about.
+const minimalConfig = "database:\n  dsn: postgres://u:p@127.0.0.1:5432/db?sslmode=disable\n"
+
+func TestLoadAlertmanagerInvestigateSeverity(t *testing.T) {
+	clearEnv(t)
+	path := filepath.Join(t.TempDir(), "config.yml")
+	require.NoError(t, os.WriteFile(path,
+		[]byte(minimalConfig+"alertmanager:\n  investigate:\n    enabled: true\n    min_severity: Loud\n"), 0o600))
+	t.Setenv("SISYPHUS_CONFIG", path)
+
+	_, err := Load()
+	require.ErrorContains(t, err, "min_severity")
+}
+
+// An enabled webhook with no token is servable but open; the operator has to
+// hear about it.
+func TestLoadAlertmanagerWebhookWithoutTokenWarns(t *testing.T) {
+	clearEnv(t)
+	path := filepath.Join(t.TempDir(), "config.yml")
+	require.NoError(t, os.WriteFile(path, []byte(minimalConfig+"alertmanager:\n  webhook:\n    enabled: true\n"), 0o600))
+	t.Setenv("SISYPHUS_CONFIG", path)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.Alertmanager.WebhookEnabled)
+	require.Contains(t, strings.Join(cfg.Warnings, "\n"), "alertmanager.webhook.token")
 }

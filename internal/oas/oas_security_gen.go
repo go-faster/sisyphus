@@ -39,11 +39,13 @@ var operationRolesBearerAuth = map[string][]string{
 	FetchURLOperation:                []string{},
 	GetFileOperation:                 []string{},
 	GetPendingNotificationsOperation: []string{},
+	ListNotifyChatsOperation:         []string{},
 	NotifyEnrollOperation:            []string{},
 	NotifyLinkOperation:              []string{},
 	NotifyListSubscriptionsOperation: []string{},
 	NotifySubscribeOperation:         []string{},
 	NotifyUnsubscribeOperation:       []string{},
+	RegisterNotifyChatOperation:      []string{},
 	SearchOperation:                  []string{},
 }
 

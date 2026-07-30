@@ -35,6 +35,16 @@ type Notifier interface {
 	NotifySubscribe(ctx context.Context, telegramUserID int64, source string, eventTypes []string) error
 	NotifyUnsubscribe(ctx context.Context, telegramUserID int64, source string) error
 	NotifyListSubscriptions(ctx context.Context, telegramUserID int64) ([]NotifySubscription, error)
+	NotifyRegisterChat(ctx context.Context, peerType string, peerID, accessHash int64, title string, addedBy int64, enabled bool) error
+	NotifyListChats(ctx context.Context) ([]NotifyChat, error)
+}
+
+// NotifyChat is one chat registered to receive broadcast notifications.
+type NotifyChat struct {
+	PeerType string
+	PeerID   int64
+	Title    string
+	Enabled  bool
 }
 
 // errBotNotReady is returned by SendTo before the bot session has
@@ -71,7 +81,7 @@ func (b *Bot) captureNotifyIdentity(ctx context.Context, e tg.Entities, senderID
 // already-sent message instead of creating a duplicate. Without this, a
 // drain-loop retry of the same outbox row (e.g. ssbot crashes between
 // SendTo succeeding and the row being acked) would DM the user twice.
-func (b *Bot) SendTo(ctx context.Context, notificationID uuid.UUID, userID, accessHash int64, text string) error {
+func (b *Bot) SendTo(ctx context.Context, notificationID uuid.UUID, peerType string, peerID, accessHash int64, text string) error {
 	if b.silent {
 		return nil
 	}
@@ -79,7 +89,7 @@ func (b *Bot) SendTo(ctx context.Context, notificationID uuid.UUID, userID, acce
 	if sender == nil {
 		return errBotNotReady
 	}
-	peer := &tg.InputPeerUser{UserID: userID, AccessHash: accessHash}
+	peer := notifyPeer(peerType, peerID, accessHash)
 	randomID := randomIDFor(notificationID)
 	_, err := sender.To(peer).RandomID(randomID).StyledText(ctx, styling.Custom(func(eb *entity.Builder) error {
 		return renderMarkdown(eb, text)
@@ -89,6 +99,21 @@ func (b *Bot) SendTo(ctx context.Context, notificationID uuid.UUID, userID, acce
 	}
 	_, err = sender.To(peer).RandomID(randomID).Text(ctx, text)
 	return err
+}
+
+// notifyPeer resolves an outbox row's target into the peer to send to. A
+// broadcast names a channel or a basic group; everything else is a user, which
+// is also what an unset peer type means (every row written before broadcasts
+// existed).
+func notifyPeer(peerType string, peerID, accessHash int64) tg.InputPeerClass {
+	switch peerType {
+	case "channel":
+		return &tg.InputPeerChannel{ChannelID: peerID, AccessHash: accessHash}
+	case "chat":
+		return &tg.InputPeerChat{ChatID: peerID}
+	default:
+		return &tg.InputPeerUser{UserID: peerID, AccessHash: accessHash}
+	}
 }
 
 // randomIDFor deterministically derives a messages.sendMessage random_id
@@ -110,12 +135,12 @@ var defaultEventTypesBySource = map[string][]string{
 	"jira":   {"issue_assigned"},
 }
 
-func (b *Bot) handleLinkCmd(ctx context.Context, s messageSender, senderID int64, rest string) error {
+func (b *Bot) handleLinkCmd(ctx context.Context, s messageSender, inv invocation) error {
 	if b.notifier == nil {
 		b.sendTextReply(ctx, s, "Notifications are not configured.")
 		return nil
 	}
-	fields := strings.Fields(rest)
+	fields := strings.Fields(inv.Rest)
 	if len(fields) < 2 {
 		b.sendTextReply(ctx, s, "Usage: /link gitlab <username>  or  /link jira <accountId> [display name]")
 		return nil
@@ -127,10 +152,10 @@ func (b *Bot) handleLinkCmd(ctx context.Context, s messageSender, senderID int64
 	var err error
 	switch source {
 	case "gitlab":
-		err = b.notifier.NotifyLinkGitLab(ctx, senderID, identity)
+		err = b.notifier.NotifyLinkGitLab(ctx, inv.SenderID, identity)
 	case "jira":
 		displayName := strings.Join(fields[2:], " ")
-		err = b.notifier.NotifyLinkJira(ctx, senderID, identity, displayName)
+		err = b.notifier.NotifyLinkJira(ctx, inv.SenderID, identity, displayName)
 	default:
 		b.sendTextReply(ctx, s, "Unknown source: "+source+" (expected gitlab or jira)")
 		return nil
@@ -144,12 +169,12 @@ func (b *Bot) handleLinkCmd(ctx context.Context, s messageSender, senderID int64
 	return nil
 }
 
-func (b *Bot) handleSubscribeCmd(ctx context.Context, s messageSender, senderID int64, rest string) error {
+func (b *Bot) handleSubscribeCmd(ctx context.Context, s messageSender, inv invocation) error {
 	if b.notifier == nil {
 		b.sendTextReply(ctx, s, "Notifications are not configured.")
 		return nil
 	}
-	fields := strings.Fields(rest)
+	fields := strings.Fields(inv.Rest)
 	if len(fields) < 1 {
 		b.sendTextReply(ctx, s, "Usage: /subscribe <gitlab|jira> [event_type ...]")
 		return nil
@@ -165,7 +190,7 @@ func (b *Bot) handleSubscribeCmd(ctx context.Context, s messageSender, senderID 
 		return nil
 	}
 
-	if err := b.notifier.NotifySubscribe(ctx, senderID, source, eventTypes); err != nil {
+	if err := b.notifier.NotifySubscribe(ctx, inv.SenderID, source, eventTypes); err != nil {
 		zctx.From(ctx).Error("notify subscribe failed", zap.Error(err))
 		b.sendTextReply(ctx, s, "Failed to subscribe: "+err.Error())
 		return nil
@@ -174,17 +199,17 @@ func (b *Bot) handleSubscribeCmd(ctx context.Context, s messageSender, senderID 
 	return nil
 }
 
-func (b *Bot) handleUnsubscribeCmd(ctx context.Context, s messageSender, senderID int64, rest string) error {
+func (b *Bot) handleUnsubscribeCmd(ctx context.Context, s messageSender, inv invocation) error {
 	if b.notifier == nil {
 		b.sendTextReply(ctx, s, "Notifications are not configured.")
 		return nil
 	}
-	source := strings.ToLower(strings.TrimSpace(rest))
+	source := strings.ToLower(strings.TrimSpace(inv.Rest))
 	if source == "" {
 		b.sendTextReply(ctx, s, "Usage: /unsubscribe <gitlab|jira>")
 		return nil
 	}
-	if err := b.notifier.NotifyUnsubscribe(ctx, senderID, source); err != nil {
+	if err := b.notifier.NotifyUnsubscribe(ctx, inv.SenderID, source); err != nil {
 		zctx.From(ctx).Error("notify unsubscribe failed", zap.Error(err))
 		b.sendTextReply(ctx, s, "Failed to unsubscribe: "+err.Error())
 		return nil
@@ -193,12 +218,12 @@ func (b *Bot) handleUnsubscribeCmd(ctx context.Context, s messageSender, senderI
 	return nil
 }
 
-func (b *Bot) handleNotificationsCmd(ctx context.Context, s messageSender, senderID int64, _ string) error {
+func (b *Bot) handleNotificationsCmd(ctx context.Context, s messageSender, inv invocation) error {
 	if b.notifier == nil {
 		b.sendTextReply(ctx, s, "Notifications are not configured.")
 		return nil
 	}
-	subs, err := b.notifier.NotifyListSubscriptions(ctx, senderID)
+	subs, err := b.notifier.NotifyListSubscriptions(ctx, inv.SenderID)
 	if err != nil {
 		zctx.From(ctx).Error("notify list subscriptions failed", zap.Error(err))
 		b.sendTextReply(ctx, s, "Failed to list subscriptions: "+err.Error())

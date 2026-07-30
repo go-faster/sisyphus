@@ -46,6 +46,16 @@ func (DefaultRenderer) Render(e Event) (string, error) {
 		verb = "requested your review on"
 	case EventIssueAssigned:
 		verb = "assigned you"
+	case EventInvestigationCompleted:
+		// Broadcast events have no actor and no "you" to address.
+		text := "*Investigation:* " + e.Title
+		if e.URL != "" {
+			text = "*Investigation:* [" + e.Title + "](" + e.URL + ")"
+		}
+		if e.Body != "" {
+			text += "\n" + e.Body
+		}
+		return text, nil
 	default:
 		verb = "notified you about"
 	}

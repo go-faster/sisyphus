@@ -44,6 +44,26 @@ func (_u *NotificationUpdate) SetNillableUserID(v *uuid.UUID) *NotificationUpdat
 	return _u
 }
 
+// ClearUserID clears the value of the "user_id" field.
+func (_u *NotificationUpdate) ClearUserID() *NotificationUpdate {
+	_u.mutation.ClearUserID()
+	return _u
+}
+
+// SetPeerType sets the "peer_type" field.
+func (_u *NotificationUpdate) SetPeerType(v string) *NotificationUpdate {
+	_u.mutation.SetPeerType(v)
+	return _u
+}
+
+// SetNillablePeerType sets the "peer_type" field if the given value is not nil.
+func (_u *NotificationUpdate) SetNillablePeerType(v *string) *NotificationUpdate {
+	if v != nil {
+		_u.SetPeerType(*v)
+	}
+	return _u
+}
+
 // SetTelegramUserID sets the "telegram_user_id" field.
 func (_u *NotificationUpdate) SetTelegramUserID(v int64) *NotificationUpdate {
 	_u.mutation.ResetTelegramUserID()
@@ -251,18 +271,7 @@ func (_u *NotificationUpdate) defaults() {
 	}
 }
 
-// check runs all checks and user-defined validators on the builder.
-func (_u *NotificationUpdate) check() error {
-	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
-		return errors.New(`ent: clearing a required unique edge "Notification.user"`)
-	}
-	return nil
-}
-
 func (_u *NotificationUpdate) sqlSave(ctx context.Context) (_node int, err error) {
-	if err := _u.check(); err != nil {
-		return _node, err
-	}
 	_spec := sqlgraph.NewUpdateSpec(notification.Table, notification.Columns, sqlgraph.NewFieldSpec(notification.FieldID, field.TypeUUID))
 	if ps := _u.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
@@ -270,6 +279,9 @@ func (_u *NotificationUpdate) sqlSave(ctx context.Context) (_node int, err error
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.PeerType(); ok {
+		_spec.SetField(notification.FieldPeerType, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.TelegramUserID(); ok {
 		_spec.SetField(notification.FieldTelegramUserID, field.TypeInt64, value)
@@ -378,6 +390,26 @@ func (_u *NotificationUpdateOne) SetUserID(v uuid.UUID) *NotificationUpdateOne {
 func (_u *NotificationUpdateOne) SetNillableUserID(v *uuid.UUID) *NotificationUpdateOne {
 	if v != nil {
 		_u.SetUserID(*v)
+	}
+	return _u
+}
+
+// ClearUserID clears the value of the "user_id" field.
+func (_u *NotificationUpdateOne) ClearUserID() *NotificationUpdateOne {
+	_u.mutation.ClearUserID()
+	return _u
+}
+
+// SetPeerType sets the "peer_type" field.
+func (_u *NotificationUpdateOne) SetPeerType(v string) *NotificationUpdateOne {
+	_u.mutation.SetPeerType(v)
+	return _u
+}
+
+// SetNillablePeerType sets the "peer_type" field if the given value is not nil.
+func (_u *NotificationUpdateOne) SetNillablePeerType(v *string) *NotificationUpdateOne {
+	if v != nil {
+		_u.SetPeerType(*v)
 	}
 	return _u
 }
@@ -602,18 +634,7 @@ func (_u *NotificationUpdateOne) defaults() {
 	}
 }
 
-// check runs all checks and user-defined validators on the builder.
-func (_u *NotificationUpdateOne) check() error {
-	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
-		return errors.New(`ent: clearing a required unique edge "Notification.user"`)
-	}
-	return nil
-}
-
 func (_u *NotificationUpdateOne) sqlSave(ctx context.Context) (_node *Notification, err error) {
-	if err := _u.check(); err != nil {
-		return _node, err
-	}
 	_spec := sqlgraph.NewUpdateSpec(notification.Table, notification.Columns, sqlgraph.NewFieldSpec(notification.FieldID, field.TypeUUID))
 	id, ok := _u.mutation.ID()
 	if !ok {
@@ -638,6 +659,9 @@ func (_u *NotificationUpdateOne) sqlSave(ctx context.Context) (_node *Notificati
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.PeerType(); ok {
+		_spec.SetField(notification.FieldPeerType, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.TelegramUserID(); ok {
 		_spec.SetField(notification.FieldTelegramUserID, field.TypeInt64, value)

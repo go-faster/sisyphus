@@ -50,6 +50,22 @@ func (n notifierAdapter) NotifyListSubscriptions(ctx context.Context, telegramUs
 	return out, nil
 }
 
+func (n notifierAdapter) NotifyRegisterChat(ctx context.Context, peerType string, peerID, accessHash int64, title string, addedBy int64, enabled bool) error {
+	return n.api.NotifyRegisterChat(ctx, peerType, peerID, accessHash, title, addedBy, enabled)
+}
+
+func (n notifierAdapter) NotifyListChats(ctx context.Context) ([]bot.NotifyChat, error) {
+	chats, err := n.api.NotifyListChats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]bot.NotifyChat, 0, len(chats))
+	for _, c := range chats {
+		out = append(out, bot.NotifyChat{PeerType: c.PeerType, PeerID: c.PeerID, Title: c.Title, Enabled: c.Enabled})
+	}
+	return out, nil
+}
+
 const notifyDrainBatchSize = 20
 
 // runNotifyDrainLoop polls ssapi for pending Telegram-channel notifications
@@ -92,7 +108,7 @@ func drainPendingNotifications(ctx context.Context, lg *zap.Logger, b *bot.Bot, 
 			text += "\n" + n.URL
 		}
 
-		sendErr := b.SendTo(ctx, n.ID, n.TelegramUserID, n.TelegramAccessHash, text)
+		sendErr := b.SendTo(ctx, n.ID, n.TelegramPeerType, n.TelegramUserID, n.TelegramAccessHash, text)
 		if sendErr != nil {
 			lg.Warn("deliver notification failed", zap.String("notification_id", n.ID.String()), zap.Error(sendErr))
 		}

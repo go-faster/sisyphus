@@ -20,6 +20,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/document"
 	"github.com/go-faster/sisyphus/internal/ent/investigationjob"
 	"github.com/go-faster/sisyphus/internal/ent/notification"
+	"github.com/go-faster/sisyphus/internal/ent/notifychat"
 	"github.com/go-faster/sisyphus/internal/ent/notifysubscription"
 	"github.com/go-faster/sisyphus/internal/ent/queuejob"
 	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
@@ -44,6 +45,8 @@ type Client struct {
 	InvestigationJob *InvestigationJobClient
 	// Notification is the client for interacting with the Notification builders.
 	Notification *NotificationClient
+	// NotifyChat is the client for interacting with the NotifyChat builders.
+	NotifyChat *NotifyChatClient
 	// NotifySubscription is the client for interacting with the NotifySubscription builders.
 	NotifySubscription *NotifySubscriptionClient
 	// QueueJob is the client for interacting with the QueueJob builders.
@@ -73,6 +76,7 @@ func (c *Client) init() {
 	c.Document = NewDocumentClient(c.config)
 	c.InvestigationJob = NewInvestigationJobClient(c.config)
 	c.Notification = NewNotificationClient(c.config)
+	c.NotifyChat = NewNotifyChatClient(c.config)
 	c.NotifySubscription = NewNotifySubscriptionClient(c.config)
 	c.QueueJob = NewQueueJobClient(c.config)
 	c.SupportRequest = NewSupportRequestClient(c.config)
@@ -176,6 +180,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Document:           NewDocumentClient(cfg),
 		InvestigationJob:   NewInvestigationJobClient(cfg),
 		Notification:       NewNotificationClient(cfg),
+		NotifyChat:         NewNotifyChatClient(cfg),
 		NotifySubscription: NewNotifySubscriptionClient(cfg),
 		QueueJob:           NewQueueJobClient(cfg),
 		SupportRequest:     NewSupportRequestClient(cfg),
@@ -206,6 +211,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Document:           NewDocumentClient(cfg),
 		InvestigationJob:   NewInvestigationJobClient(cfg),
 		Notification:       NewNotificationClient(cfg),
+		NotifyChat:         NewNotifyChatClient(cfg),
 		NotifySubscription: NewNotifySubscriptionClient(cfg),
 		QueueJob:           NewQueueJobClient(cfg),
 		SupportRequest:     NewSupportRequestClient(cfg),
@@ -242,9 +248,9 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Chunk, c.Document, c.InvestigationJob, c.Notification, c.NotifySubscription,
-		c.QueueJob, c.SupportRequest, c.SyncState, c.TelegramMessage, c.User,
-		c.UserToken,
+		c.Chunk, c.Document, c.InvestigationJob, c.Notification, c.NotifyChat,
+		c.NotifySubscription, c.QueueJob, c.SupportRequest, c.SyncState,
+		c.TelegramMessage, c.User, c.UserToken,
 	} {
 		n.Use(hooks...)
 	}
@@ -254,9 +260,9 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Chunk, c.Document, c.InvestigationJob, c.Notification, c.NotifySubscription,
-		c.QueueJob, c.SupportRequest, c.SyncState, c.TelegramMessage, c.User,
-		c.UserToken,
+		c.Chunk, c.Document, c.InvestigationJob, c.Notification, c.NotifyChat,
+		c.NotifySubscription, c.QueueJob, c.SupportRequest, c.SyncState,
+		c.TelegramMessage, c.User, c.UserToken,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -273,6 +279,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.InvestigationJob.mutate(ctx, m)
 	case *NotificationMutation:
 		return c.Notification.mutate(ctx, m)
+	case *NotifyChatMutation:
+		return c.NotifyChat.mutate(ctx, m)
 	case *NotifySubscriptionMutation:
 		return c.NotifySubscription.mutate(ctx, m)
 	case *QueueJobMutation:
@@ -869,6 +877,139 @@ func (c *NotificationClient) mutate(ctx context.Context, m *NotificationMutation
 		return (&NotificationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Notification mutation op: %q", m.Op())
+	}
+}
+
+// NotifyChatClient is a client for the NotifyChat schema.
+type NotifyChatClient struct {
+	config
+}
+
+// NewNotifyChatClient returns a client for the NotifyChat from the given config.
+func NewNotifyChatClient(c config) *NotifyChatClient {
+	return &NotifyChatClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `notifychat.Hooks(f(g(h())))`.
+func (c *NotifyChatClient) Use(hooks ...Hook) {
+	c.hooks.NotifyChat = append(c.hooks.NotifyChat, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `notifychat.Intercept(f(g(h())))`.
+func (c *NotifyChatClient) Intercept(interceptors ...Interceptor) {
+	c.inters.NotifyChat = append(c.inters.NotifyChat, interceptors...)
+}
+
+// Create returns a builder for creating a NotifyChat entity.
+func (c *NotifyChatClient) Create() *NotifyChatCreate {
+	mutation := newNotifyChatMutation(c.config, OpCreate)
+	return &NotifyChatCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of NotifyChat entities.
+func (c *NotifyChatClient) CreateBulk(builders ...*NotifyChatCreate) *NotifyChatCreateBulk {
+	return &NotifyChatCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *NotifyChatClient) MapCreateBulk(slice any, setFunc func(*NotifyChatCreate, int)) *NotifyChatCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &NotifyChatCreateBulk{err: fmt.Errorf("calling to NotifyChatClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*NotifyChatCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &NotifyChatCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for NotifyChat.
+func (c *NotifyChatClient) Update() *NotifyChatUpdate {
+	mutation := newNotifyChatMutation(c.config, OpUpdate)
+	return &NotifyChatUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *NotifyChatClient) UpdateOne(_m *NotifyChat) *NotifyChatUpdateOne {
+	mutation := newNotifyChatMutation(c.config, OpUpdateOne, withNotifyChat(_m))
+	return &NotifyChatUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *NotifyChatClient) UpdateOneID(id uuid.UUID) *NotifyChatUpdateOne {
+	mutation := newNotifyChatMutation(c.config, OpUpdateOne, withNotifyChatID(id))
+	return &NotifyChatUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for NotifyChat.
+func (c *NotifyChatClient) Delete() *NotifyChatDelete {
+	mutation := newNotifyChatMutation(c.config, OpDelete)
+	return &NotifyChatDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *NotifyChatClient) DeleteOne(_m *NotifyChat) *NotifyChatDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *NotifyChatClient) DeleteOneID(id uuid.UUID) *NotifyChatDeleteOne {
+	builder := c.Delete().Where(notifychat.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &NotifyChatDeleteOne{builder}
+}
+
+// Query returns a query builder for NotifyChat.
+func (c *NotifyChatClient) Query() *NotifyChatQuery {
+	return &NotifyChatQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeNotifyChat},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a NotifyChat entity by its id.
+func (c *NotifyChatClient) Get(ctx context.Context, id uuid.UUID) (*NotifyChat, error) {
+	return c.Query().Where(notifychat.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *NotifyChatClient) GetX(ctx context.Context, id uuid.UUID) *NotifyChat {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *NotifyChatClient) Hooks() []Hook {
+	return c.hooks.NotifyChat
+}
+
+// Interceptors returns the client interceptors.
+func (c *NotifyChatClient) Interceptors() []Interceptor {
+	return c.inters.NotifyChat
+}
+
+func (c *NotifyChatClient) mutate(ctx context.Context, m *NotifyChatMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&NotifyChatCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&NotifyChatUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&NotifyChatUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&NotifyChatDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown NotifyChat mutation op: %q", m.Op())
 	}
 }
 
@@ -1886,12 +2027,14 @@ func (c *UserTokenClient) mutate(ctx context.Context, m *UserTokenMutation) (Val
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Chunk, Document, InvestigationJob, Notification, NotifySubscription, QueueJob,
-		SupportRequest, SyncState, TelegramMessage, User, UserToken []ent.Hook
+		Chunk, Document, InvestigationJob, Notification, NotifyChat, NotifySubscription,
+		QueueJob, SupportRequest, SyncState, TelegramMessage, User,
+		UserToken []ent.Hook
 	}
 	inters struct {
-		Chunk, Document, InvestigationJob, Notification, NotifySubscription, QueueJob,
-		SupportRequest, SyncState, TelegramMessage, User, UserToken []ent.Interceptor
+		Chunk, Document, InvestigationJob, Notification, NotifyChat, NotifySubscription,
+		QueueJob, SupportRequest, SyncState, TelegramMessage, User,
+		UserToken []ent.Interceptor
 	}
 )
 

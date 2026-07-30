@@ -64,6 +64,7 @@ func openTestDB(t *testing.T) *ent.Client {
 		// other suites' jobs too.
 		_, _ = client.QueueJob.Delete().Where(queuejob.QueueHasPrefix("notify.")).Exec(ctx)
 		_, _ = client.Notification.Delete().Exec(ctx)
+		_, _ = client.NotifyChat.Delete().Exec(ctx)
 		_, _ = client.NotifySubscription.Delete().Exec(ctx)
 		_, _ = client.UserToken.Delete().Exec(ctx)
 		_, _ = client.User.Delete().Exec(ctx)

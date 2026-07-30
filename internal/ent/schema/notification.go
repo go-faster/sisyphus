@@ -24,8 +24,15 @@ func (Notification) Fields() []ent.Field {
 	return []ent.Field{
 		field.UUID("id", uuid.UUID{}).Default(uuid.New),
 		field.String("dedup_key").NotEmpty().Immutable(),
-		field.UUID("user_id", uuid.UUID{}),
+		// user_id is unset for broadcast rows: an alert investigation is
+		// addressed to the chat in peer_type/telegram_user_id, not to a
+		// subscribed user (see internal/notify.Broadcaster).
+		field.UUID("user_id", uuid.UUID{}).Optional().Nillable(),
 		field.String("channel").NotEmpty().Immutable(),
+		// peer_type says what telegram_user_id names: a user (the default,
+		// and what every per-user notification is), or the channel/group a
+		// broadcast goes to.
+		field.String("peer_type").Default("user"),
 		field.Int64("telegram_user_id").Optional(),
 		field.Int64("telegram_access_hash").Optional().Nillable(),
 		field.String("source").NotEmpty().Immutable(),
@@ -46,8 +53,7 @@ func (Notification) Edges() []ent.Edge {
 		edge.From("user", User.Type).
 			Ref("notifications").
 			Field("user_id").
-			Unique().
-			Required(),
+			Unique(),
 	}
 }
 

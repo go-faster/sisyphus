@@ -14,6 +14,10 @@ import (
 )
 
 type fakeNotifier struct {
+	registered                   []NotifyChat
+	registerErr                  error
+	lastHash                     int64
+	lastAddedBy                  int64
 	enrolledUserID, enrolledHash int64
 	gitlabLinks                  map[int64]string
 	jiraLinks                    map[int64]string
@@ -71,6 +75,20 @@ func (f *fakeNotifier) NotifySubscribe(_ context.Context, telegramUserID int64, 
 	return nil
 }
 
+func (f *fakeNotifier) NotifyRegisterChat(_ context.Context, peerType string, peerID, accessHash int64, title string, addedBy int64, enabled bool) error {
+	if f.registerErr != nil {
+		return f.registerErr
+	}
+	f.registered = append(f.registered, NotifyChat{PeerType: peerType, PeerID: peerID, Title: title, Enabled: enabled})
+	f.lastHash = accessHash
+	f.lastAddedBy = addedBy
+	return nil
+}
+
+func (f *fakeNotifier) NotifyListChats(context.Context) ([]NotifyChat, error) {
+	return f.registered, nil
+}
+
 func (f *fakeNotifier) NotifyUnsubscribe(_ context.Context, telegramUserID int64, source string) error {
 	if f.err != nil {
 		return f.err
@@ -110,8 +128,16 @@ func captureSend(t *testing.T) (stub *fakeSender, sent *string) {
 
 func TestSendTo_NotReadyBeforeRun(t *testing.T) {
 	b := newNotifyTestBot(nil)
-	err := b.SendTo(context.Background(), uuid.New(), 1, 2, "hello")
+	err := b.SendTo(context.Background(), uuid.New(), "user", 1, 2, "hello")
 	require.ErrorIs(t, err, errBotNotReady)
+}
+
+func TestNotifyPeer(t *testing.T) {
+	require.Equal(t, &tg.InputPeerUser{UserID: 7, AccessHash: 9}, notifyPeer("user", 7, 9))
+	require.Equal(t, &tg.InputPeerUser{UserID: 7, AccessHash: 9}, notifyPeer("", 7, 9),
+		"an unset peer type is a user, as every row written before broadcasts existed is")
+	require.Equal(t, &tg.InputPeerChannel{ChannelID: 7, AccessHash: 9}, notifyPeer("channel", 7, 9))
+	require.Equal(t, &tg.InputPeerChat{ChatID: 7}, notifyPeer("chat", 7, 9))
 }
 
 func TestRandomIDFor_DeterministicPerNotification(t *testing.T) {
@@ -126,7 +152,7 @@ func TestHandleLinkCmd_GitLab(t *testing.T) {
 	c, _ := b.commands.lookup("link")
 	stub, sent := captureSend(t)
 
-	require.NoError(t, c.handler(context.Background(), stub, 42, "gitlab alice"))
+	require.NoError(t, c.handler(context.Background(), stub, invocation{SenderID: 42, Rest: "gitlab alice"}))
 	require.Equal(t, "alice", n.gitlabLinks[42])
 	require.Contains(t, *sent, "Linked gitlab identity: alice")
 }
@@ -137,7 +163,7 @@ func TestHandleLinkCmd_Jira(t *testing.T) {
 	c, _ := b.commands.lookup("link")
 	stub, sent := captureSend(t)
 
-	require.NoError(t, c.handler(context.Background(), stub, 42, "jira acc-1 Alice A"))
+	require.NoError(t, c.handler(context.Background(), stub, invocation{SenderID: 42, Rest: "jira acc-1 Alice A"}))
 	require.Equal(t, "acc-1", n.jiraLinks[42])
 	require.Equal(t, "Alice A", n.jiraDisplayNames[42])
 	require.Contains(t, *sent, "Linked jira identity: acc-1")
@@ -149,7 +175,7 @@ func TestHandleLinkCmd_UnknownSource(t *testing.T) {
 	c, _ := b.commands.lookup("link")
 	stub, sent := captureSend(t)
 
-	require.NoError(t, c.handler(context.Background(), stub, 42, "slack alice"))
+	require.NoError(t, c.handler(context.Background(), stub, invocation{SenderID: 42, Rest: "slack alice"}))
 	require.Contains(t, *sent, "Unknown source")
 	require.Empty(t, n.gitlabLinks)
 }
@@ -159,7 +185,7 @@ func TestHandleLinkCmd_NoNotifierConfigured(t *testing.T) {
 	c, _ := b.commands.lookup("link")
 	stub, sent := captureSend(t)
 
-	require.NoError(t, c.handler(context.Background(), stub, 42, "gitlab alice"))
+	require.NoError(t, c.handler(context.Background(), stub, invocation{SenderID: 42, Rest: "gitlab alice"}))
 	require.Contains(t, *sent, "not configured")
 }
 
@@ -169,7 +195,7 @@ func TestHandleSubscribeCmd_DefaultsEventTypes(t *testing.T) {
 	c, _ := b.commands.lookup("subscribe")
 	stub, sent := captureSend(t)
 
-	require.NoError(t, c.handler(context.Background(), stub, 42, "gitlab"))
+	require.NoError(t, c.handler(context.Background(), stub, invocation{SenderID: 42, Rest: "gitlab"}))
 	require.Equal(t, [2]string{"gitlab", "mr_assigned,mr_review_requested"}, n.subscribed[42])
 	require.Contains(t, *sent, "Subscribed to gitlab")
 }
@@ -180,7 +206,7 @@ func TestHandleSubscribeCmd_ExplicitEventTypes(t *testing.T) {
 	c, _ := b.commands.lookup("subscribe")
 	stub, _ := captureSend(t)
 
-	require.NoError(t, c.handler(context.Background(), stub, 42, "jira issue_assigned"))
+	require.NoError(t, c.handler(context.Background(), stub, invocation{SenderID: 42, Rest: "jira issue_assigned"}))
 	require.Equal(t, [2]string{"jira", "issue_assigned"}, n.subscribed[42])
 }
 
@@ -190,7 +216,7 @@ func TestHandleUnsubscribeCmd(t *testing.T) {
 	c, _ := b.commands.lookup("unsubscribe")
 	stub, sent := captureSend(t)
 
-	require.NoError(t, c.handler(context.Background(), stub, 42, "gitlab"))
+	require.NoError(t, c.handler(context.Background(), stub, invocation{SenderID: 42, Rest: "gitlab"}))
 	require.Equal(t, "gitlab", n.unsubscribed[42])
 	require.Contains(t, *sent, "Unsubscribed from gitlab")
 }
@@ -202,7 +228,7 @@ func TestHandleNotificationsCmd_ListsSubscriptions(t *testing.T) {
 	c, _ := b.commands.lookup("notifications")
 	stub, sent := captureSend(t)
 
-	require.NoError(t, c.handler(context.Background(), stub, 42, ""))
+	require.NoError(t, c.handler(context.Background(), stub, invocation{SenderID: 42, Rest: ""}))
 	require.Contains(t, *sent, "gitlab (enabled): mr_assigned")
 }
 
@@ -212,7 +238,7 @@ func TestHandleNotificationsCmd_Empty(t *testing.T) {
 	c, _ := b.commands.lookup("notifications")
 	stub, sent := captureSend(t)
 
-	require.NoError(t, c.handler(context.Background(), stub, 42, ""))
+	require.NoError(t, c.handler(context.Background(), stub, invocation{SenderID: 42, Rest: ""}))
 	require.Contains(t, *sent, "No subscriptions")
 }
 

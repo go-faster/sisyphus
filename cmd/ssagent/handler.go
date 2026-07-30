@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-faster/sisyphus/internal/agent"
 	"github.com/go-faster/sisyphus/internal/agentstore"
+	"github.com/go-faster/sisyphus/internal/event"
 	"github.com/go-faster/sisyphus/internal/index"
 )
 
@@ -116,7 +117,22 @@ func jobResponse(jobID uuid.UUID, job agentstore.Job) InvestigateJobResponse {
 // running (and its result must still be recorded) even if the client that
 // submitted it disconnects, so callers derive ctx from a long-lived base
 // context instead.
-func runJob(ctx context.Context, store jobStore, inv agent.Investigator, jobID uuid.UUID, description string, tracer trace.Tracer, metrics *agentMetrics, logger *zap.Logger) {
+// reportRouter publishes a finished investigation back onto the event spine.
+// Nil when no destination wants reports (no alert chat configured), which is
+// the default.
+type reportRouter interface {
+	Route(ctx context.Context, e event.Event) error
+}
+
+// runJobWithTrigger runs one investigation and records its outcome. When it
+// came from an event, the finished report is routed back onto the spine so
+// whoever subscribed (today: the alert chat broadcast) hears the outcome;
+// trigger and router are both nil for a plain /investigate submission.
+//
+// Routing happens after the job row is written and never fails the job: the
+// investigation is done and recorded either way, and re-notifying is the
+// outbox DedupKey's problem, not this function's.
+func runJobWithTrigger(ctx context.Context, store jobStore, inv agent.Investigator, jobID uuid.UUID, description string, trigger *event.Event, router reportRouter, tracer trace.Tracer, metrics *agentMetrics, logger *zap.Logger) {
 	start := time.Now()
 	status := "ok"
 	verdict := ""
@@ -169,6 +185,18 @@ func runJob(ctx context.Context, store jobStore, inv agent.Investigator, jobID u
 
 	if err := store.Complete(context.WithoutCancel(ctx), jobID, res); err != nil {
 		logger.Error("persist job result", zap.Error(err), zap.String("job_id", jobID.String()))
+	}
+
+	if router == nil || trigger == nil {
+		return
+	}
+	reported, err := agent.EventFromReport(jobID, *trigger, res.Report, time.Now())
+	if err != nil {
+		logger.Error("build report event", zap.Error(err), zap.String("job_id", jobID.String()))
+		return
+	}
+	if err := router.Route(context.WithoutCancel(ctx), reported); err != nil {
+		logger.Error("route report event", zap.Error(err), zap.String("job_id", jobID.String()))
 	}
 }
 

@@ -14,7 +14,7 @@ import (
 // Submitter is the part of [Store] a [Subscriber] needs, kept as an interface
 // so the routing decision can be tested without Postgres.
 type Submitter interface {
-	Submit(ctx context.Context, idempotencyKey, description string) (Job, bool, error)
+	SubmitEvent(ctx context.Context, e event.Event, description string) (Job, bool, error)
 }
 
 // SubscriberOptions configures which events become investigations.
@@ -58,7 +58,7 @@ func (s *Subscriber) Handle(ctx context.Context, e event.Event) error {
 	if !s.wants(e) {
 		return nil
 	}
-	if _, _, err := s.submitter.Submit(ctx, e.ID, Describe(e)); err != nil {
+	if _, _, err := s.submitter.SubmitEvent(ctx, e, Describe(e)); err != nil {
 		return errors.Wrap(err, "submit investigation")
 	}
 	return nil

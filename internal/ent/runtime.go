@@ -9,6 +9,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/document"
 	"github.com/go-faster/sisyphus/internal/ent/investigationjob"
 	"github.com/go-faster/sisyphus/internal/ent/notification"
+	"github.com/go-faster/sisyphus/internal/ent/notifychat"
 	"github.com/go-faster/sisyphus/internal/ent/notifysubscription"
 	"github.com/go-faster/sisyphus/internal/ent/queuejob"
 	"github.com/go-faster/sisyphus/internal/ent/schema"
@@ -122,32 +123,36 @@ func init() {
 	notificationDescChannel := notificationFields[3].Descriptor()
 	// notification.ChannelValidator is a validator for the "channel" field. It is called by the builders before save.
 	notification.ChannelValidator = notificationDescChannel.Validators[0].(func(string) error)
+	// notificationDescPeerType is the schema descriptor for peer_type field.
+	notificationDescPeerType := notificationFields[4].Descriptor()
+	// notification.DefaultPeerType holds the default value on creation for the peer_type field.
+	notification.DefaultPeerType = notificationDescPeerType.Default.(string)
 	// notificationDescSource is the schema descriptor for source field.
-	notificationDescSource := notificationFields[6].Descriptor()
+	notificationDescSource := notificationFields[7].Descriptor()
 	// notification.SourceValidator is a validator for the "source" field. It is called by the builders before save.
 	notification.SourceValidator = notificationDescSource.Validators[0].(func(string) error)
 	// notificationDescEventType is the schema descriptor for event_type field.
-	notificationDescEventType := notificationFields[7].Descriptor()
+	notificationDescEventType := notificationFields[8].Descriptor()
 	// notification.EventTypeValidator is a validator for the "event_type" field. It is called by the builders before save.
 	notification.EventTypeValidator = notificationDescEventType.Validators[0].(func(string) error)
 	// notificationDescText is the schema descriptor for text field.
-	notificationDescText := notificationFields[8].Descriptor()
+	notificationDescText := notificationFields[9].Descriptor()
 	// notification.TextValidator is a validator for the "text" field. It is called by the builders before save.
 	notification.TextValidator = notificationDescText.Validators[0].(func(string) error)
 	// notificationDescStatus is the schema descriptor for status field.
-	notificationDescStatus := notificationFields[10].Descriptor()
+	notificationDescStatus := notificationFields[11].Descriptor()
 	// notification.DefaultStatus holds the default value on creation for the status field.
 	notification.DefaultStatus = notificationDescStatus.Default.(string)
 	// notificationDescAttempts is the schema descriptor for attempts field.
-	notificationDescAttempts := notificationFields[11].Descriptor()
+	notificationDescAttempts := notificationFields[12].Descriptor()
 	// notification.DefaultAttempts holds the default value on creation for the attempts field.
 	notification.DefaultAttempts = notificationDescAttempts.Default.(int)
 	// notificationDescCreatedAt is the schema descriptor for created_at field.
-	notificationDescCreatedAt := notificationFields[13].Descriptor()
+	notificationDescCreatedAt := notificationFields[14].Descriptor()
 	// notification.DefaultCreatedAt holds the default value on creation for the created_at field.
 	notification.DefaultCreatedAt = notificationDescCreatedAt.Default.(func() time.Time)
 	// notificationDescUpdatedAt is the schema descriptor for updated_at field.
-	notificationDescUpdatedAt := notificationFields[14].Descriptor()
+	notificationDescUpdatedAt := notificationFields[15].Descriptor()
 	// notification.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	notification.DefaultUpdatedAt = notificationDescUpdatedAt.Default.(func() time.Time)
 	// notification.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -156,6 +161,30 @@ func init() {
 	notificationDescID := notificationFields[0].Descriptor()
 	// notification.DefaultID holds the default value on creation for the id field.
 	notification.DefaultID = notificationDescID.Default.(func() uuid.UUID)
+	notifychatFields := schema.NotifyChat{}.Fields()
+	_ = notifychatFields
+	// notifychatDescPeerType is the schema descriptor for peer_type field.
+	notifychatDescPeerType := notifychatFields[1].Descriptor()
+	// notifychat.DefaultPeerType holds the default value on creation for the peer_type field.
+	notifychat.DefaultPeerType = notifychatDescPeerType.Default.(string)
+	// notifychatDescEnabled is the schema descriptor for enabled field.
+	notifychatDescEnabled := notifychatFields[5].Descriptor()
+	// notifychat.DefaultEnabled holds the default value on creation for the enabled field.
+	notifychat.DefaultEnabled = notifychatDescEnabled.Default.(bool)
+	// notifychatDescCreatedAt is the schema descriptor for created_at field.
+	notifychatDescCreatedAt := notifychatFields[7].Descriptor()
+	// notifychat.DefaultCreatedAt holds the default value on creation for the created_at field.
+	notifychat.DefaultCreatedAt = notifychatDescCreatedAt.Default.(func() time.Time)
+	// notifychatDescUpdatedAt is the schema descriptor for updated_at field.
+	notifychatDescUpdatedAt := notifychatFields[8].Descriptor()
+	// notifychat.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	notifychat.DefaultUpdatedAt = notifychatDescUpdatedAt.Default.(func() time.Time)
+	// notifychat.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	notifychat.UpdateDefaultUpdatedAt = notifychatDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// notifychatDescID is the schema descriptor for id field.
+	notifychatDescID := notifychatFields[0].Descriptor()
+	// notifychat.DefaultID holds the default value on creation for the id field.
+	notifychat.DefaultID = notifychatDescID.Default.(func() uuid.UUID)
 	notifysubscriptionFields := schema.NotifySubscription{}.Fields()
 	_ = notifysubscriptionFields
 	// notifysubscriptionDescSource is the schema descriptor for source field.

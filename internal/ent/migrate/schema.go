@@ -125,6 +125,7 @@ var (
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "dedup_key", Type: field.TypeString},
 		{Name: "channel", Type: field.TypeString},
+		{Name: "peer_type", Type: field.TypeString, Default: "user"},
 		{Name: "telegram_user_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "telegram_access_hash", Type: field.TypeInt64, Nullable: true},
 		{Name: "source", Type: field.TypeString},
@@ -137,7 +138,7 @@ var (
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "delivered_at", Type: field.TypeTime, Nullable: true},
-		{Name: "user_id", Type: field.TypeUUID},
+		{Name: "user_id", Type: field.TypeUUID, Nullable: true},
 	}
 	// NotificationsTable holds the schema information for the "notifications" table.
 	NotificationsTable = &schema.Table{
@@ -147,9 +148,9 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "notifications_users_notifications",
-				Columns:    []*schema.Column{NotificationsColumns[15]},
+				Columns:    []*schema.Column{NotificationsColumns[16]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
-				OnDelete:   schema.NoAction,
+				OnDelete:   schema.SetNull,
 			},
 		},
 		Indexes: []*schema.Index{
@@ -161,7 +162,37 @@ var (
 			{
 				Name:    "notification_status",
 				Unique:  false,
-				Columns: []*schema.Column{NotificationsColumns[9]},
+				Columns: []*schema.Column{NotificationsColumns[10]},
+			},
+		},
+	}
+	// NotifyChatsColumns holds the columns for the "notify_chats" table.
+	NotifyChatsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "peer_type", Type: field.TypeString, Default: "channel"},
+		{Name: "peer_id", Type: field.TypeInt64},
+		{Name: "access_hash", Type: field.TypeInt64, Nullable: true},
+		{Name: "title", Type: field.TypeString, Nullable: true},
+		{Name: "enabled", Type: field.TypeBool, Default: true},
+		{Name: "added_by", Type: field.TypeInt64, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// NotifyChatsTable holds the schema information for the "notify_chats" table.
+	NotifyChatsTable = &schema.Table{
+		Name:       "notify_chats",
+		Columns:    NotifyChatsColumns,
+		PrimaryKey: []*schema.Column{NotifyChatsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "notifychat_peer_type_peer_id",
+				Unique:  true,
+				Columns: []*schema.Column{NotifyChatsColumns[1], NotifyChatsColumns[2]},
+			},
+			{
+				Name:    "notifychat_enabled",
+				Unique:  false,
+				Columns: []*schema.Column{NotifyChatsColumns[5]},
 			},
 		},
 	}
@@ -417,6 +448,7 @@ var (
 		DocumentsTable,
 		InvestigationJobsTable,
 		NotificationsTable,
+		NotifyChatsTable,
 		NotifySubscriptionsTable,
 		QueueJobsTable,
 		SupportRequestsTable,

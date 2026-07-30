@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-faster/sisyphus/internal/ent"
 	"github.com/go-faster/sisyphus/internal/ent/investigationjob"
+	"github.com/go-faster/sisyphus/internal/event"
 	"github.com/go-faster/sisyphus/internal/queue"
 )
 
@@ -20,6 +21,11 @@ const QueueName = "agent.investigate"
 // queue rather than read back off the job row.
 type Payload struct {
 	Description string `json:"description"`
+	// Trigger is the canonical event that caused this investigation, when one
+	// did (an alert; a /investigate request has none). The worker needs it to
+	// emit the finished report back onto the spine with the alert's subject,
+	// URL and severity intact — none of which survive in the description.
+	Trigger *event.Event `json:"trigger,omitempty"`
 }
 
 // Submit creates a job for idempotencyKey and queues it for a worker, or
@@ -31,6 +37,17 @@ type Payload struct {
 // its job reclaimed when the lease lapses rather than leaving a client
 // polling a row nobody is working on.
 func (s *Store) Submit(ctx context.Context, idempotencyKey, description string) (job Job, created bool, err error) {
+	return s.submit(ctx, idempotencyKey, description, nil)
+}
+
+// SubmitEvent is [Store.Submit] for an investigation triggered by an event:
+// the event is its own idempotency key, and it rides along in the queue
+// payload so the worker can report back onto the spine.
+func (s *Store) SubmitEvent(ctx context.Context, e event.Event, description string) (Job, bool, error) {
+	return s.submit(ctx, e.ID, description, &e)
+}
+
+func (s *Store) submit(ctx context.Context, idempotencyKey, description string, trigger *event.Event) (job Job, created bool, err error) {
 	tx, err := s.db.Tx(ctx)
 	if err != nil {
 		return Job{}, false, errors.Wrap(err, "begin tx")
@@ -59,7 +76,7 @@ func (s *Store) Submit(ctx context.Context, idempotencyKey, description string) 
 		return Job{}, false, errors.Wrap(err, "create job")
 	}
 
-	body, err := json.Marshal(Payload{Description: description})
+	body, err := json.Marshal(Payload{Description: description, Trigger: trigger})
 	if err != nil {
 		return Job{}, false, errors.Wrap(err, "encode payload")
 	}
