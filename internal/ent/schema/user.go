@@ -22,7 +22,6 @@ func (User) Fields() []ent.Field {
 	return []ent.Field{
 		field.UUID("id", uuid.UUID{}).Default(uuid.New),
 		field.Int64("telegram_user_id"),
-		field.Int64("telegram_access_hash").Optional().Nillable(),
 		field.String("gitlab_username").Optional().Nillable(),
 		field.String("jira_account_id").Optional().Nillable(),
 		field.String("jira_display_name").Optional().Nillable(),
