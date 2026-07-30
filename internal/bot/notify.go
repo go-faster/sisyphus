@@ -157,8 +157,7 @@ func (b *Bot) handleSubscribeCmd(ctx context.Context, s messageSender, inv invoc
 	}
 
 	if err := b.notifier.NotifySubscribe(ctx, inv.SenderID, source, eventTypes); err != nil {
-		b.replyFailure(ctx, s, "subscribing", err)
-		return nil
+		return errors.Wrap(err, "subscribe")
 	}
 	b.sendTextReply(ctx, s, fmt.Sprintf("Subscribed to %s: %s", source, strings.Join(eventTypes, ", ")))
 	return nil
@@ -175,8 +174,7 @@ func (b *Bot) handleUnsubscribeCmd(ctx context.Context, s messageSender, inv inv
 		return nil
 	}
 	if err := b.notifier.NotifyUnsubscribe(ctx, inv.SenderID, source); err != nil {
-		b.replyFailure(ctx, s, "unsubscribing", err)
-		return nil
+		return errors.Wrap(err, "unsubscribe")
 	}
 	b.sendTextReply(ctx, s, "Unsubscribed from "+source)
 	return nil
@@ -189,8 +187,7 @@ func (b *Bot) handleNotificationsCmd(ctx context.Context, s messageSender, inv i
 	}
 	subs, err := b.notifier.NotifyListSubscriptions(ctx, inv.SenderID)
 	if err != nil {
-		b.replyFailure(ctx, s, "reading your subscriptions", err)
-		return nil
+		return errors.Wrap(err, "list subscriptions")
 	}
 	if len(subs) == 0 {
 		b.sendTextReply(ctx, s, "No subscriptions. Use /subscribe <gitlab|jira> to add one.")

@@ -10,7 +10,8 @@ import (
 )
 
 // replyFailure logs err with a correlation id and tells the user only that the
-// action failed, plus that id.
+// command failed, plus that id. It is called from dispatch alone — a handler
+// signals failure by returning an error.
 //
 // A raw err.Error() in a chat is both useless to the reader and a leak: these
 // errors come from ssapi and carry DSNs, internal hostnames, constraint names
@@ -18,10 +19,11 @@ import (
 // the command is traced, so a report of "it failed, trace_id=…" lands directly
 // on the span; without a real tracer it is a fresh random id, which still ties
 // the chat message to exactly one log line.
-func (b *Bot) replyFailure(ctx context.Context, s messageSender, action string, err error) {
+func (b *Bot) replyFailure(ctx context.Context, s messageSender, command string, err error) {
 	ref := failureRef(ctx)
-	zctx.From(ctx).Error(action+" failed", zap.Error(err), zap.String("ref", ref))
-	b.sendTextReply(ctx, s, "Sorry, "+action+" failed.\ntrace_id: "+ref)
+	zctx.From(ctx).Error("command failed",
+		zap.String("command", command), zap.Error(err), zap.String("ref", ref))
+	b.sendTextReply(ctx, s, "Sorry, /"+command+" failed.\ntrace_id: "+ref)
 }
 
 func failureRef(ctx context.Context) string {

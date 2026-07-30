@@ -231,36 +231,12 @@ func (b *Bot) Run(ctx context.Context) error {
 			s = silentSender{}
 		}
 
-		chat := chatPeerFrom(e, msg.PeerID)
-		c, ok := b.commands.lookup(cmd)
-		if !ok {
-			// Unknown command: answer with the command list in a private chat,
-			// but stay quiet in a group or channel, where a slash command is
-			// just as likely addressed to some other bot.
-			if chat.Type == peerTypeUser {
-				b.sendTextReply(ctx, s, "Unknown command /"+cmd+".\n\n"+b.commands.helpText())
-			}
-			return nil
-		}
-		// A command whose usage is non-empty needs arguments. Answering with
-		// that usage is the whole point of recording it — a bare /link used to
-		// do nothing at all, which reads as a broken bot.
-		if rest == "" && c.usage != "" {
-			b.sendTextReply(ctx, s, "Usage: /"+c.name+" "+c.usage)
-			return nil
-		}
-
-		// One span per command: it is what makes the trace_id in a failure
-		// reply (replyFailure) resolve to something an operator can open.
-		ctx, span := b.tracer.Start(ctx, "bot.command",
-			trace.WithAttributes(attribute.String("command", c.name)))
-		defer span.End()
-
-		return c.handler(ctx, s, invocation{
+		b.dispatch(ctx, s, cmd, rest, invocation{
 			SenderID: senderID,
 			Chat:     chatPeerFrom(e, msg.PeerID),
 			Rest:     rest,
 		})
+		return nil
 	})
 
 	dispatcher.OnBotInlineQuery(func(ctx context.Context, _ tg.Entities, u *tg.UpdateBotInlineQuery) error {
