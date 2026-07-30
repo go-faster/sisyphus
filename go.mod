@@ -12,7 +12,7 @@ require (
 	github.com/go-faster/jx v1.2.0
 	github.com/go-faster/sdk v0.37.0
 	github.com/go-faster/yaml v0.4.6
-	github.com/go-git/go-git/v5 v5.19.1
+	github.com/go-git/go-git/v5 v5.19.2
 	github.com/google/uuid v1.6.0
 	github.com/gotd/log/logzap v0.1.1
 	github.com/gotd/td v0.161.0
