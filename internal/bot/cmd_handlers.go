@@ -24,9 +24,9 @@ func (b *Bot) buildCommandRegistry(runCtx context.Context) *commandRegistry {
 			return b.handleInvestigateCmd(runCtx, ctx, s, inv.Rest)
 		},
 	)
-	reg.add("subscribe", "<gitlab|jira> [event_type ...]", "subscribe to GitLab/Jira notifications", false, b.handleSubscribeCmd)
-	reg.add("unsubscribe", "<gitlab|jira>", "unsubscribe from notifications", false, b.handleUnsubscribeCmd)
-	reg.add("notifications", "", "list your notification subscriptions", false, b.handleNotificationsCmd)
+	reg.addPersonal("subscribe", "<gitlab|jira> [event_type ...]", "subscribe to GitLab/Jira notifications", false, b.handleSubscribeCmd)
+	reg.addPersonal("unsubscribe", "<gitlab|jira>", "unsubscribe from notifications", false, b.handleUnsubscribeCmd)
+	reg.addPersonal("notifications", "", "list your notification subscriptions", false, b.handleNotificationsCmd)
 	reg.add("alerts", "", "send alert notifications to this chat (/alerts on|off|status)", false, b.handleAlertsCmd)
 	return reg
 }

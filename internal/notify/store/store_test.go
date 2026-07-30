@@ -285,3 +285,12 @@ func TestStore_PendingLeasesExclusively(t *testing.T) {
 	require.Len(t, retry, 1)
 	require.Equal(t, first[0].ID, retry[0].ID)
 }
+
+// "user not found" alone cannot be acted on: the id is usually the whole
+// story, since a command sent from a channel carries the channel's id.
+func TestStore_SubscribeNamesTheMissingUser(t *testing.T) {
+	s := New(openTestDB(t), Options{})
+
+	err := s.Subscribe(t.Context(), 9424242, notify.SourceGitLab, []notify.EventType{notify.EventMRAssigned})
+	require.ErrorContains(t, err, "9424242")
+}

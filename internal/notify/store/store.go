@@ -89,14 +89,30 @@ func (s *Store) EnrollTelegram(ctx context.Context, telegramUserID, accessHash i
 	return u.ID, nil
 }
 
+// userByTelegramID resolves the user row a per-user operation acts on.
+//
+// The error names the id: "user not found" alone cannot be acted on, and the
+// id is usually the whole story — a command sent from a channel carries the
+// channel's id as its sender, not a person's.
+func (s *Store) userByTelegramID(ctx context.Context, telegramUserID int64) (*ent.User, error) {
+	u, err := s.db.User.Query().Where(user.TelegramUserID(telegramUserID)).Only(ctx)
+	if ent.IsNotFound(err) {
+		return nil, errors.Errorf("no notify user for telegram id %d", telegramUserID)
+	}
+	if err != nil {
+		return nil, errors.Wrapf(err, "get notify user %d", telegramUserID)
+	}
+	return u, nil
+}
+
 // Subscribe upserts telegramUserID's subscription to source, replacing its
 // event type list. Calling it again with a different eventTypes list updates
 // the subscription in place rather than creating a second row (unique on
 // (user_id, source)).
 func (s *Store) Subscribe(ctx context.Context, telegramUserID int64, source notify.Source, eventTypes []notify.EventType) error {
-	u, err := s.db.User.Query().Where(user.TelegramUserID(telegramUserID)).Only(ctx)
+	u, err := s.userByTelegramID(ctx, telegramUserID)
 	if err != nil {
-		return errors.Wrap(err, "get notify user")
+		return err
 	}
 
 	types := make([]string, 0, len(eventTypes))
@@ -125,7 +141,7 @@ func (s *Store) Unsubscribe(ctx context.Context, telegramUserID int64, source no
 		if ent.IsNotFound(err) {
 			return nil
 		}
-		return errors.Wrap(err, "get notify user")
+		return errors.Wrapf(err, "get notify user %d", telegramUserID)
 	}
 
 	_, err = s.db.NotifySubscription.Update().
@@ -156,7 +172,7 @@ func (s *Store) ListSubscriptions(ctx context.Context, telegramUserID int64) ([]
 		if ent.IsNotFound(err) {
 			return nil, nil
 		}
-		return nil, errors.Wrap(err, "get notify user")
+		return nil, errors.Wrapf(err, "get notify user %d", telegramUserID)
 	}
 
 	rows, err := s.db.NotifySubscription.Query().Where(notifysubscription.UserID(u.ID)).All(ctx)
