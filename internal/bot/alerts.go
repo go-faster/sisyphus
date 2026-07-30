@@ -45,7 +45,7 @@ func (b *Bot) handleAlertsCmd(ctx context.Context, s messageSender, inv invocati
 }
 
 func (b *Bot) setAlerts(ctx context.Context, s messageSender, inv invocation, enabled bool) error {
-	err := b.notifier.NotifyRegisterChat(ctx, inv.Chat.Type, inv.Chat.ID, inv.Chat.AccessHash, inv.Chat.Title, inv.SenderID, enabled)
+	err := b.notifier.NotifyRegisterChat(ctx, inv.Chat.Type, inv.Chat.ID, inv.Chat.Title, inv.SenderID, enabled)
 	if err != nil {
 		return errors.Wrap(err, "register chat")
 	}

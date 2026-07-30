@@ -31,9 +31,6 @@ func (s *Store) RegisterChat(ctx context.Context, target notify.Target, title st
 		SetTitle(title).
 		SetEnabled(true).
 		SetAddedBy(addedBy)
-	if target.TelegramAccessHash != 0 {
-		create = create.SetAccessHash(target.TelegramAccessHash)
-	}
 
 	err := create.
 		OnConflictColumns(notifychat.FieldPeerType, notifychat.FieldPeerID).
@@ -91,18 +88,23 @@ func (s *Store) BroadcastTargets(ctx context.Context) ([]notify.Target, error) {
 	}
 	out := make([]notify.Target, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, chatTarget(row))
+		target := chatTarget(row)
+		// The address comes from the peer store, which the bot refreshes from
+		// every update it sees — so a hash that rotated with the bot session
+		// is already current here, without re-running /alerts on.
+		hash, _, err := s.peers.Resolve(ctx, row.PeerType, row.PeerID)
+		if err != nil {
+			return nil, err
+		}
+		target.TelegramAccessHash = hash
+		out = append(out, target)
 	}
 	return out, nil
 }
 
 func chatTarget(row *ent.NotifyChat) notify.Target {
-	target := notify.Target{
+	return notify.Target{
 		TelegramUserID: row.PeerID,
 		PeerType:       notify.PeerType(row.PeerType),
 	}
-	if row.AccessHash != nil {
-		target.TelegramAccessHash = *row.AccessHash
-	}
-	return target
 }

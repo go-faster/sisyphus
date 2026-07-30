@@ -9,6 +9,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/config"
 	"github.com/go-faster/sisyphus/internal/ent"
 	notifystore "github.com/go-faster/sisyphus/internal/notify/store"
+	"github.com/go-faster/sisyphus/internal/tgpeer"
 	"github.com/go-faster/sisyphus/internal/wire"
 )
 
@@ -29,6 +30,7 @@ func newHandler(comp wire.Components, version string) *api.Handler {
 		api.WithContentResolver(comp.ContentResolver),
 		api.WithURLFetcher(comp.URLFetcher),
 		api.WithNotifyStore(newNotifyStore(comp.DB)),
+		api.WithPeerStore(tgpeer.New(comp.DB, tgpeer.Options{})),
 	)
 }
 

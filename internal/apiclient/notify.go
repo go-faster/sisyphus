@@ -12,16 +12,15 @@ import (
 	"github.com/go-faster/sisyphus/internal/oas"
 )
 
-// NotifyEnroll upserts a Telegram user's NotifyUser row and access hash.
-// Called on /subscribe and on every allowlisted message from a known user,
-// so a rotated bot session self-heals on the user's next contact.
-func (c *Client) NotifyEnroll(ctx context.Context, telegramUserID, accessHash int64) (rerr error) {
+// NotifyEnroll upserts a Telegram user's row. The access hash travels
+// separately, via NotifyPeers, because it belongs to the peer rather than to
+// the person.
+func (c *Client) NotifyEnroll(ctx context.Context, telegramUserID int64) (rerr error) {
 	start := time.Now()
 	defer func() { c.m.record(ctx, "notify_enroll", time.Since(start).Seconds(), 0, rerr) }()
 
 	_, err := c.inv.NotifyEnroll(ctx, &oas.NotifyEnrollRequest{
-		TelegramUserID:     telegramUserID,
-		TelegramAccessHash: accessHash,
+		TelegramUserID: telegramUserID,
 	})
 	if err != nil {
 		rerr = errors.Wrap(err, "notify enroll")
@@ -158,7 +157,7 @@ func (c *Client) AckNotification(ctx context.Context, id uuid.UUID, deliverErr e
 // peerType/peerID/accessHash come from the update the bot handled inside the
 // chat: that is where a private channel's access hash exists, and it exists
 // nowhere else.
-func (c *Client) NotifyRegisterChat(ctx context.Context, peerType string, peerID, accessHash int64, title string, addedBy int64, enabled bool) (rerr error) {
+func (c *Client) NotifyRegisterChat(ctx context.Context, peerType string, peerID int64, title string, addedBy int64, enabled bool) (rerr error) {
 	start := time.Now()
 	ctx, span := c.tracer.Start(ctx, "apiclient.NotifyRegisterChat", trace.WithSpanKind(trace.SpanKindClient))
 	defer func() {
@@ -170,9 +169,6 @@ func (c *Client) NotifyRegisterChat(ctx context.Context, peerType string, peerID
 		PeerType: oas.NotifyChatRequestPeerType(peerType),
 		PeerID:   peerID,
 		Enabled:  enabled,
-	}
-	if accessHash != 0 {
-		req.AccessHash = oas.NewOptInt64(accessHash)
 	}
 	if title != "" {
 		req.Title = oas.NewOptString(title)

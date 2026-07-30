@@ -19,6 +19,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/user"
 	"github.com/go-faster/sisyphus/internal/notify"
 	"github.com/go-faster/sisyphus/internal/queue"
+	"github.com/go-faster/sisyphus/internal/tgpeer"
 )
 
 // Options configures a [Store].
@@ -45,12 +46,17 @@ func (opts *Options) setDefaults() {
 type Store struct {
 	db   *ent.Client
 	opts Options
+	// peers resolves a target's access hash at the moment it is needed.
+	// Addresses are not copied into subscriptions or outbox rows: a hash
+	// rotates with the bot session, and a stale copy is an undeliverable
+	// message.
+	peers *tgpeer.Store
 }
 
 // New creates a Store backed by db.
 func New(db *ent.Client, opts Options) *Store {
 	opts.setDefaults()
-	return &Store{db: db, opts: opts}
+	return &Store{db: db, opts: opts, peers: tgpeer.New(db, tgpeer.Options{Now: opts.Now})}
 }
 
 // queue returns the delivery queue for channel. Queues are constructed per
@@ -67,14 +73,14 @@ func (s *Store) queue(channel notify.Channel) (*queue.Postgres, error) {
 	}), nil
 }
 
-// EnrollTelegram upserts a User row for telegramUserID, persisting its
-// current access hash. Called on /subscribe and on every allowlisted
-// message from a known user, so a rotated bot session (a new access hash)
-// self-heals on the user's next contact rather than requiring re-enrollment.
-func (s *Store) EnrollTelegram(ctx context.Context, telegramUserID, accessHash int64) (uuid.UUID, error) {
+// EnrollTelegram upserts a User row for telegramUserID.
+//
+// It no longer carries an access hash: that belongs to the peer, not to the
+// person, and internal/tgpeer records it for every peer the bot sees rather
+// than only for those who ran a notify command.
+func (s *Store) EnrollTelegram(ctx context.Context, telegramUserID int64) (uuid.UUID, error) {
 	err := s.db.User.Create().
 		SetTelegramUserID(telegramUserID).
-		SetTelegramAccessHash(accessHash).
 		SetEnabled(true).
 		OnConflictColumns(user.FieldTelegramUserID).
 		UpdateNewValues().
@@ -249,14 +255,23 @@ func (s *Store) Subscribers(ctx context.Context, source notify.Source, eventType
 			continue
 		}
 		u := byID[sub.UserID]
-		if u == nil || u.TelegramAccessHash == nil {
+		if u == nil {
+			continue
+		}
+		// A user the bot has never seen has no access hash and cannot be
+		// addressed, so there is no point enqueuing for them.
+		hash, found, err := s.peers.Resolve(ctx, tgpeer.KindUser, u.TelegramUserID)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
 			continue
 		}
 		out = append(out, notify.Subscriber{
 			UserID: u.ID,
 			Target: notify.Target{
 				TelegramUserID:     u.TelegramUserID,
-				TelegramAccessHash: *u.TelegramAccessHash,
+				TelegramAccessHash: hash,
 			},
 		})
 	}

@@ -31,12 +31,22 @@ type NotifySubscription struct {
 // Satisfied by internal/apiclient.Client via a thin adapter in cmd/ssbot
 // (the return types don't match exactly, so it's not implemented directly).
 type Notifier interface {
-	NotifyEnroll(ctx context.Context, telegramUserID, accessHash int64) error
+	NotifyEnroll(ctx context.Context, telegramUserID int64) error
+	NotifyPeers(ctx context.Context, peers []NotifyPeer) error
 	NotifySubscribe(ctx context.Context, telegramUserID int64, source string, eventTypes []string) error
 	NotifyUnsubscribe(ctx context.Context, telegramUserID int64, source string) error
 	NotifyListSubscriptions(ctx context.Context, telegramUserID int64) ([]NotifySubscription, error)
-	NotifyRegisterChat(ctx context.Context, peerType string, peerID, accessHash int64, title string, addedBy int64, enabled bool) error
+	NotifyRegisterChat(ctx context.Context, peerType string, peerID int64, title string, addedBy int64, enabled bool) error
 	NotifyListChats(ctx context.Context) ([]NotifyChat, error)
+}
+
+// NotifyPeer is one Telegram peer the bot saw, on its way to storage.
+type NotifyPeer struct {
+	PeerType   string
+	PeerID     int64
+	AccessHash int64
+	Username   string
+	Title      string
 }
 
 // NotifyChat is one chat registered to receive broadcast notifications.
@@ -52,19 +62,70 @@ type NotifyChat struct {
 var errBotNotReady = errors.New("bot: session not ready")
 
 // captureNotifyIdentity best-effort persists senderID's current Telegram
-// access hash on every allowlisted message (not just notification
-// commands), so a rotated bot session (a new access hash) self-heals on the
-// user's next contact instead of requiring re-enrollment via /subscribe.
-func (b *Bot) captureNotifyIdentity(ctx context.Context, e tg.Entities, senderID int64) {
+// user row on every allowlisted message, so /subscribe has someone to attach
+// a subscription to. The addresses themselves are recorded separately by
+// capturePeers, for every peer rather than just this sender.
+func (b *Bot) captureNotifyIdentity(ctx context.Context, senderID int64) {
 	if b.notifier == nil || senderID <= 0 {
 		return
 	}
-	u, ok := e.Users[senderID]
-	if !ok {
+	if err := b.notifier.NotifyEnroll(ctx, senderID); err != nil {
+		zctx.From(ctx).Warn("notify enroll failed", zap.Error(err))
+	}
+}
+
+// capturePeers records every peer an update carried, with its access hash.
+//
+// Proactive on purpose: over MTProto a peer is addressable only with a hash
+// that exists in the update that delivered it, and a private channel has no
+// username to resolve one from later. Recording only the peers a notification
+// command mentioned meant the bot could not message anyone it had not already
+// been asked about — including, until this existed, every user who had simply
+// never run one.
+//
+// Best-effort: failing to record a peer must not fail the command the update
+// carried.
+func (b *Bot) capturePeers(ctx context.Context, e tg.Entities, chat chatPeer) {
+	if b.notifier == nil {
 		return
 	}
-	if err := b.notifier.NotifyEnroll(ctx, senderID, u.AccessHash); err != nil {
-		zctx.From(ctx).Warn("notify enroll failed", zap.Error(err))
+
+	peers := make([]NotifyPeer, 0, len(e.Users)+len(e.Chats)+len(e.Channels)+1)
+	for id, u := range e.Users {
+		peers = append(peers, NotifyPeer{
+			PeerType:   peerTypeUser,
+			PeerID:     id,
+			AccessHash: u.AccessHash,
+			Username:   u.Username,
+			Title:      strings.TrimSpace(u.FirstName + " " + u.LastName),
+		})
+	}
+	for id, c := range e.Chats {
+		peers = append(peers, NotifyPeer{PeerType: peerTypeChat, PeerID: id, Title: c.Title})
+	}
+	for id, ch := range e.Channels {
+		peers = append(peers, NotifyPeer{
+			PeerType:   peerTypeChannel,
+			PeerID:     id,
+			AccessHash: ch.AccessHash,
+			Username:   ch.Username,
+			Title:      ch.Title,
+		})
+	}
+	// The chat the update came from may not appear in the entity maps at all
+	// (a channel post carries its own peer implicitly), and it is precisely
+	// the peer /alerts would register.
+	if chat.ID != 0 {
+		peers = append(peers, NotifyPeer{
+			PeerType:   chat.Type,
+			PeerID:     chat.ID,
+			AccessHash: chat.AccessHash,
+			Title:      chat.Title,
+		})
+	}
+
+	if err := b.notifier.NotifyPeers(ctx, peers); err != nil {
+		zctx.From(ctx).Warn("record telegram peers failed", zap.Error(err))
 	}
 }
 

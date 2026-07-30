@@ -38,7 +38,7 @@ type fakeNotifyStore struct {
 	chats   []notifystore.Chat
 }
 
-func (f *fakeNotifyStore) EnrollTelegram(context.Context, int64, int64) (uuid.UUID, error) {
+func (f *fakeNotifyStore) EnrollTelegram(context.Context, int64) (uuid.UUID, error) {
 	return uuid.Nil, nil
 }
 

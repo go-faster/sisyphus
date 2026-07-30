@@ -32,7 +32,7 @@ func newFakeNotifyStore() *fakeNotifyStore {
 	}
 }
 
-func (f *fakeNotifyStore) EnrollTelegram(_ context.Context, telegramUserID, _ int64) (uuid.UUID, error) {
+func (f *fakeNotifyStore) EnrollTelegram(_ context.Context, telegramUserID int64) (uuid.UUID, error) {
 	return uuid.NewSHA1(uuid.NameSpaceOID, []byte{byte(telegramUserID)}), nil
 }
 
@@ -85,7 +85,7 @@ func TestClientNotifyEnrollSubscribeRoundTrip(t *testing.T) {
 	defer closeServer()
 	ctx := context.Background()
 
-	require.NoError(t, client.NotifyEnroll(ctx, 1001, 555))
+	require.NoError(t, client.NotifyEnroll(ctx, 1001))
 
 	require.NoError(t, client.NotifySubscribe(ctx, 1001, "gitlab", []string{"mr_assigned"}))
 	subs, err := client.NotifyListSubscriptions(ctx, 1001)
@@ -137,7 +137,7 @@ func TestClientNotifyEndpointsWithoutStoreReturn503(t *testing.T) {
 	client, err := New(httpServer.URL, "secret-token", Options{})
 	require.NoError(t, err)
 
-	err = client.NotifyEnroll(context.Background(), 1, 1)
+	err = client.NotifyEnroll(context.Background(), 1)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "503")
 }

@@ -31,7 +31,6 @@ func TestHandleAlertsCmd_On(t *testing.T) {
 	require.Equal(t, int64(1001), n.registered[0].PeerID)
 	require.Equal(t, "Ops", n.registered[0].Title)
 	require.True(t, n.registered[0].Enabled)
-	require.Equal(t, int64(777), n.lastHash)
 	require.Equal(t, int64(42), n.lastAddedBy)
 	require.Contains(t, *sent, "will receive alert notifications")
 }

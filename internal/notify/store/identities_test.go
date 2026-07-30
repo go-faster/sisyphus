@@ -34,7 +34,6 @@ func TestSyncIdentitiesLinksAndRevokes(t *testing.T) {
 	alice := getUser(t, s, idAlice)
 	require.Equal(t, "sync-alice", *alice.GitlabUsername)
 	require.Equal(t, "Alice", *alice.JiraDisplayName)
-	require.Nil(t, alice.TelegramAccessHash, "the access hash comes from live updates, not config")
 
 	// Dropping only the Jira half revokes it and leaves GitLab alone.
 	_, err = s.SyncIdentities(ctx, []Identity{
@@ -79,24 +78,6 @@ func TestSyncIdentitiesMovesIdentityBetweenUsers(t *testing.T) {
 
 	require.Nil(t, getUser(t, s, idAlice).GitlabUsername)
 	require.Equal(t, "sync-moving", *getUser(t, s, idBob).GitlabUsername)
-}
-
-// Enrollment captures the access hash from a live update; a later config sync
-// must not wipe it, or the bot loses the only way to address that user.
-func TestSyncIdentitiesKeepsAccessHash(t *testing.T) {
-	db := openTestDB(t)
-	ctx := t.Context()
-	s := New(db, Options{Owner: "identities-test"})
-
-	_, err := s.EnrollTelegram(ctx, idAlice, 4242)
-	require.NoError(t, err)
-
-	_, err = s.SyncIdentities(ctx, []Identity{{TelegramUserID: idAlice, GitLabUsername: "sync-alice"}})
-	require.NoError(t, err)
-
-	u := getUser(t, s, idAlice)
-	require.NotNil(t, u.TelegramAccessHash)
-	require.Equal(t, int64(4242), *u.TelegramAccessHash)
 }
 
 func getUser(t *testing.T, s *Store, telegramUserID int64) *ent.User {

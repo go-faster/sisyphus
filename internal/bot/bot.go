@@ -234,7 +234,9 @@ func (b *Bot) Run(ctx context.Context) error {
 			return nil
 		}
 
-		b.captureNotifyIdentity(ctx, e, senderID)
+		chat := chatPeerFrom(e, msg.PeerID)
+		b.capturePeers(ctx, e, chat)
+		b.captureNotifyIdentity(ctx, senderID)
 
 		cmd, rest, ok := parseCommand(msg.Message)
 		if !ok {
@@ -250,7 +252,7 @@ func (b *Bot) Run(ctx context.Context) error {
 
 		b.dispatch(ctx, s, cmd, rest, invocation{
 			SenderID: senderID,
-			Chat:     chatPeerFrom(e, msg.PeerID),
+			Chat:     chat,
 			Rest:     rest,
 		})
 		return nil
