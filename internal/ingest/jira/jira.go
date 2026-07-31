@@ -317,7 +317,8 @@ func convertIssue(jiraIss jiraIssue, baseURL string) (chunkjira.Issue, error) {
 		iss.ReporterURL = jiraIss.Fields.Reporter.profileURL(baseURL)
 	}
 
-	iss.UpdatedBy, iss.AssignedBy = changelogActors(jiraIss.Changelog, baseURL)
+	actors := changelogActors(jiraIss.Changelog, baseURL)
+	iss.UpdatedBy, iss.AssignedBy, iss.AssignedAt = actors.UpdatedBy, actors.AssignedBy, actors.AssignedAt
 
 	if jiraIss.Fields.Comment != nil {
 		for _, c := range jiraIss.Fields.Comment.Comments {

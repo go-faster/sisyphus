@@ -100,6 +100,10 @@ type MergeRequest struct {
 	// people.
 	AssignedBy        User
 	ReviewRequestedBy User
+	// AssignedAt and ReviewRequestedAt are when those changes happened, from
+	// the same system notes. Zero when unknown.
+	AssignedAt        time.Time
+	ReviewRequestedAt time.Time
 	Threads           []Thread
 	Links             []Link
 }

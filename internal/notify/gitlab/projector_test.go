@@ -12,6 +12,15 @@ import (
 	"github.com/go-faster/sisyphus/internal/notify"
 )
 
+// eventTime is the fixture clock. The projector's staleness check needs a
+// "now" near the event, or every fixture would look long stale.
+var eventTime = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+
+// testProjector is the projector with its clock pinned to eventTime.
+func testProjector() Projector {
+	return Projector{Staleness: notify.Staleness{Now: func() time.Time { return eventTime }}}
+}
+
 func mrEvent(t *testing.T, assignees, reviewers []string) event.Event {
 	t.Helper()
 	return mrEventWithActors(t, ingestgitlab.MRPayload{
@@ -34,7 +43,13 @@ func mrEventWithActors(t *testing.T, payload ingestgitlab.MRPayload) event.Event
 		// The envelope's actor is whoever touched the MR last, which is
 		// deliberately not who the notification names.
 		Actor:      event.Actor{Key: "erin", URL: "https://example.com/erin"},
-		OccurredAt: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC),
+		OccurredAt: eventTime,
+	}
+	if payload.AssignedAt.IsZero() {
+		payload.AssignedAt = e.OccurredAt
+	}
+	if payload.ReviewRequestedAt.IsZero() {
+		payload.ReviewRequestedAt = e.OccurredAt
 	}
 	e, err := e.WithPayload(payload)
 	require.NoError(t, err)
@@ -42,7 +57,7 @@ func mrEventWithActors(t *testing.T, payload ingestgitlab.MRPayload) event.Event
 }
 
 func TestProjector_FansOutAssigneesAndReviewers(t *testing.T) {
-	events, err := Projector{}.Project(mrEvent(t, []string{"alice"}, []string{"bob"}))
+	events, err := testProjector().Project(mrEvent(t, []string{"alice"}, []string{"bob"}))
 	require.NoError(t, err)
 	require.Len(t, events, 2)
 
@@ -71,7 +86,7 @@ func TestProjector_FansOutAssigneesAndReviewers(t *testing.T) {
 // With no known actor the notification names nobody, which renders as
 // "Someone", rather than crediting whoever touched the MR last.
 func TestProjector_UnknownActorLeavesActorUnset(t *testing.T) {
-	events, err := Projector{}.Project(mrEventWithActors(t, ingestgitlab.MRPayload{Assignees: []string{"alice"}}))
+	events, err := testProjector().Project(mrEventWithActors(t, ingestgitlab.MRPayload{Assignees: []string{"alice"}}))
 	require.NoError(t, err)
 	require.Len(t, events, 1)
 
@@ -83,7 +98,7 @@ func TestProjector_UnknownActorLeavesActorUnset(t *testing.T) {
 
 // Assigning an MR to yourself is self-caused, so the dispatcher skips it.
 func TestProjector_SelfAssignmentIsSelfCaused(t *testing.T) {
-	events, err := Projector{}.Project(mrEventWithActors(t, ingestgitlab.MRPayload{
+	events, err := testProjector().Project(mrEventWithActors(t, ingestgitlab.MRPayload{
 		Assignees:  []string{"alice"},
 		AssignedBy: chunkgitlab.User{Username: "alice"},
 	}))
@@ -93,7 +108,28 @@ func TestProjector_SelfAssignmentIsSelfCaused(t *testing.T) {
 }
 
 func TestProjector_NoMembersProjectsNothing(t *testing.T) {
-	events, err := Projector{}.Project(mrEvent(t, nil, nil))
+	events, err := testProjector().Project(mrEvent(t, nil, nil))
 	require.NoError(t, err)
 	require.Empty(t, events)
+}
+
+// Membership changes the payload dates to months ago notify nobody, per
+// membership kind: a stale assignment must not silence a fresh review
+// request on the same MR.
+func TestProjector_StaleMembershipProjectsNothing(t *testing.T) {
+	occurred := eventTime
+	e := mrEventWithActors(t, ingestgitlab.MRPayload{
+		Assignees:         []string{"alice"},
+		Reviewers:         []string{"bob"},
+		AssignedBy:        chunkgitlab.User{Username: "carol"},
+		ReviewRequestedBy: chunkgitlab.User{Username: "dave"},
+		AssignedAt:        occurred.AddDate(0, -3, 0),
+		ReviewRequestedAt: occurred,
+	})
+
+	p := Projector{Staleness: notify.Staleness{Now: func() time.Time { return occurred }}}
+	events, err := p.Project(e)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, notify.EventMRReviewRequested, events[0].Type)
 }

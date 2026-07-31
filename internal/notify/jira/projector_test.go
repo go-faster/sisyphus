@@ -12,6 +12,15 @@ import (
 	"github.com/go-faster/sisyphus/internal/notify"
 )
 
+// eventTime is the fixture clock. The projector's staleness check needs a
+// "now" near the event, or every fixture would look long stale.
+var eventTime = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+
+// testProjector is the projector with its clock pinned to eventTime.
+func testProjector() Projector {
+	return Projector{Staleness: notify.Staleness{Now: func() time.Time { return eventTime }}}
+}
+
 func issueEvent(t *testing.T, accountID, display string) event.Event {
 	t.Helper()
 	return issueEventAssignedBy(t, accountID, display, ingestjira.IssuePayload{
@@ -35,17 +44,20 @@ func issueEventAssignedBy(t *testing.T, accountID, display string, payload inges
 		// The envelope's actor is whoever touched the issue last — which is
 		// deliberately not who the notification names.
 		Actor:      event.Actor{Key: "acc-dave", Display: "Dave", URL: "https://jira.example.com/secure/ViewProfile.jspa?name=dave"},
-		OccurredAt: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC),
+		OccurredAt: eventTime,
 	}
 	payload.AssigneeAccountID = accountID
 	payload.AssigneeDisplay = display
+	if payload.AssignedAt.IsZero() {
+		payload.AssignedAt = e.OccurredAt
+	}
 	e, err := e.WithPayload(payload)
 	require.NoError(t, err)
 	return e
 }
 
 func TestProjector_AssignedIssueBecomesNotification(t *testing.T) {
-	events, err := Projector{}.Project(issueEvent(t, "acc-alice", "Alice"))
+	events, err := testProjector().Project(issueEvent(t, "acc-alice", "Alice"))
 	require.NoError(t, err)
 	require.Len(t, events, 1)
 
@@ -65,7 +77,7 @@ func TestProjector_AssignedIssueBecomesNotification(t *testing.T) {
 // last — that is the envelope's actor, and using it would credit a label edit
 // as an assignment.
 func TestProjector_ActorIsAssignerNotLastUpdater(t *testing.T) {
-	events, err := Projector{}.Project(issueEvent(t, "acc-alice", "Alice"))
+	events, err := testProjector().Project(issueEvent(t, "acc-alice", "Alice"))
 	require.NoError(t, err)
 	require.Len(t, events, 1)
 	require.NotEqual(t, "Dave", events[0].Actor.Display)
@@ -74,7 +86,7 @@ func TestProjector_ActorIsAssignerNotLastUpdater(t *testing.T) {
 // With no known assigner the actor stays zero, which renders as "Someone":
 // naming the wrong colleague is worse than naming none.
 func TestProjector_UnknownAssignerLeavesActorUnset(t *testing.T) {
-	events, err := Projector{}.Project(issueEventAssignedBy(t, "acc-alice", "Alice", ingestjira.IssuePayload{}))
+	events, err := testProjector().Project(issueEventAssignedBy(t, "acc-alice", "Alice", ingestjira.IssuePayload{}))
 	require.NoError(t, err)
 	require.Len(t, events, 1)
 
@@ -89,7 +101,7 @@ func TestProjector_UnknownAssignerLeavesActorUnset(t *testing.T) {
 // This only works because the actor's key comes from the same identity space
 // as the recipient's.
 func TestProjector_SelfAssignmentIsSelfCaused(t *testing.T) {
-	events, err := Projector{}.Project(issueEventAssignedBy(t, "acc-alice", "Alice", ingestjira.IssuePayload{
+	events, err := testProjector().Project(issueEventAssignedBy(t, "acc-alice", "Alice", ingestjira.IssuePayload{
 		AssignedBy: chunkjira.User{ID: "acc-alice", Display: "Alice"},
 	}))
 	require.NoError(t, err)
@@ -98,7 +110,52 @@ func TestProjector_SelfAssignmentIsSelfCaused(t *testing.T) {
 }
 
 func TestProjector_UnassignedIssueProjectsNothing(t *testing.T) {
-	events, err := Projector{}.Project(issueEvent(t, "", ""))
+	events, err := testProjector().Project(issueEvent(t, "", ""))
 	require.NoError(t, err)
 	require.Empty(t, events)
+}
+
+// An assignment the changelog dates to months ago notifies nobody: the event
+// states the issue's current assignee, so an unrelated edit would otherwise
+// announce it as if it just happened.
+func TestProjector_StaleAssignmentProjectsNothing(t *testing.T) {
+	occurred := eventTime
+	e := issueEventAssignedBy(t, "acc-alice", "Alice", ingestjira.IssuePayload{
+		AssignedBy: chunkjira.User{ID: "acc-rachel", Display: "Rachel"},
+		AssignedAt: occurred.AddDate(0, -3, 0),
+	})
+
+	p := Projector{Staleness: notify.Staleness{Now: func() time.Time { return occurred }}}
+	events, err := p.Project(e)
+	require.NoError(t, err)
+	require.Empty(t, events)
+
+	// The same event notifies once the check is disabled, so the drop is the
+	// cutoff talking and not a decode failure.
+	p.Staleness.MaxAge = -1
+	events, err = p.Project(e)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+}
+
+// A changelog that never named the assignment still notifies: losing a real
+// assignment is worse than one extra message that dedup collapses anyway.
+func TestProjector_UnknownAssignmentTimeStillNotifies(t *testing.T) {
+	occurred := eventTime
+	e := issueEventAssignedBy(t, "acc-alice", "Alice", ingestjira.IssuePayload{
+		AssignedBy: chunkjira.User{ID: "acc-rachel", Display: "Rachel"},
+		AssignedAt: time.Time{},
+	})
+	// issueEventAssignedBy defaults AssignedAt to the event time, so clear it
+	// back out: this test is about a payload that carries none at all.
+	var decoded ingestjira.IssuePayload
+	require.NoError(t, e.DecodePayload(&decoded))
+	decoded.AssignedAt = time.Time{}
+	e, err := e.WithPayload(decoded)
+	require.NoError(t, err)
+
+	p := Projector{Staleness: notify.Staleness{Now: func() time.Time { return occurred.AddDate(1, 0, 0) }}}
+	events, err := p.Project(e)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
 }

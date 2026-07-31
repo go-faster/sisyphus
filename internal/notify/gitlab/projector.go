@@ -20,9 +20,15 @@ import (
 // (EventMRAssigned) and per current reviewer (EventMRReviewRequested). The
 // EventID strings match the pre-spine collector's exactly, so existing outbox
 // dedup keys still suppress already-delivered notifications.
-type Projector struct{}
+//
+// Staleness drops membership changes the payload proves are old: the event
+// states the MR's current members, so any push to a long-assigned MR would
+// otherwise announce that assignment as if it just happened.
+type Projector struct {
+	Staleness notify.Staleness
+}
 
-func (Projector) Project(e event.Event) ([]notify.Event, error) {
+func (pr Projector) Project(e event.Event) ([]notify.Event, error) {
 	var p ingestgitlab.MRPayload
 	if err := e.DecodePayload(&p); err != nil {
 		return nil, errors.Wrap(err, "decode mr payload")
@@ -50,8 +56,19 @@ func (Projector) Project(e event.Event) ([]notify.Event, error) {
 	// one the recipient is being asked to act on.
 	buttons := []notify.Button{{Text: "Open merge request", URL: e.Subject.URL}}
 
+	// A membership change the payload proves is old notifies nobody: the
+	// event states current members, so it would otherwise re-announce an
+	// assignment made months ago the next time anyone pushes.
+	assignees, reviewers := p.Assignees, p.Reviewers
+	if !pr.Staleness.Fresh(p.AssignedAt) {
+		assignees = nil
+	}
+	if !pr.Staleness.Fresh(p.ReviewRequestedAt) {
+		reviewers = nil
+	}
+
 	var out []notify.Event
-	for _, username := range p.Assignees {
+	for _, username := range assignees {
 		out = append(out, notify.Event{
 			Source:     notify.SourceGitLab,
 			Type:       notify.EventMRAssigned,
@@ -65,7 +82,7 @@ func (Projector) Project(e event.Event) ([]notify.Event, error) {
 			OccurredAt: e.OccurredAt,
 		})
 	}
-	for _, username := range p.Reviewers {
+	for _, username := range reviewers {
 		out = append(out, notify.Event{
 			Source:     notify.SourceGitLab,
 			Type:       notify.EventMRReviewRequested,

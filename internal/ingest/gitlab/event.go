@@ -25,6 +25,11 @@ type MRPayload struct {
 	Reviewers         []string         `json:"reviewers"`
 	AssignedBy        chunkgitlab.User `json:"assigned_by,omitzero"`
 	ReviewRequestedBy chunkgitlab.User `json:"review_requested_by,omitzero"`
+	// AssignedAt and ReviewRequestedAt are when those changes happened. Zero
+	// when the system notes did not say, which a destination must read as
+	// "unknown", not as "old".
+	AssignedAt        time.Time `json:"assigned_at,omitzero"`
+	ReviewRequestedAt time.Time `json:"review_requested_at,omitzero"`
 }
 
 // EventFromMergeRequest builds the canonical event for one fetched merge
@@ -58,6 +63,8 @@ func EventFromMergeRequest(ref MergeRequestRef) (event.Event, error) {
 		Reviewers:         ref.MR.Reviewers,
 		AssignedBy:        ref.MR.AssignedBy,
 		ReviewRequestedBy: ref.MR.ReviewRequestedBy,
+		AssignedAt:        ref.MR.AssignedAt,
+		ReviewRequestedAt: ref.MR.ReviewRequestedAt,
 	})
 	if err != nil {
 		return event.Event{}, errors.Wrap(err, "encode mr payload")

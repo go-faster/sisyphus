@@ -25,6 +25,9 @@ type IssuePayload struct {
 	AssigneeAccountID string         `json:"assignee_account_id"`
 	AssigneeDisplay   string         `json:"assignee_display"`
 	AssignedBy        chunkjira.User `json:"assigned_by,omitzero"`
+	// AssignedAt is when the assignee was set. Zero when the changelog did
+	// not say, which a destination must read as "unknown", not as "old".
+	AssignedAt time.Time `json:"assigned_at,omitzero"`
 }
 
 // EventFromIssue builds the canonical event for one fetched issue. Like
@@ -49,6 +52,7 @@ func EventFromIssue(iss chunkjira.Issue) (event.Event, error) {
 		AssigneeAccountID: iss.AssigneeAccountID,
 		AssigneeDisplay:   iss.Assignee,
 		AssignedBy:        iss.AssignedBy,
+		AssignedAt:        iss.AssignedAt,
 	})
 	if err != nil {
 		return event.Event{}, errors.Wrap(err, "encode issue payload")

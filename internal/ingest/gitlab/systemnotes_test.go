@@ -61,6 +61,8 @@ func TestMRActors(t *testing.T) {
 				UpdatedBy:         user("erin"),
 				AssignedBy:        user("bob"),
 				ReviewRequestedBy: user("dave"),
+				AssignedAt:        base.Add(time.Hour),
+				ReviewRequestedAt: base.Add(2 * time.Hour),
 			},
 		},
 		{
@@ -71,7 +73,7 @@ func TestMRActors(t *testing.T) {
 				{Notes: []gitlabNote{note(true, "assigned to @carol", 5*time.Hour, "erin")}},
 				{Notes: []gitlabNote{note(true, "assigned to @alice", time.Hour, "bob")}},
 			},
-			want: MRActors{UpdatedBy: user("erin"), AssignedBy: user("erin")},
+			want: MRActors{UpdatedBy: user("erin"), AssignedBy: user("erin"), AssignedAt: base.Add(5 * time.Hour)},
 		},
 		{
 			name: "reassignment and unassignment count as assignment",
@@ -81,14 +83,14 @@ func TestMRActors(t *testing.T) {
 					note(true, "unassigned @bob and assigned @carol", 2*time.Hour, "dave"),
 				}},
 			},
-			want: MRActors{UpdatedBy: user("dave"), AssignedBy: user("dave")},
+			want: MRActors{UpdatedBy: user("dave"), AssignedBy: user("dave"), AssignedAt: base.Add(2 * time.Hour)},
 		},
 		{
 			name: "removing a review request is a review-request change",
 			discussions: []gitlabDiscussion{
 				{Notes: []gitlabNote{note(true, "removed review request for @carol", time.Hour, "dave")}},
 			},
-			want: MRActors{UpdatedBy: user("dave"), ReviewRequestedBy: user("dave")},
+			want: MRActors{UpdatedBy: user("dave"), ReviewRequestedBy: user("dave"), ReviewRequestedAt: base.Add(time.Hour)},
 		},
 		{
 			name: "notes with no author or unparseable time are skipped",
@@ -99,7 +101,7 @@ func TestMRActors(t *testing.T) {
 					{System: true, Body: "assigned to @dave", CreatedAt: "not a time", Author: &gitlabUser{Username: "erin"}},
 				}},
 			},
-			want: MRActors{UpdatedBy: user("bob"), AssignedBy: user("bob")},
+			want: MRActors{UpdatedBy: user("bob"), AssignedBy: user("bob"), AssignedAt: base.Add(time.Hour)},
 		},
 	}
 

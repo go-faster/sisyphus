@@ -67,6 +67,11 @@ type Issue struct {
 	// and assigning it are different acts, often by different people — and
 	// neither is [Issue.UpdatedBy], who may have only edited a label.
 	AssignedBy User
+	// AssignedAt is when that assignment happened, from the same changelog
+	// entry. Zero when unknown. A destination needs it to tell a fresh
+	// assignment from one it is only seeing now because something else on the
+	// issue changed.
+	AssignedAt time.Time
 	Created    time.Time
 	Updated    time.Time
 	Resolved   time.Time

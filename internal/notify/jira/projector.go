@@ -28,14 +28,23 @@ import (
 // naming the wrong colleague is worse than naming none. Filling Actor.Key
 // from the same identity space as the recipient's is also what lets
 // notify.Event.SelfCaused suppress your own assignments.
-type Projector struct{}
+//
+// Staleness drops assignments the payload proves are old: the event states the
+// issue's current assignee, so any edit to a long-assigned issue would
+// otherwise announce that assignment as if it just happened.
+type Projector struct {
+	Staleness notify.Staleness
+}
 
-func (Projector) Project(e event.Event) ([]notify.Event, error) {
+func (pr Projector) Project(e event.Event) ([]notify.Event, error) {
 	var p ingestjira.IssuePayload
 	if err := e.DecodePayload(&p); err != nil {
 		return nil, errors.Wrap(err, "decode issue payload")
 	}
 	if p.AssigneeAccountID == "" {
+		return nil, nil
+	}
+	if !pr.Staleness.Fresh(p.AssignedAt) {
 		return nil, nil
 	}
 

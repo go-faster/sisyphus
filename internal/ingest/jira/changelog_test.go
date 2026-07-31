@@ -25,6 +25,7 @@ func TestChangelogActors(t *testing.T) {
 		changelog      *jiraChangelog
 		wantUpdatedBy  chunkjira.User
 		wantAssignedBy chunkjira.User
+		wantAssignedAt time.Duration // offset from base; zero means no assignment
 	}{
 		{
 			name:      "nil changelog",
@@ -42,6 +43,7 @@ func TestChangelogActors(t *testing.T) {
 			}},
 			wantUpdatedBy:  chunkjira.User{ID: "acc-dave", Display: "Dave", URL: "https://jira.example.com/jira/people/acc-dave"},
 			wantAssignedBy: chunkjira.User{ID: "acc-bob", Display: "Bob", URL: "https://jira.example.com/jira/people/acc-bob"},
+			wantAssignedAt: time.Hour,
 		},
 		{
 			name: "newest assignee change wins over an older one",
@@ -51,6 +53,7 @@ func TestChangelogActors(t *testing.T) {
 			}},
 			wantUpdatedBy:  chunkjira.User{ID: "acc-erin", Display: "Erin", URL: "https://jira.example.com/jira/people/acc-erin"},
 			wantAssignedBy: chunkjira.User{ID: "acc-erin", Display: "Erin", URL: "https://jira.example.com/jira/people/acc-erin"},
+			wantAssignedAt: 3 * time.Hour,
 		},
 		{
 			// Jira documents no ordering guarantee, so the newest entry is
@@ -62,6 +65,7 @@ func TestChangelogActors(t *testing.T) {
 			}},
 			wantUpdatedBy:  chunkjira.User{ID: "acc-erin", Display: "Erin", URL: "https://jira.example.com/jira/people/acc-erin"},
 			wantAssignedBy: chunkjira.User{ID: "acc-erin", Display: "Erin", URL: "https://jira.example.com/jira/people/acc-erin"},
+			wantAssignedAt: 3 * time.Hour,
 		},
 		{
 			name: "fieldId matches when field is localized",
@@ -70,6 +74,7 @@ func TestChangelogActors(t *testing.T) {
 			}},
 			wantUpdatedBy:  chunkjira.User{ID: "acc-bob", Display: "Bob", URL: "https://jira.example.com/jira/people/acc-bob"},
 			wantAssignedBy: chunkjira.User{ID: "acc-bob", Display: "Bob", URL: "https://jira.example.com/jira/people/acc-bob"},
+			wantAssignedAt: time.Hour,
 		},
 		{
 			// Server/DC has no accountId; identity falls back to name, and
@@ -80,6 +85,7 @@ func TestChangelogActors(t *testing.T) {
 			}},
 			wantUpdatedBy:  chunkjira.User{ID: "bob", Display: "Bob", URL: "https://jira.example.com/secure/ViewProfile.jspa?name=bob"},
 			wantAssignedBy: chunkjira.User{ID: "bob", Display: "Bob", URL: "https://jira.example.com/secure/ViewProfile.jspa?name=bob"},
+			wantAssignedAt: time.Hour,
 		},
 		{
 			name: "entries with no author or unparseable time are skipped",
@@ -90,6 +96,7 @@ func TestChangelogActors(t *testing.T) {
 			}},
 			wantUpdatedBy:  chunkjira.User{ID: "acc-bob", Display: "Bob", URL: "https://jira.example.com/jira/people/acc-bob"},
 			wantAssignedBy: chunkjira.User{ID: "acc-bob", Display: "Bob", URL: "https://jira.example.com/jira/people/acc-bob"},
+			wantAssignedAt: time.Hour,
 		},
 		{
 			name: "no assignee change leaves the assigner unset",
@@ -104,9 +111,14 @@ func TestChangelogActors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			updatedBy, assignedBy := changelogActors(tt.changelog, "https://jira.example.com")
-			require.Equal(t, tt.wantUpdatedBy, updatedBy)
-			require.Equal(t, tt.wantAssignedBy, assignedBy)
+			actors := changelogActors(tt.changelog, "https://jira.example.com")
+			require.Equal(t, tt.wantUpdatedBy, actors.UpdatedBy)
+			require.Equal(t, tt.wantAssignedBy, actors.AssignedBy)
+			if tt.wantAssignedAt == 0 {
+				require.True(t, actors.AssignedAt.IsZero())
+				return
+			}
+			require.Equal(t, base.Add(tt.wantAssignedAt), actors.AssignedAt.UTC())
 		})
 	}
 }

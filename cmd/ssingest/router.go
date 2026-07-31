@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	"github.com/go-faster/sisyphus/internal/agentstore"
 	"github.com/go-faster/sisyphus/internal/event"
 	"github.com/go-faster/sisyphus/internal/notify"
@@ -26,6 +28,9 @@ import (
 func (d *ingestDeps) eventRouter() event.Router {
 	store := notifystore.New(d.services.DB, notifystore.Options{Owner: "ssingest"})
 	dispatcher := notify.NewDispatcher(store, store, notify.ChannelTelegram, nil)
+	staleness := notify.Staleness{
+		MaxAge: time.Duration(d.cfg.Notify.MaxAssignmentAgeSeconds) * time.Second,
+	}
 
 	router := event.NewMux()
 	if d.cfg.Alertmanager.Investigate {
@@ -56,12 +61,12 @@ func (d *ingestDeps) eventRouter() event.Router {
 	router.Subscribe(event.Subscription{
 		Name:    "notify-gitlab",
 		Sources: []event.Source{event.SourceGitLab},
-		Handler: notify.NewRouterSubscriber(notifygitlab.Projector{}, dispatcher),
+		Handler: notify.NewRouterSubscriber(notifygitlab.Projector{Staleness: staleness}, dispatcher),
 	})
 	router.Subscribe(event.Subscription{
 		Name:    "notify-jira",
 		Sources: []event.Source{event.SourceJira},
-		Handler: notify.NewRouterSubscriber(notifyjira.Projector{}, dispatcher),
+		Handler: notify.NewRouterSubscriber(notifyjira.Projector{Staleness: staleness}, dispatcher),
 	})
 	return router
 }

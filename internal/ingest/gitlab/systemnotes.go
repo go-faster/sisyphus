@@ -19,6 +19,12 @@ type MRActors struct {
 	UpdatedBy         chunkgitlab.User
 	AssignedBy        chunkgitlab.User
 	ReviewRequestedBy chunkgitlab.User
+	// AssignedAt and ReviewRequestedAt are when those changes happened, from
+	// the same notes. Zero when unknown. A destination needs them to tell a
+	// fresh membership change from one it is only seeing now because
+	// something else on the MR changed.
+	AssignedAt        time.Time
+	ReviewRequestedAt time.Time
 }
 
 // System-note bodies GitLab writes for a membership change. They are
@@ -53,8 +59,8 @@ func isReviewNote(body string) bool { return hasAnyPrefix(body, reviewPrefixes) 
 // be, and a wrong pick here credits an action to the wrong colleague.
 func mrActors(discussions []gitlabDiscussion) MRActors {
 	var (
-		actors                            MRActors
-		updatedAt, assignedAt, reviewedAt time.Time
+		actors    MRActors
+		updatedAt time.Time
 	)
 	for _, d := range discussions {
 		for _, note := range d.Notes {
@@ -73,11 +79,11 @@ func mrActors(discussions []gitlabDiscussion) MRActors {
 			if created.After(updatedAt) {
 				actors.UpdatedBy, updatedAt = user, created
 			}
-			if isAssignmentNote(note.Body) && created.After(assignedAt) {
-				actors.AssignedBy, assignedAt = user, created
+			if isAssignmentNote(note.Body) && created.After(actors.AssignedAt) {
+				actors.AssignedBy, actors.AssignedAt = user, created
 			}
-			if isReviewNote(note.Body) && created.After(reviewedAt) {
-				actors.ReviewRequestedBy, reviewedAt = user, created
+			if isReviewNote(note.Body) && created.After(actors.ReviewRequestedAt) {
+				actors.ReviewRequestedBy, actors.ReviewRequestedAt = user, created
 			}
 		}
 	}

@@ -2,6 +2,7 @@ package jira
 
 import (
 	"strings"
+	"time"
 
 	chunkjira "github.com/go-faster/sisyphus/internal/chunk/jira"
 )
@@ -40,8 +41,18 @@ func (h jiraHistory) touchesAssignee() bool {
 	return false
 }
 
-// lastAuthor returns the author of the newest history entry matching want, or
-// the zero user when no entry matches or the matching ones name nobody.
+// IssueActors are the people an issue's changelog names — who touched it last
+// and who set the current assignee — plus when that assignment happened, which
+// is what tells a destination whether it is news or history.
+type IssueActors struct {
+	UpdatedBy  chunkjira.User
+	AssignedBy chunkjira.User
+	AssignedAt time.Time
+}
+
+// lastEntry returns the author and timestamp of the newest history entry
+// matching want, or zero values when no entry matches or the matching ones
+// name nobody.
 //
 // Entries whose timestamp does not parse are skipped rather than failing the
 // issue: the changelog is auxiliary to every other field, and losing an actor
@@ -51,13 +62,14 @@ func (h jiraHistory) touchesAssignee() bool {
 // The newest entry is found by comparing timestamps, not by taking the last
 // element: Jira orders histories oldest-first, but nothing in the API
 // guarantees it and a wrong pick here misattributes an action to a colleague.
-func lastAuthor(cl *jiraChangelog, baseURL string, want func(jiraHistory) bool) chunkjira.User {
+func lastEntry(cl *jiraChangelog, baseURL string, want func(jiraHistory) bool) (chunkjira.User, time.Time) {
 	if cl == nil {
-		return chunkjira.User{}
+		return chunkjira.User{}, time.Time{}
 	}
 
 	var (
 		best      jiraHistory
+		bestAt    time.Time
 		bestFound bool
 	)
 	for _, h := range cl.Histories {
@@ -68,28 +80,25 @@ func lastAuthor(cl *jiraChangelog, baseURL string, want func(jiraHistory) bool) 
 		if err != nil || created.IsZero() {
 			continue
 		}
-		if bestFound {
-			bestCreated, err := parseJiraTime(best.Created)
-			if err == nil && !created.After(bestCreated) {
-				continue
-			}
+		if bestFound && !created.After(bestAt) {
+			continue
 		}
-		best, bestFound = h, true
+		best, bestAt, bestFound = h, created, true
 	}
 	if !bestFound {
-		return chunkjira.User{}
+		return chunkjira.User{}, time.Time{}
 	}
 	return chunkjira.User{
 		ID:      best.Author.identity(),
 		Display: best.Author.DisplayName,
 		URL:     best.Author.profileURL(baseURL),
-	}
+	}, bestAt
 }
 
-// changelogActors extracts the two actors an issue's changelog can name: who
-// touched it last, and who last set its assignee.
-func changelogActors(cl *jiraChangelog, baseURL string) (updatedBy, assignedBy chunkjira.User) {
-	updatedBy = lastAuthor(cl, baseURL, func(jiraHistory) bool { return true })
-	assignedBy = lastAuthor(cl, baseURL, jiraHistory.touchesAssignee)
-	return updatedBy, assignedBy
+// changelogActors extracts what an issue's changelog says about who acted.
+func changelogActors(cl *jiraChangelog, baseURL string) IssueActors {
+	var actors IssueActors
+	actors.UpdatedBy, _ = lastEntry(cl, baseURL, func(jiraHistory) bool { return true })
+	actors.AssignedBy, actors.AssignedAt = lastEntry(cl, baseURL, jiraHistory.touchesAssignee)
+	return actors
 }
