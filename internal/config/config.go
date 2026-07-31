@@ -267,6 +267,11 @@ type Telegram struct {
 	Silent         bool
 	AllowedChats   []int64
 	AllowedUserIDs []int64
+	// AnswerTimeoutSeconds bounds how long ssbot waits for a /context answer
+	// before giving up on it. It is the binding ceiling for a Telegram user:
+	// context.timeout_seconds bounds the answerer, but ssbot stops waiting
+	// first, so raising that alone changes nothing here.
+	AnswerTimeoutSeconds int
 }
 
 // TelegramChat describes one Telegram chat to monitor.
@@ -663,16 +668,17 @@ type fileOpenRouter struct {
 var validReasoningEfforts = map[string]bool{"": true, "low": true, "medium": true, "high": true}
 
 type fileTelegram struct {
-	Addr           string         `yaml:"addr"`
-	AppID          int            `yaml:"app_id"`
-	AppHash        Secret         `yaml:"app_hash"`
-	BotToken       Secret         `yaml:"bot_token"`
-	SessionDir     string         `yaml:"session_dir"`
-	Silent         bool           `yaml:"silent"`
-	MonitorChats   []TelegramChat `yaml:"monitor_chats"`
-	IngestSession  string         `yaml:"ingest_session"`
-	AllowedChats   []int64        `yaml:"allowed_chats"`
-	AllowedUserIDs []int64        `yaml:"allowed_user_ids"`
+	Addr                 string         `yaml:"addr"`
+	AppID                int            `yaml:"app_id"`
+	AppHash              Secret         `yaml:"app_hash"`
+	BotToken             Secret         `yaml:"bot_token"`
+	SessionDir           string         `yaml:"session_dir"`
+	Silent               bool           `yaml:"silent"`
+	MonitorChats         []TelegramChat `yaml:"monitor_chats"`
+	IngestSession        string         `yaml:"ingest_session"`
+	AllowedChats         []int64        `yaml:"allowed_chats"`
+	AllowedUserIDs       []int64        `yaml:"allowed_user_ids"`
+	AnswerTimeoutSeconds int            `yaml:"answer_timeout_seconds"`
 }
 
 // Secret describes a secret loaded from a literal value, environment variable,
@@ -768,6 +774,9 @@ func defaultConfig() fileConfig {
 		Telegram: fileTelegram{
 			Addr:       defaultBotAddr,
 			SessionDir: "./session",
+			// Matches bot.defaultAnswerTimeout, so wiring this through
+			// changes no existing deployment's behavior on its own.
+			AnswerTimeoutSeconds: 60,
 		},
 		Agent: fileAgentConfig{
 			Addr:                  ":8082",
@@ -1062,6 +1071,8 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			IngestSession:  c.Telegram.IngestSession,
 			AllowedChats:   c.Telegram.AllowedChats,
 			AllowedUserIDs: c.Telegram.AllowedUserIDs,
+
+			AnswerTimeoutSeconds: c.Telegram.AnswerTimeoutSeconds,
 		},
 		Proxies:  proxies,
 		Fetch:    fetchConfig,

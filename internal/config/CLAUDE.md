@@ -42,6 +42,13 @@ silently fetches with no proxy at all. Keep both switches in sync.
 allowlist means the bot **silently ignores every message** (`internal/bot.Bot.isAllowed`).
 Not a misconfiguration the bot reports — it just never answers.
 
+## Two timeouts bound a `/context` answer, and the smaller one is ssbot's
+
+`context.timeout_seconds` bounds the answerer; `telegram.answer_timeout_seconds` bounds
+how long ssbot waits for it. For a Telegram user the **smaller** one wins, and ssbot's
+defaults to 60s — so raising `context.timeout_seconds` alone changes nothing they can see.
+It reaches only direct API/MCP callers. Raise both, together.
+
 ## `context.agentic` needs OpenRouter, and says nothing if it's missing
 
 `agentic: true` only takes effect when OpenRouter is also configured; otherwise `wire.New`
