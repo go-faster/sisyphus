@@ -30,6 +30,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent"
 	"github.com/go-faster/sisyphus/internal/ent/queuejob"
 	"github.com/go-faster/sisyphus/internal/event"
+	"github.com/go-faster/sisyphus/internal/index"
 	ingestgitlab "github.com/go-faster/sisyphus/internal/ingest/gitlab"
 	"github.com/go-faster/sisyphus/internal/notify"
 	notifygitlab "github.com/go-faster/sisyphus/internal/notify/gitlab"
@@ -63,6 +64,7 @@ type deliveredMessage struct {
 	TelegramUserID     int64
 	TelegramAccessHash int64
 	Text               string
+	Buttons            []index.Link
 }
 
 // mockTelegramSink mocks the Telegram send boundary: instead of a real
@@ -74,7 +76,7 @@ type mockTelegramSink struct {
 	delivered []deliveredMessage
 }
 
-func (m *mockTelegramSink) send(id uuid.UUID, userID, accessHash int64, text string) {
+func (m *mockTelegramSink) send(id uuid.UUID, userID, accessHash int64, text string, buttons []index.Link) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.delivered = append(m.delivered, deliveredMessage{
@@ -82,6 +84,7 @@ func (m *mockTelegramSink) send(id uuid.UUID, userID, accessHash int64, text str
 		TelegramUserID:     userID,
 		TelegramAccessHash: accessHash,
 		Text:               text,
+		Buttons:            buttons,
 	})
 }
 
@@ -101,7 +104,7 @@ func drainOnce(ctx context.Context, t *testing.T, apiClient *apiclient.Client, s
 	pending, err := apiClient.PendingNotifications(ctx, 20)
 	require.NoError(t, err)
 	for _, n := range pending {
-		sink.send(n.ID, n.TelegramUserID, n.TelegramAccessHash, n.Text)
+		sink.send(n.ID, n.TelegramUserID, n.TelegramAccessHash, n.Text, n.Buttons)
 		require.NoError(t, apiClient.AckNotification(ctx, n.ID, nil))
 	}
 }
@@ -236,8 +239,17 @@ func TestE2E_GitLabMRAssignment_ToTelegramDelivery(t *testing.T) {
 	require.Len(t, delivered, 1)
 	require.Equal(t, telegramUserID, delivered[0].TelegramUserID)
 	require.Equal(t, telegramAccessHash, delivered[0].TelegramAccessHash)
-	require.Contains(t, delivered[0].Text, "Fix flaky test")
-	require.Contains(t, delivered[0].Text, "e2e-carol")
+	// Ingested text is CommonMark-escaped: an actor named foo_bar_baz would
+	// otherwise bleed italics across the rest of the line.
+	require.Equal(t,
+		"🔀 **e2e\\-carol** assigned you to "+
+			"[MR \\!42\\: Fix flaky test](https://gitlab.example.com/group/project/-/merge_requests/42)",
+		delivered[0].Text)
+	// Buttons survive the whole path: projector -> outbox payload -> HTTP ->
+	// the sink that renders them as an inline keyboard.
+	require.Equal(t, []index.Link{
+		{Text: "Open merge request", URL: "https://gitlab.example.com/group/project/-/merge_requests/42"},
+	}, delivered[0].Buttons)
 
 	// --- No re-delivery: the row is now delivered, draining again is a no-op.
 	drainOnce(ctx, t, apiClient, sink)

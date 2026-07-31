@@ -30,7 +30,7 @@ func EventFromMergeRequest(ref MergeRequestRef) (event.Event, error) {
 		Source:     event.SourceGitLab,
 		Type:       event.TypeMRUpdated,
 		Subject:    event.Ref{ID: objectID, URL: ref.MR.WebURL, Title: fmt.Sprintf("MR !%d: %s", ref.MR.IID, ref.MR.Title)},
-		Actor:      event.Actor{Key: ref.MR.Author},
+		Actor:      event.Actor{Key: ref.MR.Author, URL: ref.MR.AuthorURL},
 		OccurredAt: ref.MR.Updated,
 		Attributes: map[string]string{"project": ref.Project},
 	}

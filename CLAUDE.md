@@ -137,6 +137,16 @@ link merely *mentioned* there into a clickable button. Keep this restriction if
 from tool results (dashboards, tickets). `Report.normalize` drops invalid/duplicate links
 and caps at `maxReportLinks`.
 
+**Notifications carry buttons the same way**, over their own rail: `notify.Button` →
+outbox payload → `PendingNotification.buttons` → `bot.SendTo`, which sends text and
+keyboard in one `sendMessage` (two messages would double the notification, and only the
+first would carry the deduplicating `random_id`). The same guarantee holds and the
+projector is where it is enforced — `alert` promotes only *annotation* values (a rule
+author wrote those; an alert's labels and description carry whatever the alerting target
+reported), GitLab/Jira promote only the subject's own URL, and `investigation` re-uses
+`Report.Links`, already normalized. ssbot cannot build buttons itself: it has no DB and no
+event, only the rendered row it drained over HTTP.
+
 ## Alerts: fire → investigate → announce
 
 One loop spanning four packages, so the rule lives here.

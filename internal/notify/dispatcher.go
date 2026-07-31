@@ -2,7 +2,6 @@ package notify
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/go-faster/errors"
 	"github.com/google/uuid"
@@ -29,56 +28,10 @@ type OutboxWriter interface {
 	Enqueue(ctx context.Context, channel Channel, target Target, n Notification) (created bool, err error)
 }
 
-// Renderer turns an Event into the notification text shown to the user.
+// Renderer turns an Event into the notification text shown to the user. The
+// text is Telegram-flavored Markdown; see render.go for the default.
 type Renderer interface {
 	Render(e Event) (text string, err error)
-}
-
-// DefaultRenderer renders a plain, Telegram-Markdown-friendly notification.
-type DefaultRenderer struct{}
-
-func (DefaultRenderer) Render(e Event) (string, error) {
-	var verb string
-	switch e.Type {
-	case EventMRAssigned:
-		verb = "assigned you to"
-	case EventMRReviewRequested:
-		verb = "requested your review on"
-	case EventIssueAssigned:
-		verb = "assigned you"
-	case EventAlertFiring, EventAlertResolved:
-		// The alert speaks for itself: nothing "caused" it and nobody in
-		// particular is being addressed.
-		prefix := "\U0001F525 *Firing:* "
-		if e.Type == EventAlertResolved {
-			prefix = "\u2705 *Resolved:* "
-		}
-		text := prefix + e.Title
-		if e.URL != "" {
-			text = prefix + "[" + e.Title + "](" + e.URL + ")"
-		}
-		return Lines(text, e.Body), nil
-	case EventInvestigationCompleted:
-		// Broadcast events have no actor and no "you" to address.
-		text := "*Investigation:* " + e.Title
-		if e.URL != "" {
-			text = "*Investigation:* [" + e.Title + "](" + e.URL + ")"
-		}
-		return Lines(text, e.Body), nil
-	default:
-		verb = "notified you about"
-	}
-
-	who := e.Actor.Display
-	if who == "" {
-		who = e.Actor.Key
-	}
-	if who == "" {
-		who = "Someone"
-	}
-
-	text := fmt.Sprintf("%s %s [%s](%s)", who, verb, e.Title, e.URL)
-	return text, nil
 }
 
 // Dispatcher matches Events to subscribed users and writes one outbox row
@@ -121,12 +74,14 @@ func (d *Dispatcher) Dispatch(ctx context.Context, events []Event) (enqueued int
 			return enqueued, errors.Wrap(err, "render event")
 		}
 
+		buttons := ValidButtons(e.Buttons)
 		for _, sub := range subs {
 			n := Notification{
 				UserID:   sub.UserID,
 				Source:   e.Source,
 				Type:     e.Type,
 				Text:     text,
+				Buttons:  buttons,
 				URL:      e.URL,
 				DedupKey: DedupKey(sub.UserID, e.EventID),
 			}

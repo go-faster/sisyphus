@@ -68,6 +68,11 @@ const (
 type Actor struct {
 	Key     string // stable source-side id: GitLab username, Jira accountId
 	Display string // human-readable name, for rendering only
+	// URL is the actor's profile page, for rendering only. Empty when the
+	// source did not carry one; a destination must not synthesize it, since
+	// the shape differs per deployment (Jira Cloud and Server/DC do not
+	// address a user the same way).
+	URL string
 }
 
 // Zero reports whether the actor is unset.

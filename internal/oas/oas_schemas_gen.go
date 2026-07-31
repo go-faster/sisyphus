@@ -670,6 +670,32 @@ func (s *NotificationAckRequestStatus) UnmarshalText(data []byte) error {
 	}
 }
 
+// Ref: #/components/schemas/NotificationButton
+type NotificationButton struct {
+	Text string `json:"text"`
+	URL  string `json:"url"`
+}
+
+// GetText returns the value of Text.
+func (s *NotificationButton) GetText() string {
+	return s.Text
+}
+
+// GetURL returns the value of URL.
+func (s *NotificationButton) GetURL() string {
+	return s.URL
+}
+
+// SetText sets the value of Text.
+func (s *NotificationButton) SetText(val string) {
+	s.Text = val
+}
+
+// SetURL sets the value of URL.
+func (s *NotificationButton) SetURL(val string) {
+	s.URL = val
+}
+
 // Ref: #/components/schemas/NotifyChat
 type NotifyChat struct {
 	PeerType string    `json:"peer_type"`
@@ -1569,8 +1595,11 @@ type PendingNotification struct {
 	// broadcasts to an alert chat set channel or chat.
 	TelegramPeerType OptPendingNotificationTelegramPeerType `json:"telegram_peer_type"`
 	Text             string                                 `json:"text"`
-	URL              OptString                              `json:"url"`
-	Attempts         int                                    `json:"attempts"`
+	// Inline URL buttons to render under the message. Already validated server-side: every URL is absolute
+	// http(s) and came from a vetted source, never from ingested content.
+	Buttons  []NotificationButton `json:"buttons"`
+	URL      OptString            `json:"url"`
+	Attempts int                  `json:"attempts"`
 }
 
 // GetID returns the value of ID.
@@ -1596,6 +1625,11 @@ func (s *PendingNotification) GetTelegramPeerType() OptPendingNotificationTelegr
 // GetText returns the value of Text.
 func (s *PendingNotification) GetText() string {
 	return s.Text
+}
+
+// GetButtons returns the value of Buttons.
+func (s *PendingNotification) GetButtons() []NotificationButton {
+	return s.Buttons
 }
 
 // GetURL returns the value of URL.
@@ -1631,6 +1665,11 @@ func (s *PendingNotification) SetTelegramPeerType(val OptPendingNotificationTele
 // SetText sets the value of Text.
 func (s *PendingNotification) SetText(val string) {
 	s.Text = val
+}
+
+// SetButtons sets the value of Buttons.
+func (s *PendingNotification) SetButtons(val []NotificationButton) {
+	s.Buttons = val
 }
 
 // SetURL sets the value of URL.

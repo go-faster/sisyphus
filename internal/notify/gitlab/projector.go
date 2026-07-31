@@ -28,8 +28,16 @@ func (Projector) Project(e event.Event) ([]notify.Event, error) {
 		return nil, errors.Wrap(err, "decode mr payload")
 	}
 
-	actor := notify.Actor{Source: notify.SourceGitLab, Key: e.Actor.Key, Display: e.Actor.Display}
+	actor := notify.Actor{
+		Source:  notify.SourceGitLab,
+		Key:     e.Actor.Key,
+		Display: e.Actor.Display,
+		URL:     e.Actor.URL,
+	}
 	objectID := e.Subject.ID
+	// The MR itself is the only link a GitLab event carries, and it is the
+	// one the recipient is being asked to act on.
+	buttons := []notify.Button{{Text: "Open merge request", URL: e.Subject.URL}}
 
 	var out []notify.Event
 	for _, username := range p.Assignees {
@@ -39,6 +47,7 @@ func (Projector) Project(e event.Event) ([]notify.Event, error) {
 			Recipient:  notify.Actor{Source: notify.SourceGitLab, Key: username},
 			Actor:      actor,
 			Title:      e.Subject.Title,
+			Buttons:    buttons,
 			URL:        e.Subject.URL,
 			ObjectID:   objectID,
 			EventID:    fmt.Sprintf("gitlab_mr_assign:%s:%s", objectID, username),
@@ -52,6 +61,7 @@ func (Projector) Project(e event.Event) ([]notify.Event, error) {
 			Recipient:  notify.Actor{Source: notify.SourceGitLab, Key: username},
 			Actor:      actor,
 			Title:      e.Subject.Title,
+			Buttons:    buttons,
 			URL:        e.Subject.URL,
 			ObjectID:   objectID,
 			EventID:    fmt.Sprintf("gitlab_mr_review:%s:%s", objectID, username),

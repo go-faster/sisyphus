@@ -36,11 +36,15 @@ type Issue struct {
 	// and the username on Server/DC, which has no accountId at all.
 	AssigneeAccountID string
 	Reporter          string
-	Created           time.Time
-	Updated           time.Time
-	Resolved          time.Time
-	Comments          []Comment
-	WebURL            string // canonical browse URL, e.g. https://jira.example.com/browse/IDP-1080
+	// ReporterURL is the reporter's Jira profile page, built by the fetcher
+	// (the URL shape differs between Cloud and Server/DC). Rendering only —
+	// notifications link the actor with it.
+	ReporterURL string
+	Created     time.Time
+	Updated     time.Time
+	Resolved    time.Time
+	Comments    []Comment
+	WebURL      string // canonical browse URL, e.g. https://jira.example.com/browse/IDP-1080
 }
 
 // DocumentFromIssue builds a normalized index.Document from a Jira Issue.

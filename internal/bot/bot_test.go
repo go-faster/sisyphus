@@ -70,17 +70,31 @@ func TestIsStaleInlineQueryError(t *testing.T) {
 func TestLinksMarkup(t *testing.T) {
 	require.Nil(t, linksMarkup(nil))
 
+	// Two to a row, so a four-button alert is two rows tall.
 	kb := linksMarkup([]index.Link{
 		{Text: "Dashboard", URL: "https://grafana/d/1"},
 		{Text: "Ticket", URL: "https://jira/IDP-1"},
 	})
 	markup, ok := kb.(*tg.ReplyInlineMarkup)
 	require.True(t, ok)
-	require.Len(t, markup.Rows, 2)
+	require.Len(t, markup.Rows, 1)
+	require.Len(t, markup.Rows[0].Buttons, 2)
 	btn, ok := markup.Rows[0].Buttons[0].(*tg.KeyboardButtonURL)
 	require.True(t, ok)
 	require.Equal(t, "Dashboard", btn.Text)
 	require.Equal(t, "https://grafana/d/1", btn.URL)
+
+	// An odd trailing link gets a row to itself rather than being dropped.
+	kb = linksMarkup([]index.Link{
+		{Text: "Runbook", URL: "https://runbooks/1"},
+		{Text: "Dashboard", URL: "https://grafana/d/1"},
+		{Text: "Alertmanager", URL: "https://am/"},
+	})
+	markup, ok = kb.(*tg.ReplyInlineMarkup)
+	require.True(t, ok)
+	require.Len(t, markup.Rows, 2)
+	require.Len(t, markup.Rows[0].Buttons, 2)
+	require.Len(t, markup.Rows[1].Buttons, 1)
 }
 
 func TestPeerChatID(t *testing.T) {

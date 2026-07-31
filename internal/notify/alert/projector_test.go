@@ -1,6 +1,7 @@
 package alert
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -42,10 +43,51 @@ func TestProjectFiring(t *testing.T) {
 	// The dedup key rides the alert's id, so a repeat_interval resend of the
 	// same firing does not announce twice.
 	require.Equal(t, "alertmanager:abc:alert.firing:2026-05-01T10:00:00Z", n.EventID)
-	require.Contains(t, n.Body, "error ratio 12%")
-	require.Contains(t, n.Body, "severity=critical service=checkout")
-	require.NotContains(t, n.Body, "pod=", "the full label set belongs in Alertmanager, not a chat")
-	require.Contains(t, n.Body, "https://runbooks.example.com/high-error-rate")
+	require.Equal(t, "error ratio 12%", n.Description)
+	require.Equal(t, []notify.Label{
+		{Key: "severity", Value: "critical"},
+		{Key: "service", Value: "checkout"},
+	}, n.Labels, "the full label set belongs in Alertmanager, not a chat")
+	// The runbook is a button, not a bare URL pasted into the text.
+	require.Equal(t, []notify.Button{
+		{Text: "Runbook", URL: "https://runbooks.example.com/high-error-rate"},
+	}, n.Buttons)
+}
+
+func TestProjectButtons(t *testing.T) {
+	e := firingEvent(t)
+	e, err := e.WithPayload(ingestalert.AlertPayload{
+		Annotations: map[string]string{
+			"runbook_url":   "https://runbooks.example.com/high-error-rate",
+			"dashboard_url": "https://grafana.example.com/d/abc",
+		},
+		ExternalURL: "https://alertmanager.example.com",
+	})
+	require.NoError(t, err)
+
+	out, err := Projector{}.Project(e)
+	require.NoError(t, err)
+	require.Equal(t, []notify.Button{
+		{Text: "Runbook", URL: "https://runbooks.example.com/high-error-rate"},
+		{Text: "Dashboard", URL: "https://grafana.example.com/d/abc"},
+		{Text: "Alertmanager", URL: "https://alertmanager.example.com"},
+	}, out[0].Buttons)
+}
+
+// Only annotations become buttons: an alert's labels and description carry
+// whatever the alerting target reported, and a URL in there is not a link
+// anyone vetted.
+func TestProjectButtonsIgnoreLabelsAndDescription(t *testing.T) {
+	e := firingEvent(t)
+	e, err := e.WithPayload(ingestalert.AlertPayload{
+		Labels:      map[string]string{"instance": "https://evil.example.com"},
+		Annotations: map[string]string{"description": "see https://evil.example.com for details"},
+	})
+	require.NoError(t, err)
+
+	out, err := Projector{}.Project(e)
+	require.NoError(t, err)
+	require.Empty(t, out[0].Buttons)
 }
 
 func TestProjectResolved(t *testing.T) {
@@ -66,34 +108,46 @@ func TestProjectIgnoresOtherTypes(t *testing.T) {
 	require.Empty(t, out)
 }
 
+// The rendered alert is the shape an on-call reader sees: transition and
+// name on one line, description and labels below.
 func TestRenderFiringAndResolved(t *testing.T) {
-	firing, err := notify.DefaultRenderer{}.Render(notify.Event{
-		Source: notify.SourceAlerts, Type: notify.EventAlertFiring,
-		Title: "HighErrorRate", URL: "https://prometheus.example.com/graph", Body: "error ratio 12%",
-	})
-	require.NoError(t, err)
-	require.Contains(t, firing, "Firing:")
-	require.Contains(t, firing, "[HighErrorRate](https://prometheus.example.com/graph)")
-	require.Contains(t, firing, "error ratio 12%")
-
-	resolved, err := notify.DefaultRenderer{}.Render(notify.Event{
-		Source: notify.SourceAlerts, Type: notify.EventAlertResolved, Title: "HighErrorRate",
-	})
-	require.NoError(t, err)
-	require.Contains(t, resolved, "Resolved:")
-}
-
-// A bare newline is a CommonMark soft break, which the Telegram renderer turns
-// into a space — that collapsed the whole alert onto one line.
-func TestBodyUsesHardLineBreaks(t *testing.T) {
 	out, err := Projector{}.Project(firingEvent(t))
 	require.NoError(t, err)
-	for _, line := range []string{"error ratio 12%", "severity=critical service=checkout"} {
-		require.Contains(t, out[0].Body, line)
-	}
-	require.Contains(t, out[0].Body, notify.LineBreak)
+
+	firing, err := notify.DefaultRenderer{}.Render(out[0])
+	require.NoError(t, err)
+	// The backslashes are CommonMark escapes of the alert's own punctuation:
+	// ingested text must not bleed formatting, and the Telegram renderer
+	// resolves them back to the literal characters.
+	require.Equal(t,
+		"🔥 _Firing:_ **[HighErrorRate\\: 5xx above 5\\%](https://prometheus.example.com/graph)**\n\n"+
+			"error ratio 12\\%\n\n"+
+			"```\nseverity=critical\nservice=checkout\n```",
+		firing)
+
+	e := firingEvent(t)
+	e.Type = event.TypeAlertResolved
+	out, err = Projector{}.Project(e)
+	require.NoError(t, err)
+	resolved, err := notify.DefaultRenderer{}.Render(out[0])
+	require.NoError(t, err)
+	require.Contains(t, resolved, "✅ _Resolved:_")
+}
+
+// The label block is what someone copies into a query, so it must survive
+// rendering verbatim: a CommonMark hard break would put two trailing spaces
+// on every line of it.
+func TestRenderLabelBlockIsVerbatim(t *testing.T) {
+	out, err := Projector{}.Project(firingEvent(t))
+	require.NoError(t, err)
 
 	text, err := notify.DefaultRenderer{}.Render(out[0])
 	require.NoError(t, err)
-	require.Contains(t, text, notify.LineBreak, "the title must not run into the body either")
+	_, block, ok := strings.Cut(text, "```\n")
+	require.True(t, ok, "expected a fenced label block")
+	block, _, ok = strings.Cut(block, "\n```")
+	require.True(t, ok)
+	for line := range strings.SplitSeq(block, "\n") {
+		require.Equal(t, strings.TrimRight(line, " "), line, "label line must not carry a hard break")
+	}
 }

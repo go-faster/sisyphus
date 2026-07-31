@@ -45,42 +45,59 @@ func (Projector) Project(e event.Event) ([]notify.Event, error) {
 	}
 
 	return []notify.Event{{
-		Source:     notify.SourceAlerts,
-		Type:       typ,
-		Title:      e.Subject.Title,
-		Body:       body(p),
-		URL:        e.Subject.URL,
-		ObjectID:   e.Subject.ID,
-		EventID:    e.ID,
-		OccurredAt: e.OccurredAt,
+		Source:      notify.SourceAlerts,
+		Type:        typ,
+		Title:       e.Subject.Title,
+		Description: strings.TrimSpace(p.Annotations["description"]),
+		Labels:      labels(p),
+		Buttons:     buttons(p),
+		URL:         e.Subject.URL,
+		ObjectID:    e.Subject.ID,
+		EventID:     e.ID,
+		OccurredAt:  e.OccurredAt,
 	}}, nil
 }
 
-// body renders the description annotation plus a few identifying labels, one
-// per line (notify.Lines, since a bare newline renders as a space).
-func body(p ingestalert.AlertPayload) string {
-	lines := []string{strings.TrimSpace(p.Annotations["description"])}
-
-	var pairs []string
+// labels picks the identifying labels worth a line in a chat message, in
+// labelsShown order. The full label set belongs in Alertmanager.
+func labels(p ingestalert.AlertPayload) []notify.Label {
+	out := make([]notify.Label, 0, len(labelsShown))
 	for _, k := range labelsShown {
 		if v := p.Labels[k]; v != "" {
-			pairs = append(pairs, k+"="+v)
+			out = append(out, notify.Label{Key: k, Value: v})
 		}
 	}
-	lines = append(lines, strings.Join(pairs, " "))
-
-	// A runbook is the one annotation an on-call reader acts on, so it earns
-	// its own line even though the label block is deliberately short.
-	for _, k := range runbookKeys(p.Annotations) {
-		lines = append(lines, k+": "+p.Annotations[k])
-	}
-	return notify.Lines(lines...)
+	return out
 }
 
-func runbookKeys(annotations map[string]string) []string {
+// buttons offers what an on-call reader actually clicks. A runbook is the
+// first of them: it used to be pasted into the body as a bare URL, which is
+// what made a two-line alert wrap into a paragraph of link text.
+//
+// Only annotation values are used, never anything from the alert's labels or
+// description: an annotation is written by whoever authored the alerting
+// rule, which is the same trust level as the rest of the deployment.
+func buttons(p ingestalert.AlertPayload) []notify.Button {
+	var out []notify.Button
+	for _, k := range annotationKeys(p.Annotations, "runbook") {
+		out = append(out, notify.Button{Text: "Runbook", URL: p.Annotations[k]})
+	}
+	for _, k := range annotationKeys(p.Annotations, "dashboard") {
+		out = append(out, notify.Button{Text: "Dashboard", URL: p.Annotations[k]})
+	}
+	if p.ExternalURL != "" {
+		out = append(out, notify.Button{Text: "Alertmanager", URL: p.ExternalURL})
+	}
+	return out
+}
+
+// annotationKeys returns the annotations whose name contains substr, sorted
+// so a rule with several (runbook_url, runbook_url_backup) renders the same
+// way every time.
+func annotationKeys(annotations map[string]string, substr string) []string {
 	var keys []string
-	for k := range annotations {
-		if strings.Contains(strings.ToLower(k), "runbook") && annotations[k] != "" {
+	for k, v := range annotations {
+		if strings.Contains(strings.ToLower(k), substr) && v != "" {
 			keys = append(keys, k)
 		}
 	}

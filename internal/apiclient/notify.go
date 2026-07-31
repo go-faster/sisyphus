@@ -9,8 +9,25 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/go-faster/sisyphus/internal/index"
 	"github.com/go-faster/sisyphus/internal/oas"
 )
+
+// notificationButtons maps a pending notification's buttons, dropping any
+// that are not valid absolute http(s) URLs — the same defense in depth
+// fromLinks applies to an answer's buttons.
+func notificationButtons(buttons []oas.NotificationButton) []index.Link {
+	if len(buttons) == 0 {
+		return nil
+	}
+	out := make([]index.Link, 0, len(buttons))
+	for _, b := range buttons {
+		if l := (index.Link{Text: b.Text, URL: b.URL}); l.Valid() {
+			out = append(out, l)
+		}
+	}
+	return out
+}
 
 // NotifyEnroll upserts a Telegram user's row. The access hash travels
 // separately, via NotifyPeers, because it belongs to the peer rather than to
@@ -93,8 +110,12 @@ type PendingNotification struct {
 	// goes to.
 	TelegramPeerType string
 	Text             string
-	URL              string
-	Attempts         int
+	// Buttons are the inline URL buttons to render under the message. They
+	// are re-validated here rather than trusted: this is a network boundary,
+	// and index.Link.Valid is the same check every other button path uses.
+	Buttons  []index.Link
+	URL      string
+	Attempts int
 }
 
 // PendingNotifications drains up to limit pending Telegram-channel
@@ -124,6 +145,7 @@ func (c *Client) PendingNotifications(ctx context.Context, limit int) (_ []Pendi
 			TelegramAccessHash: n.TelegramAccessHash,
 			TelegramPeerType:   string(n.TelegramPeerType.Or("user")),
 			Text:               n.Text,
+			Buttons:            notificationButtons(n.Buttons),
 			URL:                n.URL.Or(""),
 			Attempts:           n.Attempts,
 		})

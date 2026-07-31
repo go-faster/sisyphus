@@ -70,11 +70,13 @@ func (b *Broadcaster) Dispatch(ctx context.Context, events []Event) (enqueued in
 		if err != nil {
 			return enqueued, errors.Wrap(err, "render event")
 		}
+		buttons := ValidButtons(e.Buttons)
 		for _, target := range targets {
 			n := Notification{
 				Source:   e.Source,
 				Type:     e.Type,
 				Text:     text,
+				Buttons:  buttons,
 				URL:      e.URL,
 				DedupKey: TargetDedupKey(target, e.EventID),
 			}

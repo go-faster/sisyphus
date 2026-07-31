@@ -110,8 +110,9 @@ func drainPendingNotifications(ctx context.Context, lg *zap.Logger, b *bot.Bot, 
 
 	for _, n := range pending {
 		// The renderer already embeds the URL as a markdown link; appending it
-		// again printed every notification's link twice.
-		sendErr := b.SendTo(ctx, n.ID, n.TelegramPeerType, n.TelegramUserID, n.TelegramAccessHash, n.Text)
+		// again printed every notification's link twice. The buttons are the
+		// separate, actionable links the projector picked out.
+		sendErr := b.SendTo(ctx, n.ID, n.TelegramPeerType, n.TelegramUserID, n.TelegramAccessHash, n.Text, n.Buttons)
 		if sendErr != nil {
 			lg.Warn("deliver notification failed", zap.String("notification_id", n.ID.String()), zap.Error(sendErr))
 		}
