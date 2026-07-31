@@ -722,12 +722,10 @@ func (s *NotifyChat) SetEnabled(val bool) {
 type NotifyChatRequest struct {
 	PeerType NotifyChatRequestPeerType `json:"peer_type"`
 	PeerID   int64                     `json:"peer_id"`
-	// Required for channels and supergroups; a basic group has none.
-	AccessHash OptInt64  `json:"access_hash"`
-	Title      OptString `json:"title"`
+	Title    OptString                 `json:"title"`
 	// Telegram user who ran the command, for audit.
 	AddedBy OptInt64 `json:"added_by"`
-	// False disables the chat without forgetting its access hash.
+	// False disables the chat without forgetting it.
 	Enabled bool `json:"enabled"`
 }
 
@@ -739,11 +737,6 @@ func (s *NotifyChatRequest) GetPeerType() NotifyChatRequestPeerType {
 // GetPeerID returns the value of PeerID.
 func (s *NotifyChatRequest) GetPeerID() int64 {
 	return s.PeerID
-}
-
-// GetAccessHash returns the value of AccessHash.
-func (s *NotifyChatRequest) GetAccessHash() OptInt64 {
-	return s.AccessHash
 }
 
 // GetTitle returns the value of Title.
@@ -769,11 +762,6 @@ func (s *NotifyChatRequest) SetPeerType(val NotifyChatRequestPeerType) {
 // SetPeerID sets the value of PeerID.
 func (s *NotifyChatRequest) SetPeerID(val int64) {
 	s.PeerID = val
-}
-
-// SetAccessHash sets the value of AccessHash.
-func (s *NotifyChatRequest) SetAccessHash(val OptInt64) {
-	s.AccessHash = val
 }
 
 // SetTitle sets the value of Title.
@@ -856,8 +844,7 @@ func (s *NotifyChatsResponse) SetChats(val []NotifyChat) {
 
 // Ref: #/components/schemas/NotifyEnrollRequest
 type NotifyEnrollRequest struct {
-	TelegramUserID     int64 `json:"telegram_user_id"`
-	TelegramAccessHash int64 `json:"telegram_access_hash"`
+	TelegramUserID int64 `json:"telegram_user_id"`
 }
 
 // GetTelegramUserID returns the value of TelegramUserID.
@@ -865,19 +852,9 @@ func (s *NotifyEnrollRequest) GetTelegramUserID() int64 {
 	return s.TelegramUserID
 }
 
-// GetTelegramAccessHash returns the value of TelegramAccessHash.
-func (s *NotifyEnrollRequest) GetTelegramAccessHash() int64 {
-	return s.TelegramAccessHash
-}
-
 // SetTelegramUserID sets the value of TelegramUserID.
 func (s *NotifyEnrollRequest) SetTelegramUserID(val int64) {
 	s.TelegramUserID = val
-}
-
-// SetTelegramAccessHash sets the value of TelegramAccessHash.
-func (s *NotifyEnrollRequest) SetTelegramAccessHash(val int64) {
-	s.TelegramAccessHash = val
 }
 
 // Ref: #/components/schemas/NotifySubscribeRequest
@@ -1939,4 +1916,127 @@ func (s *SearchResult) SetScore(val float64) {
 // SetVector sets the value of Vector.
 func (s *SearchResult) SetVector(val OptBool) {
 	s.Vector = val
+}
+
+// Ref: #/components/schemas/TelegramPeer
+type TelegramPeer struct {
+	PeerType TelegramPeerPeerType `json:"peer_type"`
+	PeerID   int64                `json:"peer_id"`
+	// Absent for a basic group, which needs none. A zero value never overwrites a stored hash.
+	AccessHash OptInt64  `json:"access_hash"`
+	Username   OptString `json:"username"`
+	Title      OptString `json:"title"`
+}
+
+// GetPeerType returns the value of PeerType.
+func (s *TelegramPeer) GetPeerType() TelegramPeerPeerType {
+	return s.PeerType
+}
+
+// GetPeerID returns the value of PeerID.
+func (s *TelegramPeer) GetPeerID() int64 {
+	return s.PeerID
+}
+
+// GetAccessHash returns the value of AccessHash.
+func (s *TelegramPeer) GetAccessHash() OptInt64 {
+	return s.AccessHash
+}
+
+// GetUsername returns the value of Username.
+func (s *TelegramPeer) GetUsername() OptString {
+	return s.Username
+}
+
+// GetTitle returns the value of Title.
+func (s *TelegramPeer) GetTitle() OptString {
+	return s.Title
+}
+
+// SetPeerType sets the value of PeerType.
+func (s *TelegramPeer) SetPeerType(val TelegramPeerPeerType) {
+	s.PeerType = val
+}
+
+// SetPeerID sets the value of PeerID.
+func (s *TelegramPeer) SetPeerID(val int64) {
+	s.PeerID = val
+}
+
+// SetAccessHash sets the value of AccessHash.
+func (s *TelegramPeer) SetAccessHash(val OptInt64) {
+	s.AccessHash = val
+}
+
+// SetUsername sets the value of Username.
+func (s *TelegramPeer) SetUsername(val OptString) {
+	s.Username = val
+}
+
+// SetTitle sets the value of Title.
+func (s *TelegramPeer) SetTitle(val OptString) {
+	s.Title = val
+}
+
+type TelegramPeerPeerType string
+
+const (
+	TelegramPeerPeerTypeUser    TelegramPeerPeerType = "user"
+	TelegramPeerPeerTypeChannel TelegramPeerPeerType = "channel"
+	TelegramPeerPeerTypeChat    TelegramPeerPeerType = "chat"
+)
+
+// AllValues returns all TelegramPeerPeerType values.
+func (TelegramPeerPeerType) AllValues() []TelegramPeerPeerType {
+	return []TelegramPeerPeerType{
+		TelegramPeerPeerTypeUser,
+		TelegramPeerPeerTypeChannel,
+		TelegramPeerPeerTypeChat,
+	}
+}
+
+// MarshalText implements encoding.TextMarshaler.
+func (s TelegramPeerPeerType) MarshalText() ([]byte, error) {
+	switch s {
+	case TelegramPeerPeerTypeUser:
+		return []byte(s), nil
+	case TelegramPeerPeerTypeChannel:
+		return []byte(s), nil
+	case TelegramPeerPeerTypeChat:
+		return []byte(s), nil
+	default:
+		return nil, errors.Errorf("invalid value: %q", s)
+	}
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (s *TelegramPeerPeerType) UnmarshalText(data []byte) error {
+	switch TelegramPeerPeerType(data) {
+	case TelegramPeerPeerTypeUser:
+		*s = TelegramPeerPeerTypeUser
+		return nil
+	case TelegramPeerPeerTypeChannel:
+		*s = TelegramPeerPeerTypeChannel
+		return nil
+	case TelegramPeerPeerTypeChat:
+		*s = TelegramPeerPeerTypeChat
+		return nil
+	default:
+		return errors.Errorf("invalid value: %q", data)
+	}
+}
+
+// Ref: #/components/schemas/TelegramPeersRequest
+type TelegramPeersRequest struct {
+	Peers []TelegramPeer `json:"peers"`
+}
+
+// GetPeers returns the value of Peers.
+func (s *TelegramPeersRequest) GetPeers() []TelegramPeer {
+	return s.Peers
+}
+
+// SetPeers sets the value of Peers.
+func (s *TelegramPeersRequest) SetPeers(val []TelegramPeer) {
+	s.Peers = val
 }

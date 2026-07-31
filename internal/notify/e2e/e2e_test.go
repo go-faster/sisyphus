@@ -35,6 +35,7 @@ import (
 	notifygitlab "github.com/go-faster/sisyphus/internal/notify/gitlab"
 	notifystore "github.com/go-faster/sisyphus/internal/notify/store"
 	"github.com/go-faster/sisyphus/internal/oas"
+	"github.com/go-faster/sisyphus/internal/tgpeer"
 )
 
 // fakeGitLabFetcher mocks the GitLab REST API boundary: one page, one MR,
@@ -164,7 +165,13 @@ func TestE2E_GitLabMRAssignment_ToTelegramDelivery(t *testing.T) {
 	const telegramAccessHash int64 = 555444333
 
 	// --- Enrollment/linking/subscription, as the bot commands would do it.
-	_, err := store.EnrollTelegram(ctx, telegramUserID, telegramAccessHash)
+	_, err := store.EnrollTelegram(ctx, telegramUserID)
+	require.NoError(t, err)
+	// The address lives with the peer now, recorded from an update rather
+	// than from enrollment.
+	_, err = tgpeer.New(db, tgpeer.Options{}).Upsert(ctx, []tgpeer.Peer{
+		{Type: tgpeer.KindUser, ID: telegramUserID, AccessHash: telegramAccessHash},
+	})
 	require.NoError(t, err)
 	_, err = store.SyncIdentities(ctx, []notifystore.Identity{
 		{TelegramUserID: telegramUserID, GitLabUsername: "e2e-alice"},

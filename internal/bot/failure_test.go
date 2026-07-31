@@ -16,7 +16,7 @@ func TestReplyFailureHidesTheError(t *testing.T) {
 	stub, sent := captureSend(t)
 
 	err := errors.New(`decode response: code 500: pq: duplicate key "users_gitlab_username_key" on host db-internal-1`)
-	b.replyFailure(context.Background(), stub, "subscribe", err)
+	b.replyFailure(context.Background(), stub, "subscribe", invocation{SenderID: 42}, err)
 
 	require.Contains(t, *sent, "/subscribe failed")
 	require.Contains(t, *sent, "trace_id: ")
@@ -39,7 +39,9 @@ func TestDispatchTurnsAHandlerErrorIntoAGenericReply(t *testing.T) {
 	b := newNotifyTestBot(n)
 	stub, sent := captureSend(t)
 
-	b.dispatch(context.Background(), stub, "subscribe", "gitlab", invocation{SenderID: 42, Rest: "gitlab"})
+	b.dispatch(context.Background(), stub, "subscribe", "gitlab", invocation{
+		SenderID: 42, Rest: "gitlab", Chat: chatPeer{Type: peerTypeUser, ID: 42},
+	})
 
 	require.Contains(t, *sent, "/subscribe failed")
 	require.NotContains(t, *sent, "503")
@@ -50,7 +52,7 @@ func TestDispatchRepliesUsageAndHelp(t *testing.T) {
 	b := newNotifyTestBot(newFakeNotifier())
 
 	stub, sent := captureSend(t)
-	b.dispatch(context.Background(), stub, "subscribe", "", invocation{SenderID: 42})
+	b.dispatch(context.Background(), stub, "subscribe", "", invocation{SenderID: 42, Chat: chatPeer{Type: peerTypeUser, ID: 42}})
 	require.Contains(t, *sent, "Usage: /subscribe")
 
 	// An unknown command answers in a private chat...
@@ -62,4 +64,34 @@ func TestDispatchRepliesUsageAndHelp(t *testing.T) {
 	stub, sent = captureSend(t)
 	b.dispatch(context.Background(), stub, "nope", "", invocation{SenderID: 42, Chat: chatPeer{Type: peerTypeChannel, ID: -100}})
 	require.Empty(t, *sent)
+}
+
+// A message posted in a channel carries the channel's id as its sender, so a
+// per-person command has nobody to act on: it used to reach the store and come
+// back as "user not found".
+func TestDispatchRefusesAPersonalCommandOutsideADirectMessage(t *testing.T) {
+	b := newNotifyTestBot(newFakeNotifier())
+	stub, sent := captureSend(t)
+
+	b.dispatch(context.Background(), stub, "subscribe", "gitlab", invocation{
+		SenderID: 2078054, Rest: "gitlab", Chat: chatPeer{Type: peerTypeChannel, ID: 2078054},
+	})
+
+	require.Contains(t, *sent, "direct message")
+	require.NotContains(t, *sent, "failed")
+}
+
+// /alerts is the opposite: it registers the chat it was sent in, so it must
+// keep working from a channel.
+func TestDispatchAllowsChatCommandsInAChannel(t *testing.T) {
+	n := newFakeNotifier()
+	b := newNotifyTestBot(n)
+	stub, sent := captureSend(t)
+
+	b.dispatch(context.Background(), stub, "alerts", "on", invocation{
+		SenderID: 42, Rest: "on", Chat: chatPeer{Type: peerTypeChannel, ID: -100, AccessHash: 7},
+	})
+
+	require.Contains(t, *sent, "will receive alert notifications")
+	require.Len(t, n.registered, 1)
 }

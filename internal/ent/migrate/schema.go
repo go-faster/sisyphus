@@ -127,7 +127,6 @@ var (
 		{Name: "channel", Type: field.TypeString},
 		{Name: "peer_type", Type: field.TypeString, Default: "user"},
 		{Name: "telegram_user_id", Type: field.TypeInt64, Nullable: true},
-		{Name: "telegram_access_hash", Type: field.TypeInt64, Nullable: true},
 		{Name: "source", Type: field.TypeString},
 		{Name: "event_type", Type: field.TypeString},
 		{Name: "text", Type: field.TypeString, Size: 2147483647},
@@ -148,7 +147,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "notifications_users_notifications",
-				Columns:    []*schema.Column{NotificationsColumns[16]},
+				Columns:    []*schema.Column{NotificationsColumns[15]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -162,7 +161,7 @@ var (
 			{
 				Name:    "notification_status",
 				Unique:  false,
-				Columns: []*schema.Column{NotificationsColumns[10]},
+				Columns: []*schema.Column{NotificationsColumns[9]},
 			},
 		},
 	}
@@ -171,7 +170,6 @@ var (
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "peer_type", Type: field.TypeString, Default: "channel"},
 		{Name: "peer_id", Type: field.TypeInt64},
-		{Name: "access_hash", Type: field.TypeInt64, Nullable: true},
 		{Name: "title", Type: field.TypeString, Nullable: true},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "added_by", Type: field.TypeInt64, Nullable: true},
@@ -192,7 +190,7 @@ var (
 			{
 				Name:    "notifychat_enabled",
 				Unique:  false,
-				Columns: []*schema.Column{NotifyChatsColumns[5]},
+				Columns: []*schema.Column{NotifyChatsColumns[4]},
 			},
 		},
 	}
@@ -369,11 +367,34 @@ var (
 			},
 		},
 	}
+	// TelegramPeersColumns holds the columns for the "telegram_peers" table.
+	TelegramPeersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeUUID},
+		{Name: "peer_type", Type: field.TypeString},
+		{Name: "peer_id", Type: field.TypeInt64},
+		{Name: "access_hash", Type: field.TypeInt64, Nullable: true},
+		{Name: "username", Type: field.TypeString, Nullable: true},
+		{Name: "title", Type: field.TypeString, Nullable: true},
+		{Name: "last_seen_at", Type: field.TypeTime},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// TelegramPeersTable holds the schema information for the "telegram_peers" table.
+	TelegramPeersTable = &schema.Table{
+		Name:       "telegram_peers",
+		Columns:    TelegramPeersColumns,
+		PrimaryKey: []*schema.Column{TelegramPeersColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "telegrampeer_peer_type_peer_id",
+				Unique:  true,
+				Columns: []*schema.Column{TelegramPeersColumns[1], TelegramPeersColumns[2]},
+			},
+		},
+	}
 	// UsersColumns holds the columns for the "users" table.
 	UsersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
 		{Name: "telegram_user_id", Type: field.TypeInt64},
-		{Name: "telegram_access_hash", Type: field.TypeInt64, Nullable: true},
 		{Name: "gitlab_username", Type: field.TypeString, Nullable: true},
 		{Name: "jira_account_id", Type: field.TypeString, Nullable: true},
 		{Name: "jira_display_name", Type: field.TypeString, Nullable: true},
@@ -395,12 +416,12 @@ var (
 			{
 				Name:    "user_gitlab_username",
 				Unique:  true,
-				Columns: []*schema.Column{UsersColumns[3]},
+				Columns: []*schema.Column{UsersColumns[2]},
 			},
 			{
 				Name:    "user_jira_account_id",
 				Unique:  true,
-				Columns: []*schema.Column{UsersColumns[4]},
+				Columns: []*schema.Column{UsersColumns[3]},
 			},
 		},
 	}
@@ -454,6 +475,7 @@ var (
 		SupportRequestsTable,
 		SyncStatesTable,
 		TelegramMessagesTable,
+		TelegramPeersTable,
 		UsersTable,
 		UserTokensTable,
 	}

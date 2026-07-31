@@ -18,8 +18,6 @@ const (
 	FieldPeerType = "peer_type"
 	// FieldPeerID holds the string denoting the peer_id field in the database.
 	FieldPeerID = "peer_id"
-	// FieldAccessHash holds the string denoting the access_hash field in the database.
-	FieldAccessHash = "access_hash"
 	// FieldTitle holds the string denoting the title field in the database.
 	FieldTitle = "title"
 	// FieldEnabled holds the string denoting the enabled field in the database.
@@ -39,7 +37,6 @@ var Columns = []string{
 	FieldID,
 	FieldPeerType,
 	FieldPeerID,
-	FieldAccessHash,
 	FieldTitle,
 	FieldEnabled,
 	FieldAddedBy,
@@ -88,11 +85,6 @@ func ByPeerType(opts ...sql.OrderTermOption) OrderOption {
 // ByPeerID orders the results by the peer_id field.
 func ByPeerID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPeerID, opts...).ToFunc()
-}
-
-// ByAccessHash orders the results by the access_hash field.
-func ByAccessHash(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldAccessHash, opts...).ToFunc()
 }
 
 // ByTitle orders the results by the title field.

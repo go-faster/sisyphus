@@ -23,6 +23,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -67,7 +68,31 @@ const (
 	// EventInvestigationCompleted fires when an agent investigation finishes.
 	// It is addressed to a chat, not a user.
 	EventInvestigationCompleted EventType = "investigation_completed"
+	// EventAlertFiring and EventAlertResolved announce the alert itself,
+	// independently of whether an agent investigates it. Also chat-addressed:
+	// an alert names no GitLab or Jira identity to deliver to.
+	EventAlertFiring   EventType = "alert_firing"
+	EventAlertResolved EventType = "alert_resolved"
 )
+
+// LineBreak ends a line inside a notification body.
+//
+// Two trailing spaces make it a CommonMark *hard* break. A bare "\n" is a
+// soft break, which the Telegram renderer turns into a space (correct for
+// prose, wrong here) — that collapsed every multi-line notification onto one
+// line.
+const LineBreak = "  \n"
+
+// Lines joins non-empty parts as separate lines of a notification body.
+func Lines(parts ...string) string {
+	kept := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p != "" {
+			kept = append(kept, p)
+		}
+	}
+	return strings.Join(kept, LineBreak)
+}
 
 // Actor identifies a source-side user, either as the recipient of an Event
 // or as whoever caused it. GitLab has no stable numeric id/email in the

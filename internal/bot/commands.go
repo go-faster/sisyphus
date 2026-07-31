@@ -44,11 +44,15 @@ type commandHandler func(ctx context.Context, s messageSender, inv invocation) e
 
 // command is a registered Telegram bot command.
 type command struct {
-	name    string // "context" (no leading slash)
-	usage   string // "<question>", shown in /help; empty for no-arg commands
-	desc    string // shown in /help and Telegram's /-menu; empty hides it
-	hidden  bool   // hidden commands are omitted from /help and the /-menu
-	handler commandHandler
+	name   string // "context" (no leading slash)
+	usage  string // "<question>", shown in /help; empty for no-arg commands
+	desc   string // shown in /help and Telegram's /-menu; empty hides it
+	hidden bool   // hidden commands are omitted from /help and the /-menu
+	// personal marks a command that acts on the sender rather than on the
+	// chat. Outside a direct message the "sender" of an update can be the
+	// channel itself, so there is no person to act on (see dispatch).
+	personal bool
+	handler  commandHandler
 }
 
 // dispatch runs one command: it resolves the name, enforces the usage
@@ -82,6 +86,14 @@ func (b *Bot) dispatch(ctx context.Context, s messageSender, name, rest string, 
 		b.sendTextReply(ctx, s, "Usage: /"+c.name+" "+c.usage)
 		return
 	}
+	// A personal command needs a person. A message posted in a channel — or by
+	// an anonymous admin in a group — carries the channel's id as its sender,
+	// so acting on it would either fail deep in the store or, worse, address a
+	// channel as if it were a user.
+	if c.personal && inv.Chat.Type != peerTypeUser {
+		b.sendTextReply(ctx, s, "/"+c.name+" acts on you, not on this chat — send it to me in a direct message.")
+		return
+	}
 
 	// One span per command: it is what makes the trace_id in a failure reply
 	// resolve to something an operator can open.
@@ -92,7 +104,7 @@ func (b *Bot) dispatch(ctx context.Context, s messageSender, name, rest string, 
 	if err := c.handler(ctx, s, inv); err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		b.replyFailure(ctx, s, c.name, err)
+		b.replyFailure(ctx, s, c.name, inv, err)
 	}
 }
 
@@ -112,12 +124,20 @@ func (r *commandRegistry) add(name, usage, desc string, hidden bool, h commandHa
 	if h == nil {
 		panic("commandRegistry: nil handler for " + name)
 	}
+	c := command{name: name, usage: usage, desc: desc, hidden: hidden, handler: h}
 	if existing, ok := r.byName[name]; ok {
-		r.cmds[existing] = command{name, usage, desc, hidden, h}
+		c.personal = r.cmds[existing].personal
+		r.cmds[existing] = c
 		return
 	}
 	r.byName[name] = len(r.cmds)
-	r.cmds = append(r.cmds, command{name, usage, desc, hidden, h})
+	r.cmds = append(r.cmds, c)
+}
+
+// addPersonal registers a command that acts on its sender (see command.personal).
+func (r *commandRegistry) addPersonal(name, usage, desc string, hidden bool, h commandHandler) {
+	r.add(name, usage, desc, hidden, h)
+	r.cmds[r.byName[name]].personal = true
 }
 
 // lookup returns the command registered under name.

@@ -78,7 +78,7 @@ func (UnimplementedHandler) ListNotifyChats(ctx context.Context) (r *NotifyChats
 
 // NotifyEnroll implements notifyEnroll operation.
 //
-// Upsert a NotifyUser's Telegram identity (access hash), called on first bot contact.
+// Upsert a user row for a Telegram user, called on first bot contact.
 //
 // POST /notify/enroll
 func (UnimplementedHandler) NotifyEnroll(ctx context.Context, req *NotifyEnrollRequest) (r *Ack, _ error) {
@@ -128,6 +128,15 @@ func (UnimplementedHandler) RegisterNotifyChat(ctx context.Context, req *NotifyC
 //
 // POST /search
 func (UnimplementedHandler) Search(ctx context.Context, req *SearchRequest) (r *SearchResponse, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
+// UpsertTelegramPeers implements upsertTelegramPeers operation.
+//
+// Record Telegram peers the bot has seen, with their current access hashes.
+//
+// POST /telegram/peers
+func (UnimplementedHandler) UpsertTelegramPeers(ctx context.Context, req *TelegramPeersRequest) (r *Ack, _ error) {
 	return r, ht.ErrNotImplemented
 }
 

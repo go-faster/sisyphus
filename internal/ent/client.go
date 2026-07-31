@@ -26,6 +26,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 	"github.com/go-faster/sisyphus/internal/ent/telegrammessage"
+	"github.com/go-faster/sisyphus/internal/ent/telegrampeer"
 	"github.com/go-faster/sisyphus/internal/ent/user"
 	"github.com/go-faster/sisyphus/internal/ent/usertoken"
 
@@ -57,6 +58,8 @@ type Client struct {
 	SyncState *SyncStateClient
 	// TelegramMessage is the client for interacting with the TelegramMessage builders.
 	TelegramMessage *TelegramMessageClient
+	// TelegramPeer is the client for interacting with the TelegramPeer builders.
+	TelegramPeer *TelegramPeerClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 	// UserToken is the client for interacting with the UserToken builders.
@@ -82,6 +85,7 @@ func (c *Client) init() {
 	c.SupportRequest = NewSupportRequestClient(c.config)
 	c.SyncState = NewSyncStateClient(c.config)
 	c.TelegramMessage = NewTelegramMessageClient(c.config)
+	c.TelegramPeer = NewTelegramPeerClient(c.config)
 	c.User = NewUserClient(c.config)
 	c.UserToken = NewUserTokenClient(c.config)
 }
@@ -186,6 +190,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		SupportRequest:     NewSupportRequestClient(cfg),
 		SyncState:          NewSyncStateClient(cfg),
 		TelegramMessage:    NewTelegramMessageClient(cfg),
+		TelegramPeer:       NewTelegramPeerClient(cfg),
 		User:               NewUserClient(cfg),
 		UserToken:          NewUserTokenClient(cfg),
 	}, nil
@@ -217,6 +222,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		SupportRequest:     NewSupportRequestClient(cfg),
 		SyncState:          NewSyncStateClient(cfg),
 		TelegramMessage:    NewTelegramMessageClient(cfg),
+		TelegramPeer:       NewTelegramPeerClient(cfg),
 		User:               NewUserClient(cfg),
 		UserToken:          NewUserTokenClient(cfg),
 	}, nil
@@ -250,7 +256,7 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Chunk, c.Document, c.InvestigationJob, c.Notification, c.NotifyChat,
 		c.NotifySubscription, c.QueueJob, c.SupportRequest, c.SyncState,
-		c.TelegramMessage, c.User, c.UserToken,
+		c.TelegramMessage, c.TelegramPeer, c.User, c.UserToken,
 	} {
 		n.Use(hooks...)
 	}
@@ -262,7 +268,7 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Chunk, c.Document, c.InvestigationJob, c.Notification, c.NotifyChat,
 		c.NotifySubscription, c.QueueJob, c.SupportRequest, c.SyncState,
-		c.TelegramMessage, c.User, c.UserToken,
+		c.TelegramMessage, c.TelegramPeer, c.User, c.UserToken,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -291,6 +297,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.SyncState.mutate(ctx, m)
 	case *TelegramMessageMutation:
 		return c.TelegramMessage.mutate(ctx, m)
+	case *TelegramPeerMutation:
+		return c.TelegramPeer.mutate(ctx, m)
 	case *UserMutation:
 		return c.User.mutate(ctx, m)
 	case *UserTokenMutation:
@@ -1694,6 +1702,139 @@ func (c *TelegramMessageClient) mutate(ctx context.Context, m *TelegramMessageMu
 	}
 }
 
+// TelegramPeerClient is a client for the TelegramPeer schema.
+type TelegramPeerClient struct {
+	config
+}
+
+// NewTelegramPeerClient returns a client for the TelegramPeer from the given config.
+func NewTelegramPeerClient(c config) *TelegramPeerClient {
+	return &TelegramPeerClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `telegrampeer.Hooks(f(g(h())))`.
+func (c *TelegramPeerClient) Use(hooks ...Hook) {
+	c.hooks.TelegramPeer = append(c.hooks.TelegramPeer, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `telegrampeer.Intercept(f(g(h())))`.
+func (c *TelegramPeerClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TelegramPeer = append(c.inters.TelegramPeer, interceptors...)
+}
+
+// Create returns a builder for creating a TelegramPeer entity.
+func (c *TelegramPeerClient) Create() *TelegramPeerCreate {
+	mutation := newTelegramPeerMutation(c.config, OpCreate)
+	return &TelegramPeerCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TelegramPeer entities.
+func (c *TelegramPeerClient) CreateBulk(builders ...*TelegramPeerCreate) *TelegramPeerCreateBulk {
+	return &TelegramPeerCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TelegramPeerClient) MapCreateBulk(slice any, setFunc func(*TelegramPeerCreate, int)) *TelegramPeerCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TelegramPeerCreateBulk{err: fmt.Errorf("calling to TelegramPeerClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TelegramPeerCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TelegramPeerCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TelegramPeer.
+func (c *TelegramPeerClient) Update() *TelegramPeerUpdate {
+	mutation := newTelegramPeerMutation(c.config, OpUpdate)
+	return &TelegramPeerUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TelegramPeerClient) UpdateOne(_m *TelegramPeer) *TelegramPeerUpdateOne {
+	mutation := newTelegramPeerMutation(c.config, OpUpdateOne, withTelegramPeer(_m))
+	return &TelegramPeerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TelegramPeerClient) UpdateOneID(id uuid.UUID) *TelegramPeerUpdateOne {
+	mutation := newTelegramPeerMutation(c.config, OpUpdateOne, withTelegramPeerID(id))
+	return &TelegramPeerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TelegramPeer.
+func (c *TelegramPeerClient) Delete() *TelegramPeerDelete {
+	mutation := newTelegramPeerMutation(c.config, OpDelete)
+	return &TelegramPeerDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TelegramPeerClient) DeleteOne(_m *TelegramPeer) *TelegramPeerDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TelegramPeerClient) DeleteOneID(id uuid.UUID) *TelegramPeerDeleteOne {
+	builder := c.Delete().Where(telegrampeer.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TelegramPeerDeleteOne{builder}
+}
+
+// Query returns a query builder for TelegramPeer.
+func (c *TelegramPeerClient) Query() *TelegramPeerQuery {
+	return &TelegramPeerQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTelegramPeer},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TelegramPeer entity by its id.
+func (c *TelegramPeerClient) Get(ctx context.Context, id uuid.UUID) (*TelegramPeer, error) {
+	return c.Query().Where(telegrampeer.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TelegramPeerClient) GetX(ctx context.Context, id uuid.UUID) *TelegramPeer {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *TelegramPeerClient) Hooks() []Hook {
+	return c.hooks.TelegramPeer
+}
+
+// Interceptors returns the client interceptors.
+func (c *TelegramPeerClient) Interceptors() []Interceptor {
+	return c.inters.TelegramPeer
+}
+
+func (c *TelegramPeerClient) mutate(ctx context.Context, m *TelegramPeerMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TelegramPeerCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TelegramPeerUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TelegramPeerUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TelegramPeerDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown TelegramPeer mutation op: %q", m.Op())
+	}
+}
+
 // UserClient is a client for the User schema.
 type UserClient struct {
 	config
@@ -2028,12 +2169,12 @@ func (c *UserTokenClient) mutate(ctx context.Context, m *UserTokenMutation) (Val
 type (
 	hooks struct {
 		Chunk, Document, InvestigationJob, Notification, NotifyChat, NotifySubscription,
-		QueueJob, SupportRequest, SyncState, TelegramMessage, User,
+		QueueJob, SupportRequest, SyncState, TelegramMessage, TelegramPeer, User,
 		UserToken []ent.Hook
 	}
 	inters struct {
 		Chunk, Document, InvestigationJob, Notification, NotifyChat, NotifySubscription,
-		QueueJob, SupportRequest, SyncState, TelegramMessage, User,
+		QueueJob, SupportRequest, SyncState, TelegramMessage, TelegramPeer, User,
 		UserToken []ent.Interceptor
 	}
 )

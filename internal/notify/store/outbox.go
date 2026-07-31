@@ -33,12 +33,14 @@ func queueName(channel notify.Channel) string { return "notify." + string(channe
 // queue rather than read back from the Notification row. Keeping it
 // self-contained is what lets the outbox move to a broker without every
 // consumer also needing a Postgres connection.
+// It carries no access hash on purpose: a hash rotates with the bot session,
+// so one copied in at enqueue time can be stale by the time the row is
+// delivered. Pending resolves it from internal/tgpeer instead.
 type payload struct {
-	TelegramUserID     int64  `json:"telegram_user_id,omitempty"`
-	TelegramAccessHash int64  `json:"telegram_access_hash,omitempty"`
-	TelegramPeerType   string `json:"telegram_peer_type,omitempty"`
-	Text               string `json:"text"`
-	URL                string `json:"url,omitempty"`
+	TelegramUserID   int64  `json:"telegram_user_id,omitempty"`
+	TelegramPeerType string `json:"telegram_peer_type,omitempty"`
+	Text             string `json:"text"`
+	URL              string `json:"url,omitempty"`
 }
 
 // Enqueue implements notify.OutboxWriter. It writes the Notification row and
@@ -77,7 +79,6 @@ func (s *Store) Enqueue(ctx context.Context, channel notify.Channel, target noti
 	if channel == notify.ChannelTelegram {
 		create = create.
 			SetTelegramUserID(target.TelegramUserID).
-			SetTelegramAccessHash(target.TelegramAccessHash).
 			SetPeerType(string(peerType(target)))
 	}
 	if _, err := create.Save(ctx); err != nil {
@@ -88,11 +89,10 @@ func (s *Store) Enqueue(ctx context.Context, channel notify.Channel, target noti
 	}
 
 	body, err := json.Marshal(payload{
-		TelegramUserID:     target.TelegramUserID,
-		TelegramAccessHash: target.TelegramAccessHash,
-		TelegramPeerType:   string(peerType(target)),
-		Text:               n.Text,
-		URL:                n.URL,
+		TelegramUserID:   target.TelegramUserID,
+		TelegramPeerType: string(peerType(target)),
+		Text:             n.Text,
+		URL:              n.URL,
 	})
 	if err != nil {
 		return false, errors.Wrap(err, "encode delivery payload")
@@ -159,11 +159,18 @@ func (s *Store) Pending(ctx context.Context, channel notify.Channel, limit int) 
 		if err := json.Unmarshal(d.Payload, &p); err != nil {
 			return nil, errors.Wrapf(err, "decode delivery %s", d.ID)
 		}
+		kind := peerType(notify.Target{PeerType: notify.PeerType(p.TelegramPeerType)})
+		// Resolved now, not at enqueue time: this is the last moment before
+		// the send, so it is the freshest hash the bot has recorded.
+		hash, _, err := s.peers.Resolve(ctx, string(kind), p.TelegramUserID)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, OutboxItem{
 			ID:                 d.ID,
 			TelegramUserID:     p.TelegramUserID,
-			TelegramAccessHash: p.TelegramAccessHash,
-			TelegramPeerType:   peerType(notify.Target{PeerType: notify.PeerType(p.TelegramPeerType)}),
+			TelegramAccessHash: hash,
+			TelegramPeerType:   kind,
 			Text:               p.Text,
 			URL:                p.URL,
 			Attempts:           d.Attempts,

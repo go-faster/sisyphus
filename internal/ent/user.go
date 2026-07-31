@@ -20,8 +20,6 @@ type User struct {
 	ID uuid.UUID `json:"id,omitempty"`
 	// TelegramUserID holds the value of the "telegram_user_id" field.
 	TelegramUserID int64 `json:"telegram_user_id,omitempty"`
-	// TelegramAccessHash holds the value of the "telegram_access_hash" field.
-	TelegramAccessHash *int64 `json:"telegram_access_hash,omitempty"`
 	// GitlabUsername holds the value of the "gitlab_username" field.
 	GitlabUsername *string `json:"gitlab_username,omitempty"`
 	// JiraAccountID holds the value of the "jira_account_id" field.
@@ -87,7 +85,7 @@ func (*User) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case user.FieldEnabled:
 			values[i] = new(sql.NullBool)
-		case user.FieldTelegramUserID, user.FieldTelegramAccessHash:
+		case user.FieldTelegramUserID:
 			values[i] = new(sql.NullInt64)
 		case user.FieldGitlabUsername, user.FieldJiraAccountID, user.FieldJiraDisplayName:
 			values[i] = new(sql.NullString)
@@ -121,13 +119,6 @@ func (_m *User) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field telegram_user_id", values[i])
 			} else if value.Valid {
 				_m.TelegramUserID = value.Int64
-			}
-		case user.FieldTelegramAccessHash:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field telegram_access_hash", values[i])
-			} else if value.Valid {
-				_m.TelegramAccessHash = new(int64)
-				*_m.TelegramAccessHash = value.Int64
 			}
 		case user.FieldGitlabUsername:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -221,11 +212,6 @@ func (_m *User) String() string {
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
 	builder.WriteString("telegram_user_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.TelegramUserID))
-	builder.WriteString(", ")
-	if v := _m.TelegramAccessHash; v != nil {
-		builder.WriteString("telegram_access_hash=")
-		builder.WriteString(fmt.Sprintf("%v", *v))
-	}
 	builder.WriteString(", ")
 	if v := _m.GitlabUsername; v != nil {
 		builder.WriteString("gitlab_username=")

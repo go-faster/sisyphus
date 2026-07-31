@@ -17,7 +17,7 @@ import (
 // commands), plus the outbox drain/ack pair (called by ssbot's delivery
 // loop). Satisfied by *internal/notify/store.Store.
 type NotifyStore interface {
-	EnrollTelegram(ctx context.Context, telegramUserID, accessHash int64) (uuid.UUID, error)
+	EnrollTelegram(ctx context.Context, telegramUserID int64) (uuid.UUID, error)
 	Subscribe(ctx context.Context, telegramUserID int64, source notify.Source, eventTypes []notify.EventType) error
 	Unsubscribe(ctx context.Context, telegramUserID int64, source notify.Source) error
 	ListSubscriptions(ctx context.Context, telegramUserID int64) ([]notifystore.Subscription, error)
@@ -57,7 +57,7 @@ func (h *Handler) NotifyEnroll(ctx context.Context, req *oas.NotifyEnrollRequest
 	if h.notify == nil {
 		return nil, errNotifyNotConfigured
 	}
-	if _, err := h.notify.EnrollTelegram(ctx, req.TelegramUserID, req.TelegramAccessHash); err != nil {
+	if _, err := h.notify.EnrollTelegram(ctx, req.TelegramUserID); err != nil {
 		return nil, errors.Wrap(err, "enroll telegram user")
 	}
 	return &oas.Ack{Ok: true}, nil
@@ -170,9 +170,8 @@ func (h *Handler) RegisterNotifyChat(ctx context.Context, req *oas.NotifyChatReq
 		return nil, errNotifyNotConfigured
 	}
 	target := notify.Target{
-		TelegramUserID:     req.PeerID,
-		TelegramAccessHash: req.AccessHash.Or(0),
-		PeerType:           notify.PeerType(req.PeerType),
+		TelegramUserID: req.PeerID,
+		PeerType:       notify.PeerType(req.PeerType),
 	}
 	if target.TelegramUserID == 0 {
 		return nil, notifyBadRequest(errors.New("peer_id is required"))

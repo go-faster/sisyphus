@@ -79,20 +79,6 @@ func (_c *NotificationCreate) SetNillableTelegramUserID(v *int64) *NotificationC
 	return _c
 }
 
-// SetTelegramAccessHash sets the "telegram_access_hash" field.
-func (_c *NotificationCreate) SetTelegramAccessHash(v int64) *NotificationCreate {
-	_c.mutation.SetTelegramAccessHash(v)
-	return _c
-}
-
-// SetNillableTelegramAccessHash sets the "telegram_access_hash" field if the given value is not nil.
-func (_c *NotificationCreate) SetNillableTelegramAccessHash(v *int64) *NotificationCreate {
-	if v != nil {
-		_c.SetTelegramAccessHash(*v)
-	}
-	return _c
-}
-
 // SetSource sets the "source" field.
 func (_c *NotificationCreate) SetSource(v string) *NotificationCreate {
 	_c.mutation.SetSource(v)
@@ -398,10 +384,6 @@ func (_c *NotificationCreate) createSpec() (*Notification, *sqlgraph.CreateSpec)
 		_spec.SetField(notification.FieldTelegramUserID, field.TypeInt64, value)
 		_node.TelegramUserID = value
 	}
-	if value, ok := _c.mutation.TelegramAccessHash(); ok {
-		_spec.SetField(notification.FieldTelegramAccessHash, field.TypeInt64, value)
-		_node.TelegramAccessHash = &value
-	}
 	if value, ok := _c.mutation.Source(); ok {
 		_spec.SetField(notification.FieldSource, field.TypeString, value)
 		_node.Source = value
@@ -562,30 +544,6 @@ func (u *NotificationUpsert) AddTelegramUserID(v int64) *NotificationUpsert {
 // ClearTelegramUserID clears the value of the "telegram_user_id" field.
 func (u *NotificationUpsert) ClearTelegramUserID() *NotificationUpsert {
 	u.SetNull(notification.FieldTelegramUserID)
-	return u
-}
-
-// SetTelegramAccessHash sets the "telegram_access_hash" field.
-func (u *NotificationUpsert) SetTelegramAccessHash(v int64) *NotificationUpsert {
-	u.Set(notification.FieldTelegramAccessHash, v)
-	return u
-}
-
-// UpdateTelegramAccessHash sets the "telegram_access_hash" field to the value that was provided on create.
-func (u *NotificationUpsert) UpdateTelegramAccessHash() *NotificationUpsert {
-	u.SetExcluded(notification.FieldTelegramAccessHash)
-	return u
-}
-
-// AddTelegramAccessHash adds v to the "telegram_access_hash" field.
-func (u *NotificationUpsert) AddTelegramAccessHash(v int64) *NotificationUpsert {
-	u.Add(notification.FieldTelegramAccessHash, v)
-	return u
-}
-
-// ClearTelegramAccessHash clears the value of the "telegram_access_hash" field.
-func (u *NotificationUpsert) ClearTelegramAccessHash() *NotificationUpsert {
-	u.SetNull(notification.FieldTelegramAccessHash)
 	return u
 }
 
@@ -811,34 +769,6 @@ func (u *NotificationUpsertOne) UpdateTelegramUserID() *NotificationUpsertOne {
 func (u *NotificationUpsertOne) ClearTelegramUserID() *NotificationUpsertOne {
 	return u.Update(func(s *NotificationUpsert) {
 		s.ClearTelegramUserID()
-	})
-}
-
-// SetTelegramAccessHash sets the "telegram_access_hash" field.
-func (u *NotificationUpsertOne) SetTelegramAccessHash(v int64) *NotificationUpsertOne {
-	return u.Update(func(s *NotificationUpsert) {
-		s.SetTelegramAccessHash(v)
-	})
-}
-
-// AddTelegramAccessHash adds v to the "telegram_access_hash" field.
-func (u *NotificationUpsertOne) AddTelegramAccessHash(v int64) *NotificationUpsertOne {
-	return u.Update(func(s *NotificationUpsert) {
-		s.AddTelegramAccessHash(v)
-	})
-}
-
-// UpdateTelegramAccessHash sets the "telegram_access_hash" field to the value that was provided on create.
-func (u *NotificationUpsertOne) UpdateTelegramAccessHash() *NotificationUpsertOne {
-	return u.Update(func(s *NotificationUpsert) {
-		s.UpdateTelegramAccessHash()
-	})
-}
-
-// ClearTelegramAccessHash clears the value of the "telegram_access_hash" field.
-func (u *NotificationUpsertOne) ClearTelegramAccessHash() *NotificationUpsertOne {
-	return u.Update(func(s *NotificationUpsert) {
-		s.ClearTelegramAccessHash()
 	})
 }
 
@@ -1247,34 +1177,6 @@ func (u *NotificationUpsertBulk) UpdateTelegramUserID() *NotificationUpsertBulk 
 func (u *NotificationUpsertBulk) ClearTelegramUserID() *NotificationUpsertBulk {
 	return u.Update(func(s *NotificationUpsert) {
 		s.ClearTelegramUserID()
-	})
-}
-
-// SetTelegramAccessHash sets the "telegram_access_hash" field.
-func (u *NotificationUpsertBulk) SetTelegramAccessHash(v int64) *NotificationUpsertBulk {
-	return u.Update(func(s *NotificationUpsert) {
-		s.SetTelegramAccessHash(v)
-	})
-}
-
-// AddTelegramAccessHash adds v to the "telegram_access_hash" field.
-func (u *NotificationUpsertBulk) AddTelegramAccessHash(v int64) *NotificationUpsertBulk {
-	return u.Update(func(s *NotificationUpsert) {
-		s.AddTelegramAccessHash(v)
-	})
-}
-
-// UpdateTelegramAccessHash sets the "telegram_access_hash" field to the value that was provided on create.
-func (u *NotificationUpsertBulk) UpdateTelegramAccessHash() *NotificationUpsertBulk {
-	return u.Update(func(s *NotificationUpsert) {
-		s.UpdateTelegramAccessHash()
-	})
-}
-
-// ClearTelegramAccessHash clears the value of the "telegram_access_hash" field.
-func (u *NotificationUpsertBulk) ClearTelegramAccessHash() *NotificationUpsertBulk {
-	return u.Update(func(s *NotificationUpsert) {
-		s.ClearTelegramAccessHash()
 	})
 }
 

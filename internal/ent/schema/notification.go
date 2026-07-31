@@ -34,7 +34,6 @@ func (Notification) Fields() []ent.Field {
 		// broadcast goes to.
 		field.String("peer_type").Default("user"),
 		field.Int64("telegram_user_id").Optional(),
-		field.Int64("telegram_access_hash").Optional().Nillable(),
 		field.String("source").NotEmpty().Immutable(),
 		field.String("event_type").NotEmpty().Immutable(),
 		field.Text("text").NotEmpty().Immutable(),

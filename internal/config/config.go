@@ -61,6 +61,11 @@ type AlertmanagerConfig struct {
 	WebhookEnabled bool
 	WebhookToken   string
 
+	// Notify announces every alert to the registered chats as it arrives,
+	// independently of Investigate. On by default: an alert nobody is told
+	// about is an alert that did nothing.
+	Notify bool
+
 	// Investigate submits an agent investigation for each qualifying firing
 	// alert. Off by default: it spends LLM budget per alert.
 	Investigate bool
@@ -313,6 +318,11 @@ type fileAlertmanagerConfig struct {
 		Enabled bool   `yaml:"enabled"`
 		Token   Secret `yaml:"token"`
 	} `yaml:"webhook"`
+	Notify struct {
+		// Pointer so an omitted section keeps the default (true) instead of
+		// silently muting every alert.
+		Enabled *bool `yaml:"enabled"`
+	} `yaml:"notify"`
 	Investigate struct {
 		Enabled     bool   `yaml:"enabled"`
 		MinSeverity string `yaml:"min_severity"`
@@ -1049,6 +1059,7 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			ShowDebugInfo:         c.Agent.ShowDebugInfo,
 		},
 		Alertmanager: AlertmanagerConfig{
+			Notify:                 c.Alertmanager.Notify.Enabled == nil || *c.Alertmanager.Notify.Enabled,
 			WebhookEnabled:         c.Alertmanager.Webhook.Enabled,
 			WebhookToken:           alertWebhookToken,
 			Investigate:            c.Alertmanager.Investigate.Enabled,

@@ -99,7 +99,7 @@ paths:
   /notify/enroll:
     post:
       operationId: notifyEnroll
-      summary: Upsert a NotifyUser's Telegram identity (access hash), called on first bot contact.
+      summary: Upsert a user row for a Telegram user, called on first bot contact.
       requestBody:
         required: true
         content:
@@ -109,6 +109,25 @@ paths:
       responses:
         "200":
           description: Enrollment acknowledged.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ack"
+        default:
+          $ref: "#/components/responses/Error"
+  /telegram/peers:
+    post:
+      operationId: upsertTelegramPeers
+      summary: Record Telegram peers the bot has seen, with their current access hashes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TelegramPeersRequest"
+      responses:
+        "200":
+          description: Peers recorded.
           content:
             application/json:
               schema:
@@ -511,14 +530,37 @@ components:
           type: boolean
     NotifyEnrollRequest:
       type: object
-      required: [telegram_user_id, telegram_access_hash]
+      required: [telegram_user_id]
       properties:
         telegram_user_id:
           type: integer
           format: int64
-        telegram_access_hash:
+    TelegramPeersRequest:
+      type: object
+      required: [peers]
+      properties:
+        peers:
+          type: array
+          items:
+            $ref: "#/components/schemas/TelegramPeer"
+    TelegramPeer:
+      type: object
+      required: [peer_type, peer_id]
+      properties:
+        peer_type:
+          type: string
+          enum: [user, channel, chat]
+        peer_id:
           type: integer
           format: int64
+        access_hash:
+          type: integer
+          format: int64
+          description: Absent for a basic group, which needs none. A zero value never overwrites a stored hash.
+        username:
+          type: string
+        title:
+          type: string
     NotifySubscribeRequest:
       type: object
       required: [telegram_user_id, source, event_types]
@@ -574,10 +616,6 @@ components:
         peer_id:
           type: integer
           format: int64
-        access_hash:
-          type: integer
-          format: int64
-          description: Required for channels and supergroups; a basic group has none.
         title:
           type: string
         added_by:
@@ -586,7 +624,7 @@ components:
           description: Telegram user who ran the command, for audit.
         enabled:
           type: boolean
-          description: false disables the chat without forgetting its access hash.
+          description: false disables the chat without forgetting it.
     NotifyChat:
       type: object
       required: [peer_type, peer_id, enabled]

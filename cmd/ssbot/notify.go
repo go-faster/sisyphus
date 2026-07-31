@@ -18,8 +18,22 @@ type notifierAdapter struct {
 	api *apiclient.Client
 }
 
-func (n notifierAdapter) NotifyEnroll(ctx context.Context, telegramUserID, accessHash int64) error {
-	return n.api.NotifyEnroll(ctx, telegramUserID, accessHash)
+func (n notifierAdapter) NotifyEnroll(ctx context.Context, telegramUserID int64) error {
+	return n.api.NotifyEnroll(ctx, telegramUserID)
+}
+
+func (n notifierAdapter) NotifyPeers(ctx context.Context, peers []bot.NotifyPeer) error {
+	out := make([]apiclient.TelegramPeer, 0, len(peers))
+	for _, p := range peers {
+		out = append(out, apiclient.TelegramPeer{
+			PeerType:   p.PeerType,
+			PeerID:     p.PeerID,
+			AccessHash: p.AccessHash,
+			Username:   p.Username,
+			Title:      p.Title,
+		})
+	}
+	return n.api.NotifyPeers(ctx, out)
 }
 
 func (n notifierAdapter) NotifySubscribe(ctx context.Context, telegramUserID int64, source string, eventTypes []string) error {
@@ -42,8 +56,8 @@ func (n notifierAdapter) NotifyListSubscriptions(ctx context.Context, telegramUs
 	return out, nil
 }
 
-func (n notifierAdapter) NotifyRegisterChat(ctx context.Context, peerType string, peerID, accessHash int64, title string, addedBy int64, enabled bool) error {
-	return n.api.NotifyRegisterChat(ctx, peerType, peerID, accessHash, title, addedBy, enabled)
+func (n notifierAdapter) NotifyRegisterChat(ctx context.Context, peerType string, peerID int64, title string, addedBy int64, enabled bool) error {
+	return n.api.NotifyRegisterChat(ctx, peerType, peerID, title, addedBy, enabled)
 }
 
 func (n notifierAdapter) NotifyListChats(ctx context.Context) ([]bot.NotifyChat, error) {
@@ -95,12 +109,9 @@ func drainPendingNotifications(ctx context.Context, lg *zap.Logger, b *bot.Bot, 
 	}
 
 	for _, n := range pending {
-		text := n.Text
-		if n.URL != "" {
-			text += "\n" + n.URL
-		}
-
-		sendErr := b.SendTo(ctx, n.ID, n.TelegramPeerType, n.TelegramUserID, n.TelegramAccessHash, text)
+		// The renderer already embeds the URL as a markdown link; appending it
+		// again printed every notification's link twice.
+		sendErr := b.SendTo(ctx, n.ID, n.TelegramPeerType, n.TelegramUserID, n.TelegramAccessHash, n.Text)
 		if sendErr != nil {
 			lg.Warn("deliver notification failed", zap.String("notification_id", n.ID.String()), zap.Error(sendErr))
 		}

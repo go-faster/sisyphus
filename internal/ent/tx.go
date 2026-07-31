@@ -34,6 +34,8 @@ type Tx struct {
 	SyncState *SyncStateClient
 	// TelegramMessage is the client for interacting with the TelegramMessage builders.
 	TelegramMessage *TelegramMessageClient
+	// TelegramPeer is the client for interacting with the TelegramPeer builders.
+	TelegramPeer *TelegramPeerClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
 	// UserToken is the client for interacting with the UserToken builders.
@@ -179,6 +181,7 @@ func (tx *Tx) init() {
 	tx.SupportRequest = NewSupportRequestClient(tx.config)
 	tx.SyncState = NewSyncStateClient(tx.config)
 	tx.TelegramMessage = NewTelegramMessageClient(tx.config)
+	tx.TelegramPeer = NewTelegramPeerClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 	tx.UserToken = NewUserTokenClient(tx.config)
 }

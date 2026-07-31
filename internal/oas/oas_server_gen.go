@@ -52,7 +52,7 @@ type Handler interface {
 	ListNotifyChats(ctx context.Context) (*NotifyChatsResponse, error)
 	// NotifyEnroll implements notifyEnroll operation.
 	//
-	// Upsert a NotifyUser's Telegram identity (access hash), called on first bot contact.
+	// Upsert a user row for a Telegram user, called on first bot contact.
 	//
 	// POST /notify/enroll
 	NotifyEnroll(ctx context.Context, req *NotifyEnrollRequest) (*Ack, error)
@@ -87,6 +87,12 @@ type Handler interface {
 	//
 	// POST /search
 	Search(ctx context.Context, req *SearchRequest) (*SearchResponse, error)
+	// UpsertTelegramPeers implements upsertTelegramPeers operation.
+	//
+	// Record Telegram peers the bot has seen, with their current access hashes.
+	//
+	// POST /telegram/peers
+	UpsertTelegramPeers(ctx context.Context, req *TelegramPeersRequest) (*Ack, error)
 	// NewError creates *ErrorStatusCode from error returned by handler.
 	//
 	// Used for common default response.

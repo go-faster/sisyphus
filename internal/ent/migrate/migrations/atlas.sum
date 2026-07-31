@@ -1,4 +1,4 @@
-h1:jzvvbwFRYNoB+kKREAv4z1pzQR7G12WoYD1UcUmGSVU=
+h1:R/cHGkPSm0uQh/FmiInL7SjaPyQvn4yj/xx5mc+gC7o=
 00001_initial.sql h1:tBhzpMUm7qZMiwPMoN2kNLl1uFsdIb2wOnepKdw+I94=
 00002_fts.sql h1:H7dC1uDGKxr63BSeJ1MRXysflV5cK9juTJK4nketUhU=
 20260705170007_document_identity_source_source_id.sql h1:w8aQ/TJXnVUrAZezvo137M2JQeLJnL2BVnE7JIIfikw=
@@ -8,3 +8,5 @@ h1:jzvvbwFRYNoB+kKREAv4z1pzQR7G12WoYD1UcUmGSVU=
 20260723060631_add_queue_jobs.sql h1:5yi9FgM38MOcWxKwdaei9Q/gWFACpfXvV7MXDkrFS3Q=
 20260723061500_backfill_notification_queue.sql h1:a6ULRQb3+kbiFin3sulufEsS+j5oH8LJFOvdXu8eWq8=
 20260730203903_notify_broadcast_chats.sql h1:br2GbSGNCk0a8CQOeNMt5Me8v0E/TYZ2EIEqkf+Vk60=
+20260730232447_add_telegram_peers.sql h1:Xm6fjjZjIXl1Oc8gDVXS1oTAL9D2CW4+4uUk/2Azp+g=
+20260730234500_move_access_hash_to_peers.sql h1:OJlYBnzswoeAwatt2rVAlBXP4Q/8A227fzzpLU88wx0=

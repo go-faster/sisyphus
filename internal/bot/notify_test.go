@@ -14,15 +14,15 @@ import (
 )
 
 type fakeNotifier struct {
-	registered                   []NotifyChat
-	registerErr                  error
-	lastHash                     int64
-	lastAddedBy                  int64
-	enrolledUserID, enrolledHash int64
-	subscribed                   map[int64][2]string // telegramUserID -> [source, joined event types]
-	unsubscribed                 map[int64]string
-	subs                         []NotifySubscription
-	err                          error
+	registered     []NotifyChat
+	registerErr    error
+	lastAddedBy    int64
+	enrolledUserID int64
+	peers          []NotifyPeer
+	subscribed     map[int64][2]string // telegramUserID -> [source, joined event types]
+	unsubscribed   map[int64]string
+	subs           []NotifySubscription
+	err            error
 }
 
 func newFakeNotifier() *fakeNotifier {
@@ -32,8 +32,13 @@ func newFakeNotifier() *fakeNotifier {
 	}
 }
 
-func (f *fakeNotifier) NotifyEnroll(_ context.Context, telegramUserID, accessHash int64) error {
-	f.enrolledUserID, f.enrolledHash = telegramUserID, accessHash
+func (f *fakeNotifier) NotifyPeers(_ context.Context, peers []NotifyPeer) error {
+	f.peers = append(f.peers, peers...)
+	return nil
+}
+
+func (f *fakeNotifier) NotifyEnroll(_ context.Context, telegramUserID int64) error {
+	f.enrolledUserID = telegramUserID
 	return f.err
 }
 
@@ -52,12 +57,11 @@ func (f *fakeNotifier) NotifySubscribe(_ context.Context, telegramUserID int64, 
 	return nil
 }
 
-func (f *fakeNotifier) NotifyRegisterChat(_ context.Context, peerType string, peerID, accessHash int64, title string, addedBy int64, enabled bool) error {
+func (f *fakeNotifier) NotifyRegisterChat(_ context.Context, peerType string, peerID int64, title string, addedBy int64, enabled bool) error {
 	if f.registerErr != nil {
 		return f.registerErr
 	}
 	f.registered = append(f.registered, NotifyChat{PeerType: peerType, PeerID: peerID, Title: title, Enabled: enabled})
-	f.lastHash = accessHash
 	f.lastAddedBy = addedBy
 	return nil
 }
@@ -184,28 +188,52 @@ func TestHandleNotificationsCmd_Empty(t *testing.T) {
 	require.Contains(t, *sent, "No subscriptions")
 }
 
-func TestCaptureNotifyIdentity_EnrollsFromEntities(t *testing.T) {
+func TestCaptureNotifyIdentity_EnrollsSender(t *testing.T) {
 	n := newFakeNotifier()
 	b := newNotifyTestBot(n)
 
-	entities := tg.Entities{Users: map[int64]*tg.User{42: {ID: 42, AccessHash: 999}}}
-	b.captureNotifyIdentity(context.Background(), entities, 42)
+	b.captureNotifyIdentity(context.Background(), 42)
 
 	require.EqualValues(t, 42, n.enrolledUserID)
-	require.EqualValues(t, 999, n.enrolledHash)
 }
 
-func TestCaptureNotifyIdentity_NoNotifierIsNoOp(t *testing.T) {
-	b := newNotifyTestBot(nil)
-	entities := tg.Entities{Users: map[int64]*tg.User{42: {ID: 42, AccessHash: 999}}}
-	// Must not panic with a nil notifier.
-	b.captureNotifyIdentity(context.Background(), entities, 42)
-}
-
-func TestCaptureNotifyIdentity_UnknownSenderIsNoOp(t *testing.T) {
+// Every peer an update carried is recorded, not just the sender: an access
+// hash exists only in the update that delivered the peer, and a peer the bot
+// never recorded cannot be messaged later.
+func TestCapturePeers_RecordsEveryPeerInTheUpdate(t *testing.T) {
 	n := newFakeNotifier()
 	b := newNotifyTestBot(n)
-	entities := tg.Entities{Users: map[int64]*tg.User{}}
-	b.captureNotifyIdentity(context.Background(), entities, 42)
+
+	entities := tg.Entities{
+		Users:    map[int64]*tg.User{42: {ID: 42, AccessHash: 999, Username: "alice", FirstName: "Alice"}},
+		Channels: map[int64]*tg.Channel{100: {ID: 100, AccessHash: 555, Title: "Ops"}},
+		Chats:    map[int64]*tg.Chat{7: {ID: 7, Title: "Team"}},
+	}
+	b.capturePeers(context.Background(), entities, chatPeer{Type: peerTypeChannel, ID: 100, AccessHash: 555, Title: "Ops"})
+
+	byID := map[int64]NotifyPeer{}
+	for _, p := range n.peers {
+		byID[p.PeerID] = p
+	}
+	require.Len(t, byID, 3)
+	require.Equal(t, peerTypeUser, byID[42].PeerType)
+	require.EqualValues(t, 999, byID[42].AccessHash)
+	require.Equal(t, "alice", byID[42].Username)
+	require.EqualValues(t, 555, byID[100].AccessHash)
+	require.Equal(t, peerTypeChat, byID[7].PeerType)
+	require.Zero(t, byID[7].AccessHash, "a basic group has no access hash")
+}
+
+func TestCapturePeers_NoNotifierIsNoOp(t *testing.T) {
+	b := newNotifyTestBot(nil)
+	b.capturePeers(context.Background(), tg.Entities{}, chatPeer{Type: peerTypeUser, ID: 42})
+}
+
+// A channel post has no user sender (the channel is the sender), so there is
+// nobody to enroll.
+func TestCaptureNotifyIdentity_NoSenderIsNoOp(t *testing.T) {
+	n := newFakeNotifier()
+	b := newNotifyTestBot(n)
+	b.captureNotifyIdentity(context.Background(), 0)
 	require.Zero(t, n.enrolledUserID)
 }

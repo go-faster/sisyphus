@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-faster/sisyphus/internal/notify"
+	"github.com/go-faster/sisyphus/internal/tgpeer"
 )
 
 // A broadcast row has no user behind it — the whole point of the alert
@@ -16,6 +17,12 @@ func TestEnqueueBroadcastWithoutUser(t *testing.T) {
 	s := New(db, Options{Owner: "broadcast-test"})
 
 	target := notify.Target{TelegramUserID: -1001234567890, TelegramAccessHash: 99, PeerType: notify.PeerChannel}
+	// The hash is resolved at delivery from the peer store, not copied into
+	// the outbox row.
+	_, err := tgpeer.New(db, tgpeer.Options{}).Upsert(ctx, []tgpeer.Peer{
+		{Type: tgpeer.KindChannel, ID: target.TelegramUserID, AccessHash: target.TelegramAccessHash},
+	})
+	require.NoError(t, err)
 	n := notify.Notification{
 		Source:   notify.SourceAlerts,
 		Type:     notify.EventInvestigationCompleted,
@@ -77,6 +84,13 @@ func TestRegisterAndListChats(t *testing.T) {
 	channel := notify.Target{TelegramUserID: -1009000001, TelegramAccessHash: 77, PeerType: notify.PeerChannel}
 	group := notify.Target{TelegramUserID: -9000002, PeerType: notify.PeerChat}
 
+	peers := tgpeer.New(db, tgpeer.Options{})
+	_, err := peers.Upsert(ctx, []tgpeer.Peer{
+		{Type: tgpeer.KindChannel, ID: channel.TelegramUserID, AccessHash: channel.TelegramAccessHash},
+		{Type: tgpeer.KindChat, ID: group.TelegramUserID},
+	})
+	require.NoError(t, err)
+
 	require.NoError(t, s.RegisterChat(ctx, channel, "Ops", 42))
 	require.NoError(t, s.RegisterChat(ctx, group, "Team", 42))
 
@@ -85,10 +99,14 @@ func TestRegisterAndListChats(t *testing.T) {
 	require.Contains(t, targets, channel)
 	require.Contains(t, targets, group, "a basic group has no access hash and still resolves")
 
-	// Re-registering refreshes the peer rather than duplicating it: an access
-	// hash is per bot session, so /alerts on is also how a stale one heals.
+	// A rotated access hash heals through the peer store, on any update that
+	// carries the channel — the registration itself does not hold it.
 	rotated := channel
 	rotated.TelegramAccessHash = 88
+	_, err = peers.Upsert(ctx, []tgpeer.Peer{
+		{Type: tgpeer.KindChannel, ID: rotated.TelegramUserID, AccessHash: rotated.TelegramAccessHash},
+	})
+	require.NoError(t, err)
 	require.NoError(t, s.RegisterChat(ctx, rotated, "Ops renamed", 43))
 
 	targets, err = s.BroadcastTargets(ctx)

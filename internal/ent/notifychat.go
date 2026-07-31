@@ -22,8 +22,6 @@ type NotifyChat struct {
 	PeerType string `json:"peer_type,omitempty"`
 	// PeerID holds the value of the "peer_id" field.
 	PeerID int64 `json:"peer_id,omitempty"`
-	// AccessHash holds the value of the "access_hash" field.
-	AccessHash *int64 `json:"access_hash,omitempty"`
 	// Title holds the value of the "title" field.
 	Title string `json:"title,omitempty"`
 	// Enabled holds the value of the "enabled" field.
@@ -44,7 +42,7 @@ func (*NotifyChat) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case notifychat.FieldEnabled:
 			values[i] = new(sql.NullBool)
-		case notifychat.FieldPeerID, notifychat.FieldAccessHash, notifychat.FieldAddedBy:
+		case notifychat.FieldPeerID, notifychat.FieldAddedBy:
 			values[i] = new(sql.NullInt64)
 		case notifychat.FieldPeerType, notifychat.FieldTitle:
 			values[i] = new(sql.NullString)
@@ -84,13 +82,6 @@ func (_m *NotifyChat) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field peer_id", values[i])
 			} else if value.Valid {
 				_m.PeerID = value.Int64
-			}
-		case notifychat.FieldAccessHash:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field access_hash", values[i])
-			} else if value.Valid {
-				_m.AccessHash = new(int64)
-				*_m.AccessHash = value.Int64
 			}
 		case notifychat.FieldTitle:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -163,11 +154,6 @@ func (_m *NotifyChat) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("peer_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.PeerID))
-	builder.WriteString(", ")
-	if v := _m.AccessHash; v != nil {
-		builder.WriteString("access_hash=")
-		builder.WriteString(fmt.Sprintf("%v", *v))
-	}
 	builder.WriteString(", ")
 	builder.WriteString("title=")
 	builder.WriteString(_m.Title)

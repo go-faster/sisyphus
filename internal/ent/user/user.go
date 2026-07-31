@@ -17,8 +17,6 @@ const (
 	FieldID = "id"
 	// FieldTelegramUserID holds the string denoting the telegram_user_id field in the database.
 	FieldTelegramUserID = "telegram_user_id"
-	// FieldTelegramAccessHash holds the string denoting the telegram_access_hash field in the database.
-	FieldTelegramAccessHash = "telegram_access_hash"
 	// FieldGitlabUsername holds the string denoting the gitlab_username field in the database.
 	FieldGitlabUsername = "gitlab_username"
 	// FieldJiraAccountID holds the string denoting the jira_account_id field in the database.
@@ -66,7 +64,6 @@ const (
 var Columns = []string{
 	FieldID,
 	FieldTelegramUserID,
-	FieldTelegramAccessHash,
 	FieldGitlabUsername,
 	FieldJiraAccountID,
 	FieldJiraDisplayName,
@@ -109,11 +106,6 @@ func ByID(opts ...sql.OrderTermOption) OrderOption {
 // ByTelegramUserID orders the results by the telegram_user_id field.
 func ByTelegramUserID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTelegramUserID, opts...).ToFunc()
-}
-
-// ByTelegramAccessHash orders the results by the telegram_access_hash field.
-func ByTelegramAccessHash(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldTelegramAccessHash, opts...).ToFunc()
 }
 
 // ByGitlabUsername orders the results by the gitlab_username field.

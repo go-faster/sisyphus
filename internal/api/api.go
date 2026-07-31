@@ -32,6 +32,7 @@ type Handler struct {
 	content   index.ContentResolver
 	fetcher   index.URLFetcher
 	notify    NotifyStore
+	peers     PeerStore
 	version   string
 }
 

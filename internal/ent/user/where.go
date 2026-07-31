@@ -61,11 +61,6 @@ func TelegramUserID(v int64) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldTelegramUserID, v))
 }
 
-// TelegramAccessHash applies equality check predicate on the "telegram_access_hash" field. It's identical to TelegramAccessHashEQ.
-func TelegramAccessHash(v int64) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldTelegramAccessHash, v))
-}
-
 // GitlabUsername applies equality check predicate on the "gitlab_username" field. It's identical to GitlabUsernameEQ.
 func GitlabUsername(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldGitlabUsername, v))
@@ -134,56 +129,6 @@ func TelegramUserIDLT(v int64) predicate.User {
 // TelegramUserIDLTE applies the LTE predicate on the "telegram_user_id" field.
 func TelegramUserIDLTE(v int64) predicate.User {
 	return predicate.User(sql.FieldLTE(FieldTelegramUserID, v))
-}
-
-// TelegramAccessHashEQ applies the EQ predicate on the "telegram_access_hash" field.
-func TelegramAccessHashEQ(v int64) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldTelegramAccessHash, v))
-}
-
-// TelegramAccessHashNEQ applies the NEQ predicate on the "telegram_access_hash" field.
-func TelegramAccessHashNEQ(v int64) predicate.User {
-	return predicate.User(sql.FieldNEQ(FieldTelegramAccessHash, v))
-}
-
-// TelegramAccessHashIn applies the In predicate on the "telegram_access_hash" field.
-func TelegramAccessHashIn(vs ...int64) predicate.User {
-	return predicate.User(sql.FieldIn(FieldTelegramAccessHash, vs...))
-}
-
-// TelegramAccessHashNotIn applies the NotIn predicate on the "telegram_access_hash" field.
-func TelegramAccessHashNotIn(vs ...int64) predicate.User {
-	return predicate.User(sql.FieldNotIn(FieldTelegramAccessHash, vs...))
-}
-
-// TelegramAccessHashGT applies the GT predicate on the "telegram_access_hash" field.
-func TelegramAccessHashGT(v int64) predicate.User {
-	return predicate.User(sql.FieldGT(FieldTelegramAccessHash, v))
-}
-
-// TelegramAccessHashGTE applies the GTE predicate on the "telegram_access_hash" field.
-func TelegramAccessHashGTE(v int64) predicate.User {
-	return predicate.User(sql.FieldGTE(FieldTelegramAccessHash, v))
-}
-
-// TelegramAccessHashLT applies the LT predicate on the "telegram_access_hash" field.
-func TelegramAccessHashLT(v int64) predicate.User {
-	return predicate.User(sql.FieldLT(FieldTelegramAccessHash, v))
-}
-
-// TelegramAccessHashLTE applies the LTE predicate on the "telegram_access_hash" field.
-func TelegramAccessHashLTE(v int64) predicate.User {
-	return predicate.User(sql.FieldLTE(FieldTelegramAccessHash, v))
-}
-
-// TelegramAccessHashIsNil applies the IsNil predicate on the "telegram_access_hash" field.
-func TelegramAccessHashIsNil() predicate.User {
-	return predicate.User(sql.FieldIsNull(FieldTelegramAccessHash))
-}
-
-// TelegramAccessHashNotNil applies the NotNil predicate on the "telegram_access_hash" field.
-func TelegramAccessHashNotNil() predicate.User {
-	return predicate.User(sql.FieldNotNull(FieldTelegramAccessHash))
 }
 
 // GitlabUsernameEQ applies the EQ predicate on the "gitlab_username" field.

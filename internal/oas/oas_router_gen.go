@@ -45,6 +45,9 @@ var (
 	rn20AllowedHeaders = map[string]string{
 		"POST": "Authorization,Content-Type",
 	}
+	rn21AllowedHeaders = map[string]string{
+		"POST": "Authorization,Content-Type",
+	}
 )
 
 func (s *Server) cutPrefix(path string) (string, bool) {
@@ -499,6 +502,31 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 
+			case 't': // Prefix: "telegram/peers"
+
+				if l := len("telegram/peers"); len(elem) >= l && elem[0:l] == "telegram/peers" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					// Leaf node.
+					switch r.Method {
+					case "POST":
+						s.handleUpsertTelegramPeersRequest([0]string{}, elemIsEscaped, w, r)
+					default:
+						s.notAllowed(w, r, notAllowedParams{
+							allowedMethods: "POST",
+							allowedHeaders: rn21AllowedHeaders,
+							acceptPost:     "application/json",
+							acceptPatch:    "",
+						})
+					}
+
+					return
+				}
+
 			}
 
 		}
@@ -864,7 +892,7 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 							switch method {
 							case "POST":
 								r.name = NotifyEnrollOperation
-								r.summary = "Upsert a NotifyUser's Telegram identity (access hash), called on first bot contact."
+								r.summary = "Upsert a user row for a Telegram user, called on first bot contact."
 								r.operationID = "notifyEnroll"
 								r.operationGroup = ""
 								r.pathPattern = "/notify/enroll"
@@ -995,6 +1023,31 @@ func (s *Server) FindPath(method string, u *url.URL) (r Route, _ bool) {
 						r.operationID = "search"
 						r.operationGroup = ""
 						r.pathPattern = "/search"
+						r.args = args
+						r.count = 0
+						return r, true
+					default:
+						return
+					}
+				}
+
+			case 't': // Prefix: "telegram/peers"
+
+				if l := len("telegram/peers"); len(elem) >= l && elem[0:l] == "telegram/peers" {
+					elem = elem[l:]
+				} else {
+					break
+				}
+
+				if len(elem) == 0 {
+					// Leaf node.
+					switch method {
+					case "POST":
+						r.name = UpsertTelegramPeersOperation
+						r.summary = "Record Telegram peers the bot has seen, with their current access hashes."
+						r.operationID = "upsertTelegramPeers"
+						r.operationGroup = ""
+						r.pathPattern = "/telegram/peers"
 						r.args = args
 						r.count = 0
 						return r, true

@@ -16,6 +16,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent/supportrequest"
 	"github.com/go-faster/sisyphus/internal/ent/syncstate"
 	"github.com/go-faster/sisyphus/internal/ent/telegrammessage"
+	"github.com/go-faster/sisyphus/internal/ent/telegrampeer"
 	"github.com/go-faster/sisyphus/internal/ent/user"
 	"github.com/go-faster/sisyphus/internal/ent/usertoken"
 	"github.com/google/uuid"
@@ -128,31 +129,31 @@ func init() {
 	// notification.DefaultPeerType holds the default value on creation for the peer_type field.
 	notification.DefaultPeerType = notificationDescPeerType.Default.(string)
 	// notificationDescSource is the schema descriptor for source field.
-	notificationDescSource := notificationFields[7].Descriptor()
+	notificationDescSource := notificationFields[6].Descriptor()
 	// notification.SourceValidator is a validator for the "source" field. It is called by the builders before save.
 	notification.SourceValidator = notificationDescSource.Validators[0].(func(string) error)
 	// notificationDescEventType is the schema descriptor for event_type field.
-	notificationDescEventType := notificationFields[8].Descriptor()
+	notificationDescEventType := notificationFields[7].Descriptor()
 	// notification.EventTypeValidator is a validator for the "event_type" field. It is called by the builders before save.
 	notification.EventTypeValidator = notificationDescEventType.Validators[0].(func(string) error)
 	// notificationDescText is the schema descriptor for text field.
-	notificationDescText := notificationFields[9].Descriptor()
+	notificationDescText := notificationFields[8].Descriptor()
 	// notification.TextValidator is a validator for the "text" field. It is called by the builders before save.
 	notification.TextValidator = notificationDescText.Validators[0].(func(string) error)
 	// notificationDescStatus is the schema descriptor for status field.
-	notificationDescStatus := notificationFields[11].Descriptor()
+	notificationDescStatus := notificationFields[10].Descriptor()
 	// notification.DefaultStatus holds the default value on creation for the status field.
 	notification.DefaultStatus = notificationDescStatus.Default.(string)
 	// notificationDescAttempts is the schema descriptor for attempts field.
-	notificationDescAttempts := notificationFields[12].Descriptor()
+	notificationDescAttempts := notificationFields[11].Descriptor()
 	// notification.DefaultAttempts holds the default value on creation for the attempts field.
 	notification.DefaultAttempts = notificationDescAttempts.Default.(int)
 	// notificationDescCreatedAt is the schema descriptor for created_at field.
-	notificationDescCreatedAt := notificationFields[14].Descriptor()
+	notificationDescCreatedAt := notificationFields[13].Descriptor()
 	// notification.DefaultCreatedAt holds the default value on creation for the created_at field.
 	notification.DefaultCreatedAt = notificationDescCreatedAt.Default.(func() time.Time)
 	// notificationDescUpdatedAt is the schema descriptor for updated_at field.
-	notificationDescUpdatedAt := notificationFields[15].Descriptor()
+	notificationDescUpdatedAt := notificationFields[14].Descriptor()
 	// notification.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	notification.DefaultUpdatedAt = notificationDescUpdatedAt.Default.(func() time.Time)
 	// notification.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -168,15 +169,15 @@ func init() {
 	// notifychat.DefaultPeerType holds the default value on creation for the peer_type field.
 	notifychat.DefaultPeerType = notifychatDescPeerType.Default.(string)
 	// notifychatDescEnabled is the schema descriptor for enabled field.
-	notifychatDescEnabled := notifychatFields[5].Descriptor()
+	notifychatDescEnabled := notifychatFields[4].Descriptor()
 	// notifychat.DefaultEnabled holds the default value on creation for the enabled field.
 	notifychat.DefaultEnabled = notifychatDescEnabled.Default.(bool)
 	// notifychatDescCreatedAt is the schema descriptor for created_at field.
-	notifychatDescCreatedAt := notifychatFields[7].Descriptor()
+	notifychatDescCreatedAt := notifychatFields[6].Descriptor()
 	// notifychat.DefaultCreatedAt holds the default value on creation for the created_at field.
 	notifychat.DefaultCreatedAt = notifychatDescCreatedAt.Default.(func() time.Time)
 	// notifychatDescUpdatedAt is the schema descriptor for updated_at field.
-	notifychatDescUpdatedAt := notifychatFields[8].Descriptor()
+	notifychatDescUpdatedAt := notifychatFields[7].Descriptor()
 	// notifychat.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	notifychat.DefaultUpdatedAt = notifychatDescUpdatedAt.Default.(func() time.Time)
 	// notifychat.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -327,18 +328,34 @@ func init() {
 	telegrammessageDescID := telegrammessageFields[0].Descriptor()
 	// telegrammessage.DefaultID holds the default value on creation for the id field.
 	telegrammessage.DefaultID = telegrammessageDescID.Default.(func() uuid.UUID)
+	telegrampeerFields := schema.TelegramPeer{}.Fields()
+	_ = telegrampeerFields
+	// telegrampeerDescLastSeenAt is the schema descriptor for last_seen_at field.
+	telegrampeerDescLastSeenAt := telegrampeerFields[6].Descriptor()
+	// telegrampeer.DefaultLastSeenAt holds the default value on creation for the last_seen_at field.
+	telegrampeer.DefaultLastSeenAt = telegrampeerDescLastSeenAt.Default.(func() time.Time)
+	// telegrampeer.UpdateDefaultLastSeenAt holds the default value on update for the last_seen_at field.
+	telegrampeer.UpdateDefaultLastSeenAt = telegrampeerDescLastSeenAt.UpdateDefault.(func() time.Time)
+	// telegrampeerDescCreatedAt is the schema descriptor for created_at field.
+	telegrampeerDescCreatedAt := telegrampeerFields[7].Descriptor()
+	// telegrampeer.DefaultCreatedAt holds the default value on creation for the created_at field.
+	telegrampeer.DefaultCreatedAt = telegrampeerDescCreatedAt.Default.(func() time.Time)
+	// telegrampeerDescID is the schema descriptor for id field.
+	telegrampeerDescID := telegrampeerFields[0].Descriptor()
+	// telegrampeer.DefaultID holds the default value on creation for the id field.
+	telegrampeer.DefaultID = telegrampeerDescID.Default.(func() uuid.UUID)
 	userFields := schema.User{}.Fields()
 	_ = userFields
 	// userDescEnabled is the schema descriptor for enabled field.
-	userDescEnabled := userFields[6].Descriptor()
+	userDescEnabled := userFields[5].Descriptor()
 	// user.DefaultEnabled holds the default value on creation for the enabled field.
 	user.DefaultEnabled = userDescEnabled.Default.(bool)
 	// userDescCreatedAt is the schema descriptor for created_at field.
-	userDescCreatedAt := userFields[7].Descriptor()
+	userDescCreatedAt := userFields[6].Descriptor()
 	// user.DefaultCreatedAt holds the default value on creation for the created_at field.
 	user.DefaultCreatedAt = userDescCreatedAt.Default.(func() time.Time)
 	// userDescUpdatedAt is the schema descriptor for updated_at field.
-	userDescUpdatedAt := userFields[8].Descriptor()
+	userDescUpdatedAt := userFields[7].Descriptor()
 	// user.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	user.DefaultUpdatedAt = userDescUpdatedAt.Default.(func() time.Time)
 	// user.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

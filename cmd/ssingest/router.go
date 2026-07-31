@@ -4,6 +4,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/agentstore"
 	"github.com/go-faster/sisyphus/internal/event"
 	"github.com/go-faster/sisyphus/internal/notify"
+	notifyalert "github.com/go-faster/sisyphus/internal/notify/alert"
 	notifygitlab "github.com/go-faster/sisyphus/internal/notify/gitlab"
 	notifyjira "github.com/go-faster/sisyphus/internal/notify/jira"
 	notifystore "github.com/go-faster/sisyphus/internal/notify/store"
@@ -36,6 +37,19 @@ func (d *ingestDeps) eventRouter() event.Router {
 				agentstore.SubscriberOptions{
 					MinSeverity: event.Severity(d.cfg.Alertmanager.InvestigateMinSeverity),
 				},
+			),
+		})
+	}
+	if d.cfg.Alertmanager.Notify {
+		// Announcing the alert does not depend on investigating it: the
+		// investigation report is a second, later message (and only when
+		// alertmanager.investigate is on).
+		router.Subscribe(event.Subscription{
+			Name:    "notify-alerts",
+			Sources: []event.Source{event.SourceAlertmanager},
+			Handler: notify.NewBroadcastSubscriber(
+				notifyalert.Projector{},
+				notify.NewBroadcaster(store, store, notify.ChannelTelegram, nil),
 			),
 		})
 	}

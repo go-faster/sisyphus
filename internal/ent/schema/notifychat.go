@@ -23,11 +23,10 @@ type NotifyChat struct {
 func (NotifyChat) Fields() []ent.Field {
 	return []ent.Field{
 		field.UUID("id", uuid.UUID{}).Default(uuid.New),
-		// peer_type/peer_id/access_hash are the MTProto peer, captured from
+		// peer_type/peer_id are the MTProto peer, captured from
 		// the update that registered it. A basic group needs no access hash.
 		field.String("peer_type").Default("channel"),
 		field.Int64("peer_id"),
-		field.Int64("access_hash").Optional().Nillable(),
 		field.String("title").Optional(),
 		// enabled is how /alerts off works: the row is kept so the access
 		// hash survives, and a later /alerts on does not need the chat to be

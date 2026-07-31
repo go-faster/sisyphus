@@ -46,16 +46,25 @@ func (DefaultRenderer) Render(e Event) (string, error) {
 		verb = "requested your review on"
 	case EventIssueAssigned:
 		verb = "assigned you"
+	case EventAlertFiring, EventAlertResolved:
+		// The alert speaks for itself: nothing "caused" it and nobody in
+		// particular is being addressed.
+		prefix := "\U0001F525 *Firing:* "
+		if e.Type == EventAlertResolved {
+			prefix = "\u2705 *Resolved:* "
+		}
+		text := prefix + e.Title
+		if e.URL != "" {
+			text = prefix + "[" + e.Title + "](" + e.URL + ")"
+		}
+		return Lines(text, e.Body), nil
 	case EventInvestigationCompleted:
 		// Broadcast events have no actor and no "you" to address.
 		text := "*Investigation:* " + e.Title
 		if e.URL != "" {
 			text = "*Investigation:* [" + e.Title + "](" + e.URL + ")"
 		}
-		if e.Body != "" {
-			text += "\n" + e.Body
-		}
-		return text, nil
+		return Lines(text, e.Body), nil
 	default:
 		verb = "notified you about"
 	}

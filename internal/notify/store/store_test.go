@@ -19,6 +19,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/ent"
 	"github.com/go-faster/sisyphus/internal/ent/queuejob"
 	"github.com/go-faster/sisyphus/internal/notify"
+	"github.com/go-faster/sisyphus/internal/tgpeer"
 )
 
 // clock is an injectable time source, so lease and backoff behavior is
@@ -77,12 +78,12 @@ func TestStore_EnrollLinkSubscribeRoundTrip(t *testing.T) {
 	ctx := t.Context()
 
 	const telegramUserID int64 = 1001
-	userID, err := s.EnrollTelegram(ctx, telegramUserID, 555)
+	userID, err := s.EnrollTelegram(ctx, telegramUserID)
 	require.NoError(t, err)
 	require.NotEqual(t, userID.String(), "00000000-0000-0000-0000-000000000000")
 
 	// Re-enrolling updates the access hash in place rather than erroring.
-	userID2, err := s.EnrollTelegram(ctx, telegramUserID, 777)
+	userID2, err := s.EnrollTelegram(ctx, telegramUserID)
 	require.NoError(t, err)
 	require.Equal(t, userID, userID2)
 
@@ -120,7 +121,13 @@ func TestStore_SubscribersMatchesLinkedIdentity(t *testing.T) {
 	ctx := t.Context()
 
 	const telegramUserID int64 = 2002
-	_, err := s.EnrollTelegram(ctx, telegramUserID, 999)
+	_, err := s.EnrollTelegram(ctx, telegramUserID)
+	require.NoError(t, err)
+	// Without a recorded peer there is no address, so a subscriber that
+	// cannot be reached is not returned.
+	_, err = tgpeer.New(s.db, tgpeer.Options{}).Upsert(ctx, []tgpeer.Peer{
+		{Type: tgpeer.KindUser, ID: telegramUserID, AccessHash: 999},
+	})
 	require.NoError(t, err)
 	_, err = s.SyncIdentities(ctx, []Identity{{TelegramUserID: telegramUserID, GitLabUsername: "bob"}})
 	require.NoError(t, err)
@@ -148,7 +155,7 @@ func TestStore_EnqueueDedupIsIdempotent(t *testing.T) {
 	ctx := t.Context()
 
 	const telegramUserID int64 = 3003
-	userID, err := s.EnrollTelegram(ctx, telegramUserID, 111)
+	userID, err := s.EnrollTelegram(ctx, telegramUserID)
 	require.NoError(t, err)
 
 	target := notify.Target{TelegramUserID: telegramUserID, TelegramAccessHash: 111}
@@ -183,7 +190,7 @@ func TestStore_AckDeliveredAndErrorTransitions(t *testing.T) {
 	ctx := t.Context()
 
 	const telegramUserID int64 = 4004
-	userID, err := s.EnrollTelegram(ctx, telegramUserID, 222)
+	userID, err := s.EnrollTelegram(ctx, telegramUserID)
 	require.NoError(t, err)
 	target := notify.Target{TelegramUserID: telegramUserID, TelegramAccessHash: 222}
 
@@ -255,7 +262,7 @@ func TestStore_PendingLeasesExclusively(t *testing.T) {
 	ctx := t.Context()
 
 	const telegramUserID int64 = 5005
-	userID, err := s.EnrollTelegram(ctx, telegramUserID, 333)
+	userID, err := s.EnrollTelegram(ctx, telegramUserID)
 	require.NoError(t, err)
 
 	_, err = s.Enqueue(ctx, notify.ChannelTelegram,
@@ -284,4 +291,13 @@ func TestStore_PendingLeasesExclusively(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, retry, 1)
 	require.Equal(t, first[0].ID, retry[0].ID)
+}
+
+// "user not found" alone cannot be acted on: the id is usually the whole
+// story, since a command sent from a channel carries the channel's id.
+func TestStore_SubscribeNamesTheMissingUser(t *testing.T) {
+	s := New(openTestDB(t), Options{})
+
+	err := s.Subscribe(t.Context(), 9424242, notify.SourceGitLab, []notify.EventType{notify.EventMRAssigned})
+	require.ErrorContains(t, err, "9424242")
 }

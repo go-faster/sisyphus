@@ -19,10 +19,18 @@ import (
 // the command is traced, so a report of "it failed, trace_id=…" lands directly
 // on the span; without a real tracer it is a fresh random id, which still ties
 // the chat message to exactly one log line.
-func (b *Bot) replyFailure(ctx context.Context, s messageSender, command string, err error) {
+func (b *Bot) replyFailure(ctx context.Context, s messageSender, command string, inv invocation, err error) {
 	ref := failureRef(ctx)
+	// Who sent it and from where, because the two are not the same thing: a
+	// message posted in a channel carries the channel's id as its sender, and
+	// a failure that says only "user not found" cannot be told apart from a
+	// user who never enrolled.
 	zctx.From(ctx).Error("command failed",
-		zap.String("command", command), zap.Error(err), zap.String("ref", ref))
+		zap.String("command", command),
+		zap.Int64("sender_id", inv.SenderID),
+		zap.String("chat_type", inv.Chat.Type),
+		zap.Int64("chat_id", inv.Chat.ID),
+		zap.Error(err), zap.String("ref", ref))
 	b.sendTextReply(ctx, s, "Sorry, /"+command+" failed.\ntrace_id: "+ref)
 }
 

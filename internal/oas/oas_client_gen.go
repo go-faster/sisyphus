@@ -73,7 +73,7 @@ type Invoker interface {
 	ListNotifyChats(ctx context.Context) (*NotifyChatsResponse, error)
 	// NotifyEnroll invokes notifyEnroll operation.
 	//
-	// Upsert a NotifyUser's Telegram identity (access hash), called on first bot contact.
+	// Upsert a user row for a Telegram user, called on first bot contact.
 	//
 	// POST /notify/enroll
 	NotifyEnroll(ctx context.Context, request *NotifyEnrollRequest) (*Ack, error)
@@ -108,6 +108,12 @@ type Invoker interface {
 	//
 	// POST /search
 	Search(ctx context.Context, request *SearchRequest) (*SearchResponse, error)
+	// UpsertTelegramPeers invokes upsertTelegramPeers operation.
+	//
+	// Record Telegram peers the bot has seen, with their current access hashes.
+	//
+	// POST /telegram/peers
+	UpsertTelegramPeers(ctx context.Context, request *TelegramPeersRequest) (*Ack, error)
 }
 
 // Client implements OAS client.
@@ -963,7 +969,7 @@ func (c *Client) sendListNotifyChats(ctx context.Context) (res *NotifyChatsRespo
 
 // NotifyEnroll invokes notifyEnroll operation.
 //
-// Upsert a NotifyUser's Telegram identity (access hash), called on first bot contact.
+// Upsert a user row for a Telegram user, called on first bot contact.
 //
 // POST /notify/enroll
 func (c *Client) NotifyEnroll(ctx context.Context, request *NotifyEnrollRequest) (*Ack, error) {
@@ -1666,6 +1672,122 @@ func (c *Client) sendSearch(ctx context.Context, request *SearchRequest) (res *S
 
 	stage = "DecodeResponse"
 	result, err := decodeSearchResponse(resp)
+	if err != nil {
+		return res, errors.Wrap(err, "decode response")
+	}
+
+	return result, nil
+}
+
+// UpsertTelegramPeers invokes upsertTelegramPeers operation.
+//
+// Record Telegram peers the bot has seen, with their current access hashes.
+//
+// POST /telegram/peers
+func (c *Client) UpsertTelegramPeers(ctx context.Context, request *TelegramPeersRequest) (*Ack, error) {
+	res, err := c.sendUpsertTelegramPeers(ctx, request)
+	return res, err
+}
+
+func (c *Client) sendUpsertTelegramPeers(ctx context.Context, request *TelegramPeersRequest) (res *Ack, err error) {
+	otelAttrs := []attribute.KeyValue{
+		otelogen.OperationID("upsertTelegramPeers"),
+		semconv.HTTPRequestMethodKey.String("POST"),
+		semconv.URLTemplateKey.String("/telegram/peers"),
+	}
+	otelAttrs = append(otelAttrs, c.cfg.Attributes...)
+
+	// Run stopwatch.
+	startTime := time.Now()
+	defer func() {
+		// Use floating point division here for higher precision (instead of Millisecond method).
+		elapsedDuration := time.Since(startTime)
+		c.duration.Record(ctx, float64(elapsedDuration)/float64(time.Millisecond), metric.WithAttributes(otelAttrs...))
+	}()
+
+	// Increment request counter.
+	c.requests.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+
+	// Start a span for this request.
+	ctx, span := c.cfg.Tracer.Start(ctx, UpsertTelegramPeersOperation,
+		trace.WithAttributes(otelAttrs...),
+		clientSpanKind,
+	)
+	// Track stage for error reporting.
+	var stage string
+	defer func() {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, stage)
+			c.errors.Add(ctx, 1, metric.WithAttributes(otelAttrs...))
+		}
+		span.End()
+	}()
+
+	stage = "BuildURL"
+	u := uri.Clone(c.requestURL(ctx))
+	var pathParts [1]string
+	pathParts[0] = "/telegram/peers"
+	uri.AddPathParts(u, pathParts[:]...)
+
+	stage = "EncodeRequest"
+	r, err := ht.NewRequest(ctx, "POST", u)
+	if err != nil {
+		return res, errors.Wrap(err, "create request")
+	}
+	if err := encodeUpsertTelegramPeersRequest(request, r); err != nil {
+		return res, errors.Wrap(err, "encode request")
+	}
+
+	{
+		type bitset = [1]uint8
+		var satisfied bitset
+		{
+			stage = "Security:BearerAuth"
+			switch err := c.securityBearerAuth(ctx, UpsertTelegramPeersOperation, r); {
+			case err == nil: // if NO error
+				satisfied[0] |= 1 << 0
+			case errors.Is(err, ogenerrors.ErrSkipClientSecurity):
+				// Skip this security.
+			default:
+				return res, errors.Wrap(err, "security \"BearerAuth\"")
+			}
+		}
+
+		if ok := func() bool {
+		nextRequirement:
+			for _, requirement := range []bitset{
+				{0b00000001},
+			} {
+				for i, mask := range requirement {
+					if satisfied[i]&mask != mask {
+						continue nextRequirement
+					}
+				}
+				return true
+			}
+			return false
+		}(); !ok {
+			return res, ogenerrors.ErrSecurityRequirementIsNotSatisfied
+		}
+	}
+
+	stage = "SendRequest"
+	resp, err := c.cfg.Client.Do(r)
+	if err != nil {
+		return res, errors.Wrap(err, "do request")
+	}
+	body := resp.Body
+	defer func() {
+		// Drain the body to EOF before closing, so the underlying
+		// connection can be reused by the Transport regardless of the
+		// response status code. See https://github.com/ogen-go/ogen/issues/1670.
+		_, _ = io.Copy(io.Discard, body)
+		_ = body.Close()
+	}()
+
+	stage = "DecodeResponse"
+	result, err := decodeUpsertTelegramPeersResponse(resp)
 	if err != nil {
 		return res, errors.Wrap(err, "decode response")
 	}

@@ -2030,12 +2030,6 @@ func (s *NotifyChatRequest) encodeFields(e *jx.Encoder) {
 		e.Int64(s.PeerID)
 	}
 	{
-		if s.AccessHash.Set {
-			e.FieldStart("access_hash")
-			s.AccessHash.Encode(e)
-		}
-	}
-	{
 		if s.Title.Set {
 			e.FieldStart("title")
 			s.Title.Encode(e)
@@ -2053,13 +2047,12 @@ func (s *NotifyChatRequest) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfNotifyChatRequest = [6]string{
+var jsonFieldsNameOfNotifyChatRequest = [5]string{
 	0: "peer_type",
 	1: "peer_id",
-	2: "access_hash",
-	3: "title",
-	4: "added_by",
-	5: "enabled",
+	2: "title",
+	3: "added_by",
+	4: "enabled",
 }
 
 // Decode decodes NotifyChatRequest from json.
@@ -2093,16 +2086,6 @@ func (s *NotifyChatRequest) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"peer_id\"")
 			}
-		case "access_hash":
-			if err := func() error {
-				s.AccessHash.Reset()
-				if err := s.AccessHash.Decode(d); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"access_hash\"")
-			}
 		case "title":
 			if err := func() error {
 				s.Title.Reset()
@@ -2124,7 +2107,7 @@ func (s *NotifyChatRequest) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"added_by\"")
 			}
 		case "enabled":
-			requiredBitSet[0] |= 1 << 5
+			requiredBitSet[0] |= 1 << 4
 			if err := func() error {
 				v, err := d.Bool()
 				s.Enabled = bool(v)
@@ -2145,7 +2128,7 @@ func (s *NotifyChatRequest) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [1]uint8{
-		0b00100011,
+		0b00010011,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -2352,15 +2335,10 @@ func (s *NotifyEnrollRequest) encodeFields(e *jx.Encoder) {
 		e.FieldStart("telegram_user_id")
 		e.Int64(s.TelegramUserID)
 	}
-	{
-		e.FieldStart("telegram_access_hash")
-		e.Int64(s.TelegramAccessHash)
-	}
 }
 
-var jsonFieldsNameOfNotifyEnrollRequest = [2]string{
+var jsonFieldsNameOfNotifyEnrollRequest = [1]string{
 	0: "telegram_user_id",
-	1: "telegram_access_hash",
 }
 
 // Decode decodes NotifyEnrollRequest from json.
@@ -2384,18 +2362,6 @@ func (s *NotifyEnrollRequest) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"telegram_user_id\"")
 			}
-		case "telegram_access_hash":
-			requiredBitSet[0] |= 1 << 1
-			if err := func() error {
-				v, err := d.Int64()
-				s.TelegramAccessHash = int64(v)
-				if err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"telegram_access_hash\"")
-			}
 		default:
 			return d.Skip()
 		}
@@ -2406,7 +2372,7 @@ func (s *NotifyEnrollRequest) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [1]uint8{
-		0b00000011,
+		0b00000001,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -4340,6 +4306,316 @@ func (s *SearchResult) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *SearchResult) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *TelegramPeer) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *TelegramPeer) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("peer_type")
+		s.PeerType.Encode(e)
+	}
+	{
+		e.FieldStart("peer_id")
+		e.Int64(s.PeerID)
+	}
+	{
+		if s.AccessHash.Set {
+			e.FieldStart("access_hash")
+			s.AccessHash.Encode(e)
+		}
+	}
+	{
+		if s.Username.Set {
+			e.FieldStart("username")
+			s.Username.Encode(e)
+		}
+	}
+	{
+		if s.Title.Set {
+			e.FieldStart("title")
+			s.Title.Encode(e)
+		}
+	}
+}
+
+var jsonFieldsNameOfTelegramPeer = [5]string{
+	0: "peer_type",
+	1: "peer_id",
+	2: "access_hash",
+	3: "username",
+	4: "title",
+}
+
+// Decode decodes TelegramPeer from json.
+func (s *TelegramPeer) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode TelegramPeer to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "peer_type":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				if err := s.PeerType.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"peer_type\"")
+			}
+		case "peer_id":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Int64()
+				s.PeerID = int64(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"peer_id\"")
+			}
+		case "access_hash":
+			if err := func() error {
+				s.AccessHash.Reset()
+				if err := s.AccessHash.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"access_hash\"")
+			}
+		case "username":
+			if err := func() error {
+				s.Username.Reset()
+				if err := s.Username.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"username\"")
+			}
+		case "title":
+			if err := func() error {
+				s.Title.Reset()
+				if err := s.Title.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"title\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode TelegramPeer")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000011,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfTelegramPeer) {
+					name = jsonFieldsNameOfTelegramPeer[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *TelegramPeer) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *TelegramPeer) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes TelegramPeerPeerType as json.
+func (s TelegramPeerPeerType) Encode(e *jx.Encoder) {
+	e.Str(string(s))
+}
+
+// Decode decodes TelegramPeerPeerType from json.
+func (s *TelegramPeerPeerType) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode TelegramPeerPeerType to nil")
+	}
+	v, err := d.StrBytes()
+	if err != nil {
+		return err
+	}
+	// Try to use constant string.
+	switch TelegramPeerPeerType(v) {
+	case TelegramPeerPeerTypeUser:
+		*s = TelegramPeerPeerTypeUser
+	case TelegramPeerPeerTypeChannel:
+		*s = TelegramPeerPeerTypeChannel
+	case TelegramPeerPeerTypeChat:
+		*s = TelegramPeerPeerTypeChat
+	default:
+		*s = TelegramPeerPeerType(v)
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s TelegramPeerPeerType) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *TelegramPeerPeerType) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *TelegramPeersRequest) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *TelegramPeersRequest) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("peers")
+		e.ArrStart()
+		for _, elem := range s.Peers {
+			elem.Encode(e)
+		}
+		e.ArrEnd()
+	}
+}
+
+var jsonFieldsNameOfTelegramPeersRequest = [1]string{
+	0: "peers",
+}
+
+// Decode decodes TelegramPeersRequest from json.
+func (s *TelegramPeersRequest) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode TelegramPeersRequest to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "peers":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				s.Peers = make([]TelegramPeer, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem TelegramPeer
+					if err := elem.Decode(d); err != nil {
+						return err
+					}
+					s.Peers = append(s.Peers, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"peers\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode TelegramPeersRequest")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000001,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfTelegramPeersRequest) {
+					name = jsonFieldsNameOfTelegramPeersRequest[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *TelegramPeersRequest) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *TelegramPeersRequest) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
