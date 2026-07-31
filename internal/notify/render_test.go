@@ -46,6 +46,45 @@ func TestDefaultRenderer(t *testing.T) {
 				"[ABC\\-1\\: Broken](https://jira.example.com/browse/ABC-1)",
 		},
 		{
+			name: "mr commented",
+			event: Event{
+				Type:        EventMRCommented,
+				Actor:       Actor{Display: "John Doe", URL: "https://gitlab.example.com/jdoe"},
+				Title:       "MR !42: Fix the thing",
+				URL:         "https://gitlab.example.com/g/p/-/merge_requests/42#note_7",
+				Description: "needs a rebase",
+			},
+			want: "💬 [John Doe](https://gitlab.example.com/jdoe) commented on " +
+				"[MR \\!42\\: Fix the thing](https://gitlab.example.com/g/p/-/merge_requests/42#note_7)" +
+				"\n\nneeds a rebase",
+		},
+		{
+			name: "issue mentioned",
+			event: Event{
+				Type:        EventIssueMentioned,
+				Actor:       Actor{Display: "Jane"},
+				Title:       "ABC-1: Broken",
+				URL:         "https://jira.example.com/browse/ABC-1",
+				Description: "[~bob] can you look?",
+			},
+			// The comment body is ingested content, so it is escaped like any
+			// other plain-text field — its brackets must not become a link.
+			want: "📣 **Jane** mentioned you on [ABC\\-1\\: Broken](https://jira.example.com/browse/ABC-1)" +
+				"\n\n\\[\\~bob\\] can you look\\?",
+		},
+		{
+			// A comment whose body was all whitespace still renders as the
+			// one-liner rather than as a message with a dangling blank.
+			name: "comment without body",
+			event: Event{
+				Type:  EventMRCommented,
+				Actor: Actor{Display: "John Doe"},
+				Title: "MR",
+				URL:   "https://gitlab.example.com/g/p/-/merge_requests/42",
+			},
+			want: "💬 **John Doe** commented on [MR](https://gitlab.example.com/g/p/-/merge_requests/42)",
+		},
+		{
 			name:  "unknown actor",
 			event: Event{Type: EventIssueAssigned, Title: "ABC-1", URL: "https://jira.example.com/browse/ABC-1"},
 			want:  "📋 **Someone** assigned you [ABC\\-1](https://jira.example.com/browse/ABC-1)",

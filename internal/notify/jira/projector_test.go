@@ -159,3 +159,92 @@ func TestProjector_UnknownAssignmentTimeStillNotifies(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, events, 1)
 }
+
+// commentEvent builds an issue event whose only news is its comments: the
+// assignment is dated months back so it never confuses the assertions.
+func commentEvent(t *testing.T, assignee string, comments ...ingestjira.Comment) event.Event {
+	t.Helper()
+	return issueEventAssignedBy(t, assignee, "Alice", ingestjira.IssuePayload{
+		AssignedBy: chunkjira.User{ID: "acc-rachel"},
+		AssignedAt: eventTime.AddDate(0, -3, 0),
+		Comments:   comments,
+	})
+}
+
+func TestProjector_ProjectsComments(t *testing.T) {
+	e := commentEvent(t, "acc-alice", ingestjira.Comment{
+		ID:        "9001",
+		Author:    chunkjira.User{ID: "acc-carol", Display: "Carol", URL: "https://jira.example.com/carol"},
+		Body:      "any update?",
+		URL:       "https://jira.example.com/browse/IDP-1?focusedCommentId=9001",
+		CreatedAt: eventTime,
+	})
+
+	events, err := testProjector().Project(e)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+
+	got := events[0]
+	require.Equal(t, notify.EventIssueCommented, got.Type)
+	require.Equal(t, "acc-alice", got.Recipient.Key)
+	require.Equal(t, "acc-carol", got.Actor.Key)
+	require.Equal(t, "any update?", got.Description)
+	require.Equal(t, "issue_commented:IDP-1:9001:acc-alice", got.EventID)
+	require.Equal(t, []notify.Button{{
+		Text: "Open comment",
+		URL:  "https://jira.example.com/browse/IDP-1?focusedCommentId=9001",
+	}}, got.Buttons)
+}
+
+// Being named reaches someone with no relationship to the issue at all — an
+// unassigned issue included, which is why the projector no longer returns
+// early on one.
+func TestProjector_ProjectsMentionsOnUnassignedIssue(t *testing.T) {
+	e := commentEvent(t, "", ingestjira.Comment{
+		ID:        "9001",
+		Author:    chunkjira.User{ID: "acc-carol"},
+		Body:      "[~acc-erin] thoughts?",
+		Mentions:  []string{"acc-erin"},
+		CreatedAt: eventTime,
+	})
+
+	events, err := testProjector().Project(e)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, notify.EventIssueMentioned, events[0].Type)
+	require.Equal(t, "acc-erin", events[0].Recipient.Key)
+	require.Equal(t, notify.SourceJira, events[0].Recipient.Source)
+	require.Equal(t, "issue_mentioned:IDP-1:9001:acc-erin", events[0].EventID)
+}
+
+// A comment on an issue assigned to you months ago is still news, even though
+// the assignment behind it is not.
+func TestProjector_CommentsOutliveStaleAssignment(t *testing.T) {
+	e := commentEvent(t, "acc-alice", ingestjira.Comment{
+		ID:        "9001",
+		Author:    chunkjira.User{ID: "acc-carol"},
+		Body:      "ping",
+		CreatedAt: eventTime,
+	})
+
+	events, err := testProjector().Project(e)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, notify.EventIssueCommented, events[0].Type)
+}
+
+// Your own comment is self-caused, so the dispatcher drops it.
+func TestProjector_OwnCommentIsSelfCaused(t *testing.T) {
+	e := commentEvent(t, "", ingestjira.Comment{
+		ID:        "9001",
+		Author:    chunkjira.User{ID: "acc-erin"},
+		Body:      "[~acc-erin] note to self",
+		Mentions:  []string{"acc-erin"},
+		CreatedAt: eventTime,
+	})
+
+	events, err := testProjector().Project(e)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.True(t, events[0].SelfCaused())
+}

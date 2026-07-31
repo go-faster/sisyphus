@@ -15,9 +15,19 @@ import (
 
 // Comment represents a comment on a GitLab issue or MR.
 type Comment struct {
-	Author  string
-	Body    string
-	Created time.Time
+	// ID is the note id GitLab assigned. It is stable per comment and does not
+	// change when the comment is edited, which is what a comment notification
+	// keys its dedup id on. Empty when the source did not carry one.
+	ID string
+	// Author is the display name used in the chunked body — the username when
+	// GitLab reported one, the full name otherwise.
+	Author string
+	// AuthorUser is the same person as a notification needs them: the username
+	// a configured notify identity is matched against, plus name and profile
+	// page. Zero when the note named nobody.
+	AuthorUser User
+	Body       string
+	Created    time.Time
 }
 
 // Thread groups comments from a discussion, tracking resolved state.

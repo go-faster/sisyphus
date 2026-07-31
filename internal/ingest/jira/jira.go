@@ -224,6 +224,7 @@ type jiraCommentContainer struct {
 }
 
 type jiraCommentItem struct {
+	ID      string    `json:"id"`
 	Author  *jiraUser `json:"author"`
 	Body    string    `json:"body"`
 	Created string    `json:"created"`
@@ -323,10 +324,16 @@ func convertIssue(jiraIss jiraIssue, baseURL string) (chunkjira.Issue, error) {
 	if jiraIss.Fields.Comment != nil {
 		for _, c := range jiraIss.Fields.Comment.Comments {
 			cmt := chunkjira.Comment{
+				ID:   c.ID,
 				Body: c.Body,
 			}
 			if c.Author != nil {
 				cmt.Author = c.Author.DisplayName
+				cmt.AuthorUser = chunkjira.User{
+					ID:      c.Author.identity(),
+					Display: c.Author.DisplayName,
+					URL:     c.Author.profileURL(baseURL),
+				}
 			}
 			created, err := parseJiraTime(c.Created)
 			if err != nil {

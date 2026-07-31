@@ -73,6 +73,20 @@ const (
 	// EventIssueAssigned fires when the recipient is newly set as a Jira
 	// issue's assignee.
 	EventIssueAssigned EventType = "issue_assigned"
+	// EventMRCommented and EventIssueCommented fire when someone comments on
+	// an object already addressed to the recipient — an MR they are assigned
+	// to or reviewing, an issue assigned to them. Assignment says work
+	// arrived; these say the conversation about it moved.
+	EventMRCommented    EventType = "mr_commented"
+	EventIssueCommented EventType = "issue_commented"
+	// EventMRMentioned and EventIssueMentioned fire when a comment names the
+	// recipient — "@username" on GitLab, "[~id]" on Jira. They are separate
+	// types rather than a flavor of the commented ones so they can be
+	// subscribed to alone: being named is usually more urgent than a comment
+	// on something you happen to be assigned, and it does not require being
+	// assigned at all.
+	EventMRMentioned    EventType = "mr_mentioned"
+	EventIssueMentioned EventType = "issue_mentioned"
 	// EventInvestigationCompleted fires when an agent investigation finishes.
 	// It is addressed to a chat, not a user.
 	EventInvestigationCompleted EventType = "investigation_completed"

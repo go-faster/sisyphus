@@ -28,6 +28,10 @@ type IssuePayload struct {
 	// AssignedAt is when the assignee was set. Zero when the changelog did
 	// not say, which a destination must read as "unknown", not as "old".
 	AssignedAt time.Time `json:"assigned_at,omitzero"`
+	// Comments are the issue's newest comments, oldest first (see
+	// [latestComments]). Like the assignee they are current state, not a diff:
+	// the destination decides which of them are news, keyed by comment id.
+	Comments []Comment `json:"comments,omitempty"`
 }
 
 // EventFromIssue builds the canonical event for one fetched issue. Like
@@ -53,6 +57,7 @@ func EventFromIssue(iss chunkjira.Issue) (event.Event, error) {
 		AssigneeDisplay:   iss.Assignee,
 		AssignedBy:        iss.AssignedBy,
 		AssignedAt:        iss.AssignedAt,
+		Comments:          latestComments(iss.Comments, iss.WebURL),
 	})
 	if err != nil {
 		return event.Event{}, errors.Wrap(err, "encode issue payload")

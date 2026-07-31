@@ -7,6 +7,7 @@ package gitlab
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/go-faster/errors"
 
@@ -17,15 +18,30 @@ import (
 
 // Projector implements notify.Projector for GitLab: it fans an
 // event.TypeMRUpdated event out into one notify.Event per current assignee
-// (EventMRAssigned) and per current reviewer (EventMRReviewRequested). The
-// EventID strings match the pre-spine collector's exactly, so existing outbox
-// dedup keys still suppress already-delivered notifications.
+// (EventMRAssigned) and per current reviewer (EventMRReviewRequested), plus
+// the conversation events its comments produce (EventMRCommented,
+// EventMRMentioned — see commentRule). The assignment EventID strings match
+// the pre-spine collector's exactly, so existing outbox dedup keys still
+// suppress already-delivered notifications.
 //
-// Staleness drops membership changes the payload proves are old: the event
-// states the MR's current members, so any push to a long-assigned MR would
-// otherwise announce that assignment as if it just happened.
+// Staleness drops membership changes and comments the payload proves are old:
+// the event states the MR's current members and current comments, so any push
+// to a long-assigned MR would otherwise announce that assignment as if it just
+// happened, and the first poll after comment events shipped would announce
+// every comment in the fetched window.
 type Projector struct {
 	Staleness notify.Staleness
+}
+
+// commentRule is the shared comment projection, named for GitLab.
+func (pr Projector) commentRule() notify.CommentRule {
+	return notify.CommentRule{
+		Source:     notify.SourceGitLab,
+		Commented:  notify.EventMRCommented,
+		Mentioned:  notify.EventMRMentioned,
+		ButtonText: "Open comment",
+		Staleness:  pr.Staleness,
+	}
 }
 
 func (pr Projector) Project(e event.Event) ([]notify.Event, error) {
@@ -96,5 +112,37 @@ func (pr Projector) Project(e event.Event) ([]notify.Event, error) {
 			OccurredAt: e.OccurredAt,
 		})
 	}
+
+	// Comments go to the MR's *current* members, not the stale-filtered sets
+	// above: a comment on an MR assigned to you months ago is still news, even
+	// though the assignment itself is not.
+	watchers := make([]notify.Actor, 0, len(p.Assignees)+len(p.Reviewers))
+	for _, username := range slices.Concat(p.Assignees, p.Reviewers) {
+		watchers = append(watchers, notify.Actor{Source: notify.SourceGitLab, Key: username})
+	}
+	subject := notify.CommentSubject{ObjectID: objectID, Title: e.Subject.Title, URL: e.Subject.URL}
+	out = append(out, pr.commentRule().Project(subject, watchers, comments(p.Comments))...)
+
 	return out, nil
+}
+
+// comments maps the payload's comments onto the shared rule's shape.
+func comments(in []ingestgitlab.Comment) []notify.Comment {
+	out := make([]notify.Comment, 0, len(in))
+	for _, c := range in {
+		out = append(out, notify.Comment{
+			ID: c.ID,
+			Author: notify.Actor{
+				Source:  notify.SourceGitLab,
+				Key:     c.Author.Username,
+				Display: c.Author.Display,
+				URL:     c.Author.URL,
+			},
+			Body:      c.Body,
+			Mentions:  c.Mentions,
+			URL:       c.URL,
+			CreatedAt: c.CreatedAt,
+		})
+	}
+	return out
 }

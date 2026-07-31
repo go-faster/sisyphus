@@ -22,7 +22,7 @@ releases filtered client-side. Cursor advances to max `updated_at` (or `released
 
 - Issues/MRs carry assignees; MRs also carry reviewers and merge metadata (`merged_at`/`by`, `merge_commit_sha`, source/target branch, draft).
 - Cross-references (`closes`/`relates_to`, via the issue-links / MR closes-issues endpoints) are fetched **best-effort and non-fatal** — they can be edition- or permission-gated.
-- Comments come from the **discussions** endpoint, not flat notes, so threads and resolved state survive. Trivial notes are filtered per-note; empty threads dropped.
+- Comments come from the **discussions** endpoint, not flat notes, so threads and resolved state survive. Trivial notes are filtered per-note; empty threads dropped. Each note keeps its **id and author identity** (`AuthorUser`), which the comment notifications key their dedup id on and address their actor with — the chunker's `Author` string alone cannot do either. `comments.go` reduces the threads to the newest `maxPayloadComments` for the event payload and extracts `@username` mentions; mention syntax is parsed here, not in the notify projector, because only this package knows it.
 - System notes are filtered out of those threads but still **read for the actors they name** (`systemnotes.go`): who last assigned, who last requested review, who touched the MR last. GitLab has no assignment-events API and the MR object carries only its author and current members, so the notes are the only record — and the discussions response is already being fetched, so it costs no extra request. The MR **author is not the actor**: they are fixed for the MR's life, so reporting them as the cause of every update names the wrong person. Unknown actor stays zero and renders as "Someone".
 - Deliberately out of scope: code diffs, wiki, CI/pipeline status, merge-commit ingestion.
 
@@ -31,6 +31,7 @@ releases filtered client-side. Cursor advances to max `updated_at` (or `released
 Single source `jira`; incremental via cursor `{last_updated, start_at}`. `--since`
 overrides `last_updated`.
 
+- Comments arrive on the issue's `comment` field, and keep their **id and author identity** for the same reason GitLab's notes do. `comments.go` reduces them to the newest `maxPayloadComments` for the event payload and extracts `[~accountid:…]`/`[~username]` mentions — into the same id space `identity()` reports, so a mention resolves against `notify.identities` exactly as an assignee does.
 - The search runs with `expand=changelog` (`changelog.go`), because **no issue field says who performed an update**: `reporter` is who filed it, which is a different person as soon as anyone else touches the issue. The newest history entry gives the event's actor, and the newest one touching `assignee` gives the assigner an assignment notification names. Both are found by timestamp, not position, and both stay zero (rendered "Someone") when the changelog names nobody — misattributing an action to a colleague is worse than naming none.
 
 ## telegram
