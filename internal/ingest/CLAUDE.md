@@ -23,12 +23,15 @@ releases filtered client-side. Cursor advances to max `updated_at` (or `released
 - Issues/MRs carry assignees; MRs also carry reviewers and merge metadata (`merged_at`/`by`, `merge_commit_sha`, source/target branch, draft).
 - Cross-references (`closes`/`relates_to`, via the issue-links / MR closes-issues endpoints) are fetched **best-effort and non-fatal** — they can be edition- or permission-gated.
 - Comments come from the **discussions** endpoint, not flat notes, so threads and resolved state survive. Trivial notes are filtered per-note; empty threads dropped.
+- System notes are filtered out of those threads but still **read for the actors they name** (`systemnotes.go`): who last assigned, who last requested review, who touched the MR last. GitLab has no assignment-events API and the MR object carries only its author and current members, so the notes are the only record — and the discussions response is already being fetched, so it costs no extra request. The MR **author is not the actor**: they are fixed for the MR's life, so reporting them as the cause of every update names the wrong person. Unknown actor stays zero and renders as "Someone".
 - Deliberately out of scope: code diffs, wiki, CI/pipeline status, merge-commit ingestion.
 
 ## jira
 
 Single source `jira`; incremental via cursor `{last_updated, start_at}`. `--since`
 overrides `last_updated`.
+
+- The search runs with `expand=changelog` (`changelog.go`), because **no issue field says who performed an update**: `reporter` is who filed it, which is a different person as soon as anyone else touches the issue. The newest history entry gives the event's actor, and the newest one touching `assignee` gives the assigner an assignment notification names. Both are found by timestamp, not position, and both stay zero (rendered "Someone") when the changelog names nobody — misattributing an action to a colleague is worse than naming none.
 
 ## telegram
 

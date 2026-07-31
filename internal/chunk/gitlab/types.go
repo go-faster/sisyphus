@@ -52,6 +52,20 @@ type Issue struct {
 	Links       []Link
 }
 
+// User is a GitLab user as a destination needs them: the username a
+// configured notify identity is matched against, plus name and profile page
+// for rendering. The zero value means the source did not say who it was.
+type User struct {
+	Username string `json:"username,omitempty"`
+	Display  string `json:"display,omitempty"`
+	// URL is the profile page as GitLab returned it (user.web_url), never
+	// guessed from the instance base URL.
+	URL string `json:"url,omitempty"`
+}
+
+// Zero reports whether the user is unset.
+func (u User) Zero() bool { return u == User{} }
+
 // MergeRequest models a GitLab merge request.
 type MergeRequest struct {
 	IID         int
@@ -74,8 +88,20 @@ type MergeRequest struct {
 	MergedAt       time.Time
 	MergedBy       string
 	MergeCommitSHA string
-	Threads        []Thread
-	Links          []Link
+	// UpdatedBy is the author of the most recent system note, i.e. whoever
+	// last did something GitLab records on the MR. Zero when it has no system
+	// notes or they were not fetched.
+	UpdatedBy User
+	// AssignedBy is who last changed the assignees, and ReviewRequestedBy who
+	// last requested a review — both recovered from the MR's system notes,
+	// the only place GitLab records the person behind a membership change.
+	// They are the actors a notification names; Author is not, since opening
+	// an MR and assigning it are different acts by potentially different
+	// people.
+	AssignedBy        User
+	ReviewRequestedBy User
+	Threads           []Thread
+	Links             []Link
 }
 
 // Release models a GitLab release.

@@ -15,13 +15,16 @@ func TestEventFromMergeRequest(t *testing.T) {
 	ref := MergeRequestRef{
 		Project: "group/project",
 		MR: chunkgitlab.MergeRequest{
-			IID:       42,
-			Title:     "Fix flaky test",
-			Author:    "carol",
-			WebURL:    "https://gitlab.example.com/group/project/-/merge_requests/42",
-			Assignees: []string{"alice"},
-			Reviewers: []string{"bob"},
-			Updated:   updated,
+			IID:               42,
+			Title:             "Fix flaky test",
+			Author:            "carol",
+			WebURL:            "https://gitlab.example.com/group/project/-/merge_requests/42",
+			Assignees:         []string{"alice"},
+			Reviewers:         []string{"bob"},
+			UpdatedBy:         chunkgitlab.User{Username: "erin", Display: "Erin", URL: "https://gitlab.example.com/erin"},
+			AssignedBy:        chunkgitlab.User{Username: "dave", Display: "Dave", URL: "https://gitlab.example.com/dave"},
+			ReviewRequestedBy: chunkgitlab.User{Username: "frank", Display: "Frank", URL: "https://gitlab.example.com/frank"},
+			Updated:           updated,
 		},
 	}
 
@@ -34,7 +37,11 @@ func TestEventFromMergeRequest(t *testing.T) {
 	require.Equal(t, "group/project!42", e.Subject.ID)
 	require.Equal(t, ref.MR.WebURL, e.Subject.URL)
 	require.Equal(t, "MR !42: Fix flaky test", e.Subject.Title)
-	require.Equal(t, "carol", e.Actor.Key)
+	// The actor is the last system-note author, never the MR's opener.
+	require.Equal(t, "erin", e.Actor.Key)
+	require.Equal(t, "Erin", e.Actor.Display)
+	require.Equal(t, "https://gitlab.example.com/erin", e.Actor.URL)
+	require.NotEqual(t, ref.MR.Author, e.Actor.Key)
 	require.Equal(t, updated, e.OccurredAt)
 	require.Equal(t, "group/project", e.Attributes["project"])
 
@@ -42,6 +49,30 @@ func TestEventFromMergeRequest(t *testing.T) {
 	require.NoError(t, e.DecodePayload(&p))
 	require.Equal(t, []string{"alice"}, p.Assignees)
 	require.Equal(t, []string{"bob"}, p.Reviewers)
+	require.Equal(t, ref.MR.AssignedBy, p.AssignedBy)
+	require.Equal(t, ref.MR.ReviewRequestedBy, p.ReviewRequestedBy)
+}
+
+// An MR whose system notes named nobody carries no actor at all, rather than
+// falling back to its author.
+func TestEventFromMergeRequestWithoutSystemNotesHasNoActor(t *testing.T) {
+	e, err := EventFromMergeRequest(MergeRequestRef{
+		Project: "group/project",
+		MR: chunkgitlab.MergeRequest{
+			IID:       7,
+			Author:    "carol",
+			AuthorURL: "https://gitlab.example.com/carol",
+			Assignees: []string{"alice"},
+			Updated:   time.Unix(0, 0).UTC(),
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, e.Actor.Zero())
+
+	var p MRPayload
+	require.NoError(t, e.DecodePayload(&p))
+	require.True(t, p.AssignedBy.Zero())
+	require.True(t, p.ReviewRequestedBy.Zero())
 }
 
 // The ID must be stable per (MR, updated_at): re-fetching an unchanged MR —

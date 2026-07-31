@@ -28,11 +28,22 @@ func (Projector) Project(e event.Event) ([]notify.Event, error) {
 		return nil, errors.Wrap(err, "decode mr payload")
 	}
 
-	actor := notify.Actor{
+	// Each notification names the person behind that specific membership
+	// change, not the envelope's actor — that is whoever touched the MR last,
+	// who may have only pushed a commit. An unknown one stays zero and the
+	// renderer says "Someone": naming the wrong colleague is worse than
+	// naming none.
+	assigner := notify.Actor{
 		Source:  notify.SourceGitLab,
-		Key:     e.Actor.Key,
-		Display: e.Actor.Display,
-		URL:     e.Actor.URL,
+		Key:     p.AssignedBy.Username,
+		Display: p.AssignedBy.Display,
+		URL:     p.AssignedBy.URL,
+	}
+	reviewRequester := notify.Actor{
+		Source:  notify.SourceGitLab,
+		Key:     p.ReviewRequestedBy.Username,
+		Display: p.ReviewRequestedBy.Display,
+		URL:     p.ReviewRequestedBy.URL,
 	}
 	objectID := e.Subject.ID
 	// The MR itself is the only link a GitLab event carries, and it is the
@@ -45,7 +56,7 @@ func (Projector) Project(e event.Event) ([]notify.Event, error) {
 			Source:     notify.SourceGitLab,
 			Type:       notify.EventMRAssigned,
 			Recipient:  notify.Actor{Source: notify.SourceGitLab, Key: username},
-			Actor:      actor,
+			Actor:      assigner,
 			Title:      e.Subject.Title,
 			Buttons:    buttons,
 			URL:        e.Subject.URL,
@@ -59,7 +70,7 @@ func (Projector) Project(e event.Event) ([]notify.Event, error) {
 			Source:     notify.SourceGitLab,
 			Type:       notify.EventMRReviewRequested,
 			Recipient:  notify.Actor{Source: notify.SourceGitLab, Key: username},
-			Actor:      actor,
+			Actor:      reviewRequester,
 			Title:      e.Subject.Title,
 			Buttons:    buttons,
 			URL:        e.Subject.URL,

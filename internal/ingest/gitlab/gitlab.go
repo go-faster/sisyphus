@@ -543,14 +543,14 @@ func (f *Fetcher) fetchProjectMergeRequests(ctx context.Context, project string,
 
 	for _, mr := range mrs {
 		// Fetch discussions (comments) and closes issues for this MR
-		threads, err := f.fetchMRDiscussions(ctx, project, mr.IID)
+		threads, actors, err := f.fetchMRDiscussions(ctx, project, mr.IID)
 		if err != nil {
 			zctx.From(ctx).Warn("failed to fetch MR discussions",
 				zap.String("project", project),
 				zap.Int("iid", mr.IID),
 				zap.Error(err),
 			)
-			threads = nil
+			threads, actors = nil, MRActors{}
 		}
 
 		links, err := f.fetchMRClosesIssues(ctx, project, mr.IID)
@@ -563,7 +563,7 @@ func (f *Fetcher) fetchProjectMergeRequests(ctx context.Context, project string,
 			links = nil
 		}
 
-		chunkMR, err := convertGitLabMR(mr, threads, links)
+		chunkMR, err := convertGitLabMR(mr, threads, links, actors)
 		if err != nil {
 			zctx.From(ctx).Warn("skipping MR with unparseable time",
 				zap.String("project", project),
@@ -583,7 +583,9 @@ func (f *Fetcher) fetchProjectMergeRequests(ctx context.Context, project string,
 	return out, maxUpdatedAt, nil
 }
 
-func (f *Fetcher) fetchMRDiscussions(ctx context.Context, project string, iid int) ([]chunkgitlab.Thread, error) {
+// fetchMRDiscussions returns the MR's comment threads and, from the same
+// response, the actors its system notes name (see [MRActors]).
+func (f *Fetcher) fetchMRDiscussions(ctx context.Context, project string, iid int) ([]chunkgitlab.Thread, MRActors, error) {
 	q := url.Values{}
 	q.Set("per_page", strconv.Itoa(100))
 	q.Set("order_by", "created_at")
@@ -592,17 +594,17 @@ func (f *Fetcher) fetchMRDiscussions(ctx context.Context, project string, iid in
 	path := fmt.Sprintf("/api/v4/projects/%s/merge_requests/%d/discussions", encodeProjectRef(project), iid)
 	req, err := f.buildRequest(ctx, path, q)
 	if err != nil {
-		return nil, err
+		return nil, MRActors{}, err
 	}
 
 	body, err := f.doRequest(req, "fetcher.FetchMRDiscussions")
 	if err != nil {
-		return nil, err
+		return nil, MRActors{}, err
 	}
 
 	var discussions []gitlabDiscussion
 	if err := json.Unmarshal(body, &discussions); err != nil {
-		return nil, errors.Wrap(err, "parse discussions response")
+		return nil, MRActors{}, errors.Wrap(err, "parse discussions response")
 	}
 
 	var threads []chunkgitlab.Thread
@@ -650,7 +652,7 @@ func (f *Fetcher) fetchMRDiscussions(ctx context.Context, project string, iid in
 		}
 	}
 
-	return threads, nil
+	return threads, mrActors(discussions), nil
 }
 
 func (f *Fetcher) fetchMRClosesIssues(ctx context.Context, project string, iid int) ([]chunkgitlab.Link, error) {
@@ -829,7 +831,7 @@ func convertGitLabIssue(issue gitlabIssue, threads []chunkgitlab.Thread, links [
 	}, nil
 }
 
-func convertGitLabMR(mr gitlabMergeRequest, threads []chunkgitlab.Thread, links []chunkgitlab.Link) (chunkgitlab.MergeRequest, error) {
+func convertGitLabMR(mr gitlabMergeRequest, threads []chunkgitlab.Thread, links []chunkgitlab.Link, actors MRActors) (chunkgitlab.MergeRequest, error) {
 	created, err := parseGitLabTime(mr.CreatedAt)
 	if err != nil {
 		return chunkgitlab.MergeRequest{}, err
@@ -892,26 +894,29 @@ func convertGitLabMR(mr gitlabMergeRequest, threads []chunkgitlab.Thread, links 
 	}
 
 	return chunkgitlab.MergeRequest{
-		IID:            mr.IID,
-		Title:          mr.Title,
-		Description:    mr.Description,
-		State:          mr.State,
-		Labels:         mr.Labels,
-		Author:         author,
-		AuthorURL:      authorURL,
-		WebURL:         mr.WebURL,
-		Created:        created,
-		Updated:        updated,
-		Assignees:      assignees,
-		Reviewers:      reviewers,
-		Draft:          mr.Draft,
-		TargetBranch:   mr.TargetBranch,
-		SourceBranch:   mr.SourceBranch,
-		MergedAt:       mergedAt,
-		MergedBy:       mergedBy,
-		MergeCommitSHA: mr.MergeCommitSHA,
-		Threads:        threads,
-		Links:          links,
+		IID:               mr.IID,
+		Title:             mr.Title,
+		Description:       mr.Description,
+		State:             mr.State,
+		Labels:            mr.Labels,
+		Author:            author,
+		AuthorURL:         authorURL,
+		WebURL:            mr.WebURL,
+		Created:           created,
+		Updated:           updated,
+		Assignees:         assignees,
+		Reviewers:         reviewers,
+		Draft:             mr.Draft,
+		TargetBranch:      mr.TargetBranch,
+		SourceBranch:      mr.SourceBranch,
+		MergedAt:          mergedAt,
+		MergedBy:          mergedBy,
+		MergeCommitSHA:    mr.MergeCommitSHA,
+		UpdatedBy:         actors.UpdatedBy,
+		AssignedBy:        actors.AssignedBy,
+		ReviewRequestedBy: actors.ReviewRequestedBy,
+		Threads:           threads,
+		Links:             links,
 	}, nil
 }
 

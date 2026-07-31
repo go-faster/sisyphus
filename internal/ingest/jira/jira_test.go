@@ -1024,3 +1024,71 @@ func TestJiraUserProfileURL(t *testing.T) {
 		})
 	}
 }
+
+// The search asks for the changelog and maps its authors onto the issue: no
+// issue field says who performed an update, and the reporter is a different
+// person as soon as anyone else touches it.
+func TestIssueChangelogMapping(t *testing.T) {
+	t.Parallel()
+
+	baseTime := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	issues := []map[string]any{
+		{
+			"id":  "101",
+			"key": "BILL-42",
+			"fields": map[string]any{
+				"summary":  "Fix the thing",
+				"created":  testJiraTime(baseTime),
+				"updated":  testJiraTime(baseTime.Add(3 * time.Hour)),
+				"assignee": map[string]any{"accountId": "acc-alice", "displayName": "Alice"},
+				"reporter": map[string]any{"accountId": "acc-carol", "displayName": "Carol"},
+			},
+			"changelog": map[string]any{
+				"histories": []any{
+					map[string]any{
+						"author":  map[string]any{"accountId": "acc-bob", "displayName": "Bob"},
+						"created": testJiraTime(baseTime.Add(time.Hour)),
+						"items":   []any{map[string]any{"field": "assignee"}},
+					},
+					map[string]any{
+						"author":  map[string]any{"accountId": "acc-dave", "displayName": "Dave"},
+						"created": testJiraTime(baseTime.Add(2 * time.Hour)),
+						"items":   []any{map[string]any{"field": "labels"}},
+					},
+				},
+			},
+		},
+	}
+
+	var rawQuery string
+	handler := paginatedHandler(issues)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawQuery = r.URL.RawQuery
+		handler(w, r)
+	}))
+	defer srv.Close()
+
+	f, err := New(Options{BaseURL: srv.URL, PAT: "test"})
+	require.NoError(t, err)
+
+	got, _, _, err := f.FetchIssues(context.Background(), FetchOptions{Projects: []string{"BILL"}}, Cursor{})
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+
+	parsed, err := url.ParseQuery(rawQuery)
+	require.NoError(t, err)
+	require.Equal(t, "changelog", parsed.Get("expand"))
+
+	iss := got[0]
+	require.Equal(t, chunkjira.User{
+		ID:      "acc-dave",
+		Display: "Dave",
+		URL:     srv.URL + "/jira/people/acc-dave",
+	}, iss.UpdatedBy)
+	require.Equal(t, chunkjira.User{
+		ID:      "acc-bob",
+		Display: "Bob",
+		URL:     srv.URL + "/jira/people/acc-bob",
+	}, iss.AssignedBy)
+	require.Equal(t, "Carol", iss.Reporter)
+}

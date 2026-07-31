@@ -11,6 +11,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
+
+	chunkgitlab "github.com/go-faster/sisyphus/internal/chunk/gitlab"
 )
 
 // fetchIssuesErr discards FetchIssues' refs/cursor/hasMore, for tests that
@@ -790,4 +794,57 @@ func TestMultipleProjects(t *testing.T) {
 	if len(refs) != 6 {
 		t.Fatalf("expected 6 refs, got %d", len(refs))
 	}
+}
+
+// System notes are filtered out of the comment threads but still read for the
+// actors they name — the only record GitLab keeps of who assigned an MR.
+func TestMRSystemNotesYieldActors(t *testing.T) {
+	t.Parallel()
+
+	baseTime := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	note := func(id int, system bool, body string, at time.Time, username string) map[string]any {
+		return map[string]any{
+			"id":         id,
+			"system":     system,
+			"body":       body,
+			"created_at": at.Format(time.RFC3339),
+			"author": map[string]any{
+				"username": username,
+				"name":     strings.ToUpper(username[:1]) + username[1:],
+				"web_url":  "http://example.com/" + username,
+			},
+		}
+	}
+
+	handler := &testHandler{
+		mrs: []map[string]any{makeGitLabMR(1, "MR 1", baseTime)},
+		mrDiscussions: map[int][]map[string]any{1: {{
+			"id":              "disc-1",
+			"individual_note": false,
+			"notes": []map[string]any{
+				note(1, false, "Real comment", baseTime, "alice"),
+				note(2, true, "assigned to @alice", baseTime.Add(time.Hour), "dave"),
+				note(3, true, "added 1 commit", baseTime.Add(2*time.Hour), "erin"),
+			},
+		}}},
+	}
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	f, err := New(Options{BaseURL: srv.URL, Token: "test", Projects: []string{"1"}})
+	require.NoError(t, err)
+
+	refs, _, _, err := f.FetchMergeRequests(context.Background(), 1, Cursor{})
+	require.NoError(t, err)
+	require.Len(t, refs, 1)
+
+	mr := refs[0].MR
+	require.Equal(t, chunkgitlab.User{Username: "dave", Display: "Dave", URL: "http://example.com/dave"}, mr.AssignedBy)
+	require.Equal(t, chunkgitlab.User{Username: "erin", Display: "Erin", URL: "http://example.com/erin"}, mr.UpdatedBy)
+	require.True(t, mr.ReviewRequestedBy.Zero())
+
+	// The system notes stay out of the indexed comment threads.
+	require.Len(t, mr.Threads, 1)
+	require.Len(t, mr.Threads[0].Comments, 1)
+	require.Equal(t, "Real comment", mr.Threads[0].Comments[0].Body)
 }

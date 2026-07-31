@@ -18,6 +18,8 @@ func TestEventFromIssue(t *testing.T) {
 		Reporter:          "Carol",
 		Assignee:          "Alice",
 		AssigneeAccountID: "acc-alice",
+		UpdatedBy:         chunkjira.User{ID: "acc-dave", Display: "Dave", URL: "https://jira.example.com/jira/people/acc-dave"},
+		AssignedBy:        chunkjira.User{ID: "acc-bob", Display: "Bob", URL: "https://jira.example.com/jira/people/acc-bob"},
 		WebURL:            "https://jira.example.com/browse/ABC-1",
 		Updated:           updated,
 	}
@@ -31,13 +33,42 @@ func TestEventFromIssue(t *testing.T) {
 	require.Equal(t, "ABC-1", e.Subject.ID)
 	require.Equal(t, iss.WebURL, e.Subject.URL)
 	require.Equal(t, "ABC-1: Broken dashboard", e.Subject.Title)
-	require.Equal(t, "Carol", e.Actor.Display)
 	require.Equal(t, updated, e.OccurredAt)
+
+	// The actor is the last changelog author, never the reporter.
+	require.Equal(t, "acc-dave", e.Actor.Key)
+	require.Equal(t, "Dave", e.Actor.Display)
+	require.Equal(t, "https://jira.example.com/jira/people/acc-dave", e.Actor.URL)
+	require.NotEqual(t, iss.Reporter, e.Actor.Display)
 
 	var p IssuePayload
 	require.NoError(t, e.DecodePayload(&p))
 	require.Equal(t, "acc-alice", p.AssigneeAccountID)
 	require.Equal(t, "Alice", p.AssigneeDisplay)
+	require.Equal(t, chunkjira.User{
+		ID:      "acc-bob",
+		Display: "Bob",
+		URL:     "https://jira.example.com/jira/people/acc-bob",
+	}, p.AssignedBy)
+}
+
+// An issue whose changelog named nobody carries no actor at all, rather than
+// falling back to the reporter.
+func TestEventFromIssueWithoutChangelogHasNoActor(t *testing.T) {
+	e, err := EventFromIssue(chunkjira.Issue{
+		Key:               "ABC-3",
+		Reporter:          "Carol",
+		ReporterURL:       "https://jira.example.com/jira/people/acc-carol",
+		Assignee:          "Alice",
+		AssigneeAccountID: "acc-alice",
+		Updated:           time.Unix(0, 0).UTC(),
+	})
+	require.NoError(t, err)
+	require.True(t, e.Actor.Zero())
+
+	var p IssuePayload
+	require.NoError(t, e.DecodePayload(&p))
+	require.True(t, p.AssignedBy.Zero())
 }
 
 // Unassigned issues still produce an event: the knowledge-graph destination
