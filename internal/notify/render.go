@@ -33,10 +33,11 @@ const (
 	assignTemplate = `{{.Emoji}} {{.Actor}} {{.Verb}} {{.Title}}`
 
 	// alertTemplate leads with the transition and the alert name, then the
-	// description, then the identifying labels on one monospace line.
+	// description, then the identifying labels as a code block.
 	alertTemplate = `{{.Emoji}} _{{.Verb}}:_ **{{.Title}}**
 
 {{.Description}}
+
 {{.Labels}}`
 
 	// investigationTemplate is alertTemplate's shape with the agent's report
@@ -93,7 +94,7 @@ type templateData struct {
 	Description string
 	// Body is projector-composed Markdown, passed through unescaped.
 	Body string
-	// Labels is the monospace key=value line, backticks included, or empty.
+	// Labels is the fenced code block of key=value pairs, or empty.
 	Labels string
 }
 
@@ -111,7 +112,7 @@ func (DefaultRenderer) Render(e Event) (string, error) {
 		Actor:       actorText(e.Actor),
 		Description: escapeMarkdown(e.Description),
 		Body:        e.Body,
-		Labels:      labelLine(e.Labels),
+		Labels:      labelBlock(e.Labels),
 	}); err != nil {
 		return "", errors.Wrap(err, "execute template")
 	}
@@ -144,11 +145,18 @@ func actorText(a Actor) string {
 	return "**" + escapeMarkdown(name) + "**"
 }
 
-// labelLine renders labels as one monospace "k=v k=v" line, or "" when there
-// are none. Values are stripped of backticks rather than escaped: the line is
-// a code span, where a backtick is the one character that can end it early
-// and where a backslash escape would show up literally.
-func labelLine(labels []Label) string {
+// labelBlock renders labels as a fenced code block, one "k=v" per line, or ""
+// when there are none.
+//
+// A block rather than a single monospace line because these are meant to be
+// copied — into a PromQL query, a kubectl invocation, a search box — and
+// Telegram gives a code block its own copy affordance while a wrapped one-line
+// span has to be selected by hand.
+//
+// Values are stripped of backticks rather than escaped: inside a code block a
+// backslash escape shows up literally, and a run of backticks is the one thing
+// that can end the fence early.
+func labelBlock(labels []Label) string {
 	pairs := make([]string, 0, len(labels))
 	for _, l := range labels {
 		if l.Key == "" || l.Value == "" {
@@ -159,30 +167,61 @@ func labelLine(labels []Label) string {
 	if len(pairs) == 0 {
 		return ""
 	}
-	return "`" + strings.Join(pairs, " ") + "`"
+	return codeFence + "\n" + strings.Join(pairs, "\n") + "\n" + codeFence
 }
 
+// codeFence opens and closes a fenced code block.
+const codeFence = "```"
+
 // normalize turns a template's output into the line structure Telegram
-// renders correctly: blank-line-separated paragraphs survive as paragraphs,
-// lines within a paragraph get CommonMark hard breaks (LineBreak), and lines
-// or paragraphs an empty field left blank disappear.
+// renders correctly: blank lines separate paragraphs, lines within a
+// paragraph get CommonMark hard breaks (LineBreak), and lines or paragraphs
+// an empty field left blank disappear.
 //
 // This is why templates can interpolate optional fields on their own line
-// without a guard: an absent description or label line collapses away here.
+// without a guard: an absent description or label block collapses away here.
+//
+// A fenced code block is copied through verbatim — hard breaks would put two
+// trailing spaces on every line of it, which is exactly the text someone is
+// about to paste into a query.
 func normalize(s string) string {
-	var paragraphs []string
-	for paragraph := range strings.SplitSeq(strings.ReplaceAll(s, "\r\n", "\n"), "\n\n") {
-		var lines []string
-		for line := range strings.SplitSeq(paragraph, "\n") {
-			if line = strings.TrimRight(line, " \t"); line != "" {
-				lines = append(lines, line)
-			}
-		}
-		if len(lines) > 0 {
-			paragraphs = append(paragraphs, strings.Join(lines, LineBreak))
+	var (
+		out       []string // finished paragraphs
+		paragraph []string // lines of the paragraph being built
+		fence     []string // lines of the code block being built, nil outside one
+	)
+	flush := func() {
+		if len(paragraph) > 0 {
+			out = append(out, strings.Join(paragraph, LineBreak))
+			paragraph = nil
 		}
 	}
-	return strings.Join(paragraphs, "\n\n")
+
+	for line := range strings.SplitSeq(strings.ReplaceAll(s, "\r\n", "\n"), "\n") {
+		switch {
+		case fence != nil:
+			fence = append(fence, line)
+			if strings.HasPrefix(strings.TrimSpace(line), codeFence) {
+				out = append(out, strings.Join(fence, "\n"))
+				fence = nil
+			}
+		case strings.HasPrefix(strings.TrimSpace(line), codeFence):
+			flush()
+			fence = []string{line}
+		default:
+			if line = strings.TrimRight(line, " \t"); line != "" {
+				paragraph = append(paragraph, line)
+			} else {
+				flush()
+			}
+		}
+	}
+	// An unterminated fence is still better emitted than dropped.
+	if len(fence) > 0 {
+		out = append(out, strings.Join(fence, "\n"))
+	}
+	flush()
+	return strings.Join(out, "\n\n")
 }
 
 // markdownSpecialChars are the ASCII punctuation characters CommonMark

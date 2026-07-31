@@ -60,7 +60,8 @@ func TestDefaultRenderer(t *testing.T) {
 				Labels:      []Label{{Key: "severity", Value: "critical"}, {Key: "service", Value: "checkout"}},
 			},
 			want: "🔥 _Firing:_ **[HighErrorRate](https://prometheus.example.com/graph)**\n\n" +
-				"5xx above threshold" + LineBreak + "`severity=critical service=checkout`",
+				"5xx above threshold\n\n" +
+				"```\nseverity=critical\nservice=checkout\n```",
 		},
 		{
 			// Every optional field empty: the template's blank lines must
@@ -76,7 +77,7 @@ func TestDefaultRenderer(t *testing.T) {
 				Title:  "HighErrorRate",
 				Labels: []Label{{Key: "cluster", Value: "prod"}},
 			},
-			want: "🔥 _Firing:_ **HighErrorRate**\n\n`cluster=prod`",
+			want: "🔥 _Firing:_ **HighErrorRate**\n\n```\ncluster=prod\n```",
 		},
 		{
 			name: "investigation",
@@ -88,6 +89,18 @@ func TestDefaultRenderer(t *testing.T) {
 			},
 			want: "🔍 _Investigation:_ **[HighErrorRate](https://sisyphus.example.com/jobs/1)**\n\n" +
 				"Verdict: confirmed" + LineBreak + "- restart the pod",
+		},
+		{
+			// A bare newline is a CommonMark soft break, which the Telegram
+			// renderer turns into a space — that collapsed multi-line bodies
+			// onto one line. Lines in one paragraph get hard breaks.
+			name: "body lines get hard breaks",
+			event: Event{
+				Type:  EventInvestigationCompleted,
+				Title: "X",
+				Body:  "Verdict: confirmed\n- restart the pod",
+			},
+			want: "🔍 _Investigation:_ **X**\n\nVerdict: confirmed" + LineBreak + "- restart the pod",
 		},
 		{
 			// An event type this package does not render yet still has to
@@ -112,7 +125,7 @@ func TestDefaultRenderer(t *testing.T) {
 			want: `🔥 _Firing:_ **\*not bold\* \_not italic\_**`,
 		},
 		{
-			// A backtick in a label value would end the code span early, and
+			// A backtick run in a label value would end the fence early, and
 			// a backslash escape shows up literally inside one.
 			name: "backtick in label value is dropped",
 			event: Event{
@@ -120,10 +133,10 @@ func TestDefaultRenderer(t *testing.T) {
 				Title:  "X",
 				Labels: []Label{{Key: "instance", Value: "a`b"}},
 			},
-			want: "🔥 _Firing:_ **X**\n\n`instance=ab`",
+			want: "🔥 _Firing:_ **X**\n\n```\ninstance=ab\n```",
 		},
 		{
-			name: "empty labels render no code line",
+			name: "empty labels render no code block",
 			event: Event{
 				Type:        EventAlertFiring,
 				Title:       "X",

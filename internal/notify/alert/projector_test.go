@@ -1,6 +1,7 @@
 package alert
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -120,8 +121,8 @@ func TestRenderFiringAndResolved(t *testing.T) {
 	// resolves them back to the literal characters.
 	require.Equal(t,
 		"🔥 _Firing:_ **[HighErrorRate\\: 5xx above 5\\%](https://prometheus.example.com/graph)**\n\n"+
-			"error ratio 12\\%"+notify.LineBreak+
-			"`severity=critical service=checkout`",
+			"error ratio 12\\%\n\n"+
+			"```\nseverity=critical\nservice=checkout\n```",
 		firing)
 
 	e := firingEvent(t)
@@ -133,13 +134,20 @@ func TestRenderFiringAndResolved(t *testing.T) {
 	require.Contains(t, resolved, "✅ _Resolved:_")
 }
 
-// A bare newline is a CommonMark soft break, which the Telegram renderer turns
-// into a space — that collapsed the whole alert onto one line.
-func TestRenderUsesHardLineBreaks(t *testing.T) {
+// The label block is what someone copies into a query, so it must survive
+// rendering verbatim: a CommonMark hard break would put two trailing spaces
+// on every line of it.
+func TestRenderLabelBlockIsVerbatim(t *testing.T) {
 	out, err := Projector{}.Project(firingEvent(t))
 	require.NoError(t, err)
 
 	text, err := notify.DefaultRenderer{}.Render(out[0])
 	require.NoError(t, err)
-	require.Contains(t, text, notify.LineBreak)
+	_, block, ok := strings.Cut(text, "```\n")
+	require.True(t, ok, "expected a fenced label block")
+	block, _, ok = strings.Cut(block, "\n```")
+	require.True(t, ok)
+	for line := range strings.SplitSeq(block, "\n") {
+		require.Equal(t, strings.TrimRight(line, " "), line, "label line must not carry a hard break")
+	}
 }

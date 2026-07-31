@@ -2,6 +2,7 @@ package bot
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/gotd/td/telegram/message/entity"
@@ -110,16 +111,26 @@ func debugMarkdown(d *index.Debug) string {
 	return sb.String()
 }
 
-// linksMarkup builds a vertical inline keyboard of URL buttons, one per link,
-// or nil when there are no links. Links are assumed pre-validated (see
-// index.Link.Valid / agent report normalization).
+// buttonsPerRow is how many URL buttons share one keyboard row. Two keeps a
+// four-button alert two rows tall instead of four, and Telegram sizes buttons
+// to the row, so a pair still reads at a glance.
+const buttonsPerRow = 2
+
+// linksMarkup builds an inline keyboard of URL buttons, buttonsPerRow to a
+// row (a trailing odd link gets a row of its own), or nil when there are no
+// links. Links are assumed pre-validated (see index.Link.Valid / agent report
+// normalization).
 func linksMarkup(links []index.Link) tg.ReplyMarkupClass {
 	if len(links) == 0 {
 		return nil
 	}
-	rows := make([]tg.KeyboardButtonRow, 0, len(links))
-	for _, l := range links {
-		rows = append(rows, markup.Row(markup.URL(l.Text, l.URL)))
+	var rows []tg.KeyboardButtonRow
+	for chunk := range slices.Chunk(links, buttonsPerRow) {
+		buttons := make([]tg.KeyboardButtonClass, 0, len(chunk))
+		for _, l := range chunk {
+			buttons = append(buttons, markup.URL(l.Text, l.URL))
+		}
+		rows = append(rows, markup.Row(buttons...))
 	}
 	return markup.InlineKeyboard(rows...)
 }
