@@ -722,6 +722,9 @@ config:
   #   bot_token: {env: SISYPHUS_TELEGRAM_BOT_TOKEN}
   #   allowed_chats: []
   #   allowed_user_ids: []
+  #   # How long ssbot waits for a /context answer. This, not
+  #   # context.timeout_seconds, is what a Telegram user actually hits.
+  #   answer_timeout_seconds: 60
   # proxies:
   #   git: socks5h://10.0.0.1:1080
   #   gitlab: socks5h://10.0.0.1:1080

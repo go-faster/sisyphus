@@ -143,6 +143,7 @@ func run(ctx context.Context, cfg config.Config, telemetry *app.Telemetry) error
 			Logger:         zctx.From(ctx),
 			AllowedChats:   cfg.Telegram.AllowedChats,
 			AllowedUserIDs: cfg.Telegram.AllowedUserIDs,
+			AnswerTimeout:  time.Duration(cfg.Telegram.AnswerTimeoutSeconds) * time.Second,
 			Investigator:   investigator,
 			Notifier:       notifierAdapter{api: api},
 		},
