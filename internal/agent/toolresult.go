@@ -19,9 +19,14 @@ import (
 //	browser_snapshot (typical)    26–51 KB   docs pages, a GitHub issue list
 //	browser_snapshot (Wikipedia) 487,753 B   what this exists to catch
 //
-// Note this JSON tokenizes at roughly 9 bytes/token, not the ~4 of prose — the
-// 487KB snapshot above is the one measured adding ~55k tokens to a single
-// prompt, and then riding along in every later request.
+// Measured in a deployed run, the 487KB snapshot above truncates to 196,608
+// bytes and lands as ~48.6k prompt tokens — roughly 4 bytes/token, so untrimmed
+// it would have cost ~120k tokens, and then ridden along in every later request.
+//
+// Size the cap in bytes, from a real result. Deriving it from token counts is
+// how an earlier revision landed on 64KB: that number came from dividing one
+// run's bytes by a different run's tokens, and it would have halved a
+// legitimate search response while missing most snapshots.
 //
 // Lowering a chatty tool's own result size is the better fix where one exists:
 // search_knowledge's default limit of 30 costs 133KB per call where limit=12

@@ -26,9 +26,10 @@ Keep this restriction if `collectURLs` or its call site changes. See the root
 
 `coreLoop` truncates every tool result at `defaultMaxToolResultBytes` (`toolresult.go`)
 before fencing it into the conversation. A result is appended once and then re-sent on
-every later iteration, so one unbounded result is paid for once per remaining iteration —
-a single browser snapshot (487KB, a Wikipedia article) was measured adding ~55k tokens to
-a 5-call run.
+every later iteration, so one unbounded result is paid for once per remaining iteration.
+A 487KB browser snapshot (a Wikipedia article) truncates to 192KB and lands as ~48.6k
+prompt tokens in a deployed run; untrimmed it would have been ~120k, in every subsequent
+request.
 
 **`collectURLs` must run on the full result, before truncation.** Truncation can cut
 mid-JSON, and `collectURLs` only reads structured keys from parseable JSON, so collecting
@@ -38,8 +39,12 @@ allowed set. `TestCollectURLsBeforeTruncation` pins this ordering.
 The cap is a safety valve, not a quality lever: it is sized from measured results to
 leave a full `search_knowledge` response (133KB at limit 30) untouched. Shrinking a chatty
 tool's own result is the better fix where one exists — that same tool costs 20KB at
-limit 12. Re-measure before changing the constant; this JSON runs ~9 bytes/token, so
-token-based estimates are off by more than 2×.
+limit 12.
+
+**Size this in bytes, measured from a real result.** An earlier revision used 64KB,
+derived by dividing one run's byte count by a different run's token count; it would have
+halved a legitimate search response while missing most snapshots. Token counts are not a
+substitute for measuring the thing itself.
 
 ## Report links
 
