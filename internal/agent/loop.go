@@ -14,6 +14,16 @@ import (
 type Usage struct {
 	PromptTokens     int64
 	CompletionTokens int64
+	// CachedTokens is the part of PromptTokens the provider served from its
+	// prefix cache. Providers that do not report it leave this 0, which is
+	// indistinguishable from a genuine cache miss — so read it as a lower
+	// bound on cache benefit, never as proof caching is off.
+	//
+	// It is worth having because the loop's dominant cost is the fixed
+	// prefix (system prompt + tool schemas) re-sent on every iteration:
+	// whether that prefix is being cached decides whether trimming it is
+	// urgent or merely tidy.
+	CachedTokens int64
 }
 
 // LLM provides chat completion with tools.

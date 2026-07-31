@@ -30,6 +30,7 @@ func logCompletion(ctx context.Context, model string, msg openai.ChatCompletionM
 		zap.String("model", model),
 		zap.Int64("prompt_tokens", usage.PromptTokens),
 		zap.Int64("completion_tokens", usage.CompletionTokens),
+		zap.Int64("cached_tokens", usage.CachedTokens),
 	}
 	if msg.Content != "" {
 		fields = append(fields, zap.String("content", msg.Content))
