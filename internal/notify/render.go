@@ -32,6 +32,13 @@ const (
 	// that is now yours": who, what they did, and the object.
 	assignTemplate = `{{.Emoji}} {{.Actor}} {{.Verb}} {{.Title}}`
 
+	// commentTemplate is assignTemplate plus what was actually said: the
+	// one-liner alone would make the recipient open the object to find out
+	// whether the comment needs them.
+	commentTemplate = `{{.Emoji}} {{.Actor}} {{.Verb}} {{.Title}}
+
+{{.Description}}`
+
 	// alertTemplate leads with the transition and the alert name, then the
 	// description, then the identifying labels as a code block.
 	alertTemplate = `{{.Emoji}} _{{.Verb}}:_ **{{.Title}}**
@@ -58,6 +65,7 @@ type style struct {
 
 var (
 	assign        = template.Must(template.New("assign").Parse(assignTemplate))
+	comment       = template.Must(template.New("comment").Parse(commentTemplate))
 	alert         = template.Must(template.New("alert").Parse(alertTemplate))
 	investigation = template.Must(template.New("investigation").Parse(investigationTemplate))
 
@@ -65,6 +73,10 @@ var (
 		EventMRAssigned:             {"🔀", "assigned you to", assign},
 		EventMRReviewRequested:      {"👀", "requested your review on", assign},
 		EventIssueAssigned:          {"📋", "assigned you", assign},
+		EventMRCommented:            {"💬", "commented on", comment},
+		EventIssueCommented:         {"💬", "commented on", comment},
+		EventMRMentioned:            {"📣", "mentioned you on", comment},
+		EventIssueMentioned:         {"📣", "mentioned you on", comment},
 		EventAlertFiring:            {"🔥", "Firing", alert},
 		EventAlertResolved:          {"✅", "Resolved", alert},
 		EventInvestigationCompleted: {"🔍", "Investigation", investigation},

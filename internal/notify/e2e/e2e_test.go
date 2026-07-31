@@ -277,3 +277,114 @@ func TestE2E_GitLabMRAssignment_ToTelegramDelivery(t *testing.T) {
 	drainOnce(ctx, t, apiClient, sink)
 	require.Len(t, sink.messages(), 1)
 }
+
+// The conversation half of the same pipeline: a comment on an MR that is
+// already yours, all the way to a Telegram send. It shares every real
+// component with the assignment test above; what is under test here is that
+// a comment becomes its own delivery, keyed by the comment rather than by
+// the object, and that the button opens the comment itself.
+func TestE2E_GitLabMRComment_ToTelegramDelivery(t *testing.T) {
+	db := openTestDB(t)
+	ctx := t.Context()
+	store := notifystore.New(db, notifystore.Options{})
+
+	const telegramUserID int64 = 900100101
+	const telegramAccessHash int64 = 555444334
+
+	_, err := store.EnrollTelegram(ctx, telegramUserID)
+	require.NoError(t, err)
+	_, err = tgpeer.New(db, tgpeer.Options{}).Upsert(ctx, []tgpeer.Peer{
+		{Type: tgpeer.KindUser, ID: telegramUserID, AccessHash: telegramAccessHash},
+	})
+	require.NoError(t, err)
+	_, err = store.SyncIdentities(ctx, []notifystore.Identity{
+		{TelegramUserID: telegramUserID, GitLabUsername: "e2e-alice"},
+	})
+	require.NoError(t, err)
+	require.NoError(t, store.Subscribe(ctx, telegramUserID, notify.SourceGitLab,
+		[]notify.EventType{notify.EventMRAssigned, notify.EventMRCommented}))
+
+	updated := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	fetcher := &fakeGitLabFetcher{refs: []ingestgitlab.MergeRequestRef{
+		{
+			Project: "group/project",
+			MR: chunkgitlab.MergeRequest{
+				IID:       42,
+				Title:     "Fix flaky test",
+				Author:    "e2e-dave",
+				WebURL:    "https://gitlab.example.com/group/project/-/merge_requests/42",
+				Assignees: []string{"e2e-alice"},
+				// Assigned months ago, so the assignment itself is history and
+				// only the comment is news — which is the ordinary case for a
+				// comment on work you already have.
+				AssignedBy: chunkgitlab.User{Username: "e2e-carol"},
+				AssignedAt: updated.AddDate(0, -3, 0),
+				Threads: []chunkgitlab.Thread{{
+					ID: "thread-1",
+					Comments: []chunkgitlab.Comment{{
+						ID:         "7",
+						Author:     "e2e-carol",
+						AuthorUser: chunkgitlab.User{Username: "e2e-carol"},
+						Body:       "this still fails on CI",
+						Created:    updated,
+					}},
+				}},
+				Updated: updated,
+			},
+		},
+	}}
+
+	events, cursor := collectMRs(ctx, t, fetcher, ingestgitlab.Cursor{})
+	require.Len(t, events, 1)
+
+	dispatcher := notify.NewDispatcher(store, store, notify.ChannelTelegram, nil)
+	router := event.NewMux()
+	router.Subscribe(event.Subscription{
+		Name:    "notify-gitlab",
+		Sources: []event.Source{event.SourceGitLab},
+		Handler: notify.NewRouterSubscriber(notifygitlab.Projector{
+			Staleness: notify.Staleness{Now: func() time.Time { return updated }},
+		}, dispatcher),
+	})
+	for _, e := range events {
+		require.NoError(t, router.Route(ctx, e))
+	}
+
+	handler := api.New(nil, nil, "v1.0.0-e2e", api.WithNotifyStore(store))
+	secHandler := api.NewSecurityHandler("secret-token")
+	server, err := oas.NewServer(handler, secHandler, oas.WithErrorHandler(api.ErrorHandler))
+	require.NoError(t, err)
+	httpServer := httptest.NewServer(server)
+	defer httpServer.Close()
+
+	apiClient, err := apiclient.New(httpServer.URL, "secret-token", apiclient.Options{})
+	require.NoError(t, err)
+
+	sink := &mockTelegramSink{}
+	drainOnce(ctx, t, apiClient, sink)
+
+	delivered := sink.messages()
+	require.Len(t, delivered, 1, "the stale assignment is history; only the comment notifies")
+	require.Equal(t, telegramUserID, delivered[0].TelegramUserID)
+	require.Equal(t,
+		"💬 **e2e\\-carol** commented on "+
+			"[MR \\!42\\: Fix flaky test](https://gitlab.example.com/group/project/-/merge_requests/42#note_7)"+
+			"\n\nthis still fails on CI",
+		delivered[0].Text)
+	// The button opens the comment, not just the MR: the anchor is a fragment
+	// on the URL GitLab itself returned.
+	require.Equal(t, []index.Link{
+		{Text: "Open comment", URL: "https://gitlab.example.com/group/project/-/merge_requests/42#note_7"},
+	}, delivered[0].Buttons)
+
+	// Re-fetching the same MR re-emits the same comment, and the outbox dedup
+	// key — keyed by the comment id, so an edit does not re-notify either —
+	// makes it a no-op.
+	events2, _ := collectMRs(ctx, t, fetcher, cursor)
+	require.Len(t, events2, 1)
+	for _, e := range events2 {
+		require.NoError(t, router.Route(ctx, e))
+	}
+	drainOnce(ctx, t, apiClient, sink)
+	require.Len(t, sink.messages(), 1)
+}

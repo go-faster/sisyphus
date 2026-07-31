@@ -87,7 +87,7 @@ Keep the index below one line per package, and put the depth in the nested file.
 - `internal/mcpclient` — MCP client used to call tools exposed by ssmcp.
 - `internal/content` — `index.ContentResolver`: `DatabaseReader`, `LocalRepoReader` (traversal-guarded), `ChainResolver`.
 - `internal/fetch` — `index.URLFetcher` with a per-site allowlist (globs, methods, credentials, byte cap).
-- `internal/notify` (+ `gitlab`, `jira`, `investigation`, `store`) — notifications: `event.Router` → projector → dispatcher/broadcaster → outbox → sink. Two addressing modes: `Dispatcher` matches an event's recipient to subscribed users (GitLab MR assignment, Jira issue assignment); `Broadcaster` writes one row per chat registered with `/alerts on`, for events addressed to nobody in particular (`investigation` — an agent report on a firing alert). It fetches nothing; the GitLab/Jira source adapters emit the events (see `internal/ingest`). A source event states **current** membership, not a change to it, so `notify.Staleness` (`notify.max_assignment_age_seconds`, 24h by default) drops assignments the source dates older than the cutoff — otherwise any edit to a long-assigned issue re-announces its assignment, and a fresh outbox announces every one at once. It is deliberately permissive: an unknown timestamp still notifies, because over-notifying costs one message the dedup key collapses anyway while under-notifying loses a real assignment silently. **Who a GitLab/Jira actor is on Telegram comes from `notify.identities` in config and nowhere else** — ssapi reconciles it on startup (`store.SyncIdentities`), and there is no bot command to claim an identity, because nothing a user types proves the account is theirs. Subscriptions stay self-service. Contract and rationale are in `notify.go`'s package doc; delivery rides `internal/queue`.
+- `internal/notify` (+ `gitlab`, `jira`, `investigation`, `store`) — notifications: `event.Router` → projector → dispatcher/broadcaster → outbox → sink. Two addressing modes: `Dispatcher` matches an event's recipient to subscribed users (GitLab MR assignment and comments, Jira issue assignment and comments); `Broadcaster` writes one row per chat registered with `/alerts on`, for events addressed to nobody in particular (`investigation` — an agent report on a firing alert). It fetches nothing; the GitLab/Jira source adapters emit the events (see `internal/ingest`). A source event states **current** membership, not a change to it, so `notify.Staleness` (`notify.max_assignment_age_seconds`, 24h by default) drops assignments the source dates older than the cutoff — otherwise any edit to a long-assigned issue re-announces its assignment, and a fresh outbox announces every one at once. It is deliberately permissive: an unknown timestamp still notifies, because over-notifying costs one message the dedup key collapses anyway while under-notifying loses a real assignment silently. The same cutoff bounds comment events (see below). **Who a GitLab/Jira actor is on Telegram comes from `notify.identities` in config and nowhere else** — ssapi reconciles it on startup (`store.SyncIdentities`), and there is no bot command to claim an identity, because nothing a user types proves the account is theirs. Subscriptions stay self-service. Contract and rationale are in `notify.go`'s package doc; delivery rides `internal/queue`.
 
 **Infrastructure**
 
@@ -146,6 +146,36 @@ author wrote those; an alert's labels and description carry whatever the alertin
 reported), GitLab/Jira promote only the subject's own URL, and `investigation` re-uses
 `Report.Links`, already normalized. ssbot cannot build buttons itself: it has no DB and no
 event, only the rendered row it drained over HTTP.
+
+## Comments and mentions
+
+Assignment says work arrived; comments say the conversation about it moved. Both ride the
+same events (`mr.updated`, `issue.updated`) — the payload carries the object's newest
+comments alongside its current members, and `notify.CommentRule` (`internal/notify/comments.go`)
+holds the fan-out rule for both sources, because that rule is where the failure modes are:
+
+- **Volume is asymmetric, so the two events fan out differently.** Assignment is one
+  message per object ever; comments are unbounded. A **mention** notifies per comment —
+  being named is explicit and rare, and collapsing two would lose a question addressed to
+  you. A **comment** notifies once per (object, recipient) per batch, for the newest one
+  they did not write. A thread that gets twenty replies between two polls is one message.
+- **The dedup id is the comment id**, never a timestamp: an edit keeps the id, so editing
+  a comment does not re-notify. Keying the coalesced comment event by the *newest*
+  comment's id is what keeps the next poll's newest comment a fresh notification rather
+  than a permanently suppressed one.
+- **Mentions are parsed by the source adapter, not the projector** — only it knows that
+  GitLab writes `@username` and Jira writes `[~accountid:…]`/`[~username]`, and the
+  extracted keys land in the same id space the recipient is matched on.
+- **`notify.Staleness` is the backfill guard.** The poll is incremental on `updated_after`
+  and the event states current comments, so without a cutoff the first run after this
+  shipped would announce every comment in the fetched window. Comments are *not* subject
+  to the assignment's staleness result, though: a comment on an MR assigned to you months
+  ago is still news.
+- A comment's button opens the comment (`#note_<id>` on GitLab, `?focusedCommentId=` on
+  Jira) — a fragment/parameter on the URL the API returned, never a guess at a permalink.
+
+Out of scope, deliberately: watchers/participants/subscribers (needs fetching that does
+not happen), and GitLab *issues*, which emit no canonical event at all today.
 
 ## Alerts: fire → investigate → announce
 

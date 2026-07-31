@@ -32,9 +32,19 @@ func (u User) Zero() bool { return u == User{} }
 
 // Comment represents a single comment on a Jira issue.
 type Comment struct {
-	Author  string
-	Body    string
-	Created time.Time
+	// ID is the comment id Jira assigned. It is stable per comment and does
+	// not change when the comment is edited, which is what a comment
+	// notification keys its dedup id on. Empty when the source did not carry
+	// one.
+	ID string
+	// Author is the author's display name, used in the chunked body.
+	Author string
+	// AuthorUser is the same person as a notification needs them: the stable
+	// id a configured notify identity is matched against, plus name and
+	// profile page. Zero when the comment named nobody.
+	AuthorUser User
+	Body       string
+	Created    time.Time
 }
 
 // Issue models a Jira issue.

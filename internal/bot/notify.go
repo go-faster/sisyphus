@@ -204,9 +204,14 @@ func (b *Bot) Ready() <-chan struct{} {
 	return b.ready
 }
 
+// defaultEventTypesBySource is what /subscribe enrolls in when the user names
+// no types: everything the source can address to them personally. A user who
+// finds comment traffic too noisy narrows it by naming types explicitly, which
+// is easier to discover than the reverse — nobody guesses at an event type
+// they were never subscribed to.
 var defaultEventTypesBySource = map[string][]string{
-	"gitlab": {"mr_assigned", "mr_review_requested"},
-	"jira":   {"issue_assigned"},
+	"gitlab": {"mr_assigned", "mr_review_requested", "mr_commented", "mr_mentioned"},
+	"jira":   {"issue_assigned", "issue_commented", "issue_mentioned"},
 }
 
 func (b *Bot) handleSubscribeCmd(ctx context.Context, s messageSender, inv invocation) error {

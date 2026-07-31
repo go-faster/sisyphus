@@ -133,3 +133,93 @@ func TestProjector_StaleMembershipProjectsNothing(t *testing.T) {
 	require.Len(t, events, 1)
 	require.Equal(t, notify.EventMRReviewRequested, events[0].Type)
 }
+
+// commentPayload is an MR payload whose only news is its comments: no
+// membership actors, so an assignment event never confuses the assertions.
+func commentPayload(assignees, reviewers []string, comments ...ingestgitlab.Comment) ingestgitlab.MRPayload {
+	stale := eventTime.AddDate(0, -3, 0)
+	return ingestgitlab.MRPayload{
+		Assignees:         assignees,
+		Reviewers:         reviewers,
+		AssignedAt:        stale,
+		ReviewRequestedAt: stale,
+		Comments:          comments,
+	}
+}
+
+func TestProjector_ProjectsComments(t *testing.T) {
+	e := mrEventWithActors(t, commentPayload([]string{"alice"}, []string{"bob"},
+		ingestgitlab.Comment{
+			ID:        "7",
+			Author:    chunkgitlab.User{Username: "carol", Display: "Carol", URL: "https://example.com/carol"},
+			Body:      "needs a rebase",
+			URL:       "https://example.com/mr/1#note_7",
+			CreatedAt: eventTime,
+		},
+	))
+
+	events, err := testProjector().Project(e)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+
+	for _, got := range events {
+		require.Equal(t, notify.EventMRCommented, got.Type)
+		require.Equal(t, "carol", got.Actor.Key)
+		require.Equal(t, "needs a rebase", got.Description)
+		require.Equal(t, "https://example.com/mr/1#note_7", got.URL)
+	}
+	require.Equal(t, "mr_commented:group/proj!1:7:alice", events[0].EventID)
+	require.Equal(t, "mr_commented:group/proj!1:7:bob", events[1].EventID)
+}
+
+// A comment on an MR assigned to you months ago is still news, even though
+// the assignment behind it is not.
+func TestProjector_CommentsOutliveStaleAssignment(t *testing.T) {
+	e := mrEventWithActors(t, commentPayload([]string{"alice"}, nil,
+		ingestgitlab.Comment{ID: "7", Author: chunkgitlab.User{Username: "carol"}, Body: "ping", CreatedAt: eventTime},
+	))
+
+	events, err := testProjector().Project(e)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, notify.EventMRCommented, events[0].Type)
+}
+
+// Being named reaches someone with no other relationship to the MR.
+func TestProjector_ProjectsMentions(t *testing.T) {
+	e := mrEventWithActors(t, commentPayload(nil, nil,
+		ingestgitlab.Comment{
+			ID:        "7",
+			Author:    chunkgitlab.User{Username: "carol"},
+			Body:      "@erin thoughts?",
+			Mentions:  []string{"erin"},
+			CreatedAt: eventTime,
+		},
+	))
+
+	events, err := testProjector().Project(e)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, notify.EventMRMentioned, events[0].Type)
+	require.Equal(t, "erin", events[0].Recipient.Key)
+	require.Equal(t, notify.SourceGitLab, events[0].Recipient.Source)
+	require.Equal(t, "mr_mentioned:group/proj!1:7:erin", events[0].EventID)
+}
+
+// Your own comment is self-caused, so the dispatcher drops it.
+func TestProjector_OwnCommentIsSelfCaused(t *testing.T) {
+	e := mrEventWithActors(t, commentPayload(nil, nil,
+		ingestgitlab.Comment{
+			ID:        "7",
+			Author:    chunkgitlab.User{Username: "erin"},
+			Body:      "@erin note to self",
+			Mentions:  []string{"erin"},
+			CreatedAt: eventTime,
+		},
+	))
+
+	events, err := testProjector().Project(e)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.True(t, events[0].SelfCaused())
+}

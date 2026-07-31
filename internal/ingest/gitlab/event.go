@@ -30,6 +30,11 @@ type MRPayload struct {
 	// "unknown", not as "old".
 	AssignedAt        time.Time `json:"assigned_at,omitzero"`
 	ReviewRequestedAt time.Time `json:"review_requested_at,omitzero"`
+	// Comments are the merge request's newest comments, oldest first (see
+	// [latestComments]). Like the member sets they are current state, not a
+	// diff: the destination decides which of them are news, keyed by comment
+	// id.
+	Comments []Comment `json:"comments,omitempty"`
 }
 
 // EventFromMergeRequest builds the canonical event for one fetched merge
@@ -65,6 +70,7 @@ func EventFromMergeRequest(ref MergeRequestRef) (event.Event, error) {
 		ReviewRequestedBy: ref.MR.ReviewRequestedBy,
 		AssignedAt:        ref.MR.AssignedAt,
 		ReviewRequestedAt: ref.MR.ReviewRequestedAt,
+		Comments:          latestComments(ref.MR.Threads, ref.MR.WebURL),
 	})
 	if err != nil {
 		return event.Event{}, errors.Wrap(err, "encode mr payload")

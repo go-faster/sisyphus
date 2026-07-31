@@ -392,52 +392,7 @@ func (f *Fetcher) fetchIssueDiscussions(ctx context.Context, project string, iid
 		return nil, errors.Wrap(err, "parse discussions response")
 	}
 
-	var threads []chunkgitlab.Thread
-	for _, discussion := range discussions {
-		var comments []chunkgitlab.Comment
-		resolved := false
-
-		for _, note := range discussion.Notes {
-			if note.System {
-				continue // Skip system notes
-			}
-
-			created, err := parseGitLabTime(note.CreatedAt)
-			if err != nil {
-				continue // Skip notes with unparseable time
-			}
-
-			author := ""
-			if note.Author != nil {
-				author = note.Author.Username
-				if author == "" {
-					author = note.Author.Name
-				}
-			}
-
-			comments = append(comments, chunkgitlab.Comment{
-				Author:  author,
-				Body:    note.Body,
-				Created: created,
-			})
-
-			// Track if any note in the discussion is resolved
-			if note.Resolved {
-				resolved = true
-			}
-		}
-
-		// Only include thread if it has substantive comments
-		if len(comments) > 0 {
-			threads = append(threads, chunkgitlab.Thread{
-				ID:       discussion.ID,
-				Resolved: resolved,
-				Comments: comments,
-			})
-		}
-	}
-
-	return threads, nil
+	return discussionThreads(discussions), nil
 }
 
 func (f *Fetcher) fetchIssueLinks(ctx context.Context, project string, iid int) ([]chunkgitlab.Link, error) {
@@ -607,6 +562,14 @@ func (f *Fetcher) fetchMRDiscussions(ctx context.Context, project string, iid in
 		return nil, MRActors{}, errors.Wrap(err, "parse discussions response")
 	}
 
+	return discussionThreads(discussions), mrActors(discussions), nil
+}
+
+// discussionThreads maps a discussions response onto the chunker's threads,
+// dropping system notes (they are read separately, for the actors they name —
+// see systemnotes.go) and notes whose timestamp does not parse. A thread whose
+// notes were all dropped is itself dropped.
+func discussionThreads(discussions []gitlabDiscussion) []chunkgitlab.Thread {
 	var threads []chunkgitlab.Thread
 	for _, discussion := range discussions {
 		var comments []chunkgitlab.Comment
@@ -614,26 +577,36 @@ func (f *Fetcher) fetchMRDiscussions(ctx context.Context, project string, iid in
 
 		for _, note := range discussion.Notes {
 			if note.System {
-				continue // Skip system notes
+				continue
 			}
 
 			created, err := parseGitLabTime(note.CreatedAt)
 			if err != nil {
-				continue // Skip notes with unparseable time
+				continue
 			}
 
-			author := ""
+			var (
+				author string
+				user   chunkgitlab.User
+			)
 			if note.Author != nil {
 				author = note.Author.Username
 				if author == "" {
 					author = note.Author.Name
 				}
+				user = chunkgitlab.User{
+					Username: note.Author.Username,
+					Display:  note.Author.Name,
+					URL:      note.Author.WebURL,
+				}
 			}
 
 			comments = append(comments, chunkgitlab.Comment{
-				Author:  author,
-				Body:    note.Body,
-				Created: created,
+				ID:         strconv.Itoa(note.ID),
+				Author:     author,
+				AuthorUser: user,
+				Body:       note.Body,
+				Created:    created,
 			})
 
 			// Track if any note in the discussion is resolved
@@ -651,8 +624,7 @@ func (f *Fetcher) fetchMRDiscussions(ctx context.Context, project string, iid in
 			})
 		}
 	}
-
-	return threads, mrActors(discussions), nil
+	return threads
 }
 
 func (f *Fetcher) fetchMRClosesIssues(ctx context.Context, project string, iid int) ([]chunkgitlab.Link, error) {
