@@ -41,6 +41,17 @@ type payload struct {
 	TelegramPeerType string `json:"telegram_peer_type,omitempty"`
 	Text             string `json:"text"`
 	URL              string `json:"url,omitempty"`
+	// Buttons ride the payload rather than the Notification row: they are
+	// part of the rendered message, and the row stores what was said, not
+	// how it was laid out. A row written before buttons existed decodes to
+	// none, which is exactly right for it.
+	Buttons []button `json:"buttons,omitempty"`
+}
+
+// button is one inline URL button, as carried by the queue.
+type button struct {
+	Text string `json:"text"`
+	URL  string `json:"url"`
 }
 
 // Enqueue implements notify.OutboxWriter. It writes the Notification row and
@@ -88,11 +99,16 @@ func (s *Store) Enqueue(ctx context.Context, channel notify.Channel, target noti
 		return false, errors.Wrap(err, "enqueue notification")
 	}
 
+	buttons := make([]button, 0, len(n.Buttons))
+	for _, b := range n.Buttons {
+		buttons = append(buttons, button{Text: b.Text, URL: b.URL})
+	}
 	body, err := json.Marshal(payload{
 		TelegramUserID:   target.TelegramUserID,
 		TelegramPeerType: string(peerType(target)),
 		Text:             n.Text,
 		URL:              n.URL,
+		Buttons:          buttons,
 	})
 	if err != nil {
 		return false, errors.Wrap(err, "encode delivery payload")
@@ -134,6 +150,7 @@ type OutboxItem struct {
 	TelegramAccessHash int64
 	TelegramPeerType   notify.PeerType
 	Text               string
+	Buttons            []notify.Button
 	URL                string
 	Attempts           int
 }
@@ -166,12 +183,17 @@ func (s *Store) Pending(ctx context.Context, channel notify.Channel, limit int) 
 		if err != nil {
 			return nil, err
 		}
+		buttons := make([]notify.Button, 0, len(p.Buttons))
+		for _, b := range p.Buttons {
+			buttons = append(buttons, notify.Button{Text: b.Text, URL: b.URL})
+		}
 		out = append(out, OutboxItem{
 			ID:                 d.ID,
 			TelegramUserID:     p.TelegramUserID,
 			TelegramAccessHash: hash,
 			TelegramPeerType:   kind,
 			Text:               p.Text,
+			Buttons:            buttons,
 			URL:                p.URL,
 			Attempts:           d.Attempts,
 		})

@@ -192,6 +192,30 @@ func (u jiraUser) identity() string {
 	return ""
 }
 
+// profileURL is the user's browsable profile page under baseURL, or "" when
+// the user object names nobody addressable.
+//
+// The two deployments do not address a user the same way, and an identity()
+// string alone cannot say which is which — so the branch lives here, next to
+// the raw API object, rather than anywhere downstream: only Cloud returns an
+// accountId, so its presence is what distinguishes the two.
+func (u jiraUser) profileURL(baseURL string) string {
+	if baseURL == "" {
+		return ""
+	}
+	if u.AccountID != "" {
+		return baseURL + "/jira/people/" + url.PathEscape(u.AccountID)
+	}
+	name := u.Name
+	if name == "" {
+		name = u.Key
+	}
+	if name == "" {
+		return ""
+	}
+	return baseURL + "/secure/ViewProfile.jspa?name=" + url.QueryEscape(name)
+}
+
 type jiraCommentContainer struct {
 	Comments []jiraCommentItem `json:"comments"`
 }
@@ -238,7 +262,9 @@ func descriptionString(d any) string {
 	}
 }
 
-func convertIssue(jiraIss jiraIssue) (chunkjira.Issue, error) {
+// convertIssue maps a fetched issue onto the chunker's type. baseURL is only
+// needed to build user profile links, and may be empty.
+func convertIssue(jiraIss jiraIssue, baseURL string) (chunkjira.Issue, error) {
 	iss := chunkjira.Issue{
 		Key:   jiraIss.Key,
 		Title: jiraIss.Fields.Summary,
@@ -285,6 +311,7 @@ func convertIssue(jiraIss jiraIssue) (chunkjira.Issue, error) {
 	}
 	if jiraIss.Fields.Reporter != nil {
 		iss.Reporter = jiraIss.Fields.Reporter.DisplayName
+		iss.ReporterURL = jiraIss.Fields.Reporter.profileURL(baseURL)
 	}
 
 	if jiraIss.Fields.Comment != nil {
@@ -520,7 +547,7 @@ func (f *Fetcher) FetchIssues(ctx context.Context, opts FetchOptions, cursor Cur
 
 	issues := make([]chunkjira.Issue, 0, len(searchResp.Issues))
 	for _, iss := range searchResp.Issues {
-		chunkIssue, err := convertIssue(iss)
+		chunkIssue, err := convertIssue(iss, f.baseURL)
 		if err != nil {
 			zctx.From(ctx).Warn("skipping issue with unparseable time",
 				zap.String("key", iss.Key),

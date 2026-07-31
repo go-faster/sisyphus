@@ -27,7 +27,7 @@ func EventFromIssue(iss chunkjira.Issue) (event.Event, error) {
 		Source:     event.SourceJira,
 		Type:       event.TypeIssueUpdated,
 		Subject:    event.Ref{ID: iss.Key, URL: iss.WebURL, Title: fmt.Sprintf("%s: %s", iss.Key, iss.Title)},
-		Actor:      event.Actor{Display: iss.Reporter},
+		Actor:      event.Actor{Display: iss.Reporter, URL: iss.ReporterURL},
 		OccurredAt: iss.Updated,
 	}
 	e, err := e.WithPayload(IssuePayload{

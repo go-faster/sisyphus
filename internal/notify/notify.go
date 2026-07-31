@@ -5,6 +5,13 @@
 // Dispatcher matches those against subscriptions and writes Notifications to an
 // outbox, and a Sink delivers one Notification to one user's Target address.
 //
+// A projector produces data, never message text: a title, a description,
+// labels, the buttons worth offering. Turning that into a message is the
+// Renderer's job, one text/template per event type (render.go). The split is
+// what lets the wording of every notification change in one file instead of
+// four, and it is why a projector never composes Markdown — everything it
+// puts on an Event is escaped on the way through a template.
+//
 // Matching a GitLab/Jira actor to a Telegram user needs a stored identity, and
 // that identity comes from deployment config alone (`notify.identities`,
 // reconciled by ssapi through store.SyncIdentities). A user cannot claim one
@@ -23,6 +30,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"net/url"
 	"strings"
 	"time"
 
@@ -102,6 +110,9 @@ type Actor struct {
 	Source  Source
 	Key     string // GitLab: username. Jira: accountId.
 	Display string // human-readable name, for rendering only
+	// URL is the actor's profile page, for rendering only. Empty when the
+	// source did not carry one — a notification renders the bare name then.
+	URL string
 }
 
 // Event is a single source-side occurrence addressed to a Recipient.
@@ -111,27 +122,101 @@ type Event struct {
 	Recipient Actor // the source-side user this event is FOR
 	Actor     Actor // who caused it (assigner); zero value if unknown
 	Title     string
-	// Body is optional detail rendered under Title (an investigation's
-	// verdict and findings). Empty for the one-line assignment events.
-	Body       string
+	// Body is optional Markdown detail rendered under Title (an
+	// investigation's verdict and findings). Empty for the one-line
+	// assignment events. Unlike the fields below it is passed to the
+	// renderer as-is: it is already Markdown a projector composed, not a
+	// value read out of ingested content.
+	Body string
+	// Description is the event's lead paragraph in plain text (an alert's
+	// description annotation). The renderer escapes it.
+	Description string
+	// Labels are the identifying key=value pairs worth showing, in the order
+	// they should render. The renderer puts them on one monospace line.
+	Labels []Label
+	// Buttons are the actionable links this event offers, rendered as inline
+	// URL buttons under the message. A projector is responsible for putting
+	// only vetted URLs here — see the Answers & link buttons rule in the root
+	// CLAUDE.md.
+	Buttons    []Button
 	URL        string
 	ObjectID   string // stable id of the parent object, e.g. "group/proj!42"
 	EventID    string // stable id of this specific event; see dedup key
 	OccurredAt time.Time
 }
 
+// Label is one identifying key=value pair on an event: an alert's severity,
+// the cluster it fired on.
+type Label struct {
+	Key   string
+	Value string
+}
+
+// Button is one inline URL button rendered under a notification.
+type Button struct {
+	Text string
+	URL  string
+}
+
+// Valid reports whether b can be rendered as a Telegram URL button: a
+// non-empty label pointing at an absolute http(s) URL. It mirrors
+// index.Link.Valid, which notify cannot use without taking on its imports.
+func (b Button) Valid() bool {
+	if strings.TrimSpace(b.Text) == "" {
+		return false
+	}
+	u, err := url.Parse(b.URL)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	return u.Scheme == "http" || u.Scheme == "https"
+}
+
+// ValidButtons keeps only the buttons a sink can actually render, dropping
+// duplicates by URL. Dispatchers call it on the way to the outbox so an
+// unrenderable link never reaches a sink.
+func ValidButtons(buttons []Button) []Button {
+	if len(buttons) == 0 {
+		return nil
+	}
+	var (
+		out  []Button
+		seen = make(map[string]struct{}, len(buttons))
+	)
+	for _, b := range buttons {
+		if !b.Valid() {
+			continue
+		}
+		if _, ok := seen[b.URL]; ok {
+			continue
+		}
+		seen[b.URL] = struct{}{}
+		out = append(out, Button{Text: strings.TrimSpace(b.Text), URL: b.URL})
+	}
+	return out
+}
+
 // SelfCaused reports whether the event's recipient is also its actor: a user
 // should never be notified about their own action.
+//
+// Identity is (Source, Key) alone. Display and URL are rendering-only and
+// need not agree between the two sides — a projector fills the actor's
+// profile link but has no reason to fill the recipient's, and comparing whole
+// structs would then call an obviously self-caused event someone else's.
 func (e Event) SelfCaused() bool {
-	return e.Actor.Source != "" && e.Actor.Key != "" && e.Actor == e.Recipient
+	return e.Actor.Source != "" && e.Actor.Key != "" &&
+		e.Actor.Source == e.Recipient.Source && e.Actor.Key == e.Recipient.Key
 }
 
 // Notification is a rendered, user-addressed message ready for a Sink.
 type Notification struct {
-	UserID   uuid.UUID
-	Source   Source
-	Type     EventType
-	Text     string
+	UserID uuid.UUID
+	Source Source
+	Type   EventType
+	Text   string
+	// Buttons are the rendered message's inline URL buttons, already
+	// filtered by ValidButtons.
+	Buttons  []Button
 	URL      string
 	DedupKey string
 }

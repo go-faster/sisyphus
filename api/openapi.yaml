@@ -668,10 +668,26 @@ components:
           enum: [user, channel, chat]
         text:
           type: string
+        buttons:
+          type: array
+          description: >-
+            Inline URL buttons to render under the message. Already validated
+            server-side: every URL is absolute http(s) and came from a vetted
+            source, never from ingested content.
+          items:
+            $ref: "#/components/schemas/NotificationButton"
         url:
           type: string
         attempts:
           type: integer
+    NotificationButton:
+      type: object
+      required: [text, url]
+      properties:
+        text:
+          type: string
+        url:
+          type: string
     PendingNotificationsResponse:
       type: object
       required: [notifications]

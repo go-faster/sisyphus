@@ -162,6 +162,10 @@ type gitlabLinks struct {
 type gitlabUser struct {
 	Username string `json:"username"`
 	Name     string `json:"name"`
+	// WebURL is the user's profile page. GitLab returns it on every embedded
+	// user object, so a notification can link an actor without this code
+	// guessing the URL shape from the instance's base URL.
+	WebURL string `json:"web_url"`
 }
 
 type gitlabNote struct {
@@ -841,12 +845,13 @@ func convertGitLabMR(mr gitlabMergeRequest, threads []chunkgitlab.Thread, links 
 		return chunkgitlab.MergeRequest{}, err
 	}
 
-	author := ""
+	author, authorURL := "", ""
 	if mr.Author != nil {
 		author = mr.Author.Username
 		if author == "" {
 			author = mr.Author.Name
 		}
+		authorURL = mr.Author.WebURL
 	}
 
 	// Convert assignees to usernames
@@ -893,6 +898,7 @@ func convertGitLabMR(mr gitlabMergeRequest, threads []chunkgitlab.Thread, links 
 		State:          mr.State,
 		Labels:         mr.Labels,
 		Author:         author,
+		AuthorURL:      authorURL,
 		WebURL:         mr.WebURL,
 		Created:        created,
 		Updated:        updated,

@@ -10,10 +10,13 @@ import (
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
 	"github.com/google/uuid"
+	"github.com/gotd/td/telegram/message"
 	"github.com/gotd/td/telegram/message/entity"
 	"github.com/gotd/td/telegram/message/styling"
 	"github.com/gotd/td/tg"
 	"go.uber.org/zap"
+
+	"github.com/go-faster/sisyphus/internal/index"
 )
 
 // NotifySubscription describes one of a Telegram user's notification
@@ -142,7 +145,10 @@ func (b *Bot) capturePeers(ctx context.Context, e tg.Entities, chat chatPeer) {
 // already-sent message instead of creating a duplicate. Without this, a
 // drain-loop retry of the same outbox row (e.g. ssbot crashes between
 // SendTo succeeding and the row being acked) would DM the user twice.
-func (b *Bot) SendTo(ctx context.Context, notificationID uuid.UUID, peerType string, peerID, accessHash int64, text string) error {
+// buttons become inline URL buttons under the message, in one sendMessage
+// with the text rather than a follow-up: two messages would double the
+// notification and only the first would carry the deduplicating random_id.
+func (b *Bot) SendTo(ctx context.Context, notificationID uuid.UUID, peerType string, peerID, accessHash int64, text string, buttons []index.Link) error {
 	if b.silent {
 		return nil
 	}
@@ -152,13 +158,20 @@ func (b *Bot) SendTo(ctx context.Context, notificationID uuid.UUID, peerType str
 	}
 	peer := notifyPeer(peerType, peerID, accessHash)
 	randomID := randomIDFor(notificationID)
-	_, err := sender.To(peer).RandomID(randomID).StyledText(ctx, styling.Custom(func(eb *entity.Builder) error {
+	request := func() *message.Builder {
+		req := sender.To(peer).RandomID(randomID)
+		if kb := linksMarkup(buttons); kb != nil {
+			req = req.Markup(kb)
+		}
+		return req
+	}
+	_, err := request().StyledText(ctx, styling.Custom(func(eb *entity.Builder) error {
 		return renderMarkdown(eb, text)
 	}))
 	if err == nil {
 		return nil
 	}
-	_, err = sender.To(peer).RandomID(randomID).Text(ctx, text)
+	_, err = request().Text(ctx, text)
 	return err
 }
 

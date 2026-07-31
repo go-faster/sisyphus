@@ -54,12 +54,15 @@ type Issue struct {
 
 // MergeRequest models a GitLab merge request.
 type MergeRequest struct {
-	IID            int
-	Title          string
-	Description    string
-	State          string
-	Labels         []string
-	Author         string
+	IID         int
+	Title       string
+	Description string
+	State       string
+	Labels      []string
+	Author      string
+	// AuthorURL is the author's GitLab profile page, as returned by the API
+	// (user.web_url). Rendering only — notifications link the actor with it.
+	AuthorURL      string
 	WebURL         string
 	Created        time.Time
 	Updated        time.Time

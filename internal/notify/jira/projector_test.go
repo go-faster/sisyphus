@@ -17,7 +17,7 @@ func issueEvent(t *testing.T, accountID, display string) event.Event {
 		Source:     event.SourceJira,
 		Type:       event.TypeIssueUpdated,
 		Subject:    event.Ref{ID: "IDP-1", URL: "https://jira.example.com/browse/IDP-1", Title: "IDP-1: Fix bug"},
-		Actor:      event.Actor{Display: "Rachel"},
+		Actor:      event.Actor{Display: "Rachel", URL: "https://jira.example.com/secure/ViewProfile.jspa?name=rachel"},
 		OccurredAt: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC),
 	}
 	e, err := e.WithPayload(ingestjira.IssuePayload{AssigneeAccountID: accountID, AssigneeDisplay: display})
@@ -37,6 +37,8 @@ func TestProjector_AssignedIssueBecomesNotification(t *testing.T) {
 	require.Equal(t, "Rachel", e.Actor.Display)
 	require.Equal(t, "IDP-1: Fix bug", e.Title)
 	require.Equal(t, "jira_assign:IDP-1:acc-alice", e.EventID)
+	require.Equal(t, "https://jira.example.com/secure/ViewProfile.jspa?name=rachel", e.Actor.URL)
+	require.Equal(t, []notify.Button{{Text: "Open issue", URL: "https://jira.example.com/browse/IDP-1"}}, e.Buttons)
 }
 
 func TestProjector_UnassignedIssueProjectsNothing(t *testing.T) {

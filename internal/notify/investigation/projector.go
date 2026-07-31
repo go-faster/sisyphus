@@ -37,11 +37,24 @@ func (Projector) Project(e event.Event) ([]notify.Event, error) {
 		Type:       notify.EventInvestigationCompleted,
 		Title:      e.Subject.Title,
 		Body:       body(p),
+		Buttons:    buttons(p),
 		URL:        e.Subject.URL,
 		ObjectID:   e.Subject.ID,
 		EventID:    e.ID,
 		OccurredAt: e.OccurredAt,
 	}}, nil
+}
+
+// buttons offers the links the agent gathered — the dashboards and tickets it
+// actually looked at. They are already vetted: Report.normalize dropped
+// invalid and duplicate URLs and capped how many survive, so this is a
+// mapping and not a second filter.
+func buttons(p agent.ReportPayload) []notify.Button {
+	out := make([]notify.Button, 0, len(p.Links))
+	for _, l := range p.Links {
+		out = append(out, notify.Button{Text: l.Text, URL: l.URL})
+	}
+	return out
 }
 
 // body renders the verdict, the findings and any suggested actions.

@@ -997,3 +997,30 @@ func TestJiraUserIdentityFallsBackToServerFields(t *testing.T) {
 		})
 	}
 }
+
+// Cloud and Server/DC do not address a user the same way, and an identity()
+// string alone cannot say which deployment produced it — only Cloud returns
+// an accountId, so its presence picks the URL shape.
+func TestJiraUserProfileURL(t *testing.T) {
+	t.Parallel()
+
+	const base = "https://jira.example.com"
+	for _, tt := range []struct {
+		name string
+		user jiraUser
+		base string
+		want string
+	}{
+		{"cloud", jiraUser{AccountID: "acc-1"}, base, base + "/jira/people/acc-1"},
+		{"server name", jiraUser{Name: "a.example"}, base, base + "/secure/ViewProfile.jspa?name=a.example"},
+		{"server key only", jiraUser{Key: "a.example"}, base, base + "/secure/ViewProfile.jspa?name=a.example"},
+		{"name is escaped", jiraUser{Name: "a b&c"}, base, base + "/secure/ViewProfile.jspa?name=a+b%26c"},
+		{"anonymous", jiraUser{DisplayName: "A. Example"}, base, ""},
+		{"no base url", jiraUser{AccountID: "acc-1"}, "", ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, tt.user.profileURL(tt.base))
+		})
+	}
+}

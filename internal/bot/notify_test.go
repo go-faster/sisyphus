@@ -109,7 +109,7 @@ func captureSend(t *testing.T) (stub *fakeSender, sent *string) {
 
 func TestSendTo_NotReadyBeforeRun(t *testing.T) {
 	b := newNotifyTestBot(nil)
-	err := b.SendTo(context.Background(), uuid.New(), "user", 1, 2, "hello")
+	err := b.SendTo(context.Background(), uuid.New(), "user", 1, 2, "hello", nil)
 	require.ErrorIs(t, err, errBotNotReady)
 }
 

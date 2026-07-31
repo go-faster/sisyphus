@@ -17,7 +17,7 @@ func mrEvent(t *testing.T, assignees, reviewers []string) event.Event {
 		Source:     event.SourceGitLab,
 		Type:       event.TypeMRUpdated,
 		Subject:    event.Ref{ID: "group/proj!1", URL: "https://example.com/mr/1", Title: "MR !1: Fix bug"},
-		Actor:      event.Actor{Key: "carol"},
+		Actor:      event.Actor{Key: "carol", URL: "https://example.com/carol"},
 		OccurredAt: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC),
 	}
 	e, err := e.WithPayload(ingestgitlab.MRPayload{Assignees: assignees, Reviewers: reviewers})
@@ -40,6 +40,10 @@ func TestProjector_FansOutAssigneesAndReviewers(t *testing.T) {
 	require.Equal(t, "carol", assigned.Actor.Key)
 	require.Equal(t, "MR !1: Fix bug", assigned.Title)
 	require.Equal(t, "gitlab_mr_assign:group/proj!1:alice", assigned.EventID)
+	// The profile link the source adapter carried, so the message can name
+	// the actor as a link instead of bare text.
+	require.Equal(t, "https://example.com/carol", assigned.Actor.URL)
+	require.Equal(t, []notify.Button{{Text: "Open merge request", URL: "https://example.com/mr/1"}}, assigned.Buttons)
 
 	review := byType[notify.EventMRReviewRequested]
 	require.Equal(t, "bob", review.Recipient.Key)

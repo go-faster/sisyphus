@@ -133,6 +133,9 @@ func (h *Handler) GetPendingNotifications(ctx context.Context, params oas.GetPen
 			Text:               it.Text,
 			Attempts:           it.Attempts,
 		}
+		for _, b := range it.Buttons {
+			pn.Buttons = append(pn.Buttons, oas.NotificationButton{Text: b.Text, URL: b.URL})
+		}
 		if it.URL != "" {
 			pn.URL = oas.NewOptString(it.URL)
 		}
