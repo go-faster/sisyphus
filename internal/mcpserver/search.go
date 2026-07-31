@@ -8,6 +8,12 @@ import (
 	"github.com/go-faster/sisyphus/internal/index"
 )
 
+// defaultSearchLimit bounds a search_knowledge call that names no limit. A
+// result carries each chunk's full text, so the count is the dominant term in
+// its size: measured, limit=30 returns ~133KB and limit=12 ~20KB. Kept in step
+// with internal/answer's in-process copy of this tool.
+const defaultSearchLimit = 10
+
 // SearchArgs are the input parameters for search_knowledge.
 type SearchArgs struct {
 	Query          string            `json:"query" jsonschema:"The search query text."`
@@ -15,7 +21,7 @@ type SearchArgs struct {
 	Filters        map[string]string `json:"filters,omitempty" jsonschema:"Optional metadata filters. Well-known keys: status, source, jira_project, jira_component, jira_key, authority, repo. Values are always strings."`
 	SourceTier     string            `json:"source_tier,omitempty" jsonschema:"Optional source policy: curated (default), code, history, or all. Ignored when filters.source is set."`
 	SourcePrefixes []string          `json:"source_prefixes,omitempty" jsonschema:"Optional explicit source prefixes. Overrides source_tier and is ignored when filters.source is set."`
-	Limit          int               `json:"limit,omitempty" jsonschema:"Maximum number of results (default 30)."`
+	Limit          int               `json:"limit,omitempty" jsonschema:"Maximum number of results (default 10)."`
 }
 
 // SearchResult mirrors the oas.SearchResult mapping for MCP output.
@@ -40,7 +46,7 @@ func searchHandler(retr Retriever) func(context.Context, *mcp.CallToolRequest, S
 	return func(ctx context.Context, _ *mcp.CallToolRequest, args SearchArgs) (*mcp.CallToolResult, SearchOut, error) {
 		limit := args.Limit
 		if limit <= 0 {
-			limit = 30
+			limit = defaultSearchLimit
 		}
 		q := index.Query{
 			Text:           args.Query,

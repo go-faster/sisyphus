@@ -60,6 +60,14 @@ func (k *KnowledgeToolSource) Call(ctx context.Context, name string, argsJSON js
 	}
 }
 
+// defaultSearchLimit bounds a search_knowledge call that names no limit.
+//
+// It is small because a result carries each chunk's full text: measured against
+// a live corpus, limit=30 returns ~133KB per call and limit=12 ~20KB, and the
+// loop re-sends every result on every later iteration. The model can still ask
+// for more explicitly when a query genuinely needs breadth.
+const defaultSearchLimit = 10
+
 type searchKnowledgeArgs struct {
 	Query          string            `json:"query"`
 	Service        string            `json:"service"`
@@ -103,7 +111,7 @@ func searchKnowledgeTool() openai.ChatCompletionToolUnionParam {
 							"type":  "array",
 							"items": map[string]any{"type": "string"},
 						},
-						"limit": map[string]any{"type": "integer", "default": 30},
+						"limit": map[string]any{"type": "integer", "default": defaultSearchLimit},
 					},
 					"required": []string{"query"},
 				},
@@ -123,7 +131,7 @@ func (k *KnowledgeToolSource) searchKnowledge(ctx context.Context, argsJSON json
 		}
 	}
 	if args.Limit <= 0 {
-		args.Limit = 30
+		args.Limit = defaultSearchLimit
 	}
 	results, err := k.retriever.Retrieve(ctx, index.Query{
 		Text:           strings.TrimSpace(args.Query),
