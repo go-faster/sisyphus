@@ -26,20 +26,27 @@ type KnowledgeToolSource struct {
 	retriever Retriever
 	fetcher   index.URLFetcher
 	resolver  index.ContentResolver
-	tracer    trace.Tracer
+	// chunks enables summary-mode search_knowledge and the get_chunks tool.
+	// Nil keeps search_knowledge returning full text, because without it
+	// there is no second call that could recover a snipped body.
+	chunks ChunkFetcher
+	tracer trace.Tracer
 }
 
-func NewKnowledgeToolSource(retriever Retriever, fetcher index.URLFetcher, resolver index.ContentResolver, tracer trace.Tracer) *KnowledgeToolSource {
+func NewKnowledgeToolSource(retriever Retriever, fetcher index.URLFetcher, resolver index.ContentResolver, chunks ChunkFetcher, tracer trace.Tracer) *KnowledgeToolSource {
 	if tracer == nil {
 		tracer = noop.NewTracerProvider().Tracer("github.com/go-faster/sisyphus/internal/answer")
 	}
-	return &KnowledgeToolSource{retriever: retriever, fetcher: fetcher, resolver: resolver, tracer: tracer}
+	return &KnowledgeToolSource{retriever: retriever, fetcher: fetcher, resolver: resolver, chunks: chunks, tracer: tracer}
 }
 
 func (k *KnowledgeToolSource) Tools(_ context.Context) ([]openai.ChatCompletionToolUnionParam, error) {
 	tools := []openai.ChatCompletionToolUnionParam{
 		searchKnowledgeTool(),
 		fetchURLTool(),
+	}
+	if k.chunks != nil {
+		tools = append(tools, getChunksTool())
 	}
 	if k.resolver != nil {
 		tools = append(tools, getFileContentTool())
@@ -51,6 +58,8 @@ func (k *KnowledgeToolSource) Call(ctx context.Context, name string, argsJSON js
 	switch name {
 	case "search_knowledge":
 		return k.searchKnowledge(ctx, argsJSON)
+	case "get_chunks":
+		return k.getChunks(ctx, argsJSON)
 	case "fetch_url":
 		return k.fetchURL(ctx, argsJSON)
 	case "get_file_content":
@@ -59,6 +68,14 @@ func (k *KnowledgeToolSource) Call(ctx context.Context, name string, argsJSON js
 		return "", errors.Errorf("unknown tool %q", name)
 	}
 }
+
+// defaultSearchLimit bounds a search_knowledge call that names no limit.
+//
+// It is small because a result carries each chunk's full text: measured against
+// a live corpus, limit=30 returns ~133KB per call and limit=12 ~20KB, and the
+// loop re-sends every result on every later iteration. The model can still ask
+// for more explicitly when a query genuinely needs breadth.
+const defaultSearchLimit = 10
 
 type searchKnowledgeArgs struct {
 	Query          string            `json:"query"`
@@ -76,9 +93,19 @@ type searchKnowledgeResult struct {
 	SourceURL  string  `json:"source_url,omitempty"`
 	Title      string  `json:"title,omitempty"`
 	ChunkType  string  `json:"chunk_type"`
-	Text       string  `json:"text"`
 	Score      float64 `json:"score"`
 	Vector     bool    `json:"vector"`
+
+	// Text is the whole chunk, set only when no ChunkFetcher is wired and
+	// get_chunks is therefore unavailable.
+	Text string `json:"text,omitempty"`
+
+	// Snippet, Truncated and TextBytes are summary mode: a preview plus the
+	// full size, so the model can decide which chunks are worth a get_chunks
+	// call instead of being handed every body up front.
+	Snippet   string `json:"snippet,omitempty"`
+	Truncated bool   `json:"truncated,omitempty"`
+	TextBytes int    `json:"text_bytes,omitempty"`
 }
 
 func searchKnowledgeTool() openai.ChatCompletionToolUnionParam {
@@ -88,6 +115,8 @@ func searchKnowledgeTool() openai.ChatCompletionToolUnionParam {
 				Name: "search_knowledge",
 				Description: openai.String("Search the knowledge base with hybrid lexical and vector retrieval. " +
 					"Use for fuzzy discovery when you don't already know the exact repo/path to look at. " +
+					"Returns each match as a snippet with its chunk_id and text_bytes, not its full body — " +
+					"call get_chunks with the chunk_ids you actually need to read in full. " +
 					"If you already know the file, prefer get_file_content for its exact, full/current content."),
 				Parameters: shared.FunctionParameters{
 					"type": "object",
@@ -103,7 +132,7 @@ func searchKnowledgeTool() openai.ChatCompletionToolUnionParam {
 							"type":  "array",
 							"items": map[string]any{"type": "string"},
 						},
-						"limit": map[string]any{"type": "integer", "default": 30},
+						"limit": map[string]any{"type": "integer", "default": defaultSearchLimit},
 					},
 					"required": []string{"query"},
 				},
@@ -123,7 +152,7 @@ func (k *KnowledgeToolSource) searchKnowledge(ctx context.Context, argsJSON json
 		}
 	}
 	if args.Limit <= 0 {
-		args.Limit = 30
+		args.Limit = defaultSearchLimit
 	}
 	results, err := k.retriever.Retrieve(ctx, index.Query{
 		Text:           strings.TrimSpace(args.Query),
@@ -136,19 +165,34 @@ func (k *KnowledgeToolSource) searchKnowledge(ctx context.Context, argsJSON json
 	if err != nil {
 		return "", errors.Wrap(err, "retrieve")
 	}
+	// Summary mode: carry a snippet and let the model pull the few chunks it
+	// actually wants via get_chunks. Only when that tool is available —
+	// without a ChunkFetcher there is no way back to the full text, so
+	// snipping here would lose it outright.
+	summarize := k.chunks != nil
+
 	out := make([]searchKnowledgeResult, 0, len(results))
 	for _, r := range results {
-		out = append(out, searchKnowledgeResult{
+		res := searchKnowledgeResult{
 			ChunkID:    r.Chunk.ID.String(),
 			DocumentID: r.Chunk.DocumentID.String(),
 			Source:     metaString(r.Chunk.Metadata, "source"),
 			SourceURL:  metaString(r.Chunk.Metadata, "source_url"),
 			Title:      r.Chunk.Title,
 			ChunkType:  string(r.Chunk.Type),
-			Text:       r.Chunk.Text,
 			Score:      r.Score,
 			Vector:     r.Vector,
-		})
+		}
+		if !summarize {
+			res.Text = r.Chunk.Text
+			out = append(out, res)
+			continue
+		}
+		// TextBytes is the full size, not the snippet's: it tells the model
+		// how much it would be asking for before it calls get_chunks.
+		res.Snippet, res.Truncated = snippet(r.Chunk.Text, defaultSnippetChars)
+		res.TextBytes = len(r.Chunk.Text)
+		out = append(out, res)
 	}
 	b, err := json.Marshal(out)
 	if err != nil {

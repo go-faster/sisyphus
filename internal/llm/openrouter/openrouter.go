@@ -238,6 +238,7 @@ func (c *Client) complete(ctx context.Context, model string, messages []openai.C
 	span.SetAttributes(
 		attribute.Int64("tokens.prompt", promptTokens),
 		attribute.Int64("tokens.completion", completionTokens),
+		attribute.Int64("tokens.cached", resp.Usage.PromptTokensDetails.CachedTokens),
 	)
 	return content, nil
 }

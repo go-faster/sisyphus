@@ -199,8 +199,21 @@ func coreLoop(ctx context.Context, llm LLM, toolSource ToolSource, model string,
 					logger.Warn("tool call failed", zap.String("tool", tc.Function.Name), zap.Error(toolErr))
 					toolRes = fmt.Sprintf("error: %v", toolErr)
 				}
+				// URLs come out of the full result: truncation can cut
+				// mid-JSON, and collectURLs only reads structured keys from
+				// parseable JSON, so extracting after the cut would silently
+				// find nothing.
 				urls := make(map[string]struct{})
 				collectURLs(urls, toolRes)
+
+				toolRes, truncated := truncateToolResult(toolRes, defaultMaxToolResultBytes)
+				if truncated {
+					logger.Warn("tool result truncated",
+						zap.String("tool", tc.Function.Name),
+						zap.Int("limit_bytes", defaultMaxToolResultBytes))
+					span.AddEvent("agent.tool_result_truncated", trace.WithAttributes(
+						attribute.String("tool", tc.Function.Name)))
+				}
 				outcomes[i] = toolOutcome{text: fenceToolResult(tag, toolRes), urls: urls}
 			}(i, idx)
 		}

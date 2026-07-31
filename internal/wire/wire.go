@@ -308,7 +308,7 @@ func New(ctx context.Context, cfg config.Config, opts NewOptions) (Components, e
 	}
 
 	if cfg.OpenRouter.Enabled() && cfg.Context.Agentic {
-		knowledgeTools := answer.NewKnowledgeToolSource(retr, urlFetcher, contentResolver, opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/answer/tools"))
+		knowledgeTools := answer.NewKnowledgeToolSource(retr, urlFetcher, contentResolver, svcs.PG, opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/answer/tools"))
 		var gatewayTools agent.ToolSource
 		if cfg.Context.GatewayURL != "" {
 			gatewayHTTPClient, err := netclient.HTTPClient(ctx, "mcp-gateway", "", netclient.HTTPClientOptions{

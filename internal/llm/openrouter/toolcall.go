@@ -55,13 +55,19 @@ func (c *Client) CompleteWithTools(
 
 	promptTokens = resp.Usage.PromptTokens
 	completionTokens = resp.Usage.CompletionTokens
+	cachedTokens := resp.Usage.PromptTokensDetails.CachedTokens
 	span.SetAttributes(
 		attribute.Int64("tokens.prompt", promptTokens),
 		attribute.Int64("tokens.completion", completionTokens),
+		attribute.Int64("tokens.cached", cachedTokens),
 	)
 
 	msg := resp.Choices[0].Message
-	usage := agent.Usage{PromptTokens: promptTokens, CompletionTokens: completionTokens}
+	usage := agent.Usage{
+		PromptTokens:     promptTokens,
+		CompletionTokens: completionTokens,
+		CachedTokens:     cachedTokens,
+	}
 	logCompletion(ctx, model, msg, usage)
 	return msg, usage, nil
 }

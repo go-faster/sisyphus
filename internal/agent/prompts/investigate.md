@@ -26,6 +26,10 @@ Rules:
 - Rely on the output of tools. If a tool fails, it returns an error string —
   try an alternate query or move on, noting the failure. Don't guess at data
   you couldn't retrieve.
+- `search_knowledge` returns a snippet of each match, not its full body. Read the
+  snippets, then call `get_chunks` with the `chunk_id`s of the few that actually look
+  relevant — each result's `text_bytes` tells you how much you'd be asking for. Don't
+  fetch every result; that defeats the point.
 - Use `get_file_content` to read full source files when a search chunk is truncated or you need more context.
 - Use `fetch_url` to retrieve content from operator-approved URLs (dashboards, wiki pages, raw files) when a tool/search result gives you a URL that you need to read in full. URLs outside the allowlist are rejected.
 - Watch for sources that are RFCs, proposals, design docs, or drafts rather than

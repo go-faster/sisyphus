@@ -22,6 +22,25 @@ clickable button, defeating the "buttons are constrained to vetted sources" guar
 Keep this restriction if `collectURLs` or its call site changes. See the root
 `CLAUDE.md` § "Answers & link buttons" for the whole path.
 
+## Tool results are capped, and URLs are collected before the cap
+
+`coreLoop` truncates every tool result at `defaultMaxToolResultBytes` (`toolresult.go`)
+before fencing it into the conversation. A result is appended once and then re-sent on
+every later iteration, so one unbounded result is paid for once per remaining iteration —
+a single browser snapshot (487KB, a Wikipedia article) was measured adding ~55k tokens to
+a 5-call run.
+
+**`collectURLs` must run on the full result, before truncation.** Truncation can cut
+mid-JSON, and `collectURLs` only reads structured keys from parseable JSON, so collecting
+afterwards silently yields nothing and every vetted `source_url` disappears from the
+allowed set. `TestCollectURLsBeforeTruncation` pins this ordering.
+
+The cap is a safety valve, not a quality lever: it is sized from measured results to
+leave a full `search_knowledge` response (133KB at limit 30) untouched. Shrinking a chatty
+tool's own result is the better fix where one exists — that same tool costs 20KB at
+limit 12. Re-measure before changing the constant; this JSON runs ~9 bytes/token, so
+token-based estimates are off by more than 2×.
+
 ## Report links
 
 `Report.Links` comes from `submit_report`'s `links` param. Unlike `/context` buttons, these
