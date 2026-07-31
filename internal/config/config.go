@@ -84,6 +84,18 @@ type AlertmanagerConfig struct {
 type NotifyConfig struct {
 	PollIntervalSeconds int
 
+	// MaxAssignmentAgeSeconds is how old an assignment (or review request)
+	// may be and still notify. Source events state *current* membership, not
+	// a change to it, so without a cutoff any edit to a long-assigned issue
+	// re-announces that assignment — which is what a new outbox, or a user
+	// who just got an identity, sees a burst of.
+	//
+	// 0 uses notify.DefaultMaxAssignmentAge (24h); negative disables the
+	// check. An assignment whose timestamp the source did not report always
+	// notifies: over-notifying costs one message that dedup would collapse
+	// anyway, under-notifying loses it silently.
+	MaxAssignmentAgeSeconds int
+
 	// Identities maps Telegram users to the GitLab/Jira identities events are
 	// addressed to. It is the *only* way that mapping is established: a bot
 	// user cannot claim an identity, because nothing they type proves they own
@@ -333,7 +345,8 @@ type fileNotifyConfig struct {
 	Poll struct {
 		IntervalSeconds int `yaml:"interval_seconds"`
 	} `yaml:"poll"`
-	Identities []fileNotifyIdentity `yaml:"identities"`
+	MaxAssignmentAgeSeconds *int                 `yaml:"max_assignment_age_seconds"`
+	Identities              []fileNotifyIdentity `yaml:"identities"`
 }
 
 type fileNotifyIdentity struct {
@@ -961,6 +974,14 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 		})
 	}
 
+	// An unset max_assignment_age_seconds means the default, not "disabled":
+	// a pointer distinguishes the two, since 0 is what disables nothing and
+	// negative is the explicit opt-out.
+	maxAssignmentAge := 0
+	if c.Notify.MaxAssignmentAgeSeconds != nil {
+		maxAssignmentAge = *c.Notify.MaxAssignmentAgeSeconds
+	}
+
 	// notify.poll.interval_seconds no longer schedules any collection — the
 	// GitLab and Jira ingestion runs emit the events now — but a config that
 	// only set the notify cadence would stop notifying silently, so it seeds
@@ -1078,8 +1099,9 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 			ShowDebugInfo:  c.Context.ShowDebugInfo,
 		},
 		Notify: NotifyConfig{
-			PollIntervalSeconds: c.Notify.Poll.IntervalSeconds,
-			Identities:          notifyIdentities,
+			PollIntervalSeconds:     c.Notify.Poll.IntervalSeconds,
+			MaxAssignmentAgeSeconds: maxAssignmentAge,
+			Identities:              notifyIdentities,
 		},
 		Ingest: IngestConfig{
 			Addr:                        c.Ingest.Addr,

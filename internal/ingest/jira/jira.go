@@ -150,6 +150,9 @@ type jiraIssue struct {
 	ID     string     `json:"id"`
 	Key    string     `json:"key"`
 	Fields jiraFields `json:"fields"`
+	// Changelog is present only because the search asks for it (expand=changelog);
+	// it names who actually performed an update, which no field does.
+	Changelog *jiraChangelog `json:"changelog"`
 }
 
 type jiraFields struct {
@@ -314,6 +317,9 @@ func convertIssue(jiraIss jiraIssue, baseURL string) (chunkjira.Issue, error) {
 		iss.ReporterURL = jiraIss.Fields.Reporter.profileURL(baseURL)
 	}
 
+	actors := changelogActors(jiraIss.Changelog, baseURL)
+	iss.UpdatedBy, iss.AssignedBy, iss.AssignedAt = actors.UpdatedBy, actors.AssignedBy, actors.AssignedAt
+
 	if jiraIss.Fields.Comment != nil {
 		for _, c := range jiraIss.Fields.Comment.Comments {
 			cmt := chunkjira.Comment{
@@ -408,6 +414,11 @@ func (f *Fetcher) buildRequest(ctx context.Context, jql string, startAt, pageSiz
 	q.Set("startAt", strconv.Itoa(startAt))
 	q.Set("maxResults", strconv.Itoa(pageSize))
 	q.Set("fields", fields)
+	// No issue field says who performed an update — reporter is who filed it,
+	// which is a different person as soon as anyone else touches the issue.
+	// The changelog is the only place the actor exists, and asking for it here
+	// costs one expand instead of a per-issue request.
+	q.Set("expand", "changelog")
 	u.RawQuery = q.Encode()
 
 	req, err := f.buildAPIRequest(ctx, u.RequestURI())

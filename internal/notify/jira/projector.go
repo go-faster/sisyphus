@@ -20,14 +20,31 @@ import (
 // unassigned issue projects to nothing. The EventID matches the pre-spine
 // collector's exactly, so existing outbox dedup keys still suppress
 // already-delivered notifications.
-type Projector struct{}
+//
+// The actor comes from the payload's assigner, not from the envelope's
+// [event.Actor]: the notification reads "X assigned you this", and the
+// envelope names whoever touched the issue last, who may have only edited a
+// label. An unknown assigner stays zero — the renderer says "Someone" — since
+// naming the wrong colleague is worse than naming none. Filling Actor.Key
+// from the same identity space as the recipient's is also what lets
+// notify.Event.SelfCaused suppress your own assignments.
+//
+// Staleness drops assignments the payload proves are old: the event states the
+// issue's current assignee, so any edit to a long-assigned issue would
+// otherwise announce that assignment as if it just happened.
+type Projector struct {
+	Staleness notify.Staleness
+}
 
-func (Projector) Project(e event.Event) ([]notify.Event, error) {
+func (pr Projector) Project(e event.Event) ([]notify.Event, error) {
 	var p ingestjira.IssuePayload
 	if err := e.DecodePayload(&p); err != nil {
 		return nil, errors.Wrap(err, "decode issue payload")
 	}
 	if p.AssigneeAccountID == "" {
+		return nil, nil
+	}
+	if !pr.Staleness.Fresh(p.AssignedAt) {
 		return nil, nil
 	}
 
@@ -39,7 +56,12 @@ func (Projector) Project(e event.Event) ([]notify.Event, error) {
 			Key:     p.AssigneeAccountID,
 			Display: p.AssigneeDisplay,
 		},
-		Actor:      notify.Actor{Source: notify.SourceJira, Display: e.Actor.Display, URL: e.Actor.URL},
+		Actor: notify.Actor{
+			Source:  notify.SourceJira,
+			Key:     p.AssignedBy.ID,
+			Display: p.AssignedBy.Display,
+			URL:     p.AssignedBy.URL,
+		},
 		Title:      e.Subject.Title,
 		Buttons:    []notify.Button{{Text: "Open issue", URL: e.Subject.URL}},
 		URL:        e.Subject.URL,

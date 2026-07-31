@@ -567,3 +567,27 @@ func TestLoadAlertmanagerWebhookWithoutTokenWarns(t *testing.T) {
 	require.True(t, cfg.Alertmanager.WebhookEnabled)
 	require.Contains(t, strings.Join(cfg.Warnings, "\n"), "alertmanager.webhook.token")
 }
+
+// An unset max_assignment_age_seconds must mean "the default", not
+// "disabled": 0 is what the notify.Staleness zero value reads as the default,
+// and negative is the explicit opt-out.
+func TestNotifyMaxAssignmentAge(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		yaml string
+		want int
+	}{
+		{"unset", "notify:\n  poll:\n    interval_seconds: 15\n", 0},
+		{"explicit", "notify:\n  max_assignment_age_seconds: 3600\n", 3600},
+		{"disabled", "notify:\n  max_assignment_age_seconds: -1\n", -1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			clearEnv(t)
+			t.Setenv("SISYPHUS_CONFIG", writeConfig(t, "database:\n  dsn:\n    value: postgres://u:p@localhost/db\n"+tt.yaml))
+
+			cfg, err := Load()
+			require.NoError(t, err)
+			require.Equal(t, tt.want, cfg.Notify.MaxAssignmentAgeSeconds)
+		})
+	}
+}

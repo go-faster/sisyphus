@@ -177,9 +177,16 @@ telegram:
 # types over Telegram proves the account is theirs. ssapi reconciles the list
 # on startup, so removing an entry revokes it. Each entry needs telegram_id
 # plus at least one of gitlab/jira.
+#
+# max_assignment_age_seconds is how old an assignment (or review request) may
+# be and still notify. Source events state *current* membership, not a change
+# to it, so without a cutoff any edit to a long-assigned issue re-announces
+# that assignment — which is what a fresh outbox, or a user who just got an
+# identity, sees a burst of. Unset means 24h; negative disables the check.
 notify:
   poll:
     interval_seconds: 15
+  # max_assignment_age_seconds: 86400
   identities: []
   # identities:
   #   - telegram_id: 123456789

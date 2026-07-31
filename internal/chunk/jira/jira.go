@@ -13,6 +13,23 @@ import (
 	"github.com/go-faster/sisyphus/internal/index"
 )
 
+// User is a Jira user as a destination needs them: the stable id to match a
+// configured notify identity against, plus name and profile page for
+// rendering. The zero value means the source did not say who it was.
+type User struct {
+	// ID is the accountId on Jira Cloud and the username on Server/DC, the
+	// same identity [Issue.AssigneeAccountID] carries.
+	ID      string `json:"id,omitempty"`
+	Display string `json:"display,omitempty"`
+	// URL is the user's profile page, built by the fetcher because its shape
+	// differs between Cloud and Server/DC. Empty when the user is not
+	// addressable.
+	URL string `json:"url,omitempty"`
+}
+
+// Zero reports whether the user is unset.
+func (u User) Zero() bool { return u == User{} }
+
 // Comment represents a single comment on a Jira issue.
 type Comment struct {
 	Author  string
@@ -40,11 +57,26 @@ type Issue struct {
 	// (the URL shape differs between Cloud and Server/DC). Rendering only —
 	// notifications link the actor with it.
 	ReporterURL string
-	Created     time.Time
-	Updated     time.Time
-	Resolved    time.Time
-	Comments    []Comment
-	WebURL      string // canonical browse URL, e.g. https://jira.example.com/browse/IDP-1080
+	// UpdatedBy is who made the most recent recorded change, from the issue's
+	// changelog. Zero when the changelog was not fetched, came back empty, or
+	// holds no parseable entry — a freshly created issue has no history at all.
+	UpdatedBy User
+	// AssignedBy is who set the current assignee: the author of the newest
+	// changelog entry touching the assignee field. It is the actor an
+	// assignment notification names. [Issue.Reporter] is not — filing an issue
+	// and assigning it are different acts, often by different people — and
+	// neither is [Issue.UpdatedBy], who may have only edited a label.
+	AssignedBy User
+	// AssignedAt is when that assignment happened, from the same changelog
+	// entry. Zero when unknown. A destination needs it to tell a fresh
+	// assignment from one it is only seeing now because something else on the
+	// issue changed.
+	AssignedAt time.Time
+	Created    time.Time
+	Updated    time.Time
+	Resolved   time.Time
+	Comments   []Comment
+	WebURL     string // canonical browse URL, e.g. https://jira.example.com/browse/IDP-1080
 }
 
 // DocumentFromIssue builds a normalized index.Document from a Jira Issue.

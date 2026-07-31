@@ -191,11 +191,18 @@ func TestE2E_GitLabMRAssignment_ToTelegramDelivery(t *testing.T) {
 			MR: chunkgitlab.MergeRequest{
 				IID:       42,
 				Title:     "Fix flaky test",
-				Author:    "e2e-carol",
+				Author:    "e2e-dave",
 				WebURL:    "https://gitlab.example.com/group/project/-/merge_requests/42",
 				Assignees: []string{"e2e-alice"},
 				Reviewers: []string{"e2e-bob"},
-				Updated:   updated,
+				// Carol did the assigning, dave merely opened the MR: the
+				// notification must name the former. The fetcher reads this
+				// from the MR's system notes.
+				AssignedBy:        chunkgitlab.User{Username: "e2e-carol"},
+				AssignedAt:        updated,
+				ReviewRequestedBy: chunkgitlab.User{Username: "e2e-carol"},
+				ReviewRequestedAt: updated,
+				Updated:           updated,
 			},
 		},
 	}}
@@ -211,7 +218,11 @@ func TestE2E_GitLabMRAssignment_ToTelegramDelivery(t *testing.T) {
 	router.Subscribe(event.Subscription{
 		Name:    "notify-gitlab",
 		Sources: []event.Source{event.SourceGitLab},
-		Handler: notify.NewRouterSubscriber(notifygitlab.Projector{}, dispatcher),
+		// Clock pinned to the fixture, so the staleness cutoff measures
+		// against the event rather than against wall-clock time.
+		Handler: notify.NewRouterSubscriber(notifygitlab.Projector{
+			Staleness: notify.Staleness{Now: func() time.Time { return updated }},
+		}, dispatcher),
 	})
 	for _, e := range events {
 		require.NoError(t, router.Route(ctx, e))
