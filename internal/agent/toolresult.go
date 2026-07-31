@@ -11,15 +11,22 @@ import (
 // re-sent on every subsequent iteration, so one oversized result is paid for
 // once per remaining iteration, not once.
 //
-// The size is chosen to leave ordinary results untouched. A 30-result
-// search_knowledge response runs ~64KB and is legitimately worth its context;
-// what this exists to catch is the unbounded kind — a browser accessibility
-// snapshot, a fetched page, raw shell output from the sandbox — where a single
-// call has been observed adding ~55k tokens to the prompt and then riding
-// along in every later request. Lowering a chatty tool's own result size (e.g.
-// search_knowledge's default limit) is the better fix where one exists; this
-// only guarantees a ceiling.
-const defaultMaxToolResultBytes = 64 << 10
+// The size is set from measured results against a live gateway, above the
+// largest legitimate one and below the pathological kind:
+//
+//	search_knowledge limit=30    133,352 B   the biggest result worth keeping whole
+//	search_knowledge limit=12     20,009 B
+//	browser_snapshot (typical)    26–51 KB   docs pages, a GitHub issue list
+//	browser_snapshot (Wikipedia) 487,753 B   what this exists to catch
+//
+// Note this JSON tokenizes at roughly 9 bytes/token, not the ~4 of prose — the
+// 487KB snapshot above is the one measured adding ~55k tokens to a single
+// prompt, and then riding along in every later request.
+//
+// Lowering a chatty tool's own result size is the better fix where one exists:
+// search_knowledge's default limit of 30 costs 133KB per call where limit=12
+// costs 20KB. This only guarantees a ceiling.
+const defaultMaxToolResultBytes = 192 << 10
 
 // truncateToolResult caps s at maxBytes, cutting on a rune boundary so the
 // result stays valid UTF-8, and appends a marker naming how much was dropped.
