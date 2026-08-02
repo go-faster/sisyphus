@@ -44,7 +44,7 @@ type Projector struct {
 
 func (pr Projector) Project(e event.Event) ([]notify.Event, error) {
 	var p ingestjira.IssuePayload
-	if err := e.DecodePayload(&p); err != nil {
+	if err := e.DecodePayload(ingestjira.IssuePayloadVersion, &p); err != nil {
 		return nil, errors.Wrap(err, "decode issue payload")
 	}
 

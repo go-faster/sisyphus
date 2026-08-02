@@ -10,6 +10,12 @@ import (
 	"github.com/go-faster/sisyphus/internal/event"
 )
 
+// MRPayloadVersion is [MRPayload]'s schema version: it is stamped onto every
+// event this adapter emits and required by every reader of one. Bump it when a
+// field changes type or meaning. A purely additive field needs no bump — an
+// older writer's payload still decodes correctly, with the new field zero.
+const MRPayloadVersion = 1
+
 // MRPayload is the source-typed body of an [event.TypeMRUpdated] event: the
 // merge request's current member sets, who last put someone in them, its
 // newest comments, and whether it has been merged. Only
@@ -78,7 +84,7 @@ func EventFromMergeRequest(ref MergeRequestRef) (event.Event, error) {
 		OccurredAt: ref.MR.Updated,
 		Attributes: map[string]string{"project": ref.Project},
 	}
-	e, err := e.WithPayload(MRPayload{
+	e, err := e.WithPayload(MRPayloadVersion, MRPayload{
 		Assignees:         ref.MR.Assignees,
 		Reviewers:         ref.MR.Reviewers,
 		AssignedBy:        ref.MR.AssignedBy,

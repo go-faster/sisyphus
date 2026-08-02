@@ -10,6 +10,11 @@ import (
 	"github.com/go-faster/sisyphus/internal/event"
 )
 
+// IssuePayloadVersion is [IssuePayload]'s schema version. See
+// [github.com/go-faster/sisyphus/internal/ingest/gitlab.MRPayloadVersion] for
+// when to bump one.
+const IssuePayloadVersion = 1
+
 // IssuePayload is the source-typed body of an [event.TypeIssueUpdated] event:
 // the issue's current assignee, and who put them there. Only a destination
 // that understands Jira decodes it — today the notification gateway's
@@ -52,7 +57,7 @@ func EventFromIssue(iss chunkjira.Issue) (event.Event, error) {
 		Actor:      event.Actor{Key: iss.UpdatedBy.ID, Display: iss.UpdatedBy.Display, URL: iss.UpdatedBy.URL},
 		OccurredAt: iss.Updated,
 	}
-	e, err := e.WithPayload(IssuePayload{
+	e, err := e.WithPayload(IssuePayloadVersion, IssuePayload{
 		AssigneeAccountID: iss.AssigneeAccountID,
 		AssigneeDisplay:   iss.Assignee,
 		AssignedBy:        iss.AssignedBy,

@@ -47,10 +47,12 @@ func NewHandler(db *ent.Client, embedder index.Embedder, vectors pipeline.Vector
 func (h *Handler) Handle(ctx context.Context, d queue.Delivery) error {
 	p, err := Decode(d.Payload)
 	if err != nil {
-		// A payload this worker cannot parse will not parse on retry either.
-		// Returning the error still burns the attempt budget rather than
-		// discarding the job, so it lands in the queue's terminal status where
-		// an operator can see it.
+		// A payload this worker cannot parse will not parse on retry either —
+		// including one written in a shape this build does not understand
+		// ([ErrVersion]), which is what a worker rolled forward past an
+		// incompatible payload change meets. Returning the error still burns
+		// the attempt budget rather than discarding the job, so it lands in
+		// the queue's terminal status where an operator can see it.
 		return errors.Wrap(err, "decode index job")
 	}
 	pipe, ok := h.pipelines[p.Kind]

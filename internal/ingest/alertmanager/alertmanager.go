@@ -52,6 +52,13 @@ type Alert struct {
 	Fingerprint  string            `json:"fingerprint"`
 }
 
+// AlertPayloadVersion is [AlertPayload]'s schema version. See
+// [github.com/go-faster/sisyphus/internal/ingest/gitlab.MRPayloadVersion] for
+// when to bump one. This is the one payload that is routinely persisted before
+// it is read — an investigation's queued trigger — so a reader meeting an
+// older version here is a real case, not a theoretical one.
+const AlertPayloadVersion = 1
+
 // AlertPayload is the source-typed body of an alert event: everything a
 // destination that understands Alertmanager may want, and nothing the
 // envelope already carries generically.
@@ -119,7 +126,7 @@ func eventFromAlert(hook Webhook, alert Alert) (event.Event, error) {
 		OccurredAt: occurredAt,
 		Attributes: attrs,
 	}
-	e, err := e.WithPayload(AlertPayload{
+	e, err := e.WithPayload(AlertPayloadVersion, AlertPayload{
 		Labels:      alert.Labels,
 		Annotations: alert.Annotations,
 		StartsAt:    alert.StartsAt,

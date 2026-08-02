@@ -19,18 +19,48 @@ import (
 // the failure unit — one document failing to embed does not drag a batch of
 // healthy ones through the same retries.
 type Payload struct {
+	// Version is the shape this payload was written in; see [Version].
+	Version  int            `json:"version"`
 	Kind     Kind           `json:"kind"`
 	Document index.Document `json:"document"`
 }
 
-// Encode marshals a job payload.
+// Version is the current index-job payload shape.
+//
+// A queued job outlives the binary that wrote it: a worker rolled forward
+// while jobs are outstanding drains payloads the previous release produced. As
+// long as the change is additive that is fine, but the document's metadata
+// carries source structs (`gitlab_mr`, `jira_issue` — see [Decode]), and a
+// field of one changing Go type is not additive. Without a version the worker
+// either fails on a type error that names no cause, or — worse, where the JSON
+// still fits — decodes the old shape into the new struct and indexes a wrong
+// answer silently.
+//
+// So: bump this whenever a rehydrated metadata struct changes shape
+// incompatibly. Version 0 is the unversioned payload that predates this field,
+// and is rejected outright — an unversioned job is exactly the one whose shape
+// nothing vouches for.
+//
+// Version 1 is the first versioned shape, and the first that is guaranteed to
+// carry a GitLab MR whose Author and MergedBy are objects rather than the bare
+// strings they were until they had to address a notification.
+const Version = 1
+
+// Encode marshals a job payload in the current [Version].
 func Encode(kind Kind, doc index.Document) ([]byte, error) {
-	b, err := json.Marshal(Payload{Kind: kind, Document: doc})
+	b, err := json.Marshal(Payload{Version: Version, Kind: kind, Document: doc})
 	if err != nil {
 		return nil, errors.Wrap(err, "marshal index job")
 	}
 	return b, nil
 }
+
+// ErrVersion reports an index job written in a shape this build does not
+// understand. The worker's attempt budget carries such a job into the queue's
+// terminal status rather than retrying it forever: no number of retries makes
+// an old payload readable, and the document is re-enqueued by the next run
+// that sees its content change, or by `ssingest <source> --reset`.
+var ErrVersion = errors.New("unsupported index job payload version")
 
 // Canonicalize returns doc in the shape it takes after crossing the queue.
 //
@@ -86,6 +116,12 @@ func Decode(b []byte) (Payload, error) {
 	var p Payload
 	if err := json.Unmarshal(b, &p); err != nil {
 		return Payload{}, errors.Wrap(err, "unmarshal index job")
+	}
+	// Checked before rehydrating, not after: rehydration is where an old shape
+	// would be decoded into today's structs, so the version has to be the
+	// thing that stops it.
+	if p.Version != Version {
+		return Payload{}, errors.Wrapf(ErrVersion, "have %d, want %d", p.Version, Version)
 	}
 	if err := rehydrate(p.Document.Metadata); err != nil {
 		return Payload{}, errors.Wrap(err, "rehydrate document metadata")

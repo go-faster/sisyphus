@@ -46,7 +46,7 @@ func TestEventFromMergeRequest(t *testing.T) {
 	require.Equal(t, "group/project", e.Attributes["project"])
 
 	var p MRPayload
-	require.NoError(t, e.DecodePayload(&p))
+	require.NoError(t, e.DecodePayload(MRPayloadVersion, &p))
 	require.Equal(t, []string{"alice"}, p.Assignees)
 	require.Equal(t, []string{"bob"}, p.Reviewers)
 	require.Equal(t, ref.MR.AssignedBy, p.AssignedBy)
@@ -73,7 +73,7 @@ func TestEventFromMergeRequestCarriesMerge(t *testing.T) {
 	require.NoError(t, err)
 
 	var p MRPayload
-	require.NoError(t, e.DecodePayload(&p))
+	require.NoError(t, e.DecodePayload(MRPayloadVersion, &p))
 	require.Equal(t, "merged", p.State)
 	require.Equal(t, mergedAt, p.MergedAt)
 	require.Equal(t, "dave", p.MergedBy.Username)
@@ -97,7 +97,7 @@ func TestEventFromMergeRequestWithoutSystemNotesHasNoActor(t *testing.T) {
 	require.True(t, e.Actor.Zero())
 
 	var p MRPayload
-	require.NoError(t, e.DecodePayload(&p))
+	require.NoError(t, e.DecodePayload(MRPayloadVersion, &p))
 	require.True(t, p.AssignedBy.Zero())
 	require.True(t, p.ReviewRequestedBy.Zero())
 }

@@ -22,7 +22,7 @@ func firingEvent(t *testing.T) event.Event {
 		Severity:   event.SeverityCritical,
 		OccurredAt: time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC),
 	}
-	e, err := e.WithPayload(ingestalert.AlertPayload{
+	e, err := e.WithPayload(ingestalert.AlertPayloadVersion, ingestalert.AlertPayload{
 		Labels:      map[string]string{"severity": "critical", "service": "checkout", "pod": "checkout-7d9"},
 		Annotations: map[string]string{"description": "error ratio 12%", "runbook_url": "https://runbooks.example.com/high-error-rate"},
 	})
@@ -56,7 +56,7 @@ func TestProjectFiring(t *testing.T) {
 
 func TestProjectButtons(t *testing.T) {
 	e := firingEvent(t)
-	e, err := e.WithPayload(ingestalert.AlertPayload{
+	e, err := e.WithPayload(ingestalert.AlertPayloadVersion, ingestalert.AlertPayload{
 		Annotations: map[string]string{
 			"runbook_url":   "https://runbooks.example.com/high-error-rate",
 			"dashboard_url": "https://grafana.example.com/d/abc",
@@ -79,7 +79,7 @@ func TestProjectButtons(t *testing.T) {
 // anyone vetted.
 func TestProjectButtonsIgnoreLabelsAndDescription(t *testing.T) {
 	e := firingEvent(t)
-	e, err := e.WithPayload(ingestalert.AlertPayload{
+	e, err := e.WithPayload(ingestalert.AlertPayloadVersion, ingestalert.AlertPayload{
 		Labels:      map[string]string{"instance": "https://evil.example.com"},
 		Annotations: map[string]string{"description": "see https://evil.example.com for details"},
 	})

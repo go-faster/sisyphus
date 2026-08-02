@@ -28,7 +28,7 @@ type Projector struct{}
 
 func (Projector) Project(e event.Event) ([]notify.Event, error) {
 	var p agent.ReportPayload
-	if err := e.DecodePayload(&p); err != nil {
+	if err := e.DecodePayload(agent.ReportPayloadVersion, &p); err != nil {
 		return nil, errors.Wrap(err, "decode report payload")
 	}
 

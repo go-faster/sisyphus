@@ -51,7 +51,7 @@ func (pr Projector) commentRule() notify.CommentRule {
 
 func (pr Projector) Project(e event.Event) ([]notify.Event, error) {
 	var p ingestgitlab.MRPayload
-	if err := e.DecodePayload(&p); err != nil {
+	if err := e.DecodePayload(ingestgitlab.MRPayloadVersion, &p); err != nil {
 		return nil, errors.Wrap(err, "decode mr payload")
 	}
 

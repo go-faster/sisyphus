@@ -51,7 +51,7 @@ func mrEventWithActors(t *testing.T, payload ingestgitlab.MRPayload) event.Event
 	if payload.ReviewRequestedAt.IsZero() {
 		payload.ReviewRequestedAt = e.OccurredAt
 	}
-	e, err := e.WithPayload(payload)
+	e, err := e.WithPayload(ingestgitlab.MRPayloadVersion, payload)
 	require.NoError(t, err)
 	return e
 }

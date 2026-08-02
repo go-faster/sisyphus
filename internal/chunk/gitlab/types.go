@@ -3,7 +3,6 @@ package gitlab
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"maps"
 	"strings"
@@ -76,32 +75,6 @@ type User struct {
 
 // Zero reports whether the user is unset.
 func (u User) Zero() bool { return u == User{} }
-
-// UnmarshalJSON decodes a user object, and also accepts a bare JSON string.
-//
-// The string form is what an MR's Author and MergedBy were before they became
-// a User: an index job already sitting on the ingest.index queue when this
-// shipped carries one, and a type error there would dead-letter that document
-// until someone reindexed it. The string was "username or else display name",
-// so it lands in Display — the field that addresses nobody — because it is
-// exactly the case where the two cannot be told apart.
-func (u *User) UnmarshalJSON(data []byte) error {
-	if len(data) > 0 && data[0] == '"' {
-		var s string
-		if err := json.Unmarshal(data, &s); err != nil {
-			return err
-		}
-		*u = User{Display: s}
-		return nil
-	}
-	type plain User
-	var p plain
-	if err := json.Unmarshal(data, &p); err != nil {
-		return err
-	}
-	*u = User(p)
-	return nil
-}
 
 // Label is the name to put in prose: the username when GitLab reported one,
 // the display name otherwise. It is never a match key — a display name looks
