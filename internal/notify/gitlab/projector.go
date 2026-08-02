@@ -18,9 +18,10 @@ import (
 
 // Projector implements notify.Projector for GitLab: it fans an
 // event.TypeMRUpdated event out into one notify.Event per current assignee
-// (EventMRAssigned) and per current reviewer (EventMRReviewRequested), plus
-// the conversation events its comments produce (EventMRCommented,
-// EventMRMentioned — see commentRule). The assignment EventID strings match
+// (EventMRAssigned) and per current reviewer (EventMRReviewRequested), the
+// conversation events its comments produce (EventMRCommented,
+// EventMRMentioned — see commentRule), and, once it lands, EventMRMerged to
+// its author and assignees. The assignment EventID strings match
 // the pre-spine collector's exactly, so existing outbox dedup keys still
 // suppress already-delivered notifications.
 //
@@ -32,6 +33,10 @@ import (
 type Projector struct {
 	Staleness notify.Staleness
 }
+
+// mergedState is the value GitLab reports in an MR's state field once it has
+// been merged.
+const mergedState = "merged"
 
 // commentRule is the shared comment projection, named for GitLab.
 func (pr Projector) commentRule() notify.CommentRule {
@@ -111,6 +116,46 @@ func (pr Projector) Project(e event.Event) ([]notify.Event, error) {
 			EventID:    fmt.Sprintf("gitlab_mr_review:%s:%s", objectID, username),
 			OccurredAt: e.OccurredAt,
 		})
+	}
+
+	// A merge is terminal and happens once, so unlike a membership change it
+	// needs no timestamp in its dedup id — an MR cannot be merged twice.
+	// Staleness still gates it, because the event states "merged" on every
+	// poll from the merge onwards and the first run after this shipped would
+	// otherwise announce every MR merged in the fetched window.
+	if p.State == mergedState && pr.Staleness.Fresh(p.MergedAt) {
+		merger := notify.Actor{
+			Source:  notify.SourceGitLab,
+			Key:     p.MergedBy.Username,
+			Display: p.MergedBy.Display,
+			URL:     p.MergedBy.URL,
+		}
+		// The author first: an MR landing is news to whoever wrote it before
+		// it is news to anyone else. Assignees follow, deduped so an author
+		// assigned to their own MR is told once.
+		recipients := make([]string, 0, 1+len(p.Assignees))
+		if p.Author.Username != "" {
+			recipients = append(recipients, p.Author.Username)
+		}
+		for _, username := range p.Assignees {
+			if !slices.Contains(recipients, username) {
+				recipients = append(recipients, username)
+			}
+		}
+		for _, username := range recipients {
+			out = append(out, notify.Event{
+				Source:     notify.SourceGitLab,
+				Type:       notify.EventMRMerged,
+				Recipient:  notify.Actor{Source: notify.SourceGitLab, Key: username},
+				Actor:      merger,
+				Title:      e.Subject.Title,
+				Buttons:    buttons,
+				URL:        e.Subject.URL,
+				ObjectID:   objectID,
+				EventID:    fmt.Sprintf("gitlab_mr_merged:%s:%s", objectID, username),
+				OccurredAt: p.MergedAt,
+			})
+		}
 	}
 
 	// Comments go to the MR's *current* members, not the stale-filtered sets

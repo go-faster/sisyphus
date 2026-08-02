@@ -3,6 +3,7 @@ package gitlab
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"strings"
@@ -76,6 +77,43 @@ type User struct {
 // Zero reports whether the user is unset.
 func (u User) Zero() bool { return u == User{} }
 
+// UnmarshalJSON decodes a user object, and also accepts a bare JSON string.
+//
+// The string form is what an MR's Author and MergedBy were before they became
+// a User: an index job already sitting on the ingest.index queue when this
+// shipped carries one, and a type error there would dead-letter that document
+// until someone reindexed it. The string was "username or else display name",
+// so it lands in Display — the field that addresses nobody — because it is
+// exactly the case where the two cannot be told apart.
+func (u *User) UnmarshalJSON(data []byte) error {
+	if len(data) > 0 && data[0] == '"' {
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		*u = User{Display: s}
+		return nil
+	}
+	type plain User
+	var p plain
+	if err := json.Unmarshal(data, &p); err != nil {
+		return err
+	}
+	*u = User(p)
+	return nil
+}
+
+// Label is the name to put in prose: the username when GitLab reported one,
+// the display name otherwise. It is never a match key — a display name looks
+// like a username here and would address the wrong person, which is the whole
+// reason [User] keeps the two apart.
+func (u User) Label() string {
+	if u.Username != "" {
+		return u.Username
+	}
+	return u.Display
+}
+
 // MergeRequest models a GitLab merge request.
 type MergeRequest struct {
 	IID         int
@@ -83,10 +121,11 @@ type MergeRequest struct {
 	Description string
 	State       string
 	Labels      []string
-	Author      string
-	// AuthorURL is the author's GitLab profile page, as returned by the API
-	// (user.web_url). Rendering only — notifications link the actor with it.
-	AuthorURL      string
+	// Author is who opened the MR and MergedBy who merged it. Both are [User]
+	// rather than a single string because a notification addresses the author
+	// and attributes the merge to the merger: collapsing either to "username
+	// or else display name" makes a display name silently act as a match key.
+	Author         User
 	WebURL         string
 	Created        time.Time
 	Updated        time.Time
@@ -96,7 +135,7 @@ type MergeRequest struct {
 	TargetBranch   string
 	SourceBranch   string
 	MergedAt       time.Time
-	MergedBy       string
+	MergedBy       User
 	MergeCommitSHA string
 	// UpdatedBy is the author of the most recent system note, i.e. whoever
 	// last did something GitLab records on the MR. Zero when it has no system
@@ -174,7 +213,7 @@ func DocumentFromMergeRequest(project string, mr MergeRequest) index.Document {
 			"iid":       mr.IID,
 			"state":     mr.State,
 			"labels":    mr.Labels,
-			"author":    mr.Author,
+			"author":    mr.Author.Label(),
 			"authority": string(index.AuthorityMedium),
 		},
 		CreatedAt: mr.Created,
@@ -287,8 +326,8 @@ func buildMRBody(mr MergeRequest) string {
 		fmt.Fprintf(&sb, "Branch: %s -> %s\n", mr.SourceBranch, mr.TargetBranch)
 	}
 
-	if mr.Author != "" {
-		fmt.Fprintf(&sb, "Author: %s\n", mr.Author)
+	if author := mr.Author.Label(); author != "" {
+		fmt.Fprintf(&sb, "Author: %s\n", author)
 	}
 
 	if !mr.Created.IsZero() {
@@ -299,7 +338,7 @@ func buildMRBody(mr MergeRequest) string {
 	}
 
 	if !mr.MergedAt.IsZero() {
-		fmt.Fprintf(&sb, "Merged: %s by %s\n", mr.MergedAt.Format(time.RFC3339), mr.MergedBy)
+		fmt.Fprintf(&sb, "Merged: %s by %s\n", mr.MergedAt.Format(time.RFC3339), mr.MergedBy.Label())
 		if mr.MergeCommitSHA != "" {
 			fmt.Fprintf(&sb, "Merge commit: %s\n", mr.MergeCommitSHA)
 		}

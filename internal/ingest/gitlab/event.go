@@ -11,7 +11,8 @@ import (
 )
 
 // MRPayload is the source-typed body of an [event.TypeMRUpdated] event: the
-// merge request's current member sets, and who last put someone in them. Only
+// merge request's current member sets, who last put someone in them, its
+// newest comments, and whether it has been merged. Only
 // a destination that understands GitLab decodes it — today the notification
 // gateway's projector.
 //
@@ -35,6 +36,20 @@ type MRPayload struct {
 	// diff: the destination decides which of them are news, keyed by comment
 	// id.
 	Comments []Comment `json:"comments,omitempty"`
+	// Author is who opened the merge request. It rides here because the
+	// author is the recipient of its terminal event — nobody else is told the
+	// work is done — and because a destination must be able to tell an
+	// unnamed author from one whose username GitLab omitted.
+	Author chunkgitlab.User `json:"author,omitzero"`
+	// State is the merge request's state as GitLab reports it ("opened",
+	// "merged", "closed"), and MergedAt/MergedBy when and by whom it was
+	// merged. Like everything else here they are current state: "merged" is
+	// true on every poll from the merge onwards, so a destination gates on
+	// MergedAt rather than on seeing the state change. MergedAt is zero
+	// unless State is "merged".
+	State    string           `json:"state,omitempty"`
+	MergedAt time.Time        `json:"merged_at,omitzero"`
+	MergedBy chunkgitlab.User `json:"merged_by,omitzero"`
 }
 
 // EventFromMergeRequest builds the canonical event for one fetched merge
@@ -71,6 +86,10 @@ func EventFromMergeRequest(ref MergeRequestRef) (event.Event, error) {
 		AssignedAt:        ref.MR.AssignedAt,
 		ReviewRequestedAt: ref.MR.ReviewRequestedAt,
 		Comments:          latestComments(ref.MR.Threads, ref.MR.WebURL),
+		Author:            ref.MR.Author,
+		State:             ref.MR.State,
+		MergedAt:          ref.MR.MergedAt,
+		MergedBy:          ref.MR.MergedBy,
 	})
 	if err != nil {
 		return event.Event{}, errors.Wrap(err, "encode mr payload")

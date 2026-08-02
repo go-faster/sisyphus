@@ -2,9 +2,12 @@ package gitlab
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/go-faster/sisyphus/internal/index"
 )
@@ -63,7 +66,7 @@ func TestDocumentFromMergeRequest(t *testing.T) {
 		Description: "Implements feature X",
 		State:       "opened",
 		Labels:      []string{"feature"},
-		Author:      "bob",
+		Author:      User{Username: "bob"},
 		WebURL:      "https://gitlab.com/project/merge_requests/15",
 		Created:     baseTime,
 		Updated:     baseTime.Add(2 * time.Hour),
@@ -194,7 +197,7 @@ func TestChunkMergeRequest(t *testing.T) {
 		Description: "MR description",
 		State:       "opened",
 		Labels:      []string{"feature"},
-		Author:      "bob",
+		Author:      User{Username: "bob"},
 		WebURL:      "https://example.com",
 		Created:     baseTime,
 		Updated:     baseTime,
@@ -647,4 +650,51 @@ func TestTrivialThreadDropped(t *testing.T) {
 	if !strings.Contains(commentChunk.Text, "Substantial comment") {
 		t.Errorf("expected substantial comment in chunk")
 	}
+}
+
+// A User decodes from either wire form: the object it is written as, and the
+// bare string an MR's Author and MergedBy were before they became a User. An
+// index job enqueued by the older code carries the string, and rejecting it
+// would dead-letter that document.
+func TestUserUnmarshalJSON(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		data string
+		want User
+	}{
+		{
+			name: "object",
+			data: `{"username":"bob","display":"Bob","url":"https://gitlab.example.com/bob"}`,
+			want: User{Username: "bob", Display: "Bob", URL: "https://gitlab.example.com/bob"},
+		},
+		{
+			// The legacy string was "username or else display name", so it
+			// lands in the field that addresses nobody.
+			name: "legacy string",
+			data: `"bob"`,
+			want: User{Display: "bob"},
+		},
+		{
+			name: "empty string",
+			data: `""`,
+			want: User{},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var got User
+			require.NoError(t, json.Unmarshal([]byte(tt.data), &got))
+			require.Equal(t, tt.want, got)
+			require.Equal(t, tt.want.Label(), got.Label())
+		})
+	}
+}
+
+// An MR whose Author and MergedBy are the legacy strings still round-trips
+// through JSON, which is what the queue does to it.
+func TestMergeRequestLegacyUsersRoundTrip(t *testing.T) {
+	var mr MergeRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"IID":7,"Author":"bob","MergedBy":"carol"}`), &mr))
+	require.Equal(t, 7, mr.IID)
+	require.Equal(t, "bob", mr.Author.Label())
+	require.Equal(t, "carol", mr.MergedBy.Label())
 }

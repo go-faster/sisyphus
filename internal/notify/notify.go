@@ -87,6 +87,11 @@ const (
 	// assigned at all.
 	EventMRMentioned    EventType = "mr_mentioned"
 	EventIssueMentioned EventType = "issue_mentioned"
+	// EventMRMerged fires when an MR addressed to the recipient — theirs, or
+	// one they are assigned — is merged. It is the terminal event on the
+	// thing and the one moment the work is actually done, which is otherwise
+	// the quietest: nothing else tells an author their MR landed.
+	EventMRMerged EventType = "mr_merged"
 	// EventInvestigationCompleted fires when an agent investigation finishes.
 	// It is addressed to a chat, not a user.
 	EventInvestigationCompleted EventType = "investigation_completed"

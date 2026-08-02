@@ -35,6 +35,17 @@ func TestDefaultRenderer(t *testing.T) {
 			want: "👀 **John Doe** requested your review on [MR](https://gitlab.example.com/g/p/-/merge_requests/42)",
 		},
 		{
+			name: "mr merged",
+			event: Event{
+				Type:  EventMRMerged,
+				Actor: Actor{Display: "John Doe", URL: "https://gitlab.example.com/jdoe"},
+				Title: "MR !42: Fix the thing",
+				URL:   "https://gitlab.example.com/g/p/-/merge_requests/42",
+			},
+			want: "🎉 [John Doe](https://gitlab.example.com/jdoe) merged " +
+				"[MR \\!42\\: Fix the thing](https://gitlab.example.com/g/p/-/merge_requests/42)",
+		},
+		{
 			name: "issue assigned",
 			event: Event{
 				Type:  EventIssueAssigned,

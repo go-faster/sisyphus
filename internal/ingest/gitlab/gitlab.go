@@ -585,25 +585,11 @@ func discussionThreads(discussions []gitlabDiscussion) []chunkgitlab.Thread {
 				continue
 			}
 
-			var (
-				author string
-				user   chunkgitlab.User
-			)
-			if note.Author != nil {
-				author = note.Author.Username
-				if author == "" {
-					author = note.Author.Name
-				}
-				user = chunkgitlab.User{
-					Username: note.Author.Username,
-					Display:  note.Author.Name,
-					URL:      note.Author.WebURL,
-				}
-			}
+			user := convertGitLabUser(note.Author)
 
 			comments = append(comments, chunkgitlab.Comment{
 				ID:         strconv.Itoa(note.ID),
-				Author:     author,
+				Author:     user.Label(),
 				AuthorUser: user,
 				Body:       note.Body,
 				Created:    created,
@@ -754,6 +740,16 @@ func (f *Fetcher) fetchProjectReleases(ctx context.Context, project string, page
 
 // Conversion functions from GitLab API types to chunker types.
 
+// convertGitLabUser keeps the match key and the display name apart: a missing
+// username stays missing rather than falling back to the name, which matches
+// no configured identity and would address whoever holds that string.
+func convertGitLabUser(u *gitlabUser) chunkgitlab.User {
+	if u == nil {
+		return chunkgitlab.User{}
+	}
+	return chunkgitlab.User{Username: u.Username, Display: u.Name, URL: u.WebURL}
+}
+
 func convertGitLabIssue(issue gitlabIssue, threads []chunkgitlab.Thread, links []chunkgitlab.Link) (chunkgitlab.Issue, error) {
 	created, err := parseGitLabTime(issue.CreatedAt)
 	if err != nil {
@@ -819,15 +815,6 @@ func convertGitLabMR(mr gitlabMergeRequest, threads []chunkgitlab.Thread, links 
 		return chunkgitlab.MergeRequest{}, err
 	}
 
-	author, authorURL := "", ""
-	if mr.Author != nil {
-		author = mr.Author.Username
-		if author == "" {
-			author = mr.Author.Name
-		}
-		authorURL = mr.Author.WebURL
-	}
-
 	// Convert assignees to usernames
 	var assignees []string
 	for _, a := range mr.Assignees {
@@ -856,23 +843,13 @@ func convertGitLabMR(mr gitlabMergeRequest, threads []chunkgitlab.Thread, links 
 		}
 	}
 
-	// Convert merged_by to username
-	mergedBy := ""
-	if mr.MergedBy != nil {
-		mergedBy = mr.MergedBy.Username
-		if mergedBy == "" {
-			mergedBy = mr.MergedBy.Name
-		}
-	}
-
 	return chunkgitlab.MergeRequest{
 		IID:               mr.IID,
 		Title:             mr.Title,
 		Description:       mr.Description,
 		State:             mr.State,
 		Labels:            mr.Labels,
-		Author:            author,
-		AuthorURL:         authorURL,
+		Author:            convertGitLabUser(mr.Author),
 		WebURL:            mr.WebURL,
 		Created:           created,
 		Updated:           updated,
@@ -882,7 +859,7 @@ func convertGitLabMR(mr gitlabMergeRequest, threads []chunkgitlab.Thread, links 
 		TargetBranch:      mr.TargetBranch,
 		SourceBranch:      mr.SourceBranch,
 		MergedAt:          mergedAt,
-		MergedBy:          mergedBy,
+		MergedBy:          convertGitLabUser(mr.MergedBy),
 		MergeCommitSHA:    mr.MergeCommitSHA,
 		UpdatedBy:         actors.UpdatedBy,
 		AssignedBy:        actors.AssignedBy,

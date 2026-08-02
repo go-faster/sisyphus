@@ -63,7 +63,7 @@ func gitlabMR() chunkgitlab.MergeRequest {
 		Description:    "Bumps the timeout to 30s.",
 		State:          "merged",
 		Labels:         []string{"auth"},
-		Author:         "alice",
+		Author:         chunkgitlab.User{Username: "alice"},
 		WebURL:         "https://gitlab.example.com/group/proj/-/merge_requests/7",
 		Created:        ts("2026-01-02T03:04:05Z"),
 		Updated:        ts("2026-01-04T03:04:05Z"),
@@ -73,7 +73,7 @@ func gitlabMR() chunkgitlab.MergeRequest {
 		TargetBranch:   "main",
 		SourceBranch:   "fix/session-timeout",
 		MergedAt:       ts("2026-01-04T03:04:05Z"),
-		MergedBy:       "carol",
+		MergedBy:       chunkgitlab.User{Username: "carol"},
 		MergeCommitSHA: "0123456789abcdef0123456789abcdef01234567",
 		Threads: []chunkgitlab.Thread{{
 			ID:       "thread-9",

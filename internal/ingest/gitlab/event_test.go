@@ -17,7 +17,7 @@ func TestEventFromMergeRequest(t *testing.T) {
 		MR: chunkgitlab.MergeRequest{
 			IID:               42,
 			Title:             "Fix flaky test",
-			Author:            "carol",
+			Author:            chunkgitlab.User{Username: "carol"},
 			WebURL:            "https://gitlab.example.com/group/project/-/merge_requests/42",
 			Assignees:         []string{"alice"},
 			Reviewers:         []string{"bob"},
@@ -41,7 +41,7 @@ func TestEventFromMergeRequest(t *testing.T) {
 	require.Equal(t, "erin", e.Actor.Key)
 	require.Equal(t, "Erin", e.Actor.Display)
 	require.Equal(t, "https://gitlab.example.com/erin", e.Actor.URL)
-	require.NotEqual(t, ref.MR.Author, e.Actor.Key)
+	require.NotEqual(t, ref.MR.Author.Username, e.Actor.Key)
 	require.Equal(t, updated, e.OccurredAt)
 	require.Equal(t, "group/project", e.Attributes["project"])
 
@@ -51,6 +51,34 @@ func TestEventFromMergeRequest(t *testing.T) {
 	require.Equal(t, []string{"bob"}, p.Reviewers)
 	require.Equal(t, ref.MR.AssignedBy, p.AssignedBy)
 	require.Equal(t, ref.MR.ReviewRequestedBy, p.ReviewRequestedBy)
+	require.Equal(t, ref.MR.Author, p.Author)
+}
+
+// A merged MR carries the merge in its payload: the state, when it happened
+// and who did it, all three of which the notification gateway needs to tell a
+// merge that just landed from one that landed months ago.
+func TestEventFromMergeRequestCarriesMerge(t *testing.T) {
+	mergedAt := time.Date(2026, 3, 4, 5, 0, 0, 0, time.UTC)
+	e, err := EventFromMergeRequest(MergeRequestRef{
+		Project: "group/project",
+		MR: chunkgitlab.MergeRequest{
+			IID:      42,
+			Author:   chunkgitlab.User{Username: "carol"},
+			State:    "merged",
+			MergedAt: mergedAt,
+			MergedBy: chunkgitlab.User{Username: "dave", Display: "Dave", URL: "https://gitlab.example.com/dave"},
+			Updated:  mergedAt,
+		},
+	})
+	require.NoError(t, err)
+
+	var p MRPayload
+	require.NoError(t, e.DecodePayload(&p))
+	require.Equal(t, "merged", p.State)
+	require.Equal(t, mergedAt, p.MergedAt)
+	require.Equal(t, "dave", p.MergedBy.Username)
+	require.Equal(t, "https://gitlab.example.com/dave", p.MergedBy.URL)
+	require.Equal(t, "carol", p.Author.Username)
 }
 
 // An MR whose system notes named nobody carries no actor at all, rather than
@@ -60,8 +88,7 @@ func TestEventFromMergeRequestWithoutSystemNotesHasNoActor(t *testing.T) {
 		Project: "group/project",
 		MR: chunkgitlab.MergeRequest{
 			IID:       7,
-			Author:    "carol",
-			AuthorURL: "https://gitlab.example.com/carol",
+			Author:    chunkgitlab.User{Username: "carol", URL: "https://gitlab.example.com/carol"},
 			Assignees: []string{"alice"},
 			Updated:   time.Unix(0, 0).UTC(),
 		},

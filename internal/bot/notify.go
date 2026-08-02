@@ -210,7 +210,7 @@ func (b *Bot) Ready() <-chan struct{} {
 // is easier to discover than the reverse — nobody guesses at an event type
 // they were never subscribed to.
 var defaultEventTypesBySource = map[string][]string{
-	"gitlab": {"mr_assigned", "mr_review_requested", "mr_commented", "mr_mentioned"},
+	"gitlab": {"mr_assigned", "mr_review_requested", "mr_commented", "mr_mentioned", "mr_merged"},
 	"jira":   {"issue_assigned", "issue_commented", "issue_mentioned"},
 }
 

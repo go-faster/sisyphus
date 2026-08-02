@@ -75,6 +75,7 @@ var (
 		EventIssueAssigned:          {"📋", "assigned you", assign},
 		EventMRCommented:            {"💬", "commented on", comment},
 		EventIssueCommented:         {"💬", "commented on", comment},
+		EventMRMerged:               {"🎉", "merged", assign},
 		EventMRMentioned:            {"📣", "mentioned you on", comment},
 		EventIssueMentioned:         {"📣", "mentioned you on", comment},
 		EventAlertFiring:            {"🔥", "Firing", alert},

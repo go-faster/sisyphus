@@ -71,11 +71,7 @@ func mrActors(discussions []gitlabDiscussion) MRActors {
 			if err != nil || created.IsZero() {
 				continue
 			}
-			user := chunkgitlab.User{
-				Username: note.Author.Username,
-				Display:  note.Author.Name,
-				URL:      note.Author.WebURL,
-			}
+			user := convertGitLabUser(note.Author)
 			if created.After(updatedAt) {
 				actors.UpdatedBy, updatedAt = user, created
 			}
