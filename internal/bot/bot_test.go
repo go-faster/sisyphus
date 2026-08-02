@@ -72,8 +72,8 @@ func TestLinksMarkup(t *testing.T) {
 
 	// Two to a row, so a four-button alert is two rows tall.
 	kb := linksMarkup([]index.Link{
-		{Text: "Dashboard", URL: "https://grafana/d/1"},
-		{Text: "Ticket", URL: "https://jira/IDP-1"},
+		{Text: "Dashboard", URL: "https://grafana.example.com/d/1"},
+		{Text: "Ticket", URL: "https://jira.example.com/IDP-1"},
 	})
 	markup, ok := kb.(*tg.ReplyInlineMarkup)
 	require.True(t, ok)
@@ -82,19 +82,47 @@ func TestLinksMarkup(t *testing.T) {
 	btn, ok := markup.Rows[0].Buttons[0].(*tg.KeyboardButtonURL)
 	require.True(t, ok)
 	require.Equal(t, "Dashboard", btn.Text)
-	require.Equal(t, "https://grafana/d/1", btn.URL)
+	require.Equal(t, "https://grafana.example.com/d/1", btn.URL)
 
 	// An odd trailing link gets a row to itself rather than being dropped.
 	kb = linksMarkup([]index.Link{
-		{Text: "Runbook", URL: "https://runbooks/1"},
-		{Text: "Dashboard", URL: "https://grafana/d/1"},
-		{Text: "Alertmanager", URL: "https://am/"},
+		{Text: "Runbook", URL: "https://runbooks.example.com/1"},
+		{Text: "Dashboard", URL: "https://grafana.example.com/d/1"},
+		{Text: "Alertmanager", URL: "https://am.example.com/"},
 	})
 	markup, ok = kb.(*tg.ReplyInlineMarkup)
 	require.True(t, ok)
 	require.Len(t, markup.Rows, 2)
 	require.Len(t, markup.Rows[0].Buttons, 2)
 	require.Len(t, markup.Rows[1].Buttons, 1)
+}
+
+// A host that only resolves inside the network that minted it is dropped
+// before it reaches Telegram, which rejects the whole message over it. This is
+// the real shape of the bug: an alerting stack naming its own neighbors by
+// container id.
+func TestLinksMarkupDropsUnreachableHosts(t *testing.T) {
+	kb := linksMarkup([]index.Link{
+		{Text: "Dashboard", URL: "https://grafana.example.com/d/1"},
+		{Text: "Alertmanager", URL: "http://a9869748c05a:9093"},
+		{Text: "Local", URL: "http://localhost:8080/x"},
+	})
+	markup, ok := kb.(*tg.ReplyInlineMarkup)
+	require.True(t, ok)
+	require.Len(t, markup.Rows, 1)
+	require.Len(t, markup.Rows[0].Buttons, 1)
+	btn, ok := markup.Rows[0].Buttons[0].(*tg.KeyboardButtonURL)
+	require.True(t, ok)
+	require.Equal(t, "https://grafana.example.com/d/1", btn.URL)
+}
+
+// When nothing survives there is no keyboard at all, so the message still
+// sends — losing every button beats losing the alert.
+func TestLinksMarkupAllUnreachableSendsNoKeyboard(t *testing.T) {
+	require.Nil(t, linksMarkup([]index.Link{
+		{Text: "Alertmanager", URL: "http://a9869748c05a:9093"},
+		{Text: "Prometheus", URL: "http://vmalert:8880/x"},
+	}))
 }
 
 func TestPeerChatID(t *testing.T) {

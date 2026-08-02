@@ -178,14 +178,28 @@ type Button struct {
 }
 
 // Valid reports whether b can be rendered as a Telegram URL button: a
-// non-empty label pointing at an absolute http(s) URL. It mirrors
-// index.Link.Valid, which notify cannot use without taking on its imports.
+// non-empty label pointing at an absolute http(s) URL whose host could resolve
+// on the recipient's device. It mirrors index.Link.Valid, which notify cannot
+// use without taking on its imports.
+//
+// The host rule exists because a projector promotes URLs it was handed — an
+// alert annotation, a source object's own link — and an alerting stack names
+// its neighbors by service or container name. Telegram rejects a button
+// carrying one (BUTTON_URL_INVALID) and, since it sends text and keyboard as
+// one message, used to drop the entire notification over it. A button nobody
+// could have followed is not worth an alert nobody saw.
 func (b Button) Valid() bool {
 	if strings.TrimSpace(b.Text) == "" {
 		return false
 	}
 	u, err := url.Parse(b.URL)
 	if err != nil || u.Host == "" {
+		return false
+	}
+	// A single-label host ("localhost", a container id) resolves only inside
+	// the network that minted it. See index.PublicURL for why the rule is
+	// "has a dot"; notify cannot call it without taking on index's imports.
+	if !strings.Contains(strings.Trim(u.Hostname(), "."), ".") {
 		return false
 	}
 	return u.Scheme == "http" || u.Scheme == "https"

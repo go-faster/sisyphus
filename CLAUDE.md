@@ -137,6 +137,17 @@ link merely *mentioned* there into a clickable button. Keep this restriction if
 from tool results (dashboards, tickets). `Report.normalize` drops invalid/duplicate links
 and caps at `maxReportLinks`.
 
+**A button must never cost the message.** Telegram sends text and keyboard as one
+`sendMessage`, so a URL it rejects takes the whole notification with it — that is how a
+batch of firing-alert notifications was lost to a single Alertmanager button pointing at a
+container-internal hostname. Two defences, both required: `index.PublicURL` drops a button
+whose host has no dot (a container id, `localhost`, an intranet short name — it could not
+resolve on the recipient's phone anyway) at every point one becomes a Telegram button
+(`bot.linksMarkup`, `notify.Button.Valid`), and `bot.SendTo` degrades — a send that fails
+with a keyboard is retried without it, same `random_id`, with a warning naming the URLs.
+The filter is deliberately *not* on `index.Link.Valid`: a Link is also a citation, and an
+intranet URL is a fine citation for a reader on the intranet.
+
 **Notifications carry buttons the same way**, over their own rail: `notify.Button` →
 outbox payload → `PendingNotification.buttons` → `bot.SendTo`, which sends text and
 keyboard in one `sendMessage` (two messages would double the notification, and only the
