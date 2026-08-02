@@ -191,7 +191,7 @@ func TestE2E_GitLabMRAssignment_ToTelegramDelivery(t *testing.T) {
 			MR: chunkgitlab.MergeRequest{
 				IID:       42,
 				Title:     "Fix flaky test",
-				Author:    "e2e-dave",
+				Author:    chunkgitlab.User{Username: "e2e-dave"},
 				WebURL:    "https://gitlab.example.com/group/project/-/merge_requests/42",
 				Assignees: []string{"e2e-alice"},
 				Reviewers: []string{"e2e-bob"},
@@ -311,7 +311,7 @@ func TestE2E_GitLabMRComment_ToTelegramDelivery(t *testing.T) {
 			MR: chunkgitlab.MergeRequest{
 				IID:       42,
 				Title:     "Fix flaky test",
-				Author:    "e2e-dave",
+				Author:    chunkgitlab.User{Username: "e2e-dave"},
 				WebURL:    "https://gitlab.example.com/group/project/-/merge_requests/42",
 				Assignees: []string{"e2e-alice"},
 				// Assigned months ago, so the assignment itself is history and
@@ -380,6 +380,107 @@ func TestE2E_GitLabMRComment_ToTelegramDelivery(t *testing.T) {
 	// Re-fetching the same MR re-emits the same comment, and the outbox dedup
 	// key — keyed by the comment id, so an edit does not re-notify either —
 	// makes it a no-op.
+	events2, _ := collectMRs(ctx, t, fetcher, cursor)
+	require.Len(t, events2, 1)
+	for _, e := range events2 {
+		require.NoError(t, router.Route(ctx, e))
+	}
+	drainOnce(ctx, t, apiClient, sink)
+	require.Len(t, sink.messages(), 1)
+}
+
+// The terminal half: the MR lands and its author hears about it. What is new
+// here is the recipient — the author is nobody's member set, so this is the
+// one GitLab notification addressed by a field of the MR itself rather than by
+// a membership — and that the merge is gated on merged_at rather than on
+// having seen the state change, since "merged" stays true on every later poll.
+func TestE2E_GitLabMRMerged_ToTelegramDelivery(t *testing.T) {
+	db := openTestDB(t)
+	ctx := t.Context()
+	store := notifystore.New(db, notifystore.Options{})
+
+	const telegramUserID int64 = 900100102
+	const telegramAccessHash int64 = 555444335
+
+	_, err := store.EnrollTelegram(ctx, telegramUserID)
+	require.NoError(t, err)
+	_, err = tgpeer.New(db, tgpeer.Options{}).Upsert(ctx, []tgpeer.Peer{
+		{Type: tgpeer.KindUser, ID: telegramUserID, AccessHash: telegramAccessHash},
+	})
+	require.NoError(t, err)
+	// The recipient is the MR's author this time, not a member of it.
+	_, err = store.SyncIdentities(ctx, []notifystore.Identity{
+		{TelegramUserID: telegramUserID, GitLabUsername: "e2e-dave"},
+	})
+	require.NoError(t, err)
+	require.NoError(t, store.Subscribe(ctx, telegramUserID, notify.SourceGitLab,
+		[]notify.EventType{notify.EventMRMerged}))
+
+	updated := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	fetcher := &fakeGitLabFetcher{refs: []ingestgitlab.MergeRequestRef{
+		{
+			Project: "group/project",
+			MR: chunkgitlab.MergeRequest{
+				IID:    42,
+				Title:  "Fix flaky test",
+				Author: chunkgitlab.User{Username: "e2e-dave"},
+				State:  "merged",
+				WebURL: "https://gitlab.example.com/group/project/-/merge_requests/42",
+				// Assigned months ago: the assignment is history, the merge is
+				// the news.
+				Assignees:  []string{"e2e-alice"},
+				AssignedBy: chunkgitlab.User{Username: "e2e-carol"},
+				AssignedAt: updated.AddDate(0, -3, 0),
+				MergedAt:   updated,
+				MergedBy:   chunkgitlab.User{Username: "e2e-carol"},
+				Updated:    updated,
+			},
+		},
+	}}
+
+	events, cursor := collectMRs(ctx, t, fetcher, ingestgitlab.Cursor{})
+	require.Len(t, events, 1)
+
+	dispatcher := notify.NewDispatcher(store, store, notify.ChannelTelegram, nil)
+	router := event.NewMux()
+	router.Subscribe(event.Subscription{
+		Name:    "notify-gitlab",
+		Sources: []event.Source{event.SourceGitLab},
+		Handler: notify.NewRouterSubscriber(notifygitlab.Projector{
+			Staleness: notify.Staleness{Now: func() time.Time { return updated }},
+		}, dispatcher),
+	})
+	for _, e := range events {
+		require.NoError(t, router.Route(ctx, e))
+	}
+
+	handler := api.New(nil, nil, "v1.0.0-e2e", api.WithNotifyStore(store))
+	secHandler := api.NewSecurityHandler("secret-token")
+	server, err := oas.NewServer(handler, secHandler, oas.WithErrorHandler(api.ErrorHandler))
+	require.NoError(t, err)
+	httpServer := httptest.NewServer(server)
+	defer httpServer.Close()
+
+	apiClient, err := apiclient.New(httpServer.URL, "secret-token", apiclient.Options{})
+	require.NoError(t, err)
+
+	sink := &mockTelegramSink{}
+	drainOnce(ctx, t, apiClient, sink)
+
+	delivered := sink.messages()
+	require.Len(t, delivered, 1)
+	require.Equal(t, telegramUserID, delivered[0].TelegramUserID)
+	require.Equal(t,
+		"🎉 **e2e\\-carol** merged "+
+			"[MR \\!42\\: Fix flaky test](https://gitlab.example.com/group/project/-/merge_requests/42)",
+		delivered[0].Text)
+	require.Equal(t, []index.Link{
+		{Text: "Open merge request", URL: "https://gitlab.example.com/group/project/-/merge_requests/42"},
+	}, delivered[0].Buttons)
+
+	// The MR stays merged forever, so every later poll re-states it. The
+	// outbox dedup key — no timestamp in it, because an MR merges once — is
+	// what keeps that one notification.
 	events2, _ := collectMRs(ctx, t, fetcher, cursor)
 	require.Len(t, events2, 1)
 	for _, e := range events2 {

@@ -51,7 +51,7 @@ func mrEventWithActors(t *testing.T, payload ingestgitlab.MRPayload) event.Event
 	if payload.ReviewRequestedAt.IsZero() {
 		payload.ReviewRequestedAt = e.OccurredAt
 	}
-	e, err := e.WithPayload(payload)
+	e, err := e.WithPayload(ingestgitlab.MRPayloadVersion, payload)
 	require.NoError(t, err)
 	return e
 }
@@ -132,6 +132,106 @@ func TestProjector_StaleMembershipProjectsNothing(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, events, 1)
 	require.Equal(t, notify.EventMRReviewRequested, events[0].Type)
+}
+
+// mergedPayload is an MR payload whose only news is the merge: its membership
+// is old, so an assignment event never confuses the assertions.
+func mergedPayload(author string, assignees []string, mergedBy string, mergedAt time.Time) ingestgitlab.MRPayload {
+	stale := eventTime.AddDate(0, -3, 0)
+	return ingestgitlab.MRPayload{
+		Assignees:         assignees,
+		AssignedAt:        stale,
+		ReviewRequestedAt: stale,
+		Author:            chunkgitlab.User{Username: author},
+		State:             "merged",
+		MergedAt:          mergedAt,
+		MergedBy:          chunkgitlab.User{Username: mergedBy, Display: "Carol", URL: "https://example.com/carol"},
+	}
+}
+
+func TestProjector_ProjectsMerge(t *testing.T) {
+	mergedAt := eventTime.Add(-time.Hour)
+	e := mrEventWithActors(t, mergedPayload("alice", []string{"bob"}, "carol", mergedAt))
+
+	events, err := testProjector().Project(e)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+
+	// The author first: an MR landing is news to whoever wrote it before it is
+	// news to anyone else.
+	author := events[0]
+	require.Equal(t, notify.EventMRMerged, author.Type)
+	require.Equal(t, "alice", author.Recipient.Key)
+	require.Equal(t, "carol", author.Actor.Key)
+	require.Equal(t, "https://example.com/carol", author.Actor.URL)
+	require.Equal(t, "gitlab_mr_merged:group/proj!1:alice", author.EventID)
+	require.Equal(t, mergedAt, author.OccurredAt)
+	require.Equal(t, []notify.Button{{Text: "Open merge request", URL: "https://example.com/mr/1"}}, author.Buttons)
+
+	require.Equal(t, notify.EventMRMerged, events[1].Type)
+	require.Equal(t, "bob", events[1].Recipient.Key)
+	require.Equal(t, "gitlab_mr_merged:group/proj!1:bob", events[1].EventID)
+}
+
+// An open MR carries the same current-state payload every poll and must not
+// announce a merge that has not happened.
+func TestProjector_OpenMRProjectsNoMerge(t *testing.T) {
+	e := mrEventWithActors(t, ingestgitlab.MRPayload{
+		Assignees:  []string{"alice"},
+		AssignedAt: eventTime.AddDate(0, -3, 0),
+		Author:     chunkgitlab.User{Username: "alice"},
+		State:      "opened",
+	})
+
+	events, err := testProjector().Project(e)
+	require.NoError(t, err)
+	require.Empty(t, events)
+}
+
+// "merged" stays true forever, so the merge is gated on its timestamp: an MR
+// merged months ago notifies nobody when it is next touched.
+func TestProjector_StaleMergeProjectsNothing(t *testing.T) {
+	e := mrEventWithActors(t, mergedPayload("alice", nil, "carol", eventTime.AddDate(0, -3, 0)))
+
+	events, err := testProjector().Project(e)
+	require.NoError(t, err)
+	require.Empty(t, events)
+}
+
+// Merging your own MR is self-caused, so the dispatcher drops it — which only
+// works because the merger is a username and never a display name.
+func TestProjector_SelfMergeIsSelfCaused(t *testing.T) {
+	e := mrEventWithActors(t, mergedPayload("alice", nil, "alice", eventTime))
+
+	events, err := testProjector().Project(e)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.True(t, events[0].SelfCaused())
+}
+
+// An author who is also an assignee hears about the merge once.
+func TestProjector_MergeDedupsAuthorAmongAssignees(t *testing.T) {
+	e := mrEventWithActors(t, mergedPayload("alice", []string{"alice", "bob"}, "carol", eventTime))
+
+	events, err := testProjector().Project(e)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	require.Equal(t, "alice", events[0].Recipient.Key)
+	require.Equal(t, "bob", events[1].Recipient.Key)
+}
+
+// GitLab omitting the author's username leaves nobody to address: a display
+// name is not a match key, and addressing one would reach whoever holds that
+// string as a username.
+func TestProjector_MergeWithoutAuthorUsernameAddressesAssigneesOnly(t *testing.T) {
+	p := mergedPayload("", []string{"bob"}, "carol", eventTime)
+	p.Author = chunkgitlab.User{Display: "Alice Example"}
+	e := mrEventWithActors(t, p)
+
+	events, err := testProjector().Project(e)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, "bob", events[0].Recipient.Key)
 }
 
 // commentPayload is an MR payload whose only news is its comments: no

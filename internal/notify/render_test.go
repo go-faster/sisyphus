@@ -35,6 +35,17 @@ func TestDefaultRenderer(t *testing.T) {
 			want: "👀 **John Doe** requested your review on [MR](https://gitlab.example.com/g/p/-/merge_requests/42)",
 		},
 		{
+			name: "mr merged",
+			event: Event{
+				Type:  EventMRMerged,
+				Actor: Actor{Display: "John Doe", URL: "https://gitlab.example.com/jdoe"},
+				Title: "MR !42: Fix the thing",
+				URL:   "https://gitlab.example.com/g/p/-/merge_requests/42",
+			},
+			want: "🎉 [John Doe](https://gitlab.example.com/jdoe) merged " +
+				"[MR \\!42\\: Fix the thing](https://gitlab.example.com/g/p/-/merge_requests/42)",
+		},
+		{
 			name: "issue assigned",
 			event: Event{
 				Type:  EventIssueAssigned,
@@ -212,6 +223,13 @@ func TestButtonValid(t *testing.T) {
 		// unclickable or a scheme nobody vetted.
 		{"javascript", Button{Text: "Runbook", URL: "javascript:alert(1)"}, false},
 		{"tg scheme", Button{Text: "Chat", URL: "tg://resolve?domain=x"}, false},
+		// A single-label host resolves only inside the network that minted
+		// it. Telegram rejects a button carrying one and drops the whole
+		// message with it, which is how a batch of alerts went missing.
+		{"container hostname", Button{Text: "Alertmanager", URL: "http://a9869748c05a:9093"}, false},
+		{"localhost", Button{Text: "Local", URL: "http://localhost:8080/x"}, false},
+		{"intranet short name", Button{Text: "Wiki", URL: "https://wiki/x"}, false},
+		{"ipv4 literal", Button{Text: "Node", URL: "http://10.0.12.235:8080/x"}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -87,7 +87,7 @@ Keep the index below one line per package, and put the depth in the nested file.
 - `internal/mcpclient` — MCP client used to call tools exposed by ssmcp.
 - `internal/content` — `index.ContentResolver`: `DatabaseReader`, `LocalRepoReader` (traversal-guarded), `ChainResolver`.
 - `internal/fetch` — `index.URLFetcher` with a per-site allowlist (globs, methods, credentials, byte cap).
-- `internal/notify` (+ `gitlab`, `jira`, `investigation`, `store`) — notifications: `event.Router` → projector → dispatcher/broadcaster → outbox → sink. Two addressing modes: `Dispatcher` matches an event's recipient to subscribed users (GitLab MR assignment and comments, Jira issue assignment and comments); `Broadcaster` writes one row per chat registered with `/alerts on`, for events addressed to nobody in particular (`investigation` — an agent report on a firing alert). It fetches nothing; the GitLab/Jira source adapters emit the events (see `internal/ingest`). A source event states **current** membership, not a change to it, so `notify.Staleness` (`notify.max_assignment_age_seconds`, 24h by default) drops assignments the source dates older than the cutoff — otherwise any edit to a long-assigned issue re-announces its assignment, and a fresh outbox announces every one at once. It is deliberately permissive: an unknown timestamp still notifies, because over-notifying costs one message the dedup key collapses anyway while under-notifying loses a real assignment silently. The same cutoff bounds comment events (see below). **Who a GitLab/Jira actor is on Telegram comes from `notify.identities` in config and nowhere else** — ssapi reconciles it on startup (`store.SyncIdentities`), and there is no bot command to claim an identity, because nothing a user types proves the account is theirs. Subscriptions stay self-service. Contract and rationale are in `notify.go`'s package doc; delivery rides `internal/queue`.
+- `internal/notify` (+ `gitlab`, `jira`, `investigation`, `store`) — notifications: `event.Router` → projector → dispatcher/broadcaster → outbox → sink. Two addressing modes: `Dispatcher` matches an event's recipient to subscribed users (GitLab MR assignment, comments and merges, Jira issue assignment and comments); `Broadcaster` writes one row per chat registered with `/alerts on`, for events addressed to nobody in particular (`investigation` — an agent report on a firing alert). It fetches nothing; the GitLab/Jira source adapters emit the events (see `internal/ingest`). A source event states **current** membership, not a change to it, so `notify.Staleness` (`notify.max_assignment_age_seconds`, 24h by default) drops assignments the source dates older than the cutoff — otherwise any edit to a long-assigned issue re-announces its assignment, and a fresh outbox announces every one at once. It is deliberately permissive: an unknown timestamp still notifies, because over-notifying costs one message the dedup key collapses anyway while under-notifying loses a real assignment silently. The same cutoff bounds comment events (see below) and `mr_merged`, whose dedup key needs no timestamp — an MR merges once — but whose event says "merged" on every poll thereafter, so only `merged_at` tells a merge that just landed from one that landed months ago. **Who a GitLab/Jira actor is on Telegram comes from `notify.identities` in config and nowhere else** — ssapi reconciles it on startup (`store.SyncIdentities`), and there is no bot command to claim an identity, because nothing a user types proves the account is theirs. Subscriptions stay self-service. Contract and rationale are in `notify.go`'s package doc; delivery rides `internal/queue`.
 
 **Infrastructure**
 
@@ -136,6 +136,17 @@ link merely *mentioned* there into a clickable button. Keep this restriction if
 `/investigate` is deliberately looser: `Report.Links` may be any http(s) URL the agent got
 from tool results (dashboards, tickets). `Report.normalize` drops invalid/duplicate links
 and caps at `maxReportLinks`.
+
+**A button must never cost the message.** Telegram sends text and keyboard as one
+`sendMessage`, so a URL it rejects takes the whole notification with it — that is how a
+batch of firing-alert notifications was lost to a single Alertmanager button pointing at a
+container-internal hostname. Two defences, both required: `index.PublicURL` drops a button
+whose host has no dot (a container id, `localhost`, an intranet short name — it could not
+resolve on the recipient's phone anyway) at every point one becomes a Telegram button
+(`bot.linksMarkup`, `notify.Button.Valid`), and `bot.SendTo` degrades — a send that fails
+with a keyboard is retried without it, same `random_id`, with a warning naming the URLs.
+The filter is deliberately *not* on `index.Link.Valid`: a Link is also a citation, and an
+intranet URL is a fine citation for a reader on the intranet.
 
 **Notifications carry buttons the same way**, over their own rail: `notify.Button` →
 outbox payload → `PendingNotification.buttons` → `bot.SendTo`, which sends text and
@@ -239,6 +250,7 @@ unauthenticated. Set it in any deployment reachable from untrusted networks.
 - Errors: wrap with `github.com/go-faster/errors` (`errors.Wrap`). No `fmt.Errorf("...%w")`.
 - Logging: `*zap.Logger` passed in; no global loggers, no `log` package.
 - IDs: `github.com/google/uuid`.
+- Payload versioning: anything JSON-encoded for a *reader in another process* declares the shape it was written in — `event.Event.PayloadVersion` (stamped by `WithPayload`, demanded by `DecodePayload`) for canonical events, `indexjob.Version` for queued index jobs. A reader that meets a version it does not know fails by name (`event.PayloadVersionError`, `indexjob.ErrVersion`) rather than decoding an old shape into today's structs. Bump on a field's type or meaning changing; additive fields need no bump. Do not add a lenient decoder to paper over a shape change — the version is how the two sides disagree loudly.
 - Content hashing: `internal/index.Hash` (sha256 of normalized text). Skip re-embedding when the hash is unchanged.
 - Document identity: unique on `(source, source_id)` — **not** `body_hash`. Re-ingesting the same `source_id` with changed content updates the row and its chunks in place; it never creates a duplicate.
 - Changing a chunker's output for input it already handled (different boundaries, text, or chunk types)? Bump `index.VersionedChunker.ChunkerVersion()`. The body hash cannot see a chunker change — same body, different code — so without a bump, already-indexed documents keep chunks built by the old code until someone runs a full `--reset`. A bump re-chunks only that chunker's documents, and chunks whose text is unchanged still reuse their embeddings, so it is cheap. A chunker declaring no version reports 0 and is never re-chunked.

@@ -46,7 +46,7 @@ func TestEventsFromWebhookFiring(t *testing.T) {
 	require.Equal(t, "sisyphus", e.Attr("receiver"))
 
 	var p AlertPayload
-	require.NoError(t, e.DecodePayload(&p))
+	require.NoError(t, e.DecodePayload(AlertPayloadVersion, &p))
 	require.Equal(t, "5xx rate above 5%", p.Annotations["summary"])
 	require.Equal(t, "https://alertmanager.example.com", p.ExternalURL)
 }

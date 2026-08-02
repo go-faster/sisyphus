@@ -42,7 +42,7 @@ func TestEventFromReport(t *testing.T) {
 	require.Equal(t, "checkout", e.Attr("service"))
 
 	var p ReportPayload
-	require.NoError(t, e.DecodePayload(&p))
+	require.NoError(t, e.DecodePayload(ReportPayloadVersion, &p))
 	require.Equal(t, jobID, p.JobID)
 	require.Equal(t, trigger.ID, p.TriggerEventID, "the report points back at the alert that caused it")
 	require.Equal(t, VerdictSolved, p.Verdict)

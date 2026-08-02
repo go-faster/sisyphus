@@ -42,7 +42,7 @@ func TestEventFromIssue(t *testing.T) {
 	require.NotEqual(t, iss.Reporter, e.Actor.Display)
 
 	var p IssuePayload
-	require.NoError(t, e.DecodePayload(&p))
+	require.NoError(t, e.DecodePayload(IssuePayloadVersion, &p))
 	require.Equal(t, "acc-alice", p.AssigneeAccountID)
 	require.Equal(t, "Alice", p.AssigneeDisplay)
 	require.Equal(t, chunkjira.User{
@@ -67,7 +67,7 @@ func TestEventFromIssueWithoutChangelogHasNoActor(t *testing.T) {
 	require.True(t, e.Actor.Zero())
 
 	var p IssuePayload
-	require.NoError(t, e.DecodePayload(&p))
+	require.NoError(t, e.DecodePayload(IssuePayloadVersion, &p))
 	require.True(t, p.AssignedBy.Zero())
 }
 
@@ -79,6 +79,6 @@ func TestEventFromIssueUnassigned(t *testing.T) {
 	require.NoError(t, err)
 
 	var p IssuePayload
-	require.NoError(t, e.DecodePayload(&p))
+	require.NoError(t, e.DecodePayload(IssuePayloadVersion, &p))
 	require.Empty(t, p.AssigneeAccountID)
 }

@@ -11,6 +11,11 @@ import (
 	"github.com/go-faster/sisyphus/internal/index"
 )
 
+// ReportPayloadVersion is [ReportPayload]'s schema version. See
+// [github.com/go-faster/sisyphus/internal/ingest/gitlab.MRPayloadVersion] for
+// when to bump one.
+const ReportPayloadVersion = 1
+
 // ReportPayload is the source-typed body of an [event.TypeInvestigationCompleted]
 // event: the finished report, plus what triggered it. A destination that wants
 // more than the envelope's title decodes this.
@@ -47,7 +52,7 @@ func EventFromReport(jobID uuid.UUID, trigger event.Event, report Report, comple
 		OccurredAt: completedAt,
 		Attributes: trigger.Attributes,
 	}
-	e, err := e.WithPayload(ReportPayload{
+	e, err := e.WithPayload(ReportPayloadVersion, ReportPayload{
 		JobID:          jobID,
 		TriggerEventID: trigger.ID,
 		Verdict:        report.Verdict,

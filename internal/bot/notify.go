@@ -148,6 +148,26 @@ func (b *Bot) capturePeers(ctx context.Context, e tg.Entities, chat chatPeer) {
 // buttons become inline URL buttons under the message, in one sendMessage
 // with the text rather than a follow-up: two messages would double the
 // notification and only the first would carry the deduplicating random_id.
+//
+// # Degradation
+//
+// The message matters more than its decoration, so a send that Telegram
+// refuses is retried with less of it rather than abandoned: first without
+// markdown styling, then without the inline keyboard, then with neither.
+//
+// The keyboard is the one that bit us. A button URL only has to satisfy
+// [notify.Button.Valid] to reach here, and Telegram is stricter — it rejected
+// a whole batch of alert notifications with BUTTON_URL_INVALID because an
+// alert annotation pointed at a container-internal hostname. Since text and
+// keyboard ride one sendMessage, that took the alert down with the button: a
+// firing-alert notification nobody ever saw, over a decoration nobody would
+// have missed. The fallback is deliberately blind to *why* the send failed —
+// there are several ways a keyboard can be rejected, and losing the alert is
+// the same outcome for all of them.
+//
+// Every attempt reuses the same random_id, so a first attempt that in fact
+// reached Telegram but whose response was lost returns that same message
+// rather than posting a second one.
 func (b *Bot) SendTo(ctx context.Context, notificationID uuid.UUID, peerType string, peerID, accessHash int64, text string, buttons []index.Link) error {
 	if b.silent {
 		return nil
@@ -158,21 +178,51 @@ func (b *Bot) SendTo(ctx context.Context, notificationID uuid.UUID, peerType str
 	}
 	peer := notifyPeer(peerType, peerID, accessHash)
 	randomID := randomIDFor(notificationID)
-	request := func() *message.Builder {
-		req := sender.To(peer).RandomID(randomID)
-		if kb := linksMarkup(buttons); kb != nil {
-			req = req.Markup(kb)
+	keyboard := linksMarkup(buttons)
+
+	send := func(ctx context.Context, kb tg.ReplyMarkupClass) error {
+		request := func() *message.Builder {
+			req := sender.To(peer).RandomID(randomID)
+			if kb != nil {
+				req = req.Markup(kb)
+			}
+			return req
 		}
-		return req
+		_, err := request().StyledText(ctx, styling.Custom(func(eb *entity.Builder) error {
+			return renderMarkdown(eb, text)
+		}))
+		if err == nil {
+			return nil
+		}
+		_, err = request().Text(ctx, text)
+		return err
 	}
-	_, err := request().StyledText(ctx, styling.Custom(func(eb *entity.Builder) error {
-		return renderMarkdown(eb, text)
-	}))
-	if err == nil {
-		return nil
+
+	err := send(ctx, keyboard)
+	if err == nil || keyboard == nil {
+		return err
 	}
-	_, err = request().Text(ctx, text)
-	return err
+	// Warn rather than swallow: a notification that silently loses its
+	// buttons forever is a config bug nobody is looking for, and the URL
+	// Telegram refused is the thing that names it.
+	zctx.From(ctx).Warn("notification send failed with buttons, retrying without them",
+		zap.Error(err),
+		zap.Strings("button_urls", buttonURLs(buttons)),
+	)
+	if err := send(ctx, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
+// buttonURLs lists the URLs of buttons, for the log line that names which one
+// Telegram would not take.
+func buttonURLs(buttons []index.Link) []string {
+	out := make([]string, 0, len(buttons))
+	for _, b := range buttons {
+		out = append(out, b.URL)
+	}
+	return out
 }
 
 // notifyPeer resolves an outbox row's target into the peer to send to. A
@@ -210,7 +260,7 @@ func (b *Bot) Ready() <-chan struct{} {
 // is easier to discover than the reverse — nobody guesses at an event type
 // they were never subscribed to.
 var defaultEventTypesBySource = map[string][]string{
-	"gitlab": {"mr_assigned", "mr_review_requested", "mr_commented", "mr_mentioned"},
+	"gitlab": {"mr_assigned", "mr_review_requested", "mr_commented", "mr_mentioned", "mr_merged"},
 	"jira":   {"issue_assigned", "issue_commented", "issue_mentioned"},
 }
 

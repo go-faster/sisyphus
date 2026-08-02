@@ -6,6 +6,11 @@
 // and each destination projects it into its own artifact (a Document, a
 // Notification, an Investigation).
 //
+// A payload is versioned by the adapter that owns it (see Event.PayloadVersion
+// and DecodePayload): the envelope is generic and stable, while the opaque
+// body is exactly where a shape change can reach a reader that predates or
+// postdates it.
+//
 // Like internal/index and internal/notify, this package is intentionally
 // dependency-light (stdlib only) so every context can depend on it without
 // import cycles. Source-specific detail never leaks into the envelope: it
@@ -16,6 +21,7 @@ package event
 
 import (
 	"encoding/json"
+	"strconv"
 	"time"
 )
 
@@ -116,23 +122,76 @@ type Event struct {
 	// fields above; Payload carries what only the owning source understands
 	// (e.g. the full MR object the notify diff and the ingest normalizer read).
 	Payload json.RawMessage
+
+	// PayloadVersion is the schema version of Payload, owned by the adapter
+	// that produces it: it counts changes to that one (Source, Type)'s payload
+	// shape, not changes to this envelope, so two sources' versions are
+	// unrelated numbers.
+	//
+	// It exists because an event outlives the process that wrote it. Most are
+	// routed in-process and decoded a microsecond later, but an alert becomes
+	// an investigation's queued trigger and can be drained by a replica
+	// running the next release. A field whose Go type changed decodes there
+	// as a silent wrong answer or a cryptic type error; the version turns
+	// both into [PayloadVersionError], naming the shape that was written and
+	// the one this binary understands.
+	//
+	// Zero means the producer set none, which for a persisted event means it
+	// predates versioning. It is deliberately not defaulted to 1: an
+	// unversioned payload is exactly the one whose shape nothing vouches for.
+	PayloadVersion int
+}
+
+// PayloadVersionError reports a payload written in a shape the reader does not
+// understand. Consumers recover it with errors.As to log what was found — the
+// numbers are the whole diagnostic, and a bare "decode failed" is what this
+// type exists to stop.
+type PayloadVersionError struct {
+	Source Source
+	Type   Type
+	Got    int // the version the payload was written with; 0 if unversioned
+	Want   int // the version the reader understands
+}
+
+func (e *PayloadVersionError) Error() string {
+	return "payload version " + strconv.Itoa(e.Got) + " for " + string(e.Source) + "/" + string(e.Type) +
+		": this build understands " + strconv.Itoa(e.Want)
 }
 
 // Attr returns the value of a routable attribute, or "" if unset.
 func (e Event) Attr(key string) string { return e.Attributes[key] }
 
-// DecodePayload unmarshals the event payload into v. Only the source adapter
-// that produced the payload should call this — a destination that does not own
-// (Source, Type) must route on the envelope fields instead.
-func (e Event) DecodePayload(v any) error { return json.Unmarshal(e.Payload, v) }
+// DecodePayload unmarshals the event payload into v, provided it was written
+// in the version the caller understands. Only the adapter that owns this
+// (Source, Type) should call it — a destination that does not must route on
+// the envelope fields instead.
+//
+// want is stated at the call site rather than inferred from v because the
+// version belongs to the shape, not to the Go type currently modeling it:
+// renaming a field or changing its type leaves the same struct decoding a
+// payload it can no longer read. A reader that genuinely handles several
+// shapes switches on [Event.PayloadVersion] and calls this once per version.
+func (e Event) DecodePayload(want int, v any) error {
+	if e.PayloadVersion != want {
+		return &PayloadVersionError{Source: e.Source, Type: e.Type, Got: e.PayloadVersion, Want: want}
+	}
+	return json.Unmarshal(e.Payload, v)
+}
 
-// WithPayload returns a copy of e with v JSON-encoded into Payload. Sources use
-// it to attach their typed body without hand-marshaling at every call site.
-func (e Event) WithPayload(v any) (Event, error) {
+// WithPayload returns a copy of e with v JSON-encoded into Payload, stamped
+// with the version v was written in. Sources use it to attach their typed body
+// without hand-marshaling at every call site.
+//
+// The version is a parameter rather than a field the caller may set on the
+// literal so that attaching a payload and declaring its shape are one act: a
+// payload that reaches a reader unstamped is indistinguishable from one
+// written before versioning existed.
+func (e Event) WithPayload(version int, v any) (Event, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return e, err
 	}
 	e.Payload = b
+	e.PayloadVersion = version
 	return e, nil
 }

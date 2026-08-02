@@ -120,12 +120,27 @@ const buttonsPerRow = 2
 // row (a trailing odd link gets a row of its own), or nil when there are no
 // links. Links are assumed pre-validated (see index.Link.Valid / agent report
 // normalization).
+// linksMarkup builds the inline keyboard for links, dropping any whose host
+// could not resolve on the recipient's device.
+//
+// That filter is here, at the last moment before a link becomes a Telegram
+// button, rather than in index.Link.Valid: the same Link is also a citation,
+// where an intranet URL is fine. Telegram rejects a button pointing at a
+// container-internal host and takes the whole message down with it, so a
+// button that cannot survive the trip is worth less than the message it would
+// have cost. Returns nil when nothing survives, which sends the text alone.
 func linksMarkup(links []index.Link) tg.ReplyMarkupClass {
-	if len(links) == 0 {
+	reachable := make([]index.Link, 0, len(links))
+	for _, l := range links {
+		if index.PublicURL(l.URL) {
+			reachable = append(reachable, l)
+		}
+	}
+	if len(reachable) == 0 {
 		return nil
 	}
 	var rows []tg.KeyboardButtonRow
-	for chunk := range slices.Chunk(links, buttonsPerRow) {
+	for chunk := range slices.Chunk(reachable, buttonsPerRow) {
 		buttons := make([]tg.KeyboardButtonClass, 0, len(chunk))
 		for _, l := range chunk {
 			buttons = append(buttons, markup.URL(l.Text, l.URL))

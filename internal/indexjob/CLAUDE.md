@@ -7,6 +7,23 @@ document per job), `Publisher` (producer side) and `Handler` (worker side), over
 A job carries the **document**, not a reference to it. That is what lets a worker run with
 no source credentials, no git clone, and no Telegram session file.
 
+## The payload is versioned
+
+`Payload.Version` / `indexjob.Version`. A queued job outlives the binary that wrote it, so
+a worker rolled forward while jobs are outstanding drains payloads the previous release
+produced. Additive changes are fine; a **rehydrated metadata struct changing shape is
+not** — it decodes either as a type error naming no cause, or, where the JSON still fits,
+as a wrong answer indexed silently. Bump `Version` when that happens.
+
+`Decode` rejects any other version with `ErrVersion`, **before** rehydrating (rehydration
+is where an old shape would be decoded into today's structs). The job then burns its
+attempt budget into the queue's terminal status — no retry makes an old payload readable —
+and the document is re-enqueued by the next run that sees its content change, or by
+`ssingest <source> --reset`. In-flight jobs at an incompatible deploy are the cost;
+that is deliberate, and cheaper than a silently wrong index.
+
+Version 0 means the payload predates this field and is rejected outright.
+
 ## Two load-bearing details
 
 **1. `Decode` rehydrates metadata.** The GitLab and Jira ingesters put a concrete Go

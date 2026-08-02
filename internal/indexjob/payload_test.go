@@ -63,7 +63,7 @@ func gitlabMR() chunkgitlab.MergeRequest {
 		Description:    "Bumps the timeout to 30s.",
 		State:          "merged",
 		Labels:         []string{"auth"},
-		Author:         "alice",
+		Author:         chunkgitlab.User{Username: "alice"},
 		WebURL:         "https://gitlab.example.com/group/proj/-/merge_requests/7",
 		Created:        ts("2026-01-02T03:04:05Z"),
 		Updated:        ts("2026-01-04T03:04:05Z"),
@@ -73,7 +73,7 @@ func gitlabMR() chunkgitlab.MergeRequest {
 		TargetBranch:   "main",
 		SourceBranch:   "fix/session-timeout",
 		MergedAt:       ts("2026-01-04T03:04:05Z"),
-		MergedBy:       "carol",
+		MergedBy:       chunkgitlab.User{Username: "carol"},
 		MergeCommitSHA: "0123456789abcdef0123456789abcdef01234567",
 		Threads: []chunkgitlab.Thread{{
 			ID:       "thread-9",
@@ -275,4 +275,48 @@ func TestDecodeRejectsGarbage(t *testing.T) {
 func TestChunkerUnknownKind(t *testing.T) {
 	_, err := Chunker(Kind("nope"))
 	require.Error(t, err)
+}
+
+// Encode stamps the current shape, and Decode accepts it.
+func TestEncodeStampsVersion(t *testing.T) {
+	b := mustEncode(t, KindGitLab, chunkgitlab.DocumentFromMergeRequest("group/proj", gitlabMR()))
+
+	var raw struct {
+		Version int `json:"version"`
+	}
+	require.NoError(t, json.Unmarshal(b, &raw))
+	require.Equal(t, Version, raw.Version)
+
+	p, err := Decode(b)
+	require.NoError(t, err)
+	require.Equal(t, Version, p.Version)
+}
+
+// A payload written in a shape this build does not understand is rejected by
+// name. The unversioned case is the one that actually happens: a job enqueued
+// by a release that predated the version field, drained by a worker rolled
+// forward past it.
+func TestDecodeRejectsOtherVersion(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		payload string
+	}{
+		{
+			// The pre-versioning shape, whose gitlab_mr carries an Author that
+			// is a bare string rather than a user object. Decoding it into
+			// today's struct is the silent-wrong-answer case the version
+			// exists to stop.
+			name:    "unversioned",
+			payload: `{"kind":"gitlab","document":{"source":"gitlab_mr","metadata":{"gitlab_mr":{"IID":7,"Author":"alice"}}}}`,
+		},
+		{
+			name:    "from the future",
+			payload: `{"version":99,"kind":"gitlab","document":{"source":"gitlab_mr"}}`,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Decode([]byte(tt.payload))
+			require.ErrorIs(t, err, ErrVersion)
+		})
+	}
 }

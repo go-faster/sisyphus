@@ -51,7 +51,7 @@ func issueEventAssignedBy(t *testing.T, accountID, display string, payload inges
 	if payload.AssignedAt.IsZero() {
 		payload.AssignedAt = e.OccurredAt
 	}
-	e, err := e.WithPayload(payload)
+	e, err := e.WithPayload(ingestjira.IssuePayloadVersion, payload)
 	require.NoError(t, err)
 	return e
 }
@@ -149,9 +149,9 @@ func TestProjector_UnknownAssignmentTimeStillNotifies(t *testing.T) {
 	// issueEventAssignedBy defaults AssignedAt to the event time, so clear it
 	// back out: this test is about a payload that carries none at all.
 	var decoded ingestjira.IssuePayload
-	require.NoError(t, e.DecodePayload(&decoded))
+	require.NoError(t, e.DecodePayload(ingestjira.IssuePayloadVersion, &decoded))
 	decoded.AssignedAt = time.Time{}
-	e, err := e.WithPayload(decoded)
+	e, err := e.WithPayload(ingestjira.IssuePayloadVersion, decoded)
 	require.NoError(t, err)
 
 	p := Projector{Staleness: notify.Staleness{Now: func() time.Time { return occurred.AddDate(1, 0, 0) }}}

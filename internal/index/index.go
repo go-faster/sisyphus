@@ -226,6 +226,12 @@ type Link struct {
 // URL. Anything else (relative paths, other schemes, unparsable URLs, missing
 // label) is rejected so that model-produced links can be filtered before they
 // reach a user-facing surface.
+//
+// It deliberately does not judge whether the host resolves anywhere: a Link is
+// also a cited source, and an intranet short name is a perfectly good citation
+// for a reader on the intranet. That judgement belongs to whatever renders the
+// link for a specific audience — see [PublicURL], which the Telegram button
+// paths apply.
 func (l Link) Valid() bool {
 	if strings.TrimSpace(l.Text) == "" {
 		return false
@@ -235,6 +241,29 @@ func (l Link) Valid() bool {
 		return false
 	}
 	return u.Scheme == "http" || u.Scheme == "https"
+}
+
+// PublicURL reports whether rawURL names a host that could resolve on someone
+// else's device.
+//
+// A single-label host — "localhost", a Docker container id, an intranet short
+// name — resolves only inside the network that minted it, and a button is
+// tapped on the recipient's phone. Such a URL is not merely useless there:
+// Telegram refuses an inline button carrying one outright
+// (BUTTON_URL_INVALID), and because it sends text and keyboard as a single
+// message, one unreachable button used to take an entire alert notification
+// down with it.
+//
+// The rule is "the host has a dot", which also rejects an IPv6 literal. That
+// is deliberate: a bare IPv6 address in a notification button has never been a
+// real case here, and admitting one would mean parsing addresses to tell a
+// global unicast address from a loopback or link-local one.
+func PublicURL(rawURL string) bool {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return false
+	}
+	return strings.Contains(strings.Trim(u.Hostname(), "."), ".")
 }
 
 // Answer is a structured answer: prose plus optional actionable links.
