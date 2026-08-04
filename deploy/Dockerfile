@@ -12,7 +12,8 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
     CGO_ENABLED=0 go build -o /out/ssbot ./cmd/ssbot && \
     CGO_ENABLED=0 go build -o /out/ssagent ./cmd/ssagent && \
     CGO_ENABLED=0 go build -o /out/ssmcp ./cmd/ssmcp && \
-    CGO_ENABLED=0 go build -o /out/ssingest ./cmd/ssingest
+    CGO_ENABLED=0 go build -o /out/ssingest ./cmd/ssingest && \
+    CGO_ENABLED=0 go build -o /out/shits ./cmd/shits
 
 FROM $RUNTIME_IMAGE
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -23,4 +24,5 @@ COPY --from=build /out/ssbot /usr/local/bin/ssbot
 COPY --from=build /out/ssagent /usr/local/bin/ssagent
 COPY --from=build /out/ssmcp /usr/local/bin/ssmcp
 COPY --from=build /out/ssingest /usr/local/bin/ssingest
+COPY --from=build /out/shits /usr/local/bin/shits
 ENTRYPOINT ["ssapi"]
