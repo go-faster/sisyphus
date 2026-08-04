@@ -50,6 +50,7 @@ Keep the index below one line per package, and put the depth in the nested file.
 - `cmd/ssagent` — `/investigate` HTTP service. Persists job + queue row in one tx, returns 202; any replica's worker runs it. Never migrates.
 - `cmd/ssmcp` — MCP server (Streamable HTTP or stdio); calls ssapi via `internal/apiclient`.
 - `cmd/ssingest` **†** — ingestion CLI (`git|files|gitlab|jira|telegram|all|index`), the `serve` daemon, the `worker` drain loop, plus `gc`/`repair`. The only webhook/poll owner.
+- `cmd/shits` **†** — MCP server over a Google Sheets spreadsheet (stdio, or `--http`). Standalone: no DB, no ssapi, no config.yaml — flags and `SHITS_*` env only.
 
 **The contract**
 
@@ -85,6 +86,8 @@ Keep the index below one line per package, and put the depth in the nested file.
 - `internal/llm/openrouter` — non-agentic `/context` answerer.
 - `internal/mcpserver` — MCP tool impls (search/answer/file/fetch) + `BearerAuthMiddleware`.
 - `internal/mcpclient` — MCP client used to call tools exposed by ssmcp.
+- `internal/sheets` — Google Sheets API client (service account): read/write/append/clear a range, list tabs.
+- `internal/sheetsmcp` — the `sheets_*` MCP tools over it; drops the mutating tools when the client is read-only.
 - `internal/content` — `index.ContentResolver`: `DatabaseReader`, `LocalRepoReader` (traversal-guarded), `ChainResolver`.
 - `internal/fetch` — `index.URLFetcher` with a per-site allowlist (globs, methods, credentials, byte cap).
 - `internal/notify` (+ `gitlab`, `jira`, `investigation`, `store`) — notifications: `event.Router` → projector → dispatcher/broadcaster → outbox → sink. Two addressing modes: `Dispatcher` matches an event's recipient to subscribed users (GitLab MR assignment, comments and merges, Jira issue assignment and comments); `Broadcaster` writes one row per chat registered with `/alerts on`, for events addressed to nobody in particular (`investigation` — an agent report on a firing alert). It fetches nothing; the GitLab/Jira source adapters emit the events (see `internal/ingest`). A source event states **current** membership, not a change to it, so `notify.Staleness` (`notify.max_assignment_age_seconds`, 24h by default) drops assignments the source dates older than the cutoff — otherwise any edit to a long-assigned issue re-announces its assignment, and a fresh outbox announces every one at once. It is deliberately permissive: an unknown timestamp still notifies, because over-notifying costs one message the dedup key collapses anyway while under-notifying loses a real assignment silently. The same cutoff bounds comment events (see below) and `mr_merged`, whose dedup key needs no timestamp — an MR merges once — but whose event says "merged" on every poll thereafter, so only `merged_at` tells a merge that just landed from one that landed months ago. **Who a GitLab/Jira actor is on Telegram comes from `notify.identities` in config and nowhere else** — ssapi reconciles it on startup (`store.SyncIdentities`), and there is no bot command to claim an identity, because nothing a user types proves the account is theirs. Subscriptions stay self-service. Contract and rationale are in `notify.go`'s package doc; delivery rides `internal/queue`.
