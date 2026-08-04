@@ -21,6 +21,7 @@ deploy/config.yaml
 /ssingest
 /ssapi
 /ssagent
+/shits
 /_ref
 
 # goreleaser
