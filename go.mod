@@ -18,7 +18,7 @@ require (
 	github.com/gotd/td v0.161.0
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/modelcontextprotocol/go-sdk v1.6.1
+	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/ogen-go/ogen v1.23.0
 	github.com/openai/openai-go/v3 v3.47.0
 	github.com/peterbourgon/diskv v2.0.1+incompatible
@@ -195,6 +195,7 @@ require (
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.48.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260630182238-925bb5da69e7 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260724162435-b2f20204f0df // indirect
