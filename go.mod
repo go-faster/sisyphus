@@ -10,7 +10,7 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/go-faster/errors v0.8.0
 	github.com/go-faster/jx v1.2.0
-	github.com/go-faster/sdk v0.37.0
+	github.com/go-faster/sdk v0.38.0
 	github.com/go-faster/yaml v0.4.6
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/google/uuid v1.6.0
@@ -37,7 +37,7 @@ require (
 	golang.org/x/net v0.57.0
 	golang.org/x/sync v0.22.0
 	google.golang.org/api v0.291.0
-	google.golang.org/grpc v1.82.1
+	google.golang.org/grpc v1.83.0
 )
 
 require (
@@ -96,7 +96,7 @@ require (
 	github.com/gotd/log v0.1.0 // indirect
 	github.com/gotd/neo v0.1.5 // indirect
 	github.com/grafana/otel-profiling-go v0.6.0 // indirect
-	github.com/grafana/pyroscope-go v1.3.1 // indirect
+	github.com/grafana/pyroscope-go v1.4.1 // indirect
 	github.com/grafana/pyroscope-go/godeltaprof v0.1.11 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
 	github.com/hashicorp/hcl/v2 v2.18.1 // indirect
