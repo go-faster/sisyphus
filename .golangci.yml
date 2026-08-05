@@ -66,6 +66,13 @@ linters:
           - revive
         path: _test\.go
         text: unused-parameter
+      # A test nil-checks and then dereferences all over the place, guarded by
+      # t.Fatal or t.Skip. staticcheck does not always see that those do not
+      # return, and fires only on CI's toolchain, so the check is noise here.
+      - linters:
+          - staticcheck
+        path: _test\.go
+        text: SA5011
       # exported and package-comments are for public library APIs; not required for internal app code.
       - linters:
           - revive
