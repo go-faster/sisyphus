@@ -46,6 +46,17 @@ func TestDefaultRenderer(t *testing.T) {
 				"[MR \\!42\\: Fix the thing](https://gitlab.example.com/g/p/-/merge_requests/42)",
 		},
 		{
+			name: "mr approved",
+			event: Event{
+				Type:  EventMRApproved,
+				Actor: Actor{Display: "John Doe", URL: "https://gitlab.example.com/jdoe"},
+				Title: "MR !42: Fix the thing",
+				URL:   "https://gitlab.example.com/g/p/-/merge_requests/42",
+			},
+			want: "✅ [John Doe](https://gitlab.example.com/jdoe) approved " +
+				"[MR \\!42\\: Fix the thing](https://gitlab.example.com/g/p/-/merge_requests/42)",
+		},
+		{
 			name: "issue assigned",
 			event: Event{
 				Type:  EventIssueAssigned,

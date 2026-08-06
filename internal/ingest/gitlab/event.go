@@ -47,6 +47,11 @@ type MRPayload struct {
 	// work is done — and because a destination must be able to tell an
 	// unnamed author from one whose username GitLab omitted.
 	Author chunkgitlab.User `json:"author,omitzero"`
+	// Approvals are the merge request's standing approvals, oldest first.
+	// Like the member sets they are current state, not a diff: an approval
+	// stays in the payload on every poll after it is given, so a destination
+	// gates on the approval's own timestamp rather than on seeing it appear.
+	Approvals []Approval `json:"approvals,omitempty"`
 	// State is the merge request's state as GitLab reports it ("opened",
 	// "merged", "closed"), and MergedAt/MergedBy when and by whom it was
 	// merged. Like everything else here they are current state: "merged" is
@@ -56,6 +61,24 @@ type MRPayload struct {
 	State    string           `json:"state,omitempty"`
 	MergedAt time.Time        `json:"merged_at,omitzero"`
 	MergedBy chunkgitlab.User `json:"merged_by,omitzero"`
+}
+
+// Approval is one standing approval as an event payload carries it: who gave
+// it and when. The timestamp is what makes it projectable — an approval is
+// current state, so a destination needs it to tell one just given from one
+// standing for weeks.
+type Approval struct {
+	User chunkgitlab.User `json:"user,omitzero"`
+	At   time.Time        `json:"at"`
+}
+
+// approvals maps the fetched merge request's approvals onto the payload shape.
+func approvals(in []chunkgitlab.Approval) []Approval {
+	out := make([]Approval, 0, len(in))
+	for _, a := range in {
+		out = append(out, Approval{User: a.User, At: a.At})
+	}
+	return out
 }
 
 // EventFromMergeRequest builds the canonical event for one fetched merge
@@ -92,6 +115,7 @@ func EventFromMergeRequest(ref MergeRequestRef) (event.Event, error) {
 		AssignedAt:        ref.MR.AssignedAt,
 		ReviewRequestedAt: ref.MR.ReviewRequestedAt,
 		Comments:          latestComments(ref.MR.Threads, ref.MR.WebURL),
+		Approvals:         approvals(ref.MR.Approvals),
 		Author:            ref.MR.Author,
 		State:             ref.MR.State,
 		MergedAt:          ref.MR.MergedAt,

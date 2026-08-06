@@ -126,8 +126,20 @@ type MergeRequest struct {
 	// the same system notes. Zero when unknown.
 	AssignedAt        time.Time
 	ReviewRequestedAt time.Time
-	Threads           []Thread
-	Links             []Link
+	// Approvals are the MR's standing approvals, newest note per approver,
+	// also recovered from the system notes. They exist for notifications
+	// alone and are deliberately not rendered into the chunked body — an
+	// approval is an event, not something anyone searches an MR's text for,
+	// and keeping it out means adding it needs no ChunkerVersion bump.
+	Approvals []Approval
+	Threads   []Thread
+	Links     []Link
+}
+
+// Approval is one standing approval of a merge request: who gave it and when.
+type Approval struct {
+	User User
+	At   time.Time
 }
 
 // Release models a GitLab release.

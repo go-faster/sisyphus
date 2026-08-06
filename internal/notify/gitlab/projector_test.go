@@ -234,6 +234,116 @@ func TestProjector_MergeWithoutAuthorUsernameAddressesAssigneesOnly(t *testing.T
 	require.Equal(t, "bob", events[0].Recipient.Key)
 }
 
+// approvalPayload is an MR payload whose only news is its approvals: the
+// membership actors are stale, so an assignment event never confuses the
+// assertions.
+// The author is always "alice": every case here is about who else is reached
+// alongside them, not about the author's own name.
+func approvalPayload(assignees []string, approvals ...ingestgitlab.Approval) ingestgitlab.MRPayload {
+	stale := eventTime.AddDate(0, -3, 0)
+	return ingestgitlab.MRPayload{
+		Assignees:         assignees,
+		AssignedAt:        stale,
+		ReviewRequestedAt: stale,
+		Author:            chunkgitlab.User{Username: "alice"},
+		Approvals:         approvals,
+	}
+}
+
+func TestProjector_ProjectsApproval(t *testing.T) {
+	e := mrEventWithActors(t, approvalPayload(nil, ingestgitlab.Approval{
+		User: chunkgitlab.User{Username: "carol", Display: "Carol", URL: "https://example.com/carol"},
+		At:   eventTime,
+	}))
+
+	events, err := testProjector().Project(e)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, notify.EventMRApproved, events[0].Type)
+	require.Equal(t, "alice", events[0].Recipient.Key)
+	require.Equal(t, "carol", events[0].Actor.Key)
+	require.Equal(t, "https://example.com/carol", events[0].Actor.URL)
+	require.Equal(t, eventTime, events[0].OccurredAt)
+	require.Equal(t, "gitlab_mr_approved:group/proj!1:carol:alice", events[0].EventID)
+}
+
+// Two approvers are two pieces of news, and each reaches every recipient.
+func TestProjector_FansOutEachApprover(t *testing.T) {
+	e := mrEventWithActors(t, approvalPayload([]string{"bob"},
+		ingestgitlab.Approval{User: chunkgitlab.User{Username: "carol"}, At: eventTime},
+		ingestgitlab.Approval{User: chunkgitlab.User{Username: "dave"}, At: eventTime},
+	))
+
+	events, err := testProjector().Project(e)
+	require.NoError(t, err)
+	require.Len(t, events, 4)
+	ids := make([]string, 0, len(events))
+	for _, got := range events {
+		ids = append(ids, got.EventID)
+	}
+	require.Equal(t, []string{
+		"gitlab_mr_approved:group/proj!1:carol:alice",
+		"gitlab_mr_approved:group/proj!1:carol:bob",
+		"gitlab_mr_approved:group/proj!1:dave:alice",
+		"gitlab_mr_approved:group/proj!1:dave:bob",
+	}, ids)
+}
+
+// An approval is standing state, present in every payload from the moment it
+// is given, so only its own timestamp keeps a weeks-old one from re-announcing
+// on the next unrelated push.
+func TestProjector_StaleApprovalProjectsNothing(t *testing.T) {
+	e := mrEventWithActors(t, approvalPayload(nil, ingestgitlab.Approval{
+		User: chunkgitlab.User{Username: "carol"},
+		At:   eventTime.AddDate(0, -1, 0),
+	}))
+
+	events, err := testProjector().Project(e)
+	require.NoError(t, err)
+	require.Empty(t, events)
+}
+
+// Approving your own MR is self-caused, so the dispatcher drops it.
+func TestProjector_SelfApprovalIsSelfCaused(t *testing.T) {
+	e := mrEventWithActors(t, approvalPayload(nil, ingestgitlab.Approval{
+		User: chunkgitlab.User{Username: "alice"},
+		At:   eventTime,
+	}))
+
+	events, err := testProjector().Project(e)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.True(t, events[0].SelfCaused())
+}
+
+// The author is also an assignee on a self-assigned MR; they are told once.
+func TestProjector_ApprovalDedupsAuthorAmongAssignees(t *testing.T) {
+	e := mrEventWithActors(t, approvalPayload([]string{"alice"}, ingestgitlab.Approval{
+		User: chunkgitlab.User{Username: "carol"},
+		At:   eventTime,
+	}))
+
+	events, err := testProjector().Project(e)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, "alice", events[0].Recipient.Key)
+}
+
+// Reviewers are told their review was requested and when the conversation
+// moves, but not that a colleague also approved.
+func TestProjector_ApprovalSkipsReviewers(t *testing.T) {
+	p := approvalPayload(nil, ingestgitlab.Approval{
+		User: chunkgitlab.User{Username: "carol"},
+		At:   eventTime,
+	})
+	p.Reviewers = []string{"bob"}
+
+	events, err := testProjector().Project(mrEventWithActors(t, p))
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, "alice", events[0].Recipient.Key)
+}
+
 // commentPayload is an MR payload whose only news is its comments: no
 // membership actors, so an assignment event never confuses the assertions.
 func commentPayload(assignees, reviewers []string, comments ...ingestgitlab.Comment) ingestgitlab.MRPayload {

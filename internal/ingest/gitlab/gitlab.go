@@ -866,6 +866,7 @@ func convertGitLabMR(mr gitlabMergeRequest, threads []chunkgitlab.Thread, links 
 		ReviewRequestedBy: actors.ReviewRequestedBy,
 		AssignedAt:        actors.AssignedAt,
 		ReviewRequestedAt: actors.ReviewRequestedAt,
+		Approvals:         actors.Approvals,
 		Threads:           threads,
 		Links:             links,
 	}, nil
