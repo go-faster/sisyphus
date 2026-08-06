@@ -90,7 +90,7 @@ Keep the index below one line per package, and put the depth in the nested file.
 - `internal/sheetsmcp` — the `sheets_*` MCP tools over it; drops the mutating tools when the client is read-only.
 - `internal/content` — `index.ContentResolver`: `DatabaseReader`, `LocalRepoReader` (traversal-guarded), `ChainResolver`.
 - `internal/fetch` — `index.URLFetcher` with a per-site allowlist (globs, methods, credentials, byte cap).
-- `internal/notify` (+ `gitlab`, `jira`, `investigation`, `store`) — notifications: `event.Router` → projector → dispatcher/broadcaster → outbox → sink. Two addressing modes: `Dispatcher` matches an event's recipient to subscribed users (GitLab MR assignment, comments and merges, Jira issue assignment and comments); `Broadcaster` writes one row per chat registered with `/alerts on`, for events addressed to nobody in particular (`investigation` — an agent report on a firing alert). It fetches nothing; the GitLab/Jira source adapters emit the events (see `internal/ingest`). A source event states **current** membership, not a change to it, so `notify.Staleness` (`notify.max_assignment_age_seconds`, 24h by default) drops assignments the source dates older than the cutoff — otherwise any edit to a long-assigned issue re-announces its assignment, and a fresh outbox announces every one at once. It is deliberately permissive: an unknown timestamp still notifies, because over-notifying costs one message the dedup key collapses anyway while under-notifying loses a real assignment silently. The same cutoff bounds comment events (see below) and `mr_merged`, whose dedup key needs no timestamp — an MR merges once — but whose event says "merged" on every poll thereafter, so only `merged_at` tells a merge that just landed from one that landed months ago. **Who a GitLab/Jira actor is on Telegram comes from `notify.identities` in config and nowhere else** — ssapi reconciles it on startup (`store.SyncIdentities`), and there is no bot command to claim an identity, because nothing a user types proves the account is theirs. Subscriptions stay self-service. Contract and rationale are in `notify.go`'s package doc; delivery rides `internal/queue`.
+- `internal/notify` (+ `gitlab`, `jira`, `investigation`, `store`) — notifications: `event.Router` → projector → dispatcher/broadcaster → outbox → sink. Two addressing modes: `Dispatcher` matches an event's recipient to subscribed users (GitLab MR assignment, comments, approvals and merges, Jira issue assignment and comments); `Broadcaster` writes one row per chat registered with `/alerts on`, for events addressed to nobody in particular (`investigation` — an agent report on a firing alert). It fetches nothing; the GitLab/Jira source adapters emit the events (see `internal/ingest`). A source event states **current** membership, not a change to it, so `notify.Staleness` (`notify.max_assignment_age_seconds`, 24h by default) drops assignments the source dates older than the cutoff — otherwise any edit to a long-assigned issue re-announces its assignment, and a fresh outbox announces every one at once. It is deliberately permissive: an unknown timestamp still notifies, because over-notifying costs one message the dedup key collapses anyway while under-notifying loses a real assignment silently. The same cutoff bounds comment events (see below), `mr_merged`, whose dedup key needs no timestamp — an MR merges once — but whose event says "merged" on every poll thereafter, so only `merged_at` tells a merge that just landed from one that landed months ago, and `mr_approved`, which is the same shape one step earlier: an approval stands in every payload from the moment it is given, so only its own timestamp separates a fresh one from a weeks-old one riding along on an unrelated push. **Who a GitLab/Jira actor is on Telegram comes from `notify.identities` in config and nowhere else** — ssapi reconciles it on startup (`store.SyncIdentities`), and there is no bot command to claim an identity, because nothing a user types proves the account is theirs. Subscriptions stay self-service. Contract and rationale are in `notify.go`'s package doc; delivery rides `internal/queue`.
 
 **Infrastructure**
 
@@ -187,9 +187,37 @@ holds the fan-out rule for both sources, because that rule is where the failure 
   ago is still news.
 - A comment's button opens the comment (`#note_<id>` on GitLab, `?focusedCommentId=` on
   Jira) — a fragment/parameter on the URL the API returned, never a guess at a permalink.
+- **On GitLab the MR author is a comment watcher**, alongside assignees and reviewers. An
+  MR opened without assigning anyone has no members at all, so without this a colleague's
+  review comment on it notified nobody — and opening an MR without self-assigning is the
+  common shape for a small change, not an edge case. It costs nothing elsewhere:
+  `CommentRule` already skips a watcher's own comments and dedups by recipient key, so an
+  author who is also the assignee is still told once. Jira has no equivalent — its reporter
+  is not projected, since the issue's assignee is who the work is addressed to.
 
 Out of scope, deliberately: watchers/participants/subscribers (needs fetching that does
 not happen), and GitLab *issues*, which emit no canonical event at all today.
+
+## An MR's outcome: approved, merged
+
+`mr_approved` and `mr_merged` share one recipient set — `outcomeRecipients` in
+`internal/notify/gitlab`: the **author first, then assignees**, deduped. Reviewers are
+deliberately absent. They are already told when their review is requested and when the
+conversation moves; telling them that a colleague also approved, on every MR they review,
+is the noise that gets the whole feature muted.
+
+Both come from the MR's **system notes** (`internal/ingest/gitlab/systemnotes.go`), like
+assignment does, because GitLab has no approval-events API and the approvals endpoint
+carries no timestamps — and staleness needs one. An approval is *standing state*: the
+newest approve-or-unapprove note per approver decides, so someone who withdrew an approval
+is not an approver, and a re-approval after a withdrawal approves again. The dedup id is
+keyed on the approver, not a timestamp, so that re-approval does not re-notify — the same
+person saying the same thing twice is one piece of news.
+
+`chunkgitlab.MergeRequest.Approvals` is deliberately **not rendered into the chunked
+body**: an approval is an event, not something anyone searches an MR's text for, and
+keeping it out is what let this ship without a `ChunkerVersion` bump. `MRPayload.Approvals`
+is additive, so `MRPayloadVersion` did not move either.
 
 ## Alerts: fire → investigate → announce
 

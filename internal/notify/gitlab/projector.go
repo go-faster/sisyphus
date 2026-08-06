@@ -20,10 +20,11 @@ import (
 // event.TypeMRUpdated event out into one notify.Event per current assignee
 // (EventMRAssigned) and per current reviewer (EventMRReviewRequested), the
 // conversation events its comments produce (EventMRCommented,
-// EventMRMentioned — see commentRule), and, once it lands, EventMRMerged to
-// its author and assignees. The assignment EventID strings match
-// the pre-spine collector's exactly, so existing outbox dedup keys still
-// suppress already-delivered notifications.
+// EventMRMentioned — see commentRule), and the outcome events addressed to its
+// author and assignees: EventMRApproved per standing approval, EventMRMerged
+// once it lands. The assignment EventID strings match the pre-spine
+// collector's exactly, so existing outbox dedup keys still suppress
+// already-delivered notifications.
 //
 // Staleness drops membership changes and comments the payload proves are old:
 // the event states the MR's current members and current comments, so any push
@@ -130,19 +131,7 @@ func (pr Projector) Project(e event.Event) ([]notify.Event, error) {
 			Display: p.MergedBy.Display,
 			URL:     p.MergedBy.URL,
 		}
-		// The author first: an MR landing is news to whoever wrote it before
-		// it is news to anyone else. Assignees follow, deduped so an author
-		// assigned to their own MR is told once.
-		recipients := make([]string, 0, 1+len(p.Assignees))
-		if p.Author.Username != "" {
-			recipients = append(recipients, p.Author.Username)
-		}
-		for _, username := range p.Assignees {
-			if !slices.Contains(recipients, username) {
-				recipients = append(recipients, username)
-			}
-		}
-		for _, username := range recipients {
+		for _, username := range outcomeRecipients(p) {
 			out = append(out, notify.Event{
 				Source:     notify.SourceGitLab,
 				Type:       notify.EventMRMerged,
@@ -158,10 +147,52 @@ func (pr Projector) Project(e event.Event) ([]notify.Event, error) {
 		}
 	}
 
+	// An approval is standing state, present in every payload from the moment
+	// it is given, so staleness on the approval's own timestamp is what tells
+	// one just given from one standing for weeks. Its dedup id is keyed on the
+	// approver rather than on a timestamp: a re-approval after an unapproval
+	// is the same approver saying the same thing, and the recipient does not
+	// need telling twice.
+	for _, a := range p.Approvals {
+		if a.User.Username == "" || !pr.Staleness.Fresh(a.At) {
+			continue
+		}
+		approver := notify.Actor{
+			Source:  notify.SourceGitLab,
+			Key:     a.User.Username,
+			Display: a.User.Display,
+			URL:     a.User.URL,
+		}
+		for _, username := range outcomeRecipients(p) {
+			out = append(out, notify.Event{
+				Source:     notify.SourceGitLab,
+				Type:       notify.EventMRApproved,
+				Recipient:  notify.Actor{Source: notify.SourceGitLab, Key: username},
+				Actor:      approver,
+				Title:      e.Subject.Title,
+				Buttons:    buttons,
+				URL:        e.Subject.URL,
+				ObjectID:   objectID,
+				EventID:    fmt.Sprintf("gitlab_mr_approved:%s:%s:%s", objectID, a.User.Username, username),
+				OccurredAt: a.At,
+			})
+		}
+	}
+
 	// Comments go to the MR's *current* members, not the stale-filtered sets
 	// above: a comment on an MR assigned to you months ago is still news, even
 	// though the assignment itself is not.
-	watchers := make([]notify.Actor, 0, len(p.Assignees)+len(p.Reviewers))
+	//
+	// The author is a watcher too, and first, because they are the one person
+	// guaranteed to care: an MR opened without assigning anyone — the common
+	// shape for a small change — otherwise has no watchers at all, so a
+	// colleague's review comment on it notifies nobody. Their own comments
+	// still never notify them (CommentRule skips a watcher's own), and being
+	// author as well as assignee is deduped to one message.
+	watchers := make([]notify.Actor, 0, 1+len(p.Assignees)+len(p.Reviewers))
+	if p.Author.Username != "" {
+		watchers = append(watchers, notify.Actor{Source: notify.SourceGitLab, Key: p.Author.Username})
+	}
 	for _, username := range slices.Concat(p.Assignees, p.Reviewers) {
 		watchers = append(watchers, notify.Actor{Source: notify.SourceGitLab, Key: username})
 	}
@@ -169,6 +200,28 @@ func (pr Projector) Project(e event.Event) ([]notify.Event, error) {
 	out = append(out, pr.commentRule().Project(subject, watchers, comments(p.Comments))...)
 
 	return out, nil
+}
+
+// outcomeRecipients are the people an MR's outcome — approved, merged — is
+// addressed to: the author first, since what happens to an MR is news to
+// whoever wrote it before it is news to anyone else, then its assignees.
+// Deduped, so an author assigned to their own MR is told once.
+//
+// Reviewers are deliberately absent. They are told when their review is
+// requested and when the conversation moves; being told that a colleague also
+// approved, on every MR they review, is the noise that makes people mute the
+// whole thing.
+func outcomeRecipients(p ingestgitlab.MRPayload) []string {
+	out := make([]string, 0, 1+len(p.Assignees))
+	if p.Author.Username != "" {
+		out = append(out, p.Author.Username)
+	}
+	for _, username := range p.Assignees {
+		if username != "" && !slices.Contains(out, username) {
+			out = append(out, username)
+		}
+	}
+	return out
 }
 
 // comments maps the payload's comments onto the shared rule's shape.

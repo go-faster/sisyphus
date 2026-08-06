@@ -92,6 +92,12 @@ const (
 	// thing and the one moment the work is actually done, which is otherwise
 	// the quietest: nothing else tells an author their MR landed.
 	EventMRMerged EventType = "mr_merged"
+	// EventMRApproved fires when someone approves an MR addressed to the
+	// recipient. It is the counterpart of EventMRReviewRequested — that one
+	// tells a reviewer work is waiting, this one tells the author it cleared
+	// — and it is separate from EventMRMerged because approval is what
+	// unblocks them, often well before anyone merges.
+	EventMRApproved EventType = "mr_approved"
 	// EventInvestigationCompleted fires when an agent investigation finishes.
 	// It is addressed to a chat, not a user.
 	EventInvestigationCompleted EventType = "investigation_completed"

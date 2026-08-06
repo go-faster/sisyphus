@@ -93,6 +93,62 @@ func TestMRActors(t *testing.T) {
 			want: MRActors{UpdatedBy: user("dave"), ReviewRequestedBy: user("dave"), ReviewRequestedAt: base.Add(time.Hour)},
 		},
 		{
+			name: "approvals are collected per approver, oldest first",
+			discussions: []gitlabDiscussion{
+				{Notes: []gitlabNote{
+					note(true, approveNote, 2*time.Hour, "carol"),
+					note(true, approveNote, time.Hour, "bob"),
+				}},
+			},
+			want: MRActors{
+				UpdatedBy: user("carol"),
+				Approvals: []chunkgitlab.Approval{
+					{User: user("bob"), At: base.Add(time.Hour)},
+					{User: user("carol"), At: base.Add(2 * time.Hour)},
+				},
+			},
+		},
+		{
+			// An approval is standing state: whoever withdrew it is no longer
+			// an approver, so nothing about them is news.
+			name: "an unapproval withdraws the approval",
+			discussions: []gitlabDiscussion{
+				{Notes: []gitlabNote{
+					note(true, approveNote, time.Hour, "bob"),
+					note(true, unapproveNote, 2*time.Hour, "bob"),
+				}},
+			},
+			want: MRActors{UpdatedBy: user("bob")},
+		},
+		{
+			name: "re-approving after an unapproval approves again",
+			discussions: []gitlabDiscussion{
+				{Notes: []gitlabNote{
+					note(true, approveNote, time.Hour, "bob"),
+					note(true, unapproveNote, 2*time.Hour, "bob"),
+					note(true, approveNote, 3*time.Hour, "bob"),
+				}},
+			},
+			want: MRActors{
+				UpdatedBy: user("bob"),
+				Approvals: []chunkgitlab.Approval{{User: user("bob"), At: base.Add(3 * time.Hour)}},
+			},
+		},
+		{
+			// The username is what a notification matches a recipient on, so
+			// an approver GitLab named only by display name cannot be used.
+			name: "an approver with no username is dropped",
+			discussions: []gitlabDiscussion{
+				{Notes: []gitlabNote{{
+					System:    true,
+					Body:      approveNote,
+					CreatedAt: at(time.Hour),
+					Author:    &gitlabUser{Name: "Bob"},
+				}}},
+			},
+			want: MRActors{UpdatedBy: chunkgitlab.User{Display: "Bob"}},
+		},
+		{
 			name: "notes with no author or unparseable time are skipped",
 			discussions: []gitlabDiscussion{
 				{Notes: []gitlabNote{
