@@ -161,7 +161,17 @@ func (pr Projector) Project(e event.Event) ([]notify.Event, error) {
 	// Comments go to the MR's *current* members, not the stale-filtered sets
 	// above: a comment on an MR assigned to you months ago is still news, even
 	// though the assignment itself is not.
-	watchers := make([]notify.Actor, 0, len(p.Assignees)+len(p.Reviewers))
+	//
+	// The author is a watcher too, and first, because they are the one person
+	// guaranteed to care: an MR opened without assigning anyone — the common
+	// shape for a small change — otherwise has no watchers at all, so a
+	// colleague's review comment on it notifies nobody. Their own comments
+	// still never notify them (CommentRule skips a watcher's own), and being
+	// author as well as assignee is deduped to one message.
+	watchers := make([]notify.Actor, 0, 1+len(p.Assignees)+len(p.Reviewers))
+	if p.Author.Username != "" {
+		watchers = append(watchers, notify.Actor{Source: notify.SourceGitLab, Key: p.Author.Username})
+	}
 	for _, username := range slices.Concat(p.Assignees, p.Reviewers) {
 		watchers = append(watchers, notify.Actor{Source: notify.SourceGitLab, Key: username})
 	}

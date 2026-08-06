@@ -285,6 +285,55 @@ func TestProjector_CommentsOutliveStaleAssignment(t *testing.T) {
 	require.Equal(t, notify.EventMRCommented, events[0].Type)
 }
 
+// The gap this closes: an MR opened without assigning anyone has no members
+// at all, so before the author was a watcher a review comment on it reached
+// nobody.
+func TestProjector_CommentsReachAuthorWithoutMembers(t *testing.T) {
+	p := commentPayload(nil, nil,
+		ingestgitlab.Comment{ID: "7", Author: chunkgitlab.User{Username: "carol"}, Body: "needs a rebase", CreatedAt: eventTime},
+	)
+	p.Author = chunkgitlab.User{Username: "alice"}
+
+	events, err := testProjector().Project(mrEventWithActors(t, p))
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, notify.EventMRCommented, events[0].Type)
+	require.Equal(t, "alice", events[0].Recipient.Key)
+	require.Equal(t, "mr_commented:group/proj!1:7:alice", events[0].EventID)
+}
+
+// Author and assignee are the same person on a self-assigned MR; they are
+// told once, not twice.
+func TestProjector_CommentsDedupAuthorAmongMembers(t *testing.T) {
+	p := commentPayload([]string{"alice"}, []string{"bob"},
+		ingestgitlab.Comment{ID: "7", Author: chunkgitlab.User{Username: "carol"}, Body: "ping", CreatedAt: eventTime},
+	)
+	p.Author = chunkgitlab.User{Username: "alice"}
+
+	events, err := testProjector().Project(mrEventWithActors(t, p))
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	require.Equal(t, "alice", events[0].Recipient.Key)
+	require.Equal(t, "bob", events[1].Recipient.Key)
+}
+
+// The author's own comment does not notify them — it picks the newest one
+// they did not write instead of silencing the thread.
+func TestProjector_AuthorsOwnCommentDoesNotNotifyThem(t *testing.T) {
+	p := commentPayload(nil, nil,
+		ingestgitlab.Comment{ID: "7", Author: chunkgitlab.User{Username: "carol"}, Body: "needs a rebase", CreatedAt: eventTime},
+		ingestgitlab.Comment{ID: "8", Author: chunkgitlab.User{Username: "alice"}, Body: "done", CreatedAt: eventTime},
+	)
+	p.Author = chunkgitlab.User{Username: "alice"}
+
+	events, err := testProjector().Project(mrEventWithActors(t, p))
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, "alice", events[0].Recipient.Key)
+	require.Equal(t, "carol", events[0].Actor.Key)
+	require.Equal(t, "mr_commented:group/proj!1:7:alice", events[0].EventID)
+}
+
 // Being named reaches someone with no other relationship to the MR.
 func TestProjector_ProjectsMentions(t *testing.T) {
 	e := mrEventWithActors(t, commentPayload(nil, nil,

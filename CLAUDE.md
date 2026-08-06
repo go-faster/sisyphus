@@ -187,6 +187,13 @@ holds the fan-out rule for both sources, because that rule is where the failure 
   ago is still news.
 - A comment's button opens the comment (`#note_<id>` on GitLab, `?focusedCommentId=` on
   Jira) — a fragment/parameter on the URL the API returned, never a guess at a permalink.
+- **On GitLab the MR author is a comment watcher**, alongside assignees and reviewers. An
+  MR opened without assigning anyone has no members at all, so without this a colleague's
+  review comment on it notified nobody — and opening an MR without self-assigning is the
+  common shape for a small change, not an edge case. It costs nothing elsewhere:
+  `CommentRule` already skips a watcher's own comments and dedups by recipient key, so an
+  author who is also the assignee is still told once. Jira has no equivalent — its reporter
+  is not projected, since the issue's assignee is who the work is addressed to.
 
 Out of scope, deliberately: watchers/participants/subscribers (needs fetching that does
 not happen), and GitLab *issues*, which emit no canonical event at all today.
