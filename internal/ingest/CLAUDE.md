@@ -14,6 +14,18 @@ messages), `git_tags:<repo>` (opt-in via `tags: true`). Local checkout, or clone
 - Commits use cursor `{last_sha, branch}` and walk incrementally from HEAD backwards.
 - Annotated tags use the tag message/tagger; lightweight tags fall back to the target commit's subject/author.
 
+## files
+
+Per-set sources keyed `context_files:<name>`. No cursor — it re-walks, relying on the
+pipeline's body-hash skip. Everything it produces is chunked as Markdown
+(`indexjob.KindMarkdown`).
+
+- A file that is not valid UTF-8 is **silently skipped**, which is what made every office document in a configured root invisible before the converter existed.
+- With `Options.Converter` set (`internal/convert/anydoc`), a file whose extension the converter supports is converted to Markdown instead, and carries `lang: markdown` plus `converted_from: <ext>`. Include/exclude decide first, so a converter can never widen a source's configured file set.
+- A conversion failure is **counted and logged, never fatal**: an encrypted spreadsheet must not hide every file walked after it. The converse — a converter that cannot run at all — is rejected before the walk starts, because reporting it per file would skip a whole corpus as a stream of warnings nobody reads.
+- `BodyHash` is the hash of the **converted** Markdown, so an anydoc upgrade re-embeds every converted document. That is why the version is pinned in `deploy/Dockerfile`. It also means conversion runs on every walk, ahead of the skip: at single-digit ms against a per-document embedding call, that is noise.
+- **`.csv` is deliberately not converted**, though anydoc would. It is the one supported format that is already valid UTF-8 text, so it is the only one where enabling the converter would change how documents *already in the index* are indexed, re-embedding every one. Converting only the formats that were previously invisible costs nothing that was working before.
+
 ## gitlab
 
 Per-resource-type sources: `gitlab_issue`, `gitlab_mr`, `gitlab_release`. Pagination loop

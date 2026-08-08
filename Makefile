@@ -15,6 +15,19 @@ test_integration:
 	go test -tags integration ./...
 .PHONY: test_integration
 
+# The office-document converter ssingest runs as a subprocess. Version lives in
+# deploy/Dockerfile and is read from there, so the image and a local build can
+# never drift apart.
+ANYDOC_VERSION := $(shell sed -n 's/^ARG ANYDOC_VERSION=//p' deploy/Dockerfile)
+
+# Build anydoc into ./bin for local `convert.enabled: true` runs. Needs a Rust
+# toolchain (>= the crate's MSRV); the image builds it in its own stage instead.
+anydoc:
+	cargo install anydoc --version $(ANYDOC_VERSION) --example convert --root .
+	mv bin/convert bin/anydoc
+	@echo "set convert.binary to $(CURDIR)/bin/anydoc"
+.PHONY: anydoc
+
 tidy:
 	go mod tidy
 

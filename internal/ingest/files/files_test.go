@@ -23,7 +23,7 @@ func TestWalk(t *testing.T) {
 		BaseURL: "https://example.test/docs",
 		Include: []string{"**/*.md"},
 		Exclude: []string{"tmp/**"},
-	}})
+	}}, Options{})
 	require.NoError(t, err)
 	require.Len(t, docs, 1)
 
@@ -37,9 +37,9 @@ func TestWalk(t *testing.T) {
 }
 
 func TestWalk_RequiresSourceFields(t *testing.T) {
-	_, err := Walk(t.Context(), []Source{{Root: t.TempDir()}})
+	_, err := Walk(t.Context(), []Source{{Root: t.TempDir()}}, Options{})
 	require.Error(t, err)
 
-	_, err = Walk(t.Context(), []Source{{Name: "runbooks"}})
+	_, err = Walk(t.Context(), []Source{{Name: "runbooks"}}, Options{})
 	require.Error(t, err)
 }
