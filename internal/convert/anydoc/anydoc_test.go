@@ -13,10 +13,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// stubMarker names a fixture the stub CLI below understands. The test binary
-// re-execs itself as the anydoc CLI, so it has to be able to tell a stub
-// invocation from an ordinary `go test` one - and the input path is the only
-// argument a conversion passes.
+// The test binary re-execs itself as the anydoc CLI, so it has to tell a stub
+// invocation from an ordinary `go test` one. The input path is the only argument
+// a conversion passes, so the fixture name carries the directive.
 const stubMarker = "anydocstub"
 
 func TestMain(m *testing.M) {
@@ -27,7 +26,7 @@ func TestMain(m *testing.M) {
 }
 
 // stubMain stands in for the anydoc CLI: Markdown on stdout, progress and
-// errors on stderr, exit 0 on success. The fixture's name says what to do.
+// errors on stderr, exit 0 on success.
 func stubMain(path string) int {
 	name := filepath.Base(path)
 	fmt.Fprintf(os.Stderr, "converted %s in 0.42ms\n", path)
@@ -40,7 +39,6 @@ func stubMain(path string) int {
 		fmt.Fprintln(os.Stderr, "error: unsupported input: unrecognized file content and extension")
 		return 1
 	case strings.Contains(name, "silent"):
-		// A non-zero exit that explains nothing: not a refusal, a broken child.
 		return 3
 	case strings.Contains(name, "hang"):
 		time.Sleep(30 * time.Second)
@@ -54,7 +52,6 @@ func stubMain(path string) int {
 	}
 }
 
-// newStubConverter returns a Converter that runs this test binary as the CLI.
 func newStubConverter(t *testing.T, opts Options) *Converter {
 	t.Helper()
 	exe, err := os.Executable()
@@ -66,7 +63,6 @@ func newStubConverter(t *testing.T, opts Options) *Converter {
 	return conv
 }
 
-// stubPath writes a fixture whose name tells the stub CLI how to behave.
 func stubPath(t *testing.T, name string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), stubMarker+"-"+name+".docx")
@@ -118,8 +114,6 @@ func TestConverter_Timeout(t *testing.T) {
 	require.Equal(t, CodeTimeout, convErr.Code)
 }
 
-// The cap bounds what one document can do to the ingester's heap, so output
-// past it fails the document instead of being truncated into the index.
 func TestConverter_OutputCap(t *testing.T) {
 	conv := newStubConverter(t, Options{MaxOutputBytes: 64})
 
@@ -131,8 +125,6 @@ func TestConverter_OutputCap(t *testing.T) {
 	require.Equal(t, CodeTooLarge, convErr.Code)
 }
 
-// A caller's cancellation is not the document's fault, so it must not be
-// reported as one: the walk counts *Error and keeps going.
 func TestConverter_CallerCancellation(t *testing.T) {
 	conv := newStubConverter(t, Options{})
 
@@ -167,8 +159,6 @@ func TestConverter_Supports(t *testing.T) {
 		{".DOCX", true},
 		{".pdf", true},
 		{".xlsb", true},
-		// Already text, and already indexed: converting it would re-embed
-		// every CSV in the index rather than reach one that was invisible.
 		{".csv", false},
 		{".md", false},
 		{".txt", false},
@@ -198,7 +188,6 @@ func TestClassify(t *testing.T) {
 }
 
 func TestErrorLine(t *testing.T) {
-	// The error is not necessarily the last line: the CLI logs progress too.
 	message, ok := errorLine("converted a.docx in 0.42ms\nerror: document is encrypted\n")
 	require.True(t, ok)
 	require.Equal(t, "document is encrypted", message)

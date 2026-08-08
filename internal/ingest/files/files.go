@@ -76,9 +76,8 @@ func Walk(ctx context.Context, sources []Source, opts Options) ([]index.Document
 
 			ext := strings.ToLower(path.Ext(rel))
 			if opts.Converter != nil && opts.Converter.Supports(ext) {
-				// A conversion failure is the document's problem, not the
-				// run's: an encrypted spreadsheet in a docs root must not
-				// stop every file after it from being indexed.
+				// Skipped, not fatal: an encrypted spreadsheet must not stop
+				// every file walked after it from being indexed.
 				body, err := opts.Converter.Convert(ctx, filePath)
 				if err != nil {
 					unconverted++
@@ -138,9 +137,8 @@ func matches(rel string, include, exclude []string) bool {
 	return true
 }
 
-// newDocument builds the document for one file. convertedFrom is the
-// extension the body was converted from, empty when the file was indexed as
-// the text it already was.
+// newDocument builds the document for one file. convertedFrom is the extension
+// the body was converted from, empty when the file was already text.
 func newDocument(src Source, rel, body string, modTime time.Time, convertedFrom string) index.Document {
 	title := titleFromMarkdown(body)
 	if title == "" {
@@ -164,9 +162,6 @@ func newDocument(src Source, rel, body string, modTime time.Time, convertedFrom 
 		"authority": authority,
 	}
 	if convertedFrom != "" {
-		// The body is Markdown now, whatever the file on disk is, and the
-		// markdown chunker is what indexes it. Keeping the original format
-		// says why a .docx is in the index as Markdown.
 		meta["lang"] = "markdown"
 		meta["converted_from"] = strings.TrimPrefix(convertedFrom, ".")
 	} else if lang := extToLang(filepath.Ext(rel)); lang != "" {

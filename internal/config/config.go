@@ -520,20 +520,18 @@ type fileFetchConfig struct {
 	Sites []FetchSite `yaml:"sites"`
 }
 
-// ConvertConfig configures the office-document converter the context-file
-// walk uses. Disabled by default: it needs the anydoc binary alongside
-// ssingest, and without it those files are skipped exactly as they were
-// before the converter existed.
+// ConvertConfig configures the office-document converter the context-file walk
+// uses. Disabled by default: it needs the anydoc binary alongside ssingest, and
+// without it those files are skipped for not being text.
 type ConvertConfig struct {
 	Enabled bool
-	// Binary is the anydoc executable, resolved through PATH when it is a
-	// bare name. Empty means anydoc.DefaultBinary.
+	// Binary is the anydoc executable, resolved through PATH when it is a bare
+	// name. Empty means anydoc.DefaultBinary.
 	Binary string
-	// TimeoutSeconds bounds one conversion. Zero means the converter's own
-	// default.
+	// TimeoutSeconds bounds one conversion. Zero means the converter's default.
 	TimeoutSeconds int
-	// MaxOutputBytes caps the Markdown one document may produce. Zero means
-	// the converter's own default.
+	// MaxOutputBytes caps the Markdown one document may produce. Zero means the
+	// converter's default.
 	MaxOutputBytes int64
 }
 

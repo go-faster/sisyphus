@@ -372,9 +372,6 @@ func (r *runner) runFilesLocked(ctx context.Context, reset bool, limit int, dry 
 		return err
 	}
 
-	// Resolved once, before the walk: a converter that was asked for and
-	// cannot run is a deployment mistake, not something to rediscover on
-	// every document.
 	converter, err := newFileConverter(r.cfg.Convert, lg)
 	if err != nil {
 		return err
@@ -703,13 +700,10 @@ func gitSources(sources []config.GitSource) []gitingest.Source {
 	return out
 }
 
-// newFileConverter builds the document converter for the context-file walk,
-// or nil when none is configured.
-//
-// A nil Converter is the pre-converter behavior: office documents are
-// skipped for not being text. That is why an enabled-but-missing binary is an
-// error instead - degrading to nil would index nothing new and say so only in
-// a warning nobody reads.
+// newFileConverter builds the document converter for the context-file walk, or
+// nil when none is configured. An enabled-but-unresolvable binary is an error
+// rather than a nil converter: degrading would index nothing new and say so
+// only in a warning nobody reads.
 func newFileConverter(cfg config.ConvertConfig, lg *zap.Logger) (filesingest.Converter, error) {
 	if !cfg.Enabled {
 		return nil, nil
