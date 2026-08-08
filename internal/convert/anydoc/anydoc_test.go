@@ -58,7 +58,8 @@ func newStubConverter(t *testing.T, opts Options) *Converter {
 	require.NoError(t, err)
 	opts.Binary = exe
 
-	conv := New(opts)
+	conv, err := New(opts)
+	require.NoError(t, err)
 	require.NoError(t, conv.Available())
 	return conv
 }
@@ -139,10 +140,11 @@ func TestConverter_CallerCancellation(t *testing.T) {
 }
 
 func TestConverter_Unavailable(t *testing.T) {
-	conv := New(Options{Binary: "sisyphus-no-such-binary"})
+	conv, err := New(Options{Binary: "sisyphus-no-such-binary"})
+	require.NoError(t, err)
 	require.Error(t, conv.Available())
 
-	_, err := conv.Convert(t.Context(), "doc.docx")
+	_, err = conv.Convert(t.Context(), "doc.docx")
 	require.Error(t, err)
 
 	var convErr *Error
@@ -150,7 +152,8 @@ func TestConverter_Unavailable(t *testing.T) {
 }
 
 func TestConverter_Supports(t *testing.T) {
-	conv := New(Options{})
+	conv, err := New(Options{})
+	require.NoError(t, err)
 	for _, tt := range []struct {
 		ext  string
 		want bool

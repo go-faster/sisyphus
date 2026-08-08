@@ -372,7 +372,7 @@ func (r *runner) runFilesLocked(ctx context.Context, reset bool, limit int, dry 
 		return err
 	}
 
-	converter, err := newFileConverter(r.cfg.Convert, lg)
+	converter, err := r.newFileConverter(lg)
 	if err != nil {
 		return err
 	}
@@ -704,17 +704,23 @@ func gitSources(sources []config.GitSource) []gitingest.Source {
 // nil when none is configured. An enabled-but-unresolvable binary is an error
 // rather than a nil converter: degrading would index nothing new and say so
 // only in a warning nobody reads.
-func newFileConverter(cfg config.ConvertConfig, lg *zap.Logger) (filesingest.Converter, error) {
+func (r *runner) newFileConverter(lg *zap.Logger) (filesingest.Converter, error) {
+	cfg := r.cfg.Convert
 	if !cfg.Enabled {
 		return nil, nil
 	}
 
-	conv := anydoc.New(anydoc.Options{
+	conv, err := anydoc.New(anydoc.Options{
 		Binary:         cfg.Binary,
 		Timeout:        time.Duration(cfg.TimeoutSeconds) * time.Second,
 		MaxOutputBytes: cfg.MaxOutputBytes,
 		Logger:         lg.Named("convert"),
+		TracerProvider: r.tp,
+		MeterProvider:  r.mp,
 	})
+	if err != nil {
+		return nil, err
+	}
 	if err := conv.Available(); err != nil {
 		return nil, errors.Wrap(err, "document conversion is enabled")
 	}

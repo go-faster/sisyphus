@@ -13,6 +13,11 @@ import (
 	"time"
 
 	"github.com/go-faster/errors"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -42,9 +47,18 @@ type Options struct {
 	// MaxOutputBytes caps the Markdown one conversion may produce.
 	MaxOutputBytes int64
 	Logger         *zap.Logger
+
+	TracerProvider trace.TracerProvider
+	MeterProvider  metric.MeterProvider
 }
 
 func (opts *Options) setDefaults() {
+	if opts.TracerProvider == nil {
+		opts.TracerProvider = otel.GetTracerProvider()
+	}
+	if opts.MeterProvider == nil {
+		opts.MeterProvider = otel.GetMeterProvider()
+	}
 	if opts.Binary == "" {
 		opts.Binary = DefaultBinary
 	}
@@ -66,25 +80,34 @@ type Converter struct {
 	timeout   time.Duration
 	maxOutput int64
 	lg        *zap.Logger
+	tracer    trace.Tracer
+	metrics   *converterMetrics
 }
 
-// New resolves the anydoc binary and returns a Converter for it. Resolution
-// failure is reported by [Converter.Available], not here, so the caller decides
-// whether it is fatal.
-func New(opts Options) *Converter {
+// New returns a Converter for the anydoc binary. The returned error is a
+// telemetry setup failure; a binary that could not be resolved is reported by
+// [Converter.Available] instead, so the caller decides whether that is fatal.
+func New(opts Options) (*Converter, error) {
 	opts.setDefaults()
 
-	binary, err := exec.LookPath(opts.Binary)
+	m, err := newConverterMetrics(opts.MeterProvider)
 	if err != nil {
-		err = errors.Wrapf(err, "resolve anydoc binary %q", opts.Binary)
+		return nil, errors.Wrap(err, "convert metrics")
+	}
+
+	binary, lookupErr := exec.LookPath(opts.Binary)
+	if lookupErr != nil {
+		lookupErr = errors.Wrapf(lookupErr, "resolve anydoc binary %q", opts.Binary)
 	}
 	return &Converter{
 		binary:    binary,
-		lookupErr: err,
+		lookupErr: lookupErr,
 		timeout:   opts.Timeout,
 		maxOutput: opts.MaxOutputBytes,
 		lg:        opts.Logger,
-	}
+		tracer:    opts.TracerProvider.Tracer("github.com/go-faster/sisyphus/internal/convert/anydoc"),
+		metrics:   m,
+	}, nil
 }
 
 // Available reports whether the binary was resolved.
@@ -99,7 +122,7 @@ func (c *Converter) Supports(ext string) bool {
 
 // Convert returns the Markdown for the document at path. Every per-document
 // failure is an [*Error]; only a Converter that cannot run returns anything else.
-func (c *Converter) Convert(ctx context.Context, path string) (string, error) {
+func (c *Converter) Convert(ctx context.Context, path string) (md string, rerr error) {
 	if c.lookupErr != nil {
 		return "", c.lookupErr
 	}
@@ -110,6 +133,37 @@ func (c *Converter) Convert(ctx context.Context, path string) (string, error) {
 	if err != nil {
 		return "", errors.Wrap(err, "absolute document path")
 	}
+
+	format := strings.TrimPrefix(strings.ToLower(filepath.Ext(abs)), ".")
+	ctx, span := c.tracer.Start(ctx, "anydoc.Convert",
+		trace.WithAttributes(
+			attribute.String("document.format", format),
+			attribute.String("document.path", abs),
+		),
+	)
+	start := time.Now()
+	defer func() {
+		status := "ok"
+		var convErr *Error
+		if errors.As(rerr, &convErr) {
+			status = convErr.Code
+		} else if rerr != nil {
+			status = "error"
+		}
+		attrs := metric.WithAttributes(
+			attribute.String("format", format),
+			attribute.String("status", status),
+		)
+		c.metrics.documents.Add(ctx, 1, attrs)
+		c.metrics.duration.Record(ctx, time.Since(start).Seconds(), attrs)
+
+		span.SetAttributes(attribute.String("convert.status", status))
+		if rerr != nil {
+			span.RecordError(rerr)
+			span.SetStatus(codes.Error, rerr.Error())
+		}
+		span.End()
+	}()
 
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
@@ -124,6 +178,13 @@ func (c *Converter) Convert(ctx context.Context, path string) (string, error) {
 	cmd.WaitDelay = 2 * time.Second
 
 	runErr := cmd.Run()
+	if cmd.ProcessState != nil {
+		span.SetAttributes(
+			attribute.Int("process.pid", cmd.ProcessState.Pid()),
+			attribute.Int("process.exit_code", cmd.ProcessState.ExitCode()),
+		)
+	}
+
 	switch {
 	case stdout.exceeded:
 		return "", &Error{Code: CodeTooLarge, Message: "markdown exceeds the output cap"}
@@ -136,6 +197,7 @@ func (c *Converter) Convert(ctx context.Context, path string) (string, error) {
 		return "", convertError(runErr, stderr.String())
 	}
 
+	span.SetAttributes(attribute.Int("markdown_bytes", stdout.Len()))
 	c.lg.Debug("converted document",
 		zap.String("path", abs),
 		zap.Int("markdown_bytes", stdout.Len()),
