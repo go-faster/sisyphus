@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/go-faster/sisyphus/internal/config"
+	"github.com/go-faster/sisyphus/internal/convert/anydoc"
 	"github.com/go-faster/sisyphus/internal/ent"
 	"github.com/go-faster/sisyphus/internal/ent/chunk"
 	"github.com/go-faster/sisyphus/internal/ent/document"
@@ -371,9 +372,15 @@ func (r *runner) runFilesLocked(ctx context.Context, reset bool, limit int, dry 
 		return err
 	}
 
+	converter, err := r.newFileConverter(lg)
+	if err != nil {
+		return err
+	}
+	walkOpts := filesingest.Options{Converter: converter, Logger: lg}
+
 	anyErr := false
 	for _, src := range sources {
-		docs, err := filesingest.Walk(ctx, []filesingest.Source{src})
+		docs, err := filesingest.Walk(ctx, []filesingest.Source{src}, walkOpts)
 		if err != nil {
 			lg.Error("walk context files failed", zap.Error(err), zap.String("source", src.Name))
 			anyErr = true
@@ -691,6 +698,33 @@ func gitSources(sources []config.GitSource) []gitingest.Source {
 		})
 	}
 	return out
+}
+
+// newFileConverter builds the document converter for the context-file walk, or
+// nil when none is configured. An enabled-but-unresolvable binary is an error
+// rather than a nil converter: degrading would index nothing new and say so
+// only in a warning nobody reads.
+func (r *runner) newFileConverter(lg *zap.Logger) (filesingest.Converter, error) {
+	cfg := r.cfg.Convert
+	if !cfg.Enabled {
+		return nil, nil
+	}
+
+	conv, err := anydoc.New(anydoc.Options{
+		Binary:         cfg.Binary,
+		Timeout:        time.Duration(cfg.TimeoutSeconds) * time.Second,
+		MaxOutputBytes: cfg.MaxOutputBytes,
+		Logger:         lg.Named("convert"),
+		TracerProvider: r.tp,
+		MeterProvider:  r.mp,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := conv.Available(); err != nil {
+		return nil, errors.Wrap(err, "document conversion is enabled")
+	}
+	return conv, nil
 }
 
 func fileSources(sources []config.ContextFileSource) []filesingest.Source {

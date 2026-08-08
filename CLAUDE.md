@@ -61,6 +61,7 @@ Keep the index below one line per package, and put the depth in the nested file.
 - `internal/ingest` **†** (`git`, `gitlab`, `jira`, `telegram`, `alertmanager`) — per-source fetchers and their cursors. GitLab/Jira are also the event-spine source adapters: one fetch yields both an `index.Document` and a canonical `event.Event` (`EventFromMergeRequest`, `EventFromIssue`). `alertmanager` is push-only: it parses a webhook body into alert events and produces no documents.
 - `internal/ingestrun` — shared GitLab/Jira incremental-run logic (indexes documents and routes their events via `Runner.Router`) + `IndexBatch`/`ResetSource`/`UpsertSyncState`, and `WithSourceLock`.
 - `internal/webhook` — debounced `Trigger`, ticker `Poller`, GitLab/Jira webhook handlers (wake a fetcher) and the Alertmanager handler (routes the body itself, bearer-token auth). Used only by `ssingest serve`.
+- `internal/convert/anydoc` — `files.Converter` over the [anydoc](https://github.com/firecrawl/anydoc) CLI as a subprocess, turning office documents into Markdown for the `context_files` walk. Off unless `convert.enabled`; rationale in `internal/ingest/CLAUDE.md` § files.
 - `internal/indexjob` **†** — the boundary between ingestion's two halves, over the `ingest.index` queue.
 - `internal/pipeline` **†** — `Pipeline.Index`: idempotent doc+chunk upsert, embed, vector upsert/delete. `Skipper` answers the skip question without doing the work.
 - `internal/vectorgc` **†** — `ssingest gc`: drop vector points no chunk references.

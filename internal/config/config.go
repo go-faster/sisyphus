@@ -37,6 +37,7 @@ type Config struct {
 	Telegram   Telegram
 	Proxies    ProxyConfig
 	Fetch      FetchConfig
+	Convert    ConvertConfig
 
 	Agent        AgentConfig
 	Alertmanager AlertmanagerConfig
@@ -311,12 +312,13 @@ type fileConfig struct {
 
 	Jira fileJiraConfig `yaml:"jira"`
 
-	API        fileAPIConfig   `yaml:"api"`
-	MCP        fileMCPConfig   `yaml:"mcp"`
-	OpenRouter fileOpenRouter  `yaml:"openrouter"`
-	Telegram   fileTelegram    `yaml:"telegram"`
-	Proxies    fileProxyConfig `yaml:"proxies"`
-	Fetch      fileFetchConfig `yaml:"fetch"`
+	API        fileAPIConfig     `yaml:"api"`
+	MCP        fileMCPConfig     `yaml:"mcp"`
+	OpenRouter fileOpenRouter    `yaml:"openrouter"`
+	Telegram   fileTelegram      `yaml:"telegram"`
+	Proxies    fileProxyConfig   `yaml:"proxies"`
+	Fetch      fileFetchConfig   `yaml:"fetch"`
+	Convert    fileConvertConfig `yaml:"convert"`
 
 	// Deprecated: use mcp.addr.
 	MCPAddr string `yaml:"mcp_addr"`
@@ -516,6 +518,28 @@ type FetchCredentials struct {
 
 type fileFetchConfig struct {
 	Sites []FetchSite `yaml:"sites"`
+}
+
+// ConvertConfig configures the office-document converter the context-file walk
+// uses. Disabled by default: it needs the anydoc binary alongside ssingest, and
+// without it those files are skipped for not being text.
+type ConvertConfig struct {
+	Enabled bool
+	// Binary is the anydoc executable, resolved through PATH when it is a bare
+	// name. Empty means anydoc.DefaultBinary.
+	Binary string
+	// TimeoutSeconds bounds one conversion. Zero means the converter's default.
+	TimeoutSeconds int
+	// MaxOutputBytes caps the Markdown one document may produce. Zero means the
+	// converter's default.
+	MaxOutputBytes int64
+}
+
+type fileConvertConfig struct {
+	Enabled        bool   `yaml:"enabled"`
+	Binary         string `yaml:"binary"`
+	TimeoutSeconds int    `yaml:"timeout_seconds"`
+	MaxOutputBytes int64  `yaml:"max_output_bytes"`
 }
 
 // ProxyConfig configures per-client HTTP proxies.
@@ -1074,8 +1098,14 @@ func (c fileConfig) resolve(baseDir string) (Config, error) {
 
 			AnswerTimeoutSeconds: c.Telegram.AnswerTimeoutSeconds,
 		},
-		Proxies:  proxies,
-		Fetch:    fetchConfig,
+		Proxies: proxies,
+		Fetch:   fetchConfig,
+		Convert: ConvertConfig{
+			Enabled:        c.Convert.Enabled,
+			Binary:         c.Convert.Binary,
+			TimeoutSeconds: c.Convert.TimeoutSeconds,
+			MaxOutputBytes: c.Convert.MaxOutputBytes,
+		},
 		Warnings: warnings,
 		Agent: AgentConfig{
 			Addr:                  c.Agent.Addr,

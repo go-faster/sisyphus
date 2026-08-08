@@ -13,6 +13,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/go-faster/errors"
+	"go.uber.org/zap"
 
 	"github.com/go-faster/sisyphus/internal/index"
 )
@@ -27,10 +28,16 @@ type Source struct {
 	Authority string
 }
 
-// Walk returns one index document per matched text file.
-func Walk(ctx context.Context, sources []Source) ([]index.Document, error) {
+// Walk returns one index document per matched file: text files as they are,
+// and - when [Options.Converter] is set - office documents converted to
+// Markdown.
+func Walk(ctx context.Context, sources []Source, opts Options) ([]index.Document, error) {
+	opts.setDefaults()
+
 	var docs []index.Document
 	for _, src := range sources {
+		lg := opts.Logger.With(zap.String("source", src.Name))
+		var converted, unconverted int
 		if src.Name == "" {
 			return nil, errors.New("context file source name is required")
 		}
@@ -62,6 +69,29 @@ func Walk(ctx context.Context, sources []Source) ([]index.Document, error) {
 				return nil
 			}
 
+			info, err := d.Info()
+			if err != nil {
+				return errors.Wrap(err, "stat context file")
+			}
+
+			ext := strings.ToLower(path.Ext(rel))
+			if opts.Converter != nil && opts.Converter.Supports(ext) {
+				// Skipped, not fatal: an encrypted spreadsheet must not stop
+				// every file walked after it from being indexed.
+				body, err := opts.Converter.Convert(ctx, filePath)
+				if err != nil {
+					unconverted++
+					lg.Warn("convert document failed",
+						zap.String("path", rel),
+						zap.Error(err),
+					)
+					return nil
+				}
+				converted++
+				docs = append(docs, newDocument(src, rel, body, info.ModTime(), ext))
+				return nil
+			}
+
 			bodyBytes, err := os.ReadFile(filePath) //nolint:gosec // path from fs walk, not user input
 			if err != nil {
 				return errors.Wrap(err, "read context file")
@@ -70,15 +100,17 @@ func Walk(ctx context.Context, sources []Source) ([]index.Document, error) {
 				return nil
 			}
 
-			info, err := d.Info()
-			if err != nil {
-				return errors.Wrap(err, "stat context file")
-			}
-			docs = append(docs, newDocument(src, rel, string(bodyBytes), info.ModTime()))
+			docs = append(docs, newDocument(src, rel, string(bodyBytes), info.ModTime(), ""))
 			return nil
 		})
 		if err != nil {
 			return nil, err
+		}
+		if converted > 0 || unconverted > 0 {
+			lg.Info("converted documents",
+				zap.Int("converted", converted),
+				zap.Int("unconverted", unconverted),
+			)
 		}
 	}
 	return docs, nil
@@ -105,7 +137,9 @@ func matches(rel string, include, exclude []string) bool {
 	return true
 }
 
-func newDocument(src Source, rel, body string, modTime time.Time) index.Document {
+// newDocument builds the document for one file. convertedFrom is the extension
+// the body was converted from, empty when the file was already text.
+func newDocument(src Source, rel, body string, modTime time.Time, convertedFrom string) index.Document {
 	title := titleFromMarkdown(body)
 	if title == "" {
 		title = strings.TrimSuffix(path.Base(rel), path.Ext(rel))
@@ -127,7 +161,10 @@ func newDocument(src Source, rel, body string, modTime time.Time) index.Document
 		"path":      rel,
 		"authority": authority,
 	}
-	if lang := extToLang(filepath.Ext(rel)); lang != "" {
+	if convertedFrom != "" {
+		meta["lang"] = "markdown"
+		meta["converted_from"] = strings.TrimPrefix(convertedFrom, ".")
+	} else if lang := extToLang(filepath.Ext(rel)); lang != "" {
 		meta["lang"] = lang
 	}
 	if url != "" {

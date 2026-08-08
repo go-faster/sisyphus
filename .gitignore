@@ -24,6 +24,9 @@ deploy/config.yaml
 /shits
 /_ref
 
+# make anydoc
+/bin
+
 # goreleaser
 dist
 coverage.txt

@@ -78,9 +78,21 @@ context_files:
   - name: runbooks
     root: /data/context/runbooks
     base_url: ""
-    include: ["**/*.md", "**/*.txt"]
+    include: ["**/*.md", "**/*.txt", "**/*.docx", "**/*.pdf"]
     exclude: []
     authority: high
+
+# convert: turn office documents (Word, PowerPoint, Excel, OpenDocument, RTF,
+# EPUB, PDF) found by the context_files walk into Markdown, via the anydoc
+# binary. Without it they are skipped for not being text; CSV is skipped either
+# way. No OCR, so a scanned PDF is still skipped. Enabling this requires the
+# binary (the deploy/Dockerfile image ships /usr/local/bin/anydoc) — ssingest
+# fails the files run if it cannot resolve one.
+convert:
+  enabled: false
+  binary: anydoc
+  timeout_seconds: 30
+  max_output_bytes: 8388608
 
 proxies:
   git:

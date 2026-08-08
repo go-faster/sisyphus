@@ -15,6 +15,16 @@ test_integration:
 	go test -tags integration ./...
 .PHONY: test_integration
 
+# Read from deploy/Dockerfile so the image and a local build cannot drift.
+ANYDOC_VERSION := $(shell sed -n 's/^ARG ANYDOC_VERSION=//p' deploy/Dockerfile)
+
+# Build anydoc into ./bin for local `convert.enabled: true` runs. Needs Rust.
+anydoc:
+	cargo install anydoc --version $(ANYDOC_VERSION) --example convert --root .
+	mv bin/convert bin/anydoc
+	@echo "set convert.binary to $(CURDIR)/bin/anydoc"
+.PHONY: anydoc
+
 tidy:
 	go mod tidy
 

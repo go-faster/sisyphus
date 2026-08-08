@@ -14,6 +14,21 @@ messages), `git_tags:<repo>` (opt-in via `tags: true`). Local checkout, or clone
 - Commits use cursor `{last_sha, branch}` and walk incrementally from HEAD backwards.
 - Annotated tags use the tag message/tagger; lightweight tags fall back to the target commit's subject/author.
 
+## files
+
+Per-set sources keyed `context_files:<name>`. No cursor — it re-walks, relying on the
+pipeline's body-hash skip. Everything it produces is chunked as Markdown
+(`indexjob.KindMarkdown`).
+
+- A file that is not valid UTF-8 is **silently skipped**, which is what made every office document in a configured root invisible before the converter existed.
+- With `Options.Converter` set (`internal/convert/anydoc`), a file whose extension the converter supports is converted to Markdown instead, and carries `lang: markdown` plus `converted_from: <ext>`. Include/exclude decide first, so a converter can never widen a source's configured file set.
+- The converter runs anydoc as a **subprocess, one per document**: a deadline, an output cap and a separate address space turn a hang, a runaway allocation or a crash into one lost document, and keep every binary `CGO_ENABLED=0`. Gating is on the **extension**, not anydoc's own content sniffing, because the walk decides before it reads the file — so a mislabeled document is skipped as before, not converted. No OCR: a scanned PDF still fails `unsupported`.
+- A conversion failure is an `*anydoc.Error` (`Code` labels it), and is **counted and logged, never fatal**: an encrypted spreadsheet must not hide every file walked after it. The converse — a converter that cannot run at all — is rejected before the walk starts, because reporting it per file would skip a whole corpus as a stream of warnings nobody reads.
+- Because failures are non-fatal, telemetry is the only place they surface: `sisyphus.convert.documents{format,status}` and `sisyphus.convert.duration{format,status}`, plus an `anydoc.Convert` span carrying the child's pid and exit code. `status` is `ok` or the `Code`, so alert on the non-`ok` rate per format — a run that converts nothing still exits 0.
+- A **crash** of ssingest (SIGKILL, not SIGTERM) orphans the in-flight child, which the kernel reparents and which runs to completion. No zombie — `cmd.Run` always reaps — and at most one, since the walk converts sequentially. `Pdeathsig` would close it, at the cost of a Linux-only build tag and [golang/go#27505](https://github.com/golang/go/issues/27505); milliseconds-long children were not judged worth that.
+- `BodyHash` is the hash of the **converted** Markdown, so an anydoc upgrade re-embeds every converted document. That is why the version is pinned in `deploy/Dockerfile`. It also means conversion runs on every walk, ahead of the skip: at single-digit ms against a per-document embedding call, that is noise.
+- **`.csv` is deliberately not converted**, though anydoc would. It is the one supported format that is already valid UTF-8 text, so it is the only one where enabling the converter would change how documents *already in the index* are indexed, re-embedding every one. Converting only the formats that were previously invisible costs nothing that was working before.
+
 ## gitlab
 
 Per-resource-type sources: `gitlab_issue`, `gitlab_mr`, `gitlab_release`. Pagination loop
