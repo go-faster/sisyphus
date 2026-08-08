@@ -19,8 +19,8 @@ whole-text URL scan would let any link merely *mentioned* in that content become
 clickable button, defeating the "buttons are constrained to vetted sources" guarantee that
 `filterButtons` exists to provide.
 
-Keep this restriction if `collectURLs` or its call site changes. See the root
-`CLAUDE.md` § "Answers & link buttons" for the whole path.
+Keep this restriction if `collectURLs` or its call site changes. See
+`internal/notify/CLAUDE.md` § Buttons for the whole path.
 
 ## Tool results are capped, and URLs are collected before the cap
 

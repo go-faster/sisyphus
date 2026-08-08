@@ -18,4 +18,4 @@ the root `CLAUDE.md` and any affected nested `CLAUDE.md` in the same change.
 - `index.Hash` — sha256 of normalized text. Content hashing goes through this, so re-embedding can be skipped when the hash is unchanged.
 - Document identity is `(source, source_id)`, **not** `body_hash`.
 - `index.VersionedChunker.ChunkerVersion()` — bump it when a chunker's output changes for input it already handled; the body hash cannot see a code change. A chunker declaring no version reports 0 and is never re-chunked.
-- `index.Link.Valid()` — absolute http(s) URL + non-empty label. The link-button guarantee is built on this; see root `CLAUDE.md` § "Answers & link buttons".
+- `index.Link.Valid()` — absolute http(s) URL + non-empty label. The link-button guarantee is built on this; see `internal/notify/CLAUDE.md` § Buttons.
