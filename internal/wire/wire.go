@@ -39,6 +39,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/pipeline"
 	"github.com/go-faster/sisyphus/internal/retrieval"
 	pgsearch "github.com/go-faster/sisyphus/internal/search/postgres"
+	"github.com/go-faster/sisyphus/internal/search/qdrant"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // register pgx driver
 )
@@ -51,12 +52,20 @@ type Retriever interface {
 
 // Services holds low-level shared infrastructure: database, search, embedder, vectors.
 type Services struct {
-	DB           *ent.Client
-	SQLDB        *sql.DB
-	PG           *pgsearch.Searcher
-	Embedder     index.Embedder
-	Searcher     index.Searcher       // for retrieval (nil if qdrant unavailable)
-	Vectors      pipeline.VectorStore // for indexing (nil if qdrant unavailable)
+	DB       *ent.Client
+	SQLDB    *sql.DB
+	PG       *pgsearch.Searcher
+	Embedder index.Embedder
+	// Searcher is the query side: nil when Qdrant was unreachable at startup,
+	// which degrades retrieval to Postgres FTS rather than failing a query.
+	Searcher index.Searcher
+	// Vectors is the indexing side, and is never nil: it connects on use, so a
+	// Qdrant outage is an error the caller sees rather than a silently disabled
+	// capability. Indexing must never degrade the way search does — a document
+	// indexed with no vectors is one nobody can find, and nothing revisits it.
+	Vectors pipeline.VectorStore
+	// VectorHealth reports whether Qdrant answered at startup; nil when it did
+	// not, which is what /ready surfaces.
 	VectorHealth HealthChecker
 
 	closeDB func()
@@ -173,11 +182,11 @@ func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trac
 
 	var (
 		searcher     index.Searcher
-		vectors      pipeline.VectorStore
 		vectorHealth HealthChecker
+		connected    *qdrant.Store
 	)
 	// A malformed address is a configuration error and fails startup; a store
-	// that cannot be reached only disables vector search, because Qdrant being
+	// that cannot be reached only disables vector *search*, because Qdrant being
 	// down must not stop a process from serving what Postgres can answer.
 	if _, _, err := splitHostPort(cfg.QdrantAddr); err != nil {
 		cleanup()
@@ -187,9 +196,17 @@ func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trac
 		lg.Warn("qdrant unavailable, vector search disabled", zap.Error(err))
 	} else {
 		searcher = store
-		vectors = store
 		vectorHealth = store
+		connected = store
 	}
+
+	// Indexing does NOT get the same treatment. Degrading to a nil store here
+	// is what let a process started during a Qdrant outage write chunk rows
+	// with no vectors and no error, which the document-level skip then left
+	// unembedded forever. The indexing store connects on use instead, so an
+	// outage is an error the pipeline can act on rather than a capability
+	// silently switched off for the process's lifetime.
+	vectors := newLazyVectorStore(cfg, embedder, connected)
 
 	return &Services{
 		DB:           client,
@@ -199,7 +216,12 @@ func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trac
 		Searcher:     searcher,
 		Vectors:      vectors,
 		VectorHealth: vectorHealth,
-		closeDB:      cleanup,
+		closeDB: func() {
+			if err := vectors.Close(); err != nil {
+				lg.Debug("closing vector store", zap.Error(err))
+			}
+			cleanup()
+		},
 	}, nil
 }
 

@@ -21,6 +21,23 @@ stay visible to Postgres FTS otherwise.
 
 `internal/vectorrepair` repairs rows that already drifted.
 
+## A nil vector store must never reach Index
+
+`Index`'s embed step is guarded on `p.vectors != nil`, so a nil store makes it write chunk
+rows with no vectors, no error and no metric. Combined with the skip below — which does
+not consider embedding state — those rows stay unembedded **forever**: returned by
+Postgres FTS, invisible to vector search, until the body changes or someone runs
+`--reset`. That was #125.
+
+`wire.Services.Vectors` is therefore never nil. It connects on use rather than at startup,
+so "Qdrant is down" arrives as an error from `Upsert` — which `Index` returns *before*
+persisting anything, so the document is retried whole and indexes correctly once Qdrant is
+back, with no restart. Search still degrades to FTS on a missing store; indexing must not,
+because a document indexed with no vectors is one nobody can find.
+
+The nil guard stays for tests that deliberately construct a pipeline without a store. Do
+not reintroduce a production path that passes one.
+
 ## The document-level skip must cover every input
 
 `skip.go`'s `unchanged` must consider **every input that shapes the output**: body hash,
@@ -29,6 +46,12 @@ stay visible to Postgres FTS otherwise.
 Anything left out is a field that can change while indexing says "unchanged" forever. A
 document's body is the only thing that normally moves, so nothing else ever forces a
 revisit — the omission is permanent, not eventual.
+
+It deliberately does **not** consider whether the chunks were embedded, which is why a
+document indexed without a vector store never healed itself (#125). Adding that check
+would put a per-chunk query on a path every poll tick runs over the whole corpus — the
+exact cost `Skipper` exists to avoid. The fix belongs at the write (never index without a
+store) and in `ssingest repair` (rebind rows already in that state), not here.
 
 `pipeline.Skipper` answers the same question without doing the work, for a producer
 filtering documents before they cost a queue row. It **shares** `unchanged` with `Index`

@@ -60,8 +60,9 @@ func (opts *Options) setDefaults(ctx context.Context) {
 
 // Report summarizes a repair run.
 type Report struct {
-	// Mismatched is how many chunks were found bound to the wrong point.
-	Mismatched int
+	// Unbound is how many chunks were found not bound to a point of their own
+	// — bound to a different ID, or to none at all.
+	Unbound int
 	// Repaired is how many were rebound (0 when DryRun).
 	Repaired int
 	// DryRun echoes whether writing was suppressed.
@@ -90,21 +91,28 @@ func New(db *ent.Client, embedder index.Embedder, vectors VectorStore, opts Opti
 	return &Repairer{db: db, embedder: embedder, vectors: vectors, opts: opts}, nil
 }
 
-// mismatched matches chunks bound to a point that is not their own ID.
-func mismatched() func(*entsql.Selector) {
+// unbound matches chunks whose vector point is not keyed by their own ID:
+// either bound to some other ID, or bound to nothing at all.
+//
+// The null half is not a nicety. A chunk with no point is invisible to vector
+// search while still being returned by Postgres FTS, and nothing else in the
+// system revisits it — the document-level skip finds the document unchanged on
+// every later run, so without this the row stays unembedded until its body
+// changes or someone runs --reset.
+func unbound() func(*entsql.Selector) {
 	return func(s *entsql.Selector) {
-		s.Where(entsql.And(
-			entsql.NotNull(s.C(chunk.FieldQdrantPointID)),
+		s.Where(entsql.Or(
+			entsql.IsNull(s.C(chunk.FieldQdrantPointID)),
 			entsql.ColumnsNEQ(s.C(chunk.FieldID), s.C(chunk.FieldQdrantPointID)),
 		))
 	}
 }
 
-// Count reports how many chunks are bound to the wrong point.
+// Count reports how many chunks are not bound to a point of their own.
 func (r *Repairer) Count(ctx context.Context) (int, error) {
-	n, err := r.db.Chunk.Query().Where(mismatched()).Count(ctx)
+	n, err := r.db.Chunk.Query().Where(unbound()).Count(ctx)
 	if err != nil {
-		return 0, errors.Wrap(err, "count mismatched chunks")
+		return 0, errors.Wrap(err, "count unbound chunks")
 	}
 	return n, nil
 }
@@ -123,15 +131,15 @@ func (r *Repairer) Run(ctx context.Context) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	rep := Report{Mismatched: total, DryRun: r.opts.DryRun}
-	lg.Info("vector repair scan complete", zap.Int("mismatched", total))
+	rep := Report{Unbound: total, DryRun: r.opts.DryRun}
+	lg.Info("vector repair scan complete", zap.Int("unbound", total))
 	if total == 0 || r.opts.DryRun {
 		return rep, nil
 	}
 
 	for {
 		rows, err := r.db.Chunk.Query().
-			Where(mismatched()).
+			Where(unbound()).
 			Limit(r.opts.Batch).
 			All(ctx)
 		if err != nil {
