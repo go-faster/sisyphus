@@ -54,7 +54,7 @@ func Repair(ctx context.Context, db *ent.Client, embedder index.Embedder, vector
 
 	rep, err := r.Run(ctx)
 	zctx.From(ctx).Info("vector repair report",
-		zap.Int("mismatched", rep.Mismatched),
+		zap.Int("unbound", rep.Unbound),
 		zap.Int("repaired", rep.Repaired),
 		zap.Bool("dry_run", rep.DryRun),
 	)

@@ -168,6 +168,81 @@ func seed(t *testing.T, client *ent.Client, text string, pointID uuid.UUID) *ent
 	return c
 }
 
+// seedUnembedded writes a chunk with no vector point at all — the state a
+// process that started while Qdrant was unreachable used to leave behind.
+func seedUnembedded(t *testing.T, client *ent.Client, text string) *ent.Chunk {
+	t.Helper()
+	ctx := context.Background()
+	doc, err := client.Document.Create().
+		SetID(uuid.New()).
+		SetSource(testSource).
+		SetSourceID(testSource + "/" + text).
+		SetTitle("t").
+		SetBody(text).
+		SetBodyHash(index.Hash(text)).
+		Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := client.Chunk.Create().
+		SetID(uuid.New()).
+		SetDocumentID(doc.ID).
+		SetChunkIndex(0).
+		SetChunkType(string(index.ChunkSection)).
+		SetTitle("t").
+		SetText(text).
+		SetTextHash(index.Hash(text)).
+		Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+// TestRepairEmbedsChunkWithNoPoint pins the other half of "bound to a point of
+// its own": a chunk that was never embedded is invisible to vector search and
+// nothing else revisits it, because the document-level skip finds its document
+// unchanged forever after.
+func TestRepairEmbedsChunkWithNoPoint(t *testing.T) {
+	client := openTestDB(t)
+	ctx := context.Background()
+
+	never := seedUnembedded(t, client, "never-embedded")
+
+	vectors := &fakeVectors{}
+	r, err := New(client, &fakeEmbedder{}, vectors, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := client.Chunk.Get(ctx, never.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.QdrantPointID == nil || *got.QdrantPointID != never.ID {
+		t.Fatalf("qdrant_point_id = %v, want the chunk's own ID %s", got.QdrantPointID, never.ID)
+	}
+
+	var upserted bool
+	for _, id := range vectors.upserted {
+		if id == never.ID {
+			upserted = true
+		}
+	}
+	if !upserted {
+		t.Error("the chunk was rebound in Postgres but no point was written for it")
+	}
+	// There was no old point, so nothing may be deleted on its behalf.
+	for _, id := range vectors.deleted {
+		if id == never.ID {
+			t.Errorf("deleted the point it had just written for %s", never.ID)
+		}
+	}
+}
+
 func TestRepairRebindsMismatchedChunk(t *testing.T) {
 	client := openTestDB(t)
 	ctx := context.Background()
@@ -187,7 +262,7 @@ func TestRepairRebindsMismatchedChunk(t *testing.T) {
 	}
 	// Counts are table-wide (Run repairs everything), so assert only that this
 	// suite's row was among what it found and fixed.
-	if rep.Mismatched < 1 || rep.Repaired < 1 {
+	if rep.Unbound < 1 || rep.Repaired < 1 {
 		t.Fatalf("report = %+v, want at least 1 mismatched and repaired", rep)
 	}
 
@@ -235,8 +310,8 @@ func TestRepairDryRunWritesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.Mismatched < 1 {
-		t.Fatalf("mismatched = %d, want at least 1: a dry run still counts", rep.Mismatched)
+	if rep.Unbound < 1 {
+		t.Fatalf("mismatched = %d, want at least 1: a dry run still counts", rep.Unbound)
 	}
 	if rep.Repaired != 0 || len(vectors.upserted) != 0 || len(vectors.deleted) != 0 {
 		t.Fatalf("dry run wrote: repaired=%d upserted=%v deleted=%v",
@@ -355,13 +430,13 @@ func TestRepairBatchesUntilDrained(t *testing.T) {
 	// Scoped to this suite: the table is shared, so a table-wide count is not
 	// ours to assert.
 	n, err := client.Chunk.Query().
-		Where(mismatched(), chunk.HasDocumentWith(document.Source(testSource))).
+		Where(unbound(), chunk.HasDocumentWith(document.Source(testSource))).
 		Count(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if n != 0 {
-		t.Errorf("%d of this suite's chunks still mismatched after the run", n)
+		t.Errorf("%d of this suite's chunks still unbound after the run", n)
 	}
 }
 
