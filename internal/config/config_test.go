@@ -279,8 +279,18 @@ func writeConfig(t *testing.T, data string) string {
 	return path
 }
 
+// clearEnv empties every variable Load reads, so a test sees only what it sets
+// itself. SISYPHUS_* is swept wholesale rather than listed: it is an input
+// surface now, so a developer's exported SISYPHUS_GITLAB_TOKEN would otherwise
+// bind a field and fail a test that never mentions one.
 func clearEnv(t *testing.T) {
 	t.Helper()
+
+	for _, kv := range os.Environ() {
+		if key, _, ok := strings.Cut(kv, "="); ok && strings.HasPrefix(key, "SISYPHUS_") {
+			t.Setenv(key, "")
+		}
+	}
 
 	for _, key := range []string{
 		"SISYPHUS_CONFIG",
