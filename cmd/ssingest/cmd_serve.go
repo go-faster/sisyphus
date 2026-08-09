@@ -109,9 +109,10 @@ func runServe(ctx context.Context, deps *ingestDeps) error {
 	// live lease — so they stop looking like outstanding backlog. A job another
 	// replica is still indexing is left alone.
 	//
-	// This belongs to `serve` rather than to the workers: serve is the single
-	// scheduler, so it runs once per deployment instead of once per replica,
-	// and it must still run when indexing has been moved out entirely.
+	// `ssingest maint` owns the recurring version of this, across every queue.
+	// This boot-time pass is kept because it is idempotent and costs one
+	// UPDATE: an install that does not deploy the maintenance daemon would
+	// otherwise never reap at all.
 	if n, err := deps.indexQueue().ReapStale(ctx); err != nil {
 		lg.Error("reap stale index jobs", zap.Error(err))
 	} else if n > 0 {

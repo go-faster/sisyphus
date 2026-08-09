@@ -123,6 +123,41 @@ func describeMaintenance(c *wire, s *figureout.Schema[wire]) {
 			figureout.Value(s, &c.Maintenance.Repair.Batch, "batch").
 				ApplyDefault(defaultMaintenanceRepairBatch)
 		})
+
+		figureout.Group(s, "reap_stale", func(s *figureout.Schema[wire]) {
+			figureout.Value(s, &c.Maintenance.ReapStale.Interval, "interval").
+				ApplyDefault(defaultMaintenanceReapInterval).
+				Doc("0 disables it; unsettled jobs then look like outstanding backlog forever")
+		})
+
+		figureout.Group(s, "queue_retention", func(s *figureout.Schema[wire]) {
+			figureout.Value(s, &c.Maintenance.QueueRetention.Interval, "interval").
+				ApplyDefault(defaultMaintenanceQueueRetentionInterval).
+				Doc("0 disables it; queue_jobs then grows without bound")
+			figureout.Value(s, &c.Maintenance.QueueRetention.DoneAfter, "done_after").
+				ApplyDefault(defaultMaintenanceQueueDoneAfter).
+				Doc("how long an acknowledged job is kept; 0 keeps them forever")
+			figureout.Value(s, &c.Maintenance.QueueRetention.ErrorAfter, "error_after").
+				ApplyDefault(defaultMaintenanceQueueErrorAfter).
+				Doc("how long a failed job is kept for inspection; 0 keeps them forever")
+			figureout.Value(s, &c.Maintenance.QueueRetention.Batch, "batch").
+				ApplyDefault(defaultMaintenancePurgeBatch)
+			figureout.Value(s, &c.Maintenance.QueueRetention.MaxBatches, "max_batches").
+				ApplyDefault(defaultMaintenancePurgeMaxBatches)
+		})
+
+		figureout.Group(s, "notify_retention", func(s *figureout.Schema[wire]) {
+			figureout.Value(s, &c.Maintenance.NotifyRetention.Interval, "interval").
+				ApplyDefault(defaultMaintenanceNotifyRetentionInterval).
+				Doc("0 disables it; notifications then grows without bound")
+			figureout.Value(s, &c.Maintenance.NotifyRetention.After, "after").
+				ApplyDefault(defaultMaintenanceNotifyRetentionAfter).
+				Doc("how long a delivered or errored notification is kept; 0 keeps them forever")
+			figureout.Value(s, &c.Maintenance.NotifyRetention.Batch, "batch").
+				ApplyDefault(defaultMaintenancePurgeBatch)
+			figureout.Value(s, &c.Maintenance.NotifyRetention.MaxBatches, "max_batches").
+				ApplyDefault(defaultMaintenancePurgeMaxBatches)
+		})
 	})
 
 	figureout.Invariant(s, "maintenance-gc-interval-exceeds-grace", func(c *wire) error {

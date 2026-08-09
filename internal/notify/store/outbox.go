@@ -25,9 +25,12 @@ const (
 	StatusError     = "error"
 )
 
-// queueName is the queue backing one channel's deliveries. Channels get their
+// QueueName is the queue backing one channel's deliveries. Channels get their
 // own queue so a wedged sink cannot starve another channel's traffic.
-func queueName(channel notify.Channel) string { return "notify." + string(channel) }
+//
+// It is exported because the maintenance daemon reaps and purges every queue in
+// the system, and it must name this one without reimplementing the convention.
+func QueueName(channel notify.Channel) string { return "notify." + string(channel) }
 
 // payload is what a delivery worker needs to send a message, carried by the
 // queue rather than read back from the Notification row. Keeping it

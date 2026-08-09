@@ -65,7 +65,7 @@ func (s *Store) queue(channel notify.Channel) (*queue.Postgres, error) {
 	if channel == "" {
 		return nil, errors.New("empty notify channel")
 	}
-	return queue.NewPostgres(s.db, queueName(channel), queue.PostgresOptions{
+	return queue.NewPostgres(s.db, QueueName(channel), queue.PostgresOptions{
 		MaxAttempts: MaxDeliveryAttempts,
 		Lease:       s.opts.DeliveryLease,
 		Owner:       s.opts.Owner,

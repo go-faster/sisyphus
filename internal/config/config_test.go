@@ -288,6 +288,13 @@ func TestLoadMaintenanceDefaults(t *testing.T) {
 	require.Equal(t, 24*time.Hour, cfg.Maintenance.GC.Interval)
 	require.Equal(t, 5*time.Minute, cfg.Maintenance.GC.Grace)
 	require.Equal(t, 7*24*time.Hour, cfg.Maintenance.Repair.Interval)
+	require.Equal(t, 5*time.Minute, cfg.Maintenance.ReapStale.Interval)
+	require.Equal(t, time.Hour, cfg.Maintenance.QueueRetention.Interval)
+	// Failed jobs outlive acknowledged ones by design: they are the rows an
+	// operator opens the table for.
+	require.Equal(t, 72*time.Hour, cfg.Maintenance.QueueRetention.DoneAfter)
+	require.Equal(t, 30*24*time.Hour, cfg.Maintenance.QueueRetention.ErrorAfter)
+	require.Equal(t, 90*24*time.Hour, cfg.Maintenance.NotifyRetention.After)
 }
 
 // TestLoadMaintenanceDisablesJob pins that 0 turns a job off rather than
@@ -303,6 +310,13 @@ maintenance:
     interval: 0
   repair:
     interval: 0
+  reap_stale:
+    interval: 0
+  queue_retention:
+    interval: 0
+    done_after: 0
+  notify_retention:
+    interval: 0
 `)
 	t.Setenv("SISYPHUS_CONFIG", path)
 
@@ -310,6 +324,10 @@ maintenance:
 	require.NoError(t, err)
 	require.Zero(t, cfg.Maintenance.GC.Interval)
 	require.Zero(t, cfg.Maintenance.Repair.Interval)
+	require.Zero(t, cfg.Maintenance.ReapStale.Interval)
+	require.Zero(t, cfg.Maintenance.QueueRetention.Interval)
+	require.Zero(t, cfg.Maintenance.QueueRetention.DoneAfter, "0 must mean keep forever, not delete everything")
+	require.Zero(t, cfg.Maintenance.NotifyRetention.Interval)
 }
 
 // TestLoadRejectsGCIntervalBelowGrace pins the invariant: a sweep spends grace
