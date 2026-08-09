@@ -75,6 +75,7 @@ func newRoot(t *app.Telemetry) *cobra.Command {
 		newMaintCmd(deps),
 		newGCCmd(deps),
 		newRepairCmd(deps),
+		newReconcileCmd(deps),
 	)
 
 	return root
