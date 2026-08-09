@@ -39,8 +39,16 @@ services:
       - "6334:6334" # gRPC
     volumes:
       - qdrant:/qdrant/storage
+    # Probe BOTH ports. Everything that indexes talks gRPC on 6334, so a probe
+    # of 6333 alone reports healthy while the port the clients actually use is
+    # not yet accepting — and `depends_on: service_healthy` then starts them
+    # into a Qdrant they cannot reach. That window is how a corpus ends up
+    # indexed without vectors.
+    #
+    # bash, not sh: /dev/tcp is a bash builtin, and this image ships no curl,
+    # wget or nc to probe with instead.
     healthcheck:
-      test: [ "CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1" ]
+      test: [ "CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333 && :> /dev/tcp/127.0.0.1/6334' || exit 1" ]
       interval: 5s
       timeout: 5s
       retries: 10
