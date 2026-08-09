@@ -233,3 +233,38 @@ agent:
   max_concurrent: 4
   # Request body size cap in bytes for POST /investigate.
   max_body_bytes: 65536
+
+# maintenance: `ssingest maint`, the periodic upkeep daemon. It is the
+# stand-in for CronJobs, which compose has no equivalent of, so the schedule
+# lives in the process. Every job here is also a one-shot subcommand
+# (`ssingest gc`, `ssingest repair`) and both take the same advisory lock, so a
+# scheduled sweep and a hand-run one never overlap.
+#
+# Setting an interval to 0 disables that job. The values below are the
+# defaults; the whole section can be omitted.
+maintenance:
+  addr: :8085
+  # Delay before the first pass of each job. Jobs do not wait a full interval
+  # for their first run — a deployment that restarts daily would then never
+  # reach a daily job — so this is what stops a crash loop from re-scanning the
+  # vector store on every restart.
+  start_delay: 5m
+  # How long shutdown waits for an in-flight sweep. A sweep holds no state and
+  # the next run re-finds its work, so it is abandoned rather than awaited.
+  drain_timeout: 30s
+  # gc: delete vector points no chunk references. Daily, because points only
+  # leak when the cleanup during indexing fails after its transaction has
+  # committed, and each sweep costs a full scan of the vector store.
+  gc:
+    interval: 24h
+    # How long a point must look orphaned before it is deleted. Do not shorten
+    # this casually: a document mid-index has its points written before its
+    # chunk rows commit, and deleting one of those is unrecoverable.
+    grace: 5m
+    batch: 1024
+  # repair: rebind chunks whose point is keyed by the wrong ID. Weekly and in
+  # small batches, because every repaired row costs an embedding call and that
+  # capacity is shared with ingestion.
+  repair:
+    interval: 168h
+    batch: 64

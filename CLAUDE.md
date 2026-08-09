@@ -49,7 +49,7 @@ Keep the index below one line per package, and put the depth in the nested file.
 - `cmd/ssbot` — Telegram bot; reaches ssapi via `internal/apiclient`. Single replica (two bots double-answer).
 - `cmd/ssagent` — `/investigate` HTTP service. Persists job + queue row in one tx, returns 202; any replica's worker runs it. Never migrates.
 - `cmd/ssmcp` — MCP server (Streamable HTTP or stdio); calls ssapi via `internal/apiclient`.
-- `cmd/ssingest` **†** — ingestion CLI (`git|files|gitlab|jira|telegram|all|index`), the `serve` daemon, the `worker` drain loop, plus `gc`/`repair`. The only webhook/poll owner.
+- `cmd/ssingest` **†** — ingestion CLI (`git|files|gitlab|jira|telegram|all|index`), the `serve` daemon, the `worker` drain loop, the `maint` scheduler, plus one-shot `gc`/`repair`. The only webhook/poll owner.
 - `cmd/shits` **†** — MCP server over a Google Sheets spreadsheet (stdio, or `--http`). Standalone: no DB, no ssapi, no config.yaml — flags and `SHITS_*` env only.
 
 **The contract**
@@ -66,6 +66,7 @@ Keep the index below one line per package, and put the depth in the nested file.
 - `internal/pipeline` **†** — `Pipeline.Index`: idempotent doc+chunk upsert, embed, vector upsert/delete. `Skipper` answers the skip question without doing the work.
 - `internal/vectorgc` **†** — `ssingest gc`: drop vector points no chunk references.
 - `internal/vectorrepair` **†** — `ssingest repair`: re-embed chunks whose point is keyed by the wrong ID.
+- `internal/maint` — the `ssingest maint` scheduler: periodic gc/repair, one at a time across processes. Compose's stand-in for a CronJob.
 
 **Chunking, embedding, search**
 
@@ -97,6 +98,7 @@ Keep the index below one line per package, and put the depth in the nested file.
 
 - `internal/event` — canonical `Event` (routable envelope + opaque `Payload`) and `Router`/`Handler`/`Subscription`, with an in-process `Mux`. Handlers must be idempotent on `Event.ID`.
 - `internal/queue` **†** — shared background-work substrate (one `queue_jobs` table, `queue` column). Notify delivery, agent investigations, ingest indexing.
+- `internal/pglock` — try-once Postgres advisory locks: the substitute for leader election. A contended run is skipped, never queued.
 - `internal/ent` — ent schema + generated code. `internal/ent/migrate` **†** holds the versioned SQL and the `Runner`.
 - `internal/config` **†** — YAML + env config loading.
 - `internal/wire` — shared wiring for ssapi/ssingest (`Services` + `Components`).

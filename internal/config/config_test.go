@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -269,6 +270,66 @@ openrouter:
 
 	_, err := Load()
 	require.ErrorContains(t, err, "reasoning_effort")
+}
+
+func TestLoadMaintenanceDefaults(t *testing.T) {
+	clearEnv(t)
+
+	path := writeConfig(t, `database:
+  dsn:
+    value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+`)
+	t.Setenv("SISYPHUS_CONFIG", path)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, ":8085", cfg.Maintenance.Addr)
+	require.Equal(t, 5*time.Minute, cfg.Maintenance.StartDelay)
+	require.Equal(t, 24*time.Hour, cfg.Maintenance.GC.Interval)
+	require.Equal(t, 5*time.Minute, cfg.Maintenance.GC.Grace)
+	require.Equal(t, 7*24*time.Hour, cfg.Maintenance.Repair.Interval)
+}
+
+// TestLoadMaintenanceDisablesJob pins that 0 turns a job off rather than
+// meaning "as often as possible".
+func TestLoadMaintenanceDisablesJob(t *testing.T) {
+	clearEnv(t)
+
+	path := writeConfig(t, `database:
+  dsn:
+    value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+maintenance:
+  gc:
+    interval: 0
+  repair:
+    interval: 0
+`)
+	t.Setenv("SISYPHUS_CONFIG", path)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Zero(t, cfg.Maintenance.GC.Interval)
+	require.Zero(t, cfg.Maintenance.Repair.Interval)
+}
+
+// TestLoadRejectsGCIntervalBelowGrace pins the invariant: a sweep spends grace
+// waiting between its two passes, so an interval below it schedules the next
+// sweep before the current one can finish.
+func TestLoadRejectsGCIntervalBelowGrace(t *testing.T) {
+	clearEnv(t)
+
+	path := writeConfig(t, `database:
+  dsn:
+    value: postgres://user:pass@localhost/sisyphus?sslmode=disable
+maintenance:
+  gc:
+    interval: 1m
+    grace: 5m
+`)
+	t.Setenv("SISYPHUS_CONFIG", path)
+
+	_, err := Load()
+	require.ErrorContains(t, err, "maintenance.gc.interval")
 }
 
 func writeConfig(t *testing.T, data string) string {

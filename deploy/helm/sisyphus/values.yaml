@@ -220,6 +220,26 @@ ssingestWorker:
   tolerations: []
   affinity: {}
 
+# `ssingest maint`: periodic vector gc and repair. One replica — the jobs take a
+# Postgres advisory lock, so a second would only ever skip, and there is nothing
+# to gain by paying for it.
+#
+# On Kubernetes these could be real CronJobs; they are a Deployment here so that
+# one implementation serves both this chart and compose, which has no CronJob at
+# all. Intervals come from `config.maintenance.*`; set one to 0 to disable that
+# job, or `enabled: false` to run no maintenance (leaving `ssingest gc` and
+# `ssingest repair` as manual operations).
+ssingestMaint:
+  enabled: true
+  port: 8085
+  resources:
+    limits: {cpu: "1", memory: 512Mi}
+    requests: {cpu: 100m, memory: 128Mi}
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
 ssbot:
   enabled: true
   port: 8083

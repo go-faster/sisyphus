@@ -1,0 +1,109 @@
+{{- if and .Values.ssingest.enabled .Values.ssingestMaint.enabled }}
+{{- $full := include "sisyphus.fullname" . }}
+{{- /* `ssingest maint` runs periodic vector gc and repair on a timer. It is a
+       Deployment rather than a pair of CronJobs so that one implementation
+       serves this chart and compose alike; the schedule lives in
+       `config.maintenance.*`, and a job whose interval is 0 does not run.
+
+       One replica, with Recreate: each job takes a Postgres advisory lock, so
+       a second replica would only ever log a skip. The lock is what makes a
+       hand-run `kubectl exec ... ssingest gc` safe alongside it.
+
+       Separate from ssingest because repair re-embeds: that load belongs
+       anywhere except the pod ssingestWorker exists to keep clear of it. It
+       mounts no PVC — the jobs read Postgres and Qdrant and keep no state. */}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $full }}-ssingest-maint
+  labels:
+    {{- include "sisyphus.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ssingest-maint
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "sisyphus.selectorLabels" (dict "root" . "component" "ssingest-maint") | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-config.yaml") . | sha256sum }}
+        {{- with .Values.ssingestMaint.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "sisyphus.labels" . | nindent 8 }}
+        {{- include "sisyphus.selectorLabels" (dict "root" . "component" "ssingest-maint") | nindent 8 }}
+    spec:
+      {{- include "sisyphus.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "sisyphus.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.ssapi.enabled }}
+      initContainers:
+        {{- /* ssapi's /ready fails while a migration is pending, so waiting on
+               it keeps a sweep from running against a schema it does not know. */}}
+        - name: wait-for-ssapi
+          image: {{ .Values.waitImage | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              until wget -q -O- "http://{{ $full }}-ssapi:{{ .Values.ssapi.service.port }}/ready"; do
+                echo "waiting for ssapi"
+                sleep 3
+              done
+          resources:
+            limits: {cpu: 100m, memory: 64Mi}
+            requests: {cpu: 10m, memory: 16Mi}
+      {{- end }}
+      containers:
+        - name: ssingest-maint
+          image: {{ include "sisyphus.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/usr/local/bin/ssingest", "maint"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            {{- include "sisyphus.appEnv" . | nindent 12 }}
+          envFrom:
+            {{- include "sisyphus.appEnvFrom" . | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.ssingestMaint.port }}
+          readinessProbe:
+            httpGet: {path: /ready, port: http}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.ssingestMaint.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "sisyphus.configMount" . | nindent 12 }}
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        {{- include "sisyphus.configVolume" . | nindent 8 }}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.ssingestMaint.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ssingestMaint.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ssingestMaint.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

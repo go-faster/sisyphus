@@ -176,5 +176,14 @@ falls back to reading document bodies from Postgres, and the sandbox has no repo
   its job — so `ssingestWorker.replicas` is the knob for ingestion throughput.
   Left disabled, `ssingest serve` indexes what it publishes in-process, which is
   the right shape for a small install.
+- Maintenance is its own single-replica Deployment (`ssingestMaint`), running
+  `ssingest maint`: periodic vector gc and repair on the intervals in
+  `config.maintenance.*`, with `0` disabling a job. These could be CronJobs here,
+  but compose has no equivalent, so one implementation serves both — each job
+  takes a Postgres advisory lock, which is what a CronJob's
+  `concurrencyPolicy: Forbid` would buy. That lock is also why running
+  `ssingest gc` by hand in an exec session is safe while the daemon is up. It is
+  separate from `ssingest` because repair re-embeds, and that is exactly the load
+  `ssingestWorker` exists to move off the scheduler pod.
 - The bot fails closed — with `config.telegram.allowed_chats` /
   `allowed_user_ids` empty it silently ignores every message.
