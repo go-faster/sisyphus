@@ -10,7 +10,7 @@ Ingestion CLI and daemon. Wires its dependencies inline — it does **not** reus
 | `git`, `files`, `gitlab`, `jira`, `telegram`, `all` | one-shot incremental run, then exit |
 | `serve` | long-lived daemon: webhooks + pollers trigger the same per-source runs |
 | `worker` | drains the `ingest.index` queue and does nothing else |
-| `maint` | long-lived daemon: runs `gc` and `repair` on a schedule (`internal/maint`) |
+| `maint` | long-lived daemon: gc, repair, queue reaping and retention on a schedule (`internal/maint`) |
 | `index` | index documents directly |
 | `gc` | sweep vector points no chunk references (`internal/vectorgc`) |
 | `repair` | rebind chunks whose point is keyed by the wrong ID (`internal/vectorrepair`) |
@@ -42,6 +42,16 @@ and the next run re-finds whatever was left.
 
 Interval `0` disables a job. A `maint` process with everything disabled idles rather than
 exits, so a config change does not turn into a crash-looping container.
+
+The jobs: `gc` and `repair` (vector stores), plus `reap-stale`, `queue-retention` and
+`notify-retention`, which are about the shared `queue_jobs`/`notifications` tables rather
+than about any one queue's work. Those three iterate `allQueues()` in `cmd_maint.go` —
+**a queue missing from that list is never reaped and never purged**, which is exactly how
+notify delivery went unreaped. Add a new queue there in the same change that creates it.
+
+`serve` still reaps `ingest.index` once at boot, and `ssagent` still reaps
+`agent.investigate` once at its own. Both are kept deliberately: they are idempotent and
+cheap, and an install that does not deploy `ssmaint` would otherwise lose reaping entirely.
 
 ## A broken dependency fails the run, never the process
 

@@ -176,8 +176,56 @@ type MaintenanceConfig struct {
 	// DrainTimeout bounds how long shutdown waits for an in-flight job.
 	DrainTimeout time.Duration
 
-	GC     MaintenanceGCConfig
-	Repair MaintenanceRepairConfig
+	GC              MaintenanceGCConfig
+	Repair          MaintenanceRepairConfig
+	ReapStale       MaintenanceReapStaleConfig
+	QueueRetention  MaintenanceQueueRetentionConfig
+	NotifyRetention MaintenanceNotifyRetentionConfig
+}
+
+// MaintenanceReapStaleConfig configures the sweep that settles queue jobs whose
+// attempts are spent and whose lease has lapsed, across every queue.
+//
+// Without it such a job sits in a non-terminal status forever: invisible to a
+// worker's claim, but indistinguishable from real backlog in any "how much work
+// is outstanding" query.
+type MaintenanceReapStaleConfig struct {
+	// Interval is how often the sweep runs. 0 disables it.
+	Interval time.Duration
+}
+
+// MaintenanceQueueRetentionConfig configures deletion of settled queue jobs.
+//
+// `queue_jobs` accumulates both rows and dead tuples otherwise: every job costs
+// at least two UPDATEs and nothing ever removes it.
+type MaintenanceQueueRetentionConfig struct {
+	// Interval is how often the sweep runs. 0 disables it.
+	Interval time.Duration
+	// DoneAfter is how long an acknowledged job is kept. 0 keeps them forever.
+	DoneAfter time.Duration
+	// ErrorAfter is how long a job that exhausted its attempts is kept. It is
+	// deliberately much longer than DoneAfter: these are the rows an operator
+	// goes looking for. 0 keeps them forever.
+	ErrorAfter time.Duration
+	// Batch is how many rows one DELETE removes.
+	Batch int
+	// MaxBatches caps one sweep, so a first run against a long-neglected table
+	// cannot delete for hours while holding the maintenance lock.
+	MaxBatches int
+}
+
+// MaintenanceNotifyRetentionConfig configures deletion of settled notification
+// rows — the same unbounded growth as the queue's, at a lower rate.
+type MaintenanceNotifyRetentionConfig struct {
+	// Interval is how often the sweep runs. 0 disables it.
+	Interval time.Duration
+	// After is how long a delivered or errored notification is kept. 0 keeps
+	// them forever.
+	After time.Duration
+	// Batch is how many rows one DELETE removes.
+	Batch int
+	// MaxBatches caps one sweep.
+	MaxBatches int
 }
 
 // MaintenanceGCConfig configures the vector garbage-collection sweep
@@ -358,6 +406,27 @@ const (
 	// every repaired row costs an embedding call.
 	defaultMaintenanceRepairInterval = 7 * 24 * time.Hour
 	defaultMaintenanceRepairBatch    = 64
+
+	// defaultMaintenanceReapInterval is short because the condition it settles
+	// — a worker that died holding a claim — arises at runtime, and until it is
+	// settled the job is counted as outstanding backlog.
+	defaultMaintenanceReapInterval = 5 * time.Minute
+
+	// defaultMaintenanceQueueRetention* keep acknowledged jobs for three days
+	// and failed ones for thirty. A done row is an audit trail nobody reads; an
+	// error row is why someone opens the table at all.
+	defaultMaintenanceQueueRetentionInterval = time.Hour
+	defaultMaintenanceQueueDoneAfter         = 72 * time.Hour
+	defaultMaintenanceQueueErrorAfter        = 30 * 24 * time.Hour
+
+	// defaultMaintenanceNotifyRetentionAfter is longer than either queue
+	// window: a Notification is the operator-facing record of what was sent,
+	// and it is written once per delivery rather than per job.
+	defaultMaintenanceNotifyRetentionInterval = 24 * time.Hour
+	defaultMaintenanceNotifyRetentionAfter    = 90 * 24 * time.Hour
+
+	defaultMaintenancePurgeBatch      = 5000
+	defaultMaintenancePurgeMaxBatches = 20
 )
 
 // FetchConfig configures the URL fetcher allowlist.

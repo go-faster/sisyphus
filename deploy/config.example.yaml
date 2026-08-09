@@ -268,3 +268,33 @@ maintenance:
   repair:
     interval: 168h
     batch: 64
+  # reap_stale: settle queue jobs whose attempts are spent and whose lease has
+  # lapsed — a worker that died holding a claim. Until settled they are
+  # invisible to a claim but indistinguishable from real backlog.
+  reap_stale:
+    interval: 5m
+  # queue_retention: delete settled queue_jobs rows. Nothing else removes them,
+  # and every job costs at least two UPDATEs, so the table accumulates rows and
+  # dead tuples for the life of the deployment.
+  #
+  # Two windows, because the statuses mean different things: a done row is an
+  # audit trail nobody reads, an error row is why someone opens the table.
+  # Either can be 0 to keep that status forever. Only terminal rows are ever
+  # eligible — pending and running jobs are outstanding work at any age.
+  queue_retention:
+    interval: 1h
+    done_after: 72h
+    error_after: 720h
+    # Deleting in batches, capped per sweep: an unbounded DELETE on a churn
+    # table takes a long lock and bloats WAL. Whatever is left over goes in the
+    # next sweep; a run that reports capped=true every time wants a bigger batch.
+    batch: 5000
+    max_batches: 20
+  # notify_retention: the same growth in the notifications table, at a lower
+  # rate — one row per delivery rather than per job. Longer window, because the
+  # row is the operator-facing record of what was actually sent.
+  notify_retention:
+    interval: 24h
+    after: 2160h
+    batch: 5000
+    max_batches: 20

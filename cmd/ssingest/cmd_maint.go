@@ -11,9 +11,14 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/go-faster/sisyphus/internal/agentstore"
 	"github.com/go-faster/sisyphus/internal/httpmw"
+	"github.com/go-faster/sisyphus/internal/indexjob"
 	"github.com/go-faster/sisyphus/internal/maint"
 	"github.com/go-faster/sisyphus/internal/mcpserver"
+	"github.com/go-faster/sisyphus/internal/notify"
+	notifystore "github.com/go-faster/sisyphus/internal/notify/store"
+	"github.com/go-faster/sisyphus/internal/queue"
 	"github.com/go-faster/sisyphus/internal/search/qdrant"
 	"github.com/go-faster/sisyphus/internal/vectorgc"
 	"github.com/go-faster/sisyphus/internal/vectorrepair"
@@ -89,7 +94,59 @@ func (d *ingestDeps) maintJobs() []maint.Job {
 			Interval: cfg.Repair.Interval,
 			Run:      d.repairJob(vectorrepair.Options{Batch: cfg.Repair.Batch}),
 		},
+		{
+			Name:     maint.JobReapStale,
+			Interval: cfg.ReapStale.Interval,
+			Run: func(ctx context.Context) error {
+				return maint.ReapStale(ctx, d.allQueues())
+			},
+		},
+		{
+			Name:     maint.JobQueueRetention,
+			Interval: cfg.QueueRetention.Interval,
+			Run: func(ctx context.Context) error {
+				return maint.PurgeQueues(ctx, d.allQueues(), queue.PurgeOptions{
+					DoneAfter:  cfg.QueueRetention.DoneAfter,
+					ErrorAfter: cfg.QueueRetention.ErrorAfter,
+					Batch:      cfg.QueueRetention.Batch,
+					MaxBatches: cfg.QueueRetention.MaxBatches,
+				})
+			},
+		},
+		{
+			Name:     maint.JobNotifyRetention,
+			Interval: cfg.NotifyRetention.Interval,
+			Run: func(ctx context.Context) error {
+				return maint.PurgeNotifications(ctx, notifystore.New(d.services.DB, notifystore.Options{}),
+					notifystore.PurgeOptions{
+						After:      cfg.NotifyRetention.After,
+						Batch:      cfg.NotifyRetention.Batch,
+						MaxBatches: cfg.NotifyRetention.MaxBatches,
+					})
+			},
+		},
 	}
+}
+
+// allQueues names every queue in the system, for the sweeps that are not about
+// one queue's work but about the shared table underneath them all.
+//
+// Listing them here is the price of one table serving every queue: a new queue
+// that is not added stays unreaped and unpurged, which is exactly how notify
+// delivery ended up with no reaper. The queues are constructed per call because
+// a queue.Postgres is a handle, not a connection.
+func (d *ingestDeps) allQueues() []*queue.Postgres {
+	names := []string{
+		indexjob.QueueName,
+		agentstore.QueueName,
+		notifystore.QueueName(notify.ChannelTelegram),
+	}
+
+	qs := make([]*queue.Postgres, 0, len(names))
+	for _, name := range names {
+		qs = append(qs, queue.NewPostgres(d.services.DB, name, queue.PostgresOptions{}))
+	}
+	return qs
 }
 
 // vectorStore connects to Qdrant for the duration of one sweep.

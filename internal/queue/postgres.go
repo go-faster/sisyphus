@@ -70,6 +70,9 @@ func NewPostgres(db execQuerier, name string, opts PostgresOptions) *Postgres {
 	return &Postgres{db: db, name: name, opts: opts}
 }
 
+// Name is the logical stream this queue claims within.
+func (p *Postgres) Name() string { return p.name }
+
 // WithTx returns a copy that reads and writes through tx, so a caller can
 // enqueue work in the same transaction as the domain row that work refers to.
 // This is the transactional-outbox guarantee, and it is specific to this

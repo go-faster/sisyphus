@@ -8,6 +8,11 @@ so there is one claim path and one set of indexes.
 without coordination. `Nack` retries with backoff until `MaxAttempts`, after which the job
 is terminal (`status=error`) and stays for inspection.
 
+`ReapStale` and `Purge` are **not** per-queue duties, even though they are per-queue calls:
+`ssingest maint` runs both across every queue in the system (`allQueues` in
+`cmd/ssingest/cmd_maint.go`). A new queue that is not added there is never reaped and never
+purged — which is how notify delivery went unreaped until #66.
+
 ## Three load-bearing decisions — do not undo
 
 Each was a measured or prior-art-confirmed mistake before it was fixed.
@@ -51,10 +56,34 @@ identifier. Set `Message.Key` to that ID too **unless the queue is genuinely the
 point** — a queue job outlives the row it refers to, so reusing a business dedup key
 silently swallows a re-enqueue after the old row is cleaned up.
 
-## Not yet solved: retention
+## Retention: delete settled rows, in two windows
 
-Rows are never deleted and every job costs 2+ `UPDATE`s, so the table accumulates dead
-tuples with no retention, archiving, partitioning or autovacuum tuning. Every comparable
-system treats this as mandatory (pgq/pgq: append-only + `TRUNCATE` rotation with
-`autovacuum_enabled=off`; pgmq: delete on ack or archive; dataddo/pgq: partitions via
-pg_partman). Fix before this carries real volume.
+`Postgres.Purge` deletes terminal rows past their window, run hourly by `ssingest maint`
+(`maintenance.queue_retention.*`). **`done` after 72h, `error` after 30d** — an
+acknowledged job is an audit trail nobody reads, a failed one is why an operator opens the
+table at all. Either window at `0` keeps that status forever.
+
+Three properties that are load-bearing, not incidental:
+
+- **Only terminal rows, only by `completed_at`.** A pending, running or backing-off job is
+  outstanding work at any age. The purge predicate must never widen to `created_at`.
+- **Batched, and capped per sweep.** An unbounded `DELETE` on a churn table takes a
+  long-lived lock and bloats WAL — dataddo/pgq warns about exactly this. `Capped` in the
+  report means the sweep stopped early; persistently capped means the batch is too small.
+- **Deleting terminal rows is safe for dedup *only because* every producer publishes under
+  a fresh or domain-row key** (`indexjob`, `agentstore`, `notify/store` all use
+  `Key: id.String()`). `Publish`'s dedup covers a row's whole lifetime, so a producer that
+  used the queue as its own idempotency record would have that record silently deleted by
+  retention. If you add a producer that keys by business identity, retention becomes its
+  correctness problem — see `internal/indexjob/CLAUDE.md`, which rejects exactly that key.
+
+Deliberately **not** archived or partitioned. An archive table keeps rows nobody queries;
+partitioning (`pg_partman`, as dataddo/pgq recommends) is the right answer at volume and
+stays the escape hatch, but it is real operational setup for a table measured in hundreds
+of rows a week. Payload-nulling on ack — free, since `Ack` already `UPDATE`s the row — is
+the other cheap lever if bytes rather than rows turn out to be the problem.
+
+The table also carries `fillfactor=90` and `autovacuum_*_scale_factor=0.02` (see
+`migrations/20260809120000_churn_table_storage.sql`): the default 0.2 waits for a fifth of
+a churn table to be dead before vacuuming, and no free space per page means a claim can
+never be a HOT update.
