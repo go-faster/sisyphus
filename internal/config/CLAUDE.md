@@ -11,13 +11,31 @@ Each service's settings live in a per-service YAML section: `api.*` (ssapi), `mc
 The old top-level `http_addr`, `mcp_addr` and `mcp_auth_token` still parse. Using one logs
 a warning (`Config.Warnings`, surfaced via `Config.LogWarnings`); setting **both** the old
 and the new field for the same value is a hard error at `config.Load()` time, not a
-precedence rule. See `resolveDeprecatedAddr` / `resolveDeprecatedSecret`.
+precedence rule. It is `figureout.MovedFrom` on the new field that does this, so the old
+key is declared once, next to the field that superseded it; `postResolve` only re-renders
+the diagnostic into the warning phrasing `LogWarnings` has always used.
 
-## `ingest.worker.enabled` is a `*bool` on purpose
+A moved key's section must be a `figureout.Group`, not a nested descriptor: a former path
+resolves in the scope that declares the field, and these old keys are top-level.
 
-A plain `bool` would make every config that omits the section silently disable in-process
-indexing. The file struct holds a `*bool` and `resolve()` applies the default (**true**).
-Any future "on by default" flag needs the same treatment.
+## An empty `SISYPHUS_*` variable is not a value
+
+`SISYPHUS_<PATH>` binds a field directly (`SISYPHUS_INGEST_WORKER_CONCURRENCY`), layered
+over the file. `Load` feeds the env source `setEnvironment()`, which drops variables that
+are **present but empty** — `deploy/docker-compose.yml` passes every credential as
+`${SISYPHUS_X:-}`, so each one exists and is empty in every container unless the operator
+filled it in, and a bare `env.Current` would let that blank a token `config.yaml` sets
+literally. Keep the filter, and do not add a config field that wants `""` set on purpose.
+
+The corollary is in tests: `clearEnv` sweeps *every* `SISYPHUS_*` variable, not a list, or
+a developer's exported token binds a field in a test that never mentions one.
+
+## "On by default" flags
+
+`ingest.worker.enabled` and `alertmanager.notify.enabled` default to **true**: a config
+that omits the section must not silently disable in-process indexing, or mute every alert.
+Presence is the source layer's job (`ApplyDefault(true)`), so these are plain `bool` —
+they were `*bool` before the descriptor, and a new flag needs no such hack.
 
 ## `ingest.worker.lease_seconds` is also the handler deadline
 
@@ -30,7 +48,7 @@ embed-and-upsert, or that document is reclaimed mid-run and retried forever.
 `proxies.*` names (`git`, `gitlab`, `jira`, `ollama`, `openrouter`, `fetch`) are switched
 on twice:
 
-- `internal/config/config.go`'s `fetchProxyURL` — used for config **validation**
+- `internal/config/validate.go`'s `fetchProxySecret` — used for config **validation**
 - `internal/fetch/fetcher.go`'s `proxyURL` — used to actually **build** the site's `http.Client`
 
 Adding a name to one but not the other either fails validation for a working proxy, or
