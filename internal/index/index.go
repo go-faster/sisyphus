@@ -119,14 +119,29 @@ const (
 
 // Document is a normalized source artifact (plan §1).
 type Document struct {
-	ID        uuid.UUID
-	Source    Source
-	SourceID  string // stable id within the source (path, jira key, chat:msg)
-	URL       string
-	Title     string
-	Body      string
-	BodyHash  string // Hash(Body); set by the pipeline if empty
-	Metadata  map[string]any
+	ID       uuid.UUID
+	Source   Source
+	SourceID string // stable id within the source (path, jira key, chat:msg)
+	URL      string
+	Title    string
+	Body     string
+	BodyHash string // Hash(Body); set by the pipeline if empty
+	Metadata map[string]any
+	// CreatedAt and UpdatedAt are the *source object's* timestamps — when the
+	// issue was opened upstream, when the MR last changed — not when we indexed
+	// it. That is `captured_at` on the stored row, which the pipeline always
+	// sets.
+	//
+	// They are zero for sources that have no such timestamp to report, which is
+	// every file-derived one: git tracks commits, not a file's birth, so
+	// `git_docs`/`git_code`/`git_manifest` documents legitimately carry no
+	// creation time. Only the GitLab, Jira and git-commit adapters populate
+	// them.
+	//
+	// A zero here is stored as `0001-01-01`, not NULL (the column is Optional
+	// but not Nillable), so a range predicate over `created_at` silently
+	// matches every such row. Filter on `captured_at` when you mean "when did
+	// we see this".
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

@@ -33,6 +33,16 @@ func (Document) Fields() []ent.Field {
 		// chunking change can never reach documents already indexed. 0 means the
 		// chunker reports no version, which is the pre-existing behavior.
 		field.Int("chunker_version").Default(0),
+		// created_at and updated_at belong to the SOURCE object (when the issue
+		// was opened, when the MR last changed), not to this row. They are
+		// optional because most sources have no such timestamp to report: a
+		// file in a git repo has no birth date, so every git_docs/git_code/
+		// git_manifest document carries a zero here. See index.Document.
+		//
+		// Zero is stored as 0001-01-01 rather than NULL — Optional without
+		// Nillable — so a range predicate over created_at matches all of them.
+		// captured_at is the row's own timestamp and is always set; use it for
+		// anything that means "when did we index this".
 		field.Time("created_at").Optional(),
 		field.Time("updated_at").Optional(),
 		field.Time("captured_at").Default(time.Now),
