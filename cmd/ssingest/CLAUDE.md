@@ -10,12 +10,57 @@ Ingestion CLI and daemon. Wires its dependencies inline — it does **not** reus
 | `git`, `files`, `gitlab`, `jira`, `telegram`, `all` | one-shot incremental run, then exit |
 | `serve` | long-lived daemon: webhooks + pollers trigger the same per-source runs |
 | `worker` | drains the `ingest.index` queue and does nothing else |
+| `maint` | long-lived daemon: runs `gc` and `repair` on a schedule (`internal/maint`) |
 | `index` | index documents directly |
 | `gc` | sweep vector points no chunk references (`internal/vectorgc`) |
 | `repair` | rebind chunks whose point is keyed by the wrong ID (`internal/vectorrepair`) |
 
-`gc` and `repair` are not ingestion; they just live here because this is the binary that
-already holds the Qdrant and Postgres clients.
+`gc`, `repair` and `maint` are not ingestion; they just live here because this is the
+binary that already holds the Qdrant and Postgres clients.
+
+## maint: the schedule lives in a process
+
+ARCHITECTURE.md wants gc and repair as CronJobs. Compose has no such object, so `maint` is
+a daemon whose only job is a timer, and a Postgres advisory lock per job
+(`internal/pglock`, keyed `maint/<job>`) does what `concurrencyPolicy: Forbid` would.
+
+**The one-shot `gc`/`repair` subcommands take the same lock**, so running one by hand
+while the daemon is up is safe — the contended run logs a skip and exits 0. Both paths
+also call the same job body in `internal/maint`, so there is one implementation of what a
+sweep does, not two.
+
+It is a **separate deployment from `serve`**, not a goroutine inside it. `repair`
+re-embeds, and `serve` is the process operators are told to keep clear of embedding work
+once `ssingest worker` replicas exist; sharing a lifecycle would walk that back for the
+one job that most looks like ingestion load.
+
+Jobs fire `maintenance.start_delay` after startup rather than one interval in, because a
+deployment that restarts daily would otherwise never reach a daily job. The delay is what
+keeps a crash loop from re-scanning the vector store on every restart. Shutdown cancels an
+in-flight sweep and waits at most `maintenance.drain_timeout` — a sweep holds no state,
+and the next run re-finds whatever was left.
+
+Interval `0` disables a job. A `maint` process with everything disabled idles rather than
+exits, so a config change does not turn into a crash-looping container.
+
+## A broken dependency fails the run, never the process
+
+`maint` never exits because a store is unavailable. A Qdrant outage makes a sweep fail —
+logged, counted by `sisyphus.maint.runs{status="error"}` — and the next tick retries.
+Restarting the pod would not have fixed it, and a crash-looping container hides the
+outage behind a symptom that looks like a bug in the daemon.
+
+This is why the jobs call `wire.NewVectorStore` **per sweep** instead of using
+`Services.Vectors`. That one is decided once at startup: `wire.NewServices` degrades to a
+nil store when Qdrant is unreachable and never retries, so a daemon that happened to start
+during an outage would never garbage-collect again, however long it ran afterwards. Do not
+"optimize" this back into a store resolved once — the connection is not the expensive part
+of a daily sweep, and reusing it converts a maintenance gap into a maintenance stoppage.
+
+`sisyphus.maint.runs{job,status}` is the whole alerting surface: failures are
+`increase(...{status="error"}[1h]) > 0`, and "maintenance stopped happening at all" is
+`increase(...{status="ok"}[2 * interval]) == 0`. Both are already in the counter — resist
+adding a companion gauge for it, which buys nothing and only complicates the alert.
 
 ## Topology: two halves, opposite scaling
 

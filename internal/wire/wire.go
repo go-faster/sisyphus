@@ -39,7 +39,6 @@ import (
 	"github.com/go-faster/sisyphus/internal/pipeline"
 	"github.com/go-faster/sisyphus/internal/retrieval"
 	pgsearch "github.com/go-faster/sisyphus/internal/search/postgres"
-	"github.com/go-faster/sisyphus/internal/search/qdrant"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // register pgx driver
 )
@@ -177,22 +176,15 @@ func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trac
 		vectors      pipeline.VectorStore
 		vectorHealth HealthChecker
 	)
-	host, port, err := splitHostPort(cfg.QdrantAddr)
-	if err != nil {
+	// A malformed address is a configuration error and fails startup; a store
+	// that cannot be reached only disables vector search, because Qdrant being
+	// down must not stop a process from serving what Postgres can answer.
+	if _, _, err := splitHostPort(cfg.QdrantAddr); err != nil {
 		cleanup()
 		return nil, errors.Wrap(err, "qdrant addr")
 	}
-	store, err := qdrant.New(qdrant.Config{
-		Host:       host,
-		Port:       port,
-		Collection: cfg.QdrantCollection,
-		Dim:        cfg.EmbedDim,
-		Embedder:   embedder,
-	})
-	if err != nil {
+	if store, err := NewVectorStore(ctx, cfg, embedder); err != nil {
 		lg.Warn("qdrant unavailable, vector search disabled", zap.Error(err))
-	} else if err := store.EnsureCollection(ctx); err != nil {
-		lg.Warn("qdrant collection setup failed, vector search disabled", zap.Error(err))
 	} else {
 		searcher = store
 		vectors = store

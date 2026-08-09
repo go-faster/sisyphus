@@ -37,6 +37,7 @@ type Config struct {
 	Alertmanager AlertmanagerConfig
 	Context      ContextConfig
 	Ingest       IngestConfig
+	Maintenance  MaintenanceConfig
 	Notify       NotifyConfig
 
 	// Warnings holds deprecation warnings collected while resolving the
@@ -156,6 +157,55 @@ func (c IngestWorkerConfig) Lease() time.Duration {
 // PollInterval is PollIntervalSeconds as a duration.
 func (c IngestWorkerConfig) PollInterval() time.Duration {
 	return time.Duration(c.PollIntervalSeconds) * time.Second
+}
+
+// MaintenanceConfig configures `ssingest maint`: the periodic jobs that keep
+// the stores tidy, and the address its health endpoint listens on.
+//
+// It is a daemon rather than a set of CronJobs because compose has no such
+// object. Every job is also a one-shot CLI subcommand, and both paths take the
+// same advisory lock, so a scheduled run and a hand-run one cannot overlap.
+type MaintenanceConfig struct {
+	// Addr serves /health and /ready. Empty runs no HTTP server.
+	Addr string
+	// StartDelay is how long after startup the first pass of each job fires.
+	// Jobs do not wait a full interval, or a deployment that restarts daily
+	// would never reach a daily job; the delay is what stops a crash loop from
+	// re-scanning the vector store on every restart.
+	StartDelay time.Duration
+	// DrainTimeout bounds how long shutdown waits for an in-flight job.
+	DrainTimeout time.Duration
+
+	GC     MaintenanceGCConfig
+	Repair MaintenanceRepairConfig
+}
+
+// MaintenanceGCConfig configures the vector garbage-collection sweep
+// (internal/vectorgc): delete points no chunk references.
+type MaintenanceGCConfig struct {
+	// Interval is how often the sweep runs. 0 disables it.
+	//
+	// It must stay comfortably above Grace, which the sweep spends waiting
+	// between its two passes.
+	Interval time.Duration
+	// Grace is how long a point must look orphaned before it is deleted. See
+	// vectorgc.Options.Grace: shortening it risks deleting points belonging to
+	// a document that is still being indexed, which is unrecoverable.
+	Grace time.Duration
+	// Batch is the scan/delete page size.
+	Batch int
+}
+
+// MaintenanceRepairConfig configures the vector repair sweep
+// (internal/vectorrepair): rebind chunks whose point is keyed by the wrong ID.
+//
+// It re-embeds every row it fixes, so it runs far less often than GC and in
+// small batches: the work competes with ingestion for embedding capacity.
+type MaintenanceRepairConfig struct {
+	// Interval is how often the sweep runs. 0 disables it.
+	Interval time.Duration
+	// Batch is how many chunks to re-embed at a time.
+	Batch int
 }
 
 // MCPConfig configures the ssmcp service: the address its Streamable HTTP
@@ -288,6 +338,28 @@ const (
 	defaultIngestWorkerPollSeconds  = 1
 )
 
+const (
+	// defaultMaintenanceStartDelay lets a freshly started process settle before
+	// it sweeps, so a crash loop does not rescan the vector store per restart.
+	defaultMaintenanceStartDelay = 5 * time.Minute
+	// defaultMaintenanceDrainTimeout bounds shutdown. A sweep is abandoned
+	// rather than awaited: it holds no state, and the next run re-finds its work.
+	defaultMaintenanceDrainTimeout = 30 * time.Second
+
+	// defaultMaintenanceGCInterval is daily because leaked points come from a
+	// cleanup that failed after its transaction committed — rare, and each
+	// sweep costs a full scan of the vector store.
+	defaultMaintenanceGCInterval = 24 * time.Hour
+	defaultMaintenanceGCGrace    = 5 * time.Minute
+	defaultMaintenanceGCBatch    = 1024
+
+	// defaultMaintenanceRepairInterval is weekly: indexing no longer produces
+	// the drift, so this only cleans up rows written before it stopped, and
+	// every repaired row costs an embedding call.
+	defaultMaintenanceRepairInterval = 7 * 24 * time.Hour
+	defaultMaintenanceRepairBatch    = 64
+)
+
 // FetchConfig configures the URL fetcher allowlist.
 type FetchConfig struct {
 	Sites []FetchSite `yaml:"sites"`
@@ -411,10 +483,11 @@ type GitLabProject struct {
 // resolve() can tell a deprecated top-level field apart from a per-service
 // section the user actually configured.
 const (
-	defaultHTTPAddr   = ":8080"
-	defaultMCPAddr    = ":8081"
-	defaultBotAddr    = ":8083"
-	defaultIngestAddr = ":8084"
+	defaultHTTPAddr        = ":8080"
+	defaultMCPAddr         = ":8081"
+	defaultBotAddr         = ":8083"
+	defaultIngestAddr      = ":8084"
+	defaultMaintenanceAddr = ":8085"
 )
 
 // LogWarnings logs any deprecation warnings collected while resolving the

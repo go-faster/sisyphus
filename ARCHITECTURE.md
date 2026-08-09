@@ -97,6 +97,9 @@ module boundary and the piece most extractable into its own service/repo.
   Idempotent → N replicas.
 - **Maintenance** — `gc` (orphan vector points, two-pass with grace) and
   `repair` (drifted `chunks.id != qdrant_point_id`) as **CronJobs**, not manual.
+  _(today: scheduled, but by the `ssingest maint` daemon — compose has no
+  CronJob, and an advisory lock per job replaces `concurrencyPolicy: Forbid`.
+  Both remain one-shot subcommands, which is what a CronJob would invoke.)_
 
 ### B. Event Gateway — unified ingress + router
 
@@ -161,7 +164,7 @@ extract the Knowledge Graph (the cleanest boundary) into its own service later.
 | agent-worker | queue worker | N |
 | team-bot | single-active | 1 |
 | migrate | Job (Helm hook / advisory-locked) | 1 |
-| gc / repair | CronJob | — |
+| gc / repair | CronJob _(today: `ssingest maint`, single-active by advisory lock)_ | 1 |
 
 **Migration ownership:** schema migration moves out of the serving path into a
 one-shot **Job** (or a `pg_advisory_lock`-guarded startup), so the KG query
@@ -185,7 +188,8 @@ Idempotency makes this incremental and safe to do in slices:
    duplicate GitLab/Jira polling into one event source.
 5. **Split the two Telegrams.** Team Bot (Bot API) and userbot backfill become
    separate deployables.
-6. **Automate maintenance.** `gc`/`repair` become CronJobs.
+6. **Automate maintenance.** `gc`/`repair` become CronJobs. _(done, as the
+   `ssingest maint` daemon rather than CronJobs — see cmd/ssingest/CLAUDE.md.)_
 
 ## Constraints that don't go away
 

@@ -37,6 +37,20 @@ that omits the section must not silently disable in-process indexing, or mute ev
 Presence is the source layer's job (`ApplyDefault(true)`), so these are plain `bool` —
 they were `*bool` before the descriptor, and a new flag needs no such hack.
 
+## `maintenance.*` intervals are durations, and `0` means off
+
+The older sections spell periods as `*_seconds` ints; `maintenance.*` uses `time.Duration`
+(`24h`, `168h`), because these are hours and days and `604800` is not a reviewable value.
+figureout parses durations natively — a new period field should follow this, not the ints.
+
+An interval of `0` disables that job rather than meaning "as fast as possible", and a
+`maint` process with every job disabled idles instead of exiting, so turning maintenance
+off in config does not produce a crash-looping container.
+
+`maintenance.gc.interval` must exceed `maintenance.gc.grace`, enforced by an invariant:
+each sweep *spends* `grace` waiting between its two passes, so an interval below it
+schedules the next sweep before the current one can finish.
+
 ## `ingest.worker.lease_seconds` is also the handler deadline
 
 It is `queue.Delivery.Deadline` — there is deliberately no second timeout knob (see

@@ -3,6 +3,11 @@
 `ssingest gc`: deletes vector points that no chunk references. Postgres is the source of
 truth.
 
+Runs daily under `ssingest maint` (`maintenance.gc.*`) and on demand as the subcommand;
+both take the same advisory lock, so they cannot overlap. Keep `maintenance.gc.interval`
+comfortably above `grace` — a sweep spends `grace` waiting between its two passes, and
+config validation rejects an interval that does not exceed it.
+
 ## Never collapse the two passes
 
 The two passes are separated by `Grace`, and that gap is the whole point.

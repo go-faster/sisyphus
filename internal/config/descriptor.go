@@ -36,6 +36,7 @@ func describe(c *wire, s *figureout.Schema[wire]) {
 	describeContext(c, s)
 	describeAlertmanager(c, s)
 	describeIngest(c, s)
+	describeMaintenance(c, s)
 	describeNotify(c, s)
 	describeProxies(c, s)
 	describeConvert(c, s)

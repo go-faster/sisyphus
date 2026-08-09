@@ -23,6 +23,7 @@
   "ingest" (dict
     "addr" (printf ":%v" .Values.ssingest.port)
     "worker" (dict "enabled" $indexInServe))
+  "maintenance" (dict "addr" (printf ":%v" .Values.ssingestMaint.port))
   "agent" (dict
     "addr" (printf ":%v" .Values.ssagent.port)
     "base_url" (printf "http://%s-ssagent:%v" $full .Values.ssagent.port)

@@ -92,6 +92,49 @@ func describeIngest(c *wire, s *figureout.Schema[wire]) {
 	})
 }
 
+// describeMaintenance declares the `ssingest maint` daemon and its jobs.
+//
+// Intervals are durations rather than the *_seconds ints the older sections
+// use: these are hours and days, and "604800" is not a reviewable value.
+func describeMaintenance(c *wire, s *figureout.Schema[wire]) {
+	figureout.Group(s, "maintenance", func(s *figureout.Schema[wire]) {
+		figureout.Value(s, &c.Maintenance.Addr, "addr").ApplyDefault(defaultMaintenanceAddr)
+		figureout.Value(s, &c.Maintenance.StartDelay, "start_delay").
+			ApplyDefault(defaultMaintenanceStartDelay).
+			Doc("delay before the first pass of each job; keeps a crash loop from re-scanning on every restart")
+		figureout.Value(s, &c.Maintenance.DrainTimeout, "drain_timeout").
+			ApplyDefault(defaultMaintenanceDrainTimeout)
+
+		figureout.Group(s, "gc", func(s *figureout.Schema[wire]) {
+			figureout.Value(s, &c.Maintenance.GC.Interval, "interval").
+				ApplyDefault(defaultMaintenanceGCInterval).
+				Doc("0 disables the sweep; must stay comfortably above grace")
+			figureout.Value(s, &c.Maintenance.GC.Grace, "grace").
+				ApplyDefault(defaultMaintenanceGCGrace).
+				Doc("how long a point must look orphaned before deletion; covers in-flight indexing")
+			figureout.Value(s, &c.Maintenance.GC.Batch, "batch").
+				ApplyDefault(defaultMaintenanceGCBatch)
+		})
+
+		figureout.Group(s, "repair", func(s *figureout.Schema[wire]) {
+			figureout.Value(s, &c.Maintenance.Repair.Interval, "interval").
+				ApplyDefault(defaultMaintenanceRepairInterval).
+				Doc("0 disables the sweep; it re-embeds, so it competes with ingestion")
+			figureout.Value(s, &c.Maintenance.Repair.Batch, "batch").
+				ApplyDefault(defaultMaintenanceRepairBatch)
+		})
+	})
+
+	figureout.Invariant(s, "maintenance-gc-interval-exceeds-grace", func(c *wire) error {
+		gc := c.Maintenance.GC
+		if gc.Interval > 0 && gc.Interval <= gc.Grace {
+			return figureout.At("maintenance.gc.interval").
+				Errorf("must exceed maintenance.gc.grace (%s), which each sweep spends waiting", gc.Grace)
+		}
+		return nil
+	})
+}
+
 // pollGroup declares a "<name>: {poll: {interval_seconds: N}}" block.
 func pollGroup(s *figureout.Schema[wire], name string, field *int) {
 	figureout.Group(s, name, func(s *figureout.Schema[wire]) {
