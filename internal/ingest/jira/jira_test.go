@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -1091,4 +1092,113 @@ func TestIssueChangelogMapping(t *testing.T) {
 		URL:     srv.URL + "/jira/people/acc-bob",
 	}, iss.AssignedBy)
 	require.Equal(t, "Carol", iss.Reporter)
+	require.Equal(t, baseTime.Add(time.Hour), iss.AssignedAt.UTC())
+}
+
+// TestIssueAssignedAtCreation covers the shape that made a sprint rollover
+// announce an assignment made weeks earlier: an issue created already
+// assigned, whose changelog therefore records no assignment at all, touched
+// much later by something unrelated.
+func TestIssueAssignedAtCreation(t *testing.T) {
+	t.Parallel()
+
+	baseTime := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	// The unrelated edit that brings the issue past an incremental poll,
+	// eleven days after it was filed.
+	sprintEntry := map[string]any{
+		"created": testJiraTime(baseTime.Add(11 * 24 * time.Hour)),
+		"items":   []any{map[string]any{"field": "Sprint"}},
+	}
+	issueWith := func(key string, changelog, fields map[string]any) map[string]any {
+		f := map[string]any{
+			"summary":  "Fix the thing",
+			"created":  testJiraTime(baseTime),
+			"updated":  testJiraTime(baseTime.Add(11 * 24 * time.Hour)),
+			"assignee": map[string]any{"accountId": "acc-alice", "displayName": "Alice"},
+		}
+		maps.Copy(f, fields)
+		return map[string]any{"id": "1", "key": key, "fields": f, "changelog": changelog}
+	}
+
+	tests := []struct {
+		name     string
+		issue    map[string]any
+		wantAt   time.Time
+		wantZero bool
+		wantByID string
+	}{
+		{
+			name: "no assignment history dates the assignment to creation",
+			issue: issueWith("BILL-1", map[string]any{
+				"startAt": 0, "maxResults": 1, "total": 1,
+				"histories": []any{sprintEntry},
+			}, nil),
+			wantAt: baseTime,
+		},
+		{
+			name: "an issue with no history at all",
+			issue: issueWith("BILL-2", map[string]any{
+				"startAt": 0, "maxResults": 0, "total": 0, "histories": []any{},
+			}, nil),
+			wantAt: baseTime,
+		},
+		{
+			// Absence of an entry is only evidence when the whole history is
+			// in hand; here it is not, so the age stays unknown.
+			name: "a truncated changelog leaves the assignment undated",
+			issue: issueWith("BILL-3", map[string]any{
+				"startAt": 0, "maxResults": 1, "total": 40,
+				"histories": []any{sprintEntry},
+			}, nil),
+			wantZero: true,
+		},
+		{
+			name: "an unassigned issue is not assigned at creation",
+			issue: issueWith("BILL-4", map[string]any{
+				"startAt": 0, "maxResults": 1, "total": 1,
+				"histories": []any{sprintEntry},
+			}, map[string]any{"assignee": nil}),
+			wantZero: true,
+		},
+		{
+			// A real assignment entry still wins: the fallback only fills a
+			// gap, it never overrides what the changelog says.
+			name: "an assignment entry beats the creation fallback",
+			issue: issueWith("BILL-5", map[string]any{
+				"startAt": 0, "maxResults": 2, "total": 2,
+				"histories": []any{sprintEntry, map[string]any{
+					"author":  map[string]any{"accountId": "acc-bob", "displayName": "Bob"},
+					"created": testJiraTime(baseTime.Add(10 * 24 * time.Hour)),
+					"items":   []any{map[string]any{"field": "assignee"}},
+				}},
+			}, nil),
+			wantAt:   baseTime.Add(10 * 24 * time.Hour),
+			wantByID: "acc-bob",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := httptest.NewServer(paginatedHandler([]map[string]any{tt.issue}))
+			defer srv.Close()
+
+			f, err := New(Options{BaseURL: srv.URL, PAT: "test"})
+			require.NoError(t, err)
+
+			got, _, _, err := f.FetchIssues(context.Background(), FetchOptions{Projects: []string{"BILL"}}, Cursor{})
+			require.NoError(t, err)
+			require.Len(t, got, 1)
+
+			iss := got[0]
+			if tt.wantZero {
+				require.True(t, iss.AssignedAt.IsZero())
+			} else {
+				require.Equal(t, tt.wantAt, iss.AssignedAt.UTC())
+			}
+			// The fallback dates the assignment; it never invents an assigner.
+			require.Equal(t, tt.wantByID, iss.AssignedBy.ID)
+		})
+	}
 }
