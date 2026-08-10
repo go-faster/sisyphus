@@ -284,8 +284,8 @@ github.com/prometheus/otlptranslator v1.0.0 h1:s0LJW/iN9dkIH+EnhiD3BlkkP5QVIUVEo
 github.com/prometheus/otlptranslator v1.0.0/go.mod h1:vRYWnXvI6aWGpsdY/mOT/cbeVRBlPWtBNDb7kGR3uKM=
 github.com/prometheus/procfs v0.20.1 h1:XwbrGOIplXW/AU3YhIhLODXMJYyC1isLFfYCsTEycfc=
 github.com/prometheus/procfs v0.20.1/go.mod h1:o9EMBZGRyvDrSPH1RqdxhojkuXstoe4UlK79eF5TGGo=
-github.com/qdrant/go-client v1.18.3 h1:jWVjf+O2nlqHyLDo4UF8zUjPokGk7r9+GY1jS+jq49Y=
-github.com/qdrant/go-client v1.18.3/go.mod h1:BdfsUDNhN7GsClHQ6r2gkqwspWlN4h24DXaRaYfVJJ8=
+github.com/qdrant/go-client v1.19.0 h1:WGyC1YDXXU8/Od8+kcFncgD3eMqulAoNHy8Ip76tBE8=
+github.com/qdrant/go-client v1.19.0/go.mod h1:/pjMgiL4SxFxD5rLorlS5/FXcvBSx/P2M81gnqn5fb8=
 github.com/refraction-networking/utls v1.8.2 h1:j4Q1gJj0xngdeH+Ox/qND11aEfhpgoEvV+S9iJ2IdQo=
 github.com/refraction-networking/utls v1.8.2/go.mod h1:jkSOEkLqn+S/jtpEHPOsVv/4V4EVnelwbMQl4vCWXAM=
 github.com/rogpeppe/go-internal v1.15.0 h1:D0RCU5rMAp+SpgkiNdrjfJ+LX4J1M32V2NeCY7EJ6hc=
