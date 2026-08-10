@@ -1,8 +1,12 @@
 package jira
 
 import (
+	"context"
 	"strings"
 	"time"
+
+	"github.com/go-faster/sdk/zctx"
+	"go.uber.org/zap"
 
 	chunkjira "github.com/go-faster/sisyphus/internal/chunk/jira"
 )
@@ -51,18 +55,29 @@ type IssueActors struct {
 }
 
 // lastEntry returns the author and timestamp of the newest history entry
-// matching want, or zero values when no entry matches or the matching ones
-// name nobody.
+// matching want, or zero values when no entry matches.
 //
 // Entries whose timestamp does not parse are skipped rather than failing the
 // issue: the changelog is auxiliary to every other field, and losing an actor
 // is a rendering downgrade ("Someone" instead of a name) where losing the
 // issue is a missing notification.
 //
+// An entry naming no author still counts, and yields a zero user with a real
+// timestamp. Who and when are separate answers: an assignment made by a
+// workflow post-function or a since-deleted account has no author Jira can
+// report, but it happened at a knowable moment, and that moment is what
+// [notify.Staleness] gates on. Dropping the entry outright surrendered both,
+// so such an assignment reached the projector as "unknown time", which
+// staleness lets through however old it is.
+//
+// The author is taken from the newest matching entry only, never from an
+// older one that happens to name somebody: the entry is the change, and
+// borrowing a name from a previous change attributes it to the wrong person.
+//
 // The newest entry is found by comparing timestamps, not by taking the last
 // element: Jira orders histories oldest-first, but nothing in the API
 // guarantees it and a wrong pick here misattributes an action to a colleague.
-func lastEntry(cl *jiraChangelog, baseURL string, want func(jiraHistory) bool) (chunkjira.User, time.Time) {
+func lastEntry(ctx context.Context, cl *jiraChangelog, baseURL, key string, want func(jiraHistory) bool) (chunkjira.User, time.Time) {
 	if cl == nil {
 		return chunkjira.User{}, time.Time{}
 	}
@@ -73,11 +88,16 @@ func lastEntry(cl *jiraChangelog, baseURL string, want func(jiraHistory) bool) (
 		bestFound bool
 	)
 	for _, h := range cl.Histories {
-		if h.Author == nil || !want(h) {
+		if !want(h) {
 			continue
 		}
 		created, err := parseJiraTime(h.Created)
 		if err != nil || created.IsZero() {
+			zctx.From(ctx).Warn("jira: changelog entry has no usable timestamp, ignoring it",
+				zap.String("key", key),
+				zap.String("created", h.Created),
+				zap.Error(err),
+			)
 			continue
 		}
 		if bestFound && !created.After(bestAt) {
@@ -88,6 +108,13 @@ func lastEntry(cl *jiraChangelog, baseURL string, want func(jiraHistory) bool) (
 	if !bestFound {
 		return chunkjira.User{}, time.Time{}
 	}
+	if best.Author == nil {
+		zctx.From(ctx).Warn("jira: changelog entry names no author, keeping its timestamp",
+			zap.String("key", key),
+			zap.Time("changed_at", bestAt),
+		)
+		return chunkjira.User{}, bestAt
+	}
 	return chunkjira.User{
 		ID:      best.Author.identity(),
 		Display: best.Author.DisplayName,
@@ -95,10 +122,11 @@ func lastEntry(cl *jiraChangelog, baseURL string, want func(jiraHistory) bool) (
 	}, bestAt
 }
 
-// changelogActors extracts what an issue's changelog says about who acted.
-func changelogActors(cl *jiraChangelog, baseURL string) IssueActors {
+// changelogActors extracts what an issue's changelog says about who acted. key
+// is the issue key, for the logs an unusable entry emits.
+func changelogActors(ctx context.Context, cl *jiraChangelog, baseURL, key string) IssueActors {
 	var actors IssueActors
-	actors.UpdatedBy, _ = lastEntry(cl, baseURL, func(jiraHistory) bool { return true })
-	actors.AssignedBy, actors.AssignedAt = lastEntry(cl, baseURL, jiraHistory.touchesAssignee)
+	actors.UpdatedBy, _ = lastEntry(ctx, cl, baseURL, key, func(jiraHistory) bool { return true })
+	actors.AssignedBy, actors.AssignedAt = lastEntry(ctx, cl, baseURL, key, jiraHistory.touchesAssignee)
 	return actors
 }

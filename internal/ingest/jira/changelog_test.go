@@ -88,15 +88,34 @@ func TestChangelogActors(t *testing.T) {
 			wantAssignedAt: time.Hour,
 		},
 		{
-			name: "entries with no author or unparseable time are skipped",
+			name: "entries with an unparseable time are skipped",
 			changelog: &jiraChangelog{Histories: []jiraHistory{
 				{Author: user("acc-bob", "Bob"), Created: at(time.Hour), Items: []jiraHistoryItem{assigneeItem}},
-				{Author: nil, Created: at(2 * time.Hour), Items: []jiraHistoryItem{assigneeItem}},
 				{Author: user("acc-erin", "Erin"), Created: "not a time", Items: []jiraHistoryItem{assigneeItem}},
 			}},
 			wantUpdatedBy:  chunkjira.User{ID: "acc-bob", Display: "Bob", URL: "https://jira.example.com/jira/people/acc-bob"},
 			wantAssignedBy: chunkjira.User{ID: "acc-bob", Display: "Bob", URL: "https://jira.example.com/jira/people/acc-bob"},
 			wantAssignedAt: time.Hour,
+		},
+		{
+			// The when survives an author Jira cannot name, so staleness can
+			// still prove this assignment old; only the who degrades.
+			name: "newest entry with no author keeps its timestamp",
+			changelog: &jiraChangelog{Histories: []jiraHistory{
+				{Author: user("acc-bob", "Bob"), Created: at(time.Hour), Items: []jiraHistoryItem{assigneeItem}},
+				{Author: nil, Created: at(2 * time.Hour), Items: []jiraHistoryItem{assigneeItem}},
+			}},
+			wantAssignedAt: 2 * time.Hour,
+		},
+		{
+			name: "an older authorless entry does not displace the newest",
+			changelog: &jiraChangelog{Histories: []jiraHistory{
+				{Author: nil, Created: at(time.Hour), Items: []jiraHistoryItem{assigneeItem}},
+				{Author: user("acc-erin", "Erin"), Created: at(2 * time.Hour), Items: []jiraHistoryItem{assigneeItem}},
+			}},
+			wantUpdatedBy:  chunkjira.User{ID: "acc-erin", Display: "Erin", URL: "https://jira.example.com/jira/people/acc-erin"},
+			wantAssignedBy: chunkjira.User{ID: "acc-erin", Display: "Erin", URL: "https://jira.example.com/jira/people/acc-erin"},
+			wantAssignedAt: 2 * time.Hour,
 		},
 		{
 			name: "no assignee change leaves the assigner unset",
@@ -111,7 +130,7 @@ func TestChangelogActors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			actors := changelogActors(tt.changelog, "https://jira.example.com")
+			actors := changelogActors(t.Context(), tt.changelog, "https://jira.example.com", "ABC-1")
 			require.Equal(t, tt.wantUpdatedBy, actors.UpdatedBy)
 			require.Equal(t, tt.wantAssignedBy, actors.AssignedBy)
 			if tt.wantAssignedAt == 0 {
