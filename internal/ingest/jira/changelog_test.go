@@ -141,3 +141,70 @@ func TestChangelogActors(t *testing.T) {
 		})
 	}
 }
+
+func TestAssignedAtCreation(t *testing.T) {
+	t.Parallel()
+
+	entry := func(field string) jiraHistory {
+		return jiraHistory{
+			Author:  &jiraUser{AccountID: "acc-bob"},
+			Created: "2026-06-01T12:00:00.000+0000",
+			Items:   []jiraHistoryItem{{Field: field}},
+		}
+	}
+
+	tests := []struct {
+		name      string
+		changelog *jiraChangelog
+		want      bool
+	}{
+		{
+			// No expand=changelog, or Jira declined to send one: the issue's
+			// history is simply not in hand, which says nothing either way.
+			name:      "nil changelog proves nothing",
+			changelog: nil,
+		},
+		{
+			name:      "an issue never edited was assigned when it was filed",
+			changelog: &jiraChangelog{},
+			want:      true,
+		},
+		{
+			name:      "edits that never touched the assignee",
+			changelog: &jiraChangelog{Total: 2, Histories: []jiraHistory{entry("description"), entry("Sprint")}},
+			want:      true,
+		},
+		{
+			name:      "an assignee entry means it was assigned later",
+			changelog: &jiraChangelog{Total: 2, Histories: []jiraHistory{entry("description"), entry("assignee")}},
+		},
+		{
+			name:      "a localized assignee entry still counts",
+			changelog: &jiraChangelog{Total: 1, Histories: []jiraHistory{{Created: "2026-06-01T12:00:00.000+0000", Items: []jiraHistoryItem{{Field: "Исполнитель", FieldID: "assignee"}}}}},
+		},
+		{
+			// The missing entry could be in the part Jira did not send, so
+			// absence is not evidence and AssignedAt stays unknown.
+			name:      "a truncated changelog proves nothing",
+			changelog: &jiraChangelog{Total: 20, MaxResults: 2, Histories: []jiraHistory{entry("description"), entry("Sprint")}},
+		},
+		{
+			name:      "a later page proves nothing",
+			changelog: &jiraChangelog{StartAt: 2, Total: 4, Histories: []jiraHistory{entry("description"), entry("Sprint")}},
+		},
+		{
+			// Deployments that omit the paging fields report Total 0; the
+			// entries they did send are taken as the whole history.
+			name:      "paging fields absent",
+			changelog: &jiraChangelog{Histories: []jiraHistory{entry("description")}},
+			want:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, assignedAtCreation(tt.changelog))
+		})
+	}
+}

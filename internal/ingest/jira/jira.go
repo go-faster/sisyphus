@@ -321,6 +321,16 @@ func convertIssue(ctx context.Context, jiraIss jiraIssue, baseURL string) (chunk
 	actors := changelogActors(ctx, jiraIss.Changelog, baseURL, jiraIss.Key)
 	iss.UpdatedBy, iss.AssignedBy, iss.AssignedAt = actors.UpdatedBy, actors.AssignedBy, actors.AssignedAt
 
+	// An assignee the changelog never records anyone setting has been there
+	// since the issue was filed, so the issue's own creation time dates the
+	// assignment. Without this the assignment reads as "when unknown", which
+	// staleness passes at any age. Only the assigner stays unknown: nothing
+	// says who filled the field in, and the reporter is who filed the issue,
+	// not necessarily who assigned it.
+	if iss.AssigneeAccountID != "" && iss.AssignedAt.IsZero() && assignedAtCreation(jiraIss.Changelog) {
+		iss.AssignedAt = iss.Created
+	}
+
 	if jiraIss.Fields.Comment != nil {
 		for _, c := range jiraIss.Fields.Comment.Comments {
 			cmt := chunkjira.Comment{

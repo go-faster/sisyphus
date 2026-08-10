@@ -17,8 +17,60 @@ import (
 // best either API offers.
 const assigneeField = "assignee"
 
+// jiraChangelog is an issue's history, as returned under expand=changelog.
+//
+// StartAt/MaxResults/Total are paging metadata Jira sends alongside the
+// entries, and they are read for one reason: they are the only way to tell
+// "this issue has no assignment history" from "this response does not contain
+// it". [complete] turns them into that answer, and [assignedAtCreation]
+// depends on it.
 type jiraChangelog struct {
-	Histories []jiraHistory `json:"histories"`
+	StartAt    int           `json:"startAt"`
+	MaxResults int           `json:"maxResults"`
+	Total      int           `json:"total"`
+	Histories  []jiraHistory `json:"histories"`
+}
+
+// complete reports whether these are all of the issue's history entries, not a
+// page of them.
+//
+// A nil changelog is not complete: it means the caller did not ask for one (or
+// Jira declined), which proves nothing about the issue's history. Deployments
+// that omit the paging fields entirely report Total 0, and any entry count
+// clears that — a deliberate lean towards trusting the response, since the
+// alternative is disabling [assignedAtCreation] wherever the fields are
+// missing.
+func (cl *jiraChangelog) complete() bool {
+	if cl == nil {
+		return false
+	}
+	return cl.StartAt == 0 && len(cl.Histories) >= cl.Total
+}
+
+// assignedAtCreation reports whether the issue's current assignee has held the
+// assignment since the issue was filed.
+//
+// Jira writes a changelog entry for a field it sees *change*, and a field set
+// on the create screen never changed — so an issue created already assigned
+// carries no assignment history at all, and [changelogActors] can only report
+// an unknown AssignedAt for it. notify.Staleness reads unknown as "notify
+// anyway", so such an assignment is announced as news by whatever unrelated
+// edit first brings the issue past an incremental poll — a sprint rollover
+// touching a ticket assigned weeks ago is enough.
+//
+// The absence of an entry is only evidence when the whole history is in hand,
+// hence [complete]. A truncated changelog leaves AssignedAt unknown, which is
+// the pre-existing, permissive behavior.
+func assignedAtCreation(cl *jiraChangelog) bool {
+	if !cl.complete() {
+		return false
+	}
+	for _, h := range cl.Histories {
+		if h.touchesAssignee() {
+			return false
+		}
+	}
+	return true
 }
 
 type jiraHistory struct {
