@@ -1,9 +1,13 @@
 package gitlab
 
 import (
+	"context"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/go-faster/sdk/zctx"
+	"go.uber.org/zap"
 
 	chunkgitlab "github.com/go-faster/sisyphus/internal/chunk/gitlab"
 )
@@ -72,7 +76,21 @@ func isApprovalNote(body string) bool { return body == approveNote || body == un
 // The newest matching note wins, found by timestamp rather than by position:
 // discussions are fetched sorted, but notes within one are not guaranteed to
 // be, and a wrong pick here credits an action to the wrong colleague.
-func mrActors(discussions []gitlabDiscussion) MRActors {
+//
+// A note naming no author still counts, and sets its field to a zero user with
+// a real timestamp. Skipping it entirely left the *previous* note holding the
+// field, which is that wrong-colleague outcome by another route: an MR
+// reassigned by an unnamed actor reported the person who made the assignment
+// before it, at the time they made it. The stale timestamp is the worse half —
+// [notify.Staleness] can read it as older than the cutoff and drop a real,
+// fresh assignment, where an unknown one at least still notifies.
+//
+// Approvals are the exception, and keep skipping: there the note's own author
+// *is* the approver, so one that names nobody identifies no approval to
+// record.
+// mrRef is the MR the notes belong to ("group/project!42"), for the logs an
+// unusable note emits.
+func mrActors(ctx context.Context, discussions []gitlabDiscussion, mrRef string) MRActors {
 	var (
 		actors    MRActors
 		updatedAt time.Time
@@ -83,12 +101,23 @@ func mrActors(discussions []gitlabDiscussion) MRActors {
 	latestApproval := make(map[string]approvalNote)
 	for _, d := range discussions {
 		for _, note := range d.Notes {
-			if !note.System || note.Author == nil {
+			if !note.System {
 				continue
 			}
 			created, err := parseGitLabTime(note.CreatedAt)
 			if err != nil || created.IsZero() {
+				zctx.From(ctx).Warn("gitlab: system note has no usable timestamp, ignoring it",
+					zap.String("mr", mrRef),
+					zap.String("created_at", note.CreatedAt),
+					zap.Error(err),
+				)
 				continue
+			}
+			if note.Author == nil {
+				zctx.From(ctx).Warn("gitlab: system note names no author, keeping its timestamp",
+					zap.String("mr", mrRef),
+					zap.Time("created_at", created),
+				)
 			}
 			user := convertGitLabUser(note.Author)
 			if created.After(updatedAt) {
@@ -101,9 +130,9 @@ func mrActors(discussions []gitlabDiscussion) MRActors {
 				actors.ReviewRequestedBy, actors.ReviewRequestedAt = user, created
 			}
 			// Keyed on the username, which is also what a notification matches
-			// a recipient on: an approver GitLab named only by a display name
-			// cannot be addressed, and is dropped below.
-			if isApprovalNote(note.Body) {
+			// a recipient on: an approver GitLab named only by a display name —
+			// or not at all — cannot be addressed, and is dropped below.
+			if isApprovalNote(note.Body) && note.Author != nil {
 				if prev, ok := latestApproval[user.Username]; !ok || created.After(prev.at) {
 					latestApproval[user.Username] = approvalNote{
 						user:     user,

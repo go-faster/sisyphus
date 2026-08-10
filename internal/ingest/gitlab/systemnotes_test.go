@@ -149,22 +149,57 @@ func TestMRActors(t *testing.T) {
 			want: MRActors{UpdatedBy: chunkgitlab.User{Display: "Bob"}},
 		},
 		{
-			name: "notes with no author or unparseable time are skipped",
+			name: "notes with an unparseable time are skipped",
 			discussions: []gitlabDiscussion{
 				{Notes: []gitlabNote{
 					note(true, "assigned to @alice", time.Hour, "bob"),
-					{System: true, Body: "assigned to @carol", CreatedAt: at(2 * time.Hour)},
 					{System: true, Body: "assigned to @dave", CreatedAt: "not a time", Author: &gitlabUser{Username: "erin"}},
 				}},
 			},
 			want: MRActors{UpdatedBy: user("bob"), AssignedBy: user("bob"), AssignedAt: base.Add(time.Hour)},
+		},
+		{
+			// The newest note is the assignment, so its timestamp is the one
+			// staleness must see. Keeping bob — who assigned alice an hour
+			// earlier — would credit him with assigning carol, and date the
+			// change to the wrong hour.
+			name: "newest note with no author keeps its timestamp",
+			discussions: []gitlabDiscussion{
+				{Notes: []gitlabNote{
+					note(true, "assigned to @alice", time.Hour, "bob"),
+					{System: true, Body: "assigned to @carol", CreatedAt: at(2 * time.Hour)},
+				}},
+			},
+			want: MRActors{AssignedAt: base.Add(2 * time.Hour)},
+		},
+		{
+			name: "an older authorless note does not displace the newest",
+			discussions: []gitlabDiscussion{
+				{Notes: []gitlabNote{
+					{System: true, Body: "assigned to @alice", CreatedAt: at(time.Hour)},
+					note(true, "assigned to @carol", 2*time.Hour, "bob"),
+				}},
+			},
+			want: MRActors{UpdatedBy: user("bob"), AssignedBy: user("bob"), AssignedAt: base.Add(2 * time.Hour)},
+		},
+		{
+			// An approval note's author is the approver, so one that names
+			// nobody records no approval — unlike the membership notes above,
+			// there is no separate "who" to degrade.
+			name: "approval note with no author records no approval",
+			discussions: []gitlabDiscussion{
+				{Notes: []gitlabNote{
+					{System: true, Body: approveNote, CreatedAt: at(time.Hour)},
+				}},
+			},
+			want: MRActors{AssignedAt: time.Time{}},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tt.want, mrActors(tt.discussions))
+			require.Equal(t, tt.want, mrActors(t.Context(), tt.discussions, "group/project!1"))
 		})
 	}
 }

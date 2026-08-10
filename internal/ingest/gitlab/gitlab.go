@@ -562,7 +562,8 @@ func (f *Fetcher) fetchMRDiscussions(ctx context.Context, project string, iid in
 		return nil, MRActors{}, errors.Wrap(err, "parse discussions response")
 	}
 
-	return discussionThreads(discussions), mrActors(discussions), nil
+	mrRef := fmt.Sprintf("%s!%d", project, iid)
+	return discussionThreads(discussions), mrActors(ctx, discussions, mrRef), nil
 }
 
 // discussionThreads maps a discussions response onto the chunker's threads,
