@@ -268,7 +268,7 @@ func descriptionString(d any) string {
 
 // convertIssue maps a fetched issue onto the chunker's type. baseURL is only
 // needed to build user profile links, and may be empty.
-func convertIssue(jiraIss jiraIssue, baseURL string) (chunkjira.Issue, error) {
+func convertIssue(ctx context.Context, jiraIss jiraIssue, baseURL string) (chunkjira.Issue, error) {
 	iss := chunkjira.Issue{
 		Key:   jiraIss.Key,
 		Title: jiraIss.Fields.Summary,
@@ -318,7 +318,7 @@ func convertIssue(jiraIss jiraIssue, baseURL string) (chunkjira.Issue, error) {
 		iss.ReporterURL = jiraIss.Fields.Reporter.profileURL(baseURL)
 	}
 
-	actors := changelogActors(jiraIss.Changelog, baseURL)
+	actors := changelogActors(ctx, jiraIss.Changelog, baseURL, jiraIss.Key)
 	iss.UpdatedBy, iss.AssignedBy, iss.AssignedAt = actors.UpdatedBy, actors.AssignedBy, actors.AssignedAt
 
 	if jiraIss.Fields.Comment != nil {
@@ -565,7 +565,7 @@ func (f *Fetcher) FetchIssues(ctx context.Context, opts FetchOptions, cursor Cur
 
 	issues := make([]chunkjira.Issue, 0, len(searchResp.Issues))
 	for _, iss := range searchResp.Issues {
-		chunkIssue, err := convertIssue(iss, f.baseURL)
+		chunkIssue, err := convertIssue(ctx, iss, f.baseURL)
 		if err != nil {
 			zctx.From(ctx).Warn("skipping issue with unparseable time",
 				zap.String("key", iss.Key),
