@@ -176,6 +176,11 @@ type gitlabNote struct {
 	Author     *gitlabUser `json:"author"`
 	Resolvable bool        `json:"resolvable"`
 	Resolved   bool        `json:"resolved"`
+	// ResolvedBy and ResolvedAt are set on a note that has been resolved.
+	// GitLab reports them per note rather than per discussion, so a thread's
+	// resolution is the newest of its notes'.
+	ResolvedBy *gitlabUser `json:"resolved_by"`
+	ResolvedAt string      `json:"resolved_at"`
 }
 
 type gitlabDiscussion struct {
@@ -573,8 +578,12 @@ func (f *Fetcher) fetchMRDiscussions(ctx context.Context, project string, iid in
 func discussionThreads(discussions []gitlabDiscussion) []chunkgitlab.Thread {
 	var threads []chunkgitlab.Thread
 	for _, discussion := range discussions {
-		var comments []chunkgitlab.Comment
-		resolved := false
+		var (
+			comments   []chunkgitlab.Comment
+			resolved   bool
+			resolvedBy chunkgitlab.User
+			resolvedAt time.Time
+		)
 
 		for _, note := range discussion.Notes {
 			if note.System {
@@ -597,17 +606,35 @@ func discussionThreads(discussions []gitlabDiscussion) []chunkgitlab.Thread {
 			})
 
 			// Track if any note in the discussion is resolved
-			if note.Resolved {
-				resolved = true
+			if !note.Resolved {
+				continue
 			}
+			resolved = true
+
+			// The newest resolution wins: a thread reopened and resolved again
+			// is news at the second resolution, not the first. A note whose
+			// timestamp does not parse still marks the thread resolved, but
+			// cannot date it — and an unknown time is what notify.Staleness
+			// waves through, which is the safe half of that trade.
+			at, err := parseGitLabTime(note.ResolvedAt)
+			if err != nil || at.Before(resolvedAt) {
+				continue
+			}
+			// A null resolver still sets the timestamp: dropping the note
+			// outright would leave an older resolution holding the field, and
+			// an unknown actor renders as "Someone" while a stale timestamp
+			// silently drops a fresh resolution.
+			resolvedAt, resolvedBy = at, convertGitLabUser(note.ResolvedBy)
 		}
 
 		// Only include thread if it has substantive comments
 		if len(comments) > 0 {
 			threads = append(threads, chunkgitlab.Thread{
-				ID:       discussion.ID,
-				Resolved: resolved,
-				Comments: comments,
+				ID:         discussion.ID,
+				Resolved:   resolved,
+				ResolvedBy: resolvedBy,
+				ResolvedAt: resolvedAt,
+				Comments:   comments,
 			})
 		}
 	}

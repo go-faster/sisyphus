@@ -33,12 +33,13 @@ It is deliberately permissive: an **unknown timestamp still notifies**. Over-not
 costs one message the dedup key collapses anyway; under-notifying loses a real assignment
 silently.
 
-The same cutoff bounds three more events whose dedup keys need no timestamp but whose
+The same cutoff bounds four more events whose dedup keys need no timestamp but whose
 payloads restate them forever:
 
 - **comments** — see below.
 - **`mr_merged`** — an MR merges once, but the event says "merged" on every poll after. Only `merged_at` separates a merge that just landed from one that landed months ago.
 - **`mr_approved`** — the same shape one step earlier: an approval stands in every payload from the moment it is given, so only its own timestamp tells a fresh one from a weeks-old one riding along on an unrelated push.
+- **`mr_thread_resolved`** — likewise standing state: a thread stays resolved in every payload after it closes, so `resolved_at` is what separates one just settled from one settled last month.
 
 ## Buttons
 
@@ -90,7 +91,8 @@ same events (`mr.updated`, `issue.updated`) — the payload carries the object's
 comments alongside its current members — and `notify.CommentRule` (`comments.go`) holds the
 fan-out rule for both sources, because that rule is where the failure modes are:
 
-- **Volume is asymmetric, so the two fan out differently.** Assignment is one message per object ever; comments are unbounded. A **mention** notifies per comment — being named is explicit and rare, and collapsing two would lose a question addressed to you. A **comment** notifies once per (object, recipient) per batch, for the newest one they did not write, so a thread that gets twenty replies between polls is one message.
+- **Volume is asymmetric, so the two fan out differently.** Assignment is one message per object ever; comments are unbounded. A **mention** notifies per comment — being named is explicit and rare, and collapsing two would lose a question addressed to you. A **comment** notifies once per (**thread**, recipient) per batch, for the newest one in that thread they did not write, so a thread that gets twenty replies between polls is one message.
+- **The coalescing key is the thread, not the object.** Two remarks on two lines of a diff are two pieces of news; collapsing them onto the newest drops a review comment outright, which is what happened when a reviewer left two twenty seconds apart inside one poll window. GitLab supplies the discussion id (`Comment.ThreadID`, from the discussions endpoint); Jira has no threads and leaves it empty, which groups all its comments and keeps the one-per-object behavior there.
 - **The dedup id is the comment id**, never a timestamp: an edit keeps the id, so editing a comment does not re-notify. Keying the coalesced event by the *newest* comment's id is what keeps the next poll's newest comment a fresh notification instead of a permanently suppressed one.
 - **Mentions are parsed by the source adapter, not the projector** — only it knows GitLab writes `@username` and Jira writes `[~accountid:…]`/`[~username]`, and the extracted keys land in the same id space recipients are matched on.
 - **`Staleness` is the backfill guard**: the poll is incremental on `updated_after` and the event states current comments, so without a cutoff the first run after this shipped would announce every comment in the fetched window. Comments do **not** inherit the assignment's staleness result, though — a comment on an MR assigned to you months ago is still news.
@@ -99,6 +101,24 @@ fan-out rule for both sources, because that rule is where the failure modes are:
 
 Out of scope, deliberately: watchers/participants/subscribers (needs fetching that does not
 happen), and GitLab *issues*, which emit no canonical event at all today.
+
+## A resolved thread
+
+`mr_thread_resolved` (`internal/notify/gitlab/resolved.go`) is the other end of
+`mr_commented`: that one says a question was asked, this one says it was settled. It is
+addressed to the **thread's own participants, then the MR author**, minus the resolver —
+not to assignees and reviewers at large, who on a review with a dozen threads would get a
+dozen messages about conversations they were not in.
+
+Resolution is standing state, like an approval: a thread stays resolved in every payload
+after it closes, so `Staleness` gates it on the resolution's own timestamp
+(`resolved_at`, parsed per note — GitLab reports it per note, and the newest one dates the
+thread). The dedup id is keyed on the discussion id rather than that timestamp, so a
+thread reopened and resolved again is one piece of news.
+
+`Resolution` carries its own `Participants` and `Excerpt` rather than pointing into
+`MRPayload.Comments`: those are capped at `maxPayloadComments`, so on a busy MR the
+thread's comments may not be in the payload at all.
 
 ## An MR's outcome: approved, merged
 

@@ -142,7 +142,7 @@ func TestHandleSubscribeCmd_DefaultsEventTypes(t *testing.T) {
 	stub, sent := captureSend(t)
 
 	require.NoError(t, c.handler(context.Background(), stub, invocation{SenderID: 42, Rest: "gitlab"}))
-	require.Equal(t, [2]string{"gitlab", "mr_assigned,mr_review_requested,mr_commented,mr_mentioned,mr_merged,mr_approved"}, n.subscribed[42])
+	require.Equal(t, [2]string{"gitlab", "mr_assigned,mr_review_requested,mr_commented,mr_mentioned,mr_merged,mr_approved,mr_thread_resolved"}, n.subscribed[42])
 	require.Contains(t, *sent, "Subscribed to gitlab")
 }
 

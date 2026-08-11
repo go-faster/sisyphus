@@ -31,10 +31,17 @@ type Comment struct {
 }
 
 // Thread groups comments from a discussion, tracking resolved state.
+//
+// ResolvedBy and ResolvedAt are who closed the thread and when, and are
+// meaningful only when Resolved. Neither is rendered into the chunked body —
+// resolution is an event, not something anyone searches a merge request's text
+// for — so adding them did not change any chunker's output.
 type Thread struct {
-	ID       string
-	Resolved bool
-	Comments []Comment
+	ID         string
+	Resolved   bool
+	ResolvedBy User
+	ResolvedAt time.Time
+	Comments   []Comment
 }
 
 // Link represents a cross-reference between issues/MRs.

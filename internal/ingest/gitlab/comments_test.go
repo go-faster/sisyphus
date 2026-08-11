@@ -106,3 +106,58 @@ func TestLatestComments_NoObjectURL(t *testing.T) {
 	require.Len(t, got, 1)
 	require.Empty(t, got[0].URL)
 }
+
+func TestLatestComments_CarriesThreadID(t *testing.T) {
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	threads := []chunkgitlab.Thread{
+		{ID: "d1", Comments: []chunkgitlab.Comment{{ID: "1", Created: base}}},
+		{ID: "d2", Comments: []chunkgitlab.Comment{{ID: "2", Created: base.Add(time.Minute)}}},
+	}
+
+	got := latestComments(threads, "https://example.com/mr/1")
+	require.Len(t, got, 2)
+	// The thread survives the flatten-and-sort, which is what lets the
+	// destination coalesce per thread instead of per merge request.
+	require.Equal(t, "d1", got[0].ThreadID)
+	require.Equal(t, "d2", got[1].ThreadID)
+}
+
+func TestResolutions(t *testing.T) {
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	carol := chunkgitlab.User{Username: "carol"}
+	bob := chunkgitlab.User{Username: "bob"}
+	threads := []chunkgitlab.Thread{
+		{
+			ID:         "d1",
+			Resolved:   true,
+			ResolvedBy: bob,
+			ResolvedAt: base.Add(time.Hour),
+			Comments: []chunkgitlab.Comment{
+				{ID: "1", Body: "should it be vmauth instead?", Created: base, AuthorUser: carol},
+				{ID: "2", Body: "not in scope", Created: base.Add(time.Minute), AuthorUser: bob},
+				{ID: "3", Body: "ok", Created: base.Add(2 * time.Minute), AuthorUser: carol},
+			},
+		},
+		{ID: "d2", Comments: []chunkgitlab.Comment{{ID: "4", Body: "open", Created: base}}},
+	}
+
+	got := resolutions(threads, "https://example.com/mr/1")
+	require.Len(t, got, 1)
+	require.Equal(t, "d1", got[0].ThreadID)
+	require.Equal(t, "bob", got[0].By.Username)
+	require.Equal(t, base.Add(time.Hour), got[0].At)
+	// Deduplicated, oldest comment first: carol opened the thread.
+	require.Equal(t, []chunkgitlab.User{carol, bob}, got[0].Participants)
+	require.Equal(t, "should it be vmauth instead?", got[0].Excerpt)
+	require.Equal(t, "https://example.com/mr/1#note_1", got[0].URL)
+}
+
+// Without a discussion id there is nothing stable to key the notification's
+// dedup id on, so the resolution is dropped rather than announced repeatedly.
+func TestResolutions_SkipsThreadsWithoutID(t *testing.T) {
+	got := resolutions([]chunkgitlab.Thread{{
+		Resolved: true,
+		Comments: []chunkgitlab.Comment{{ID: "1"}},
+	}}, "https://example.com/mr/1")
+	require.Empty(t, got)
+}

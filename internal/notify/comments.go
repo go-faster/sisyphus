@@ -15,9 +15,13 @@ type Comment struct {
 	// ID is stable per comment and unchanged by an edit, so it is what the
 	// dedup id is keyed on. A comment without one cannot be deduplicated and
 	// is skipped.
-	ID     string
-	Author Actor
-	Body   string
+	ID string
+	// ThreadID is the discussion this comment belongs to, and the key comment
+	// events coalesce on. Empty groups every comment on the object together,
+	// which is what a source without threads (Jira) wants.
+	ThreadID string
+	Author   Actor
+	Body     string
 	// Mentions are the source-side keys the body names, in the same id space
 	// as Recipient.Key.
 	Mentions []string
@@ -57,17 +61,25 @@ type CommentRule struct {
 //
 //   - A mention notifies per comment. Being named is explicit and rare, and
 //     silently collapsing two of them would lose a question addressed to you.
-//   - A comment notifies once per (object, recipient) per batch, for the
-//     newest comment they did not write. Comments are unbounded per object
-//     while assignment is one message ever, so a thread that gets twenty
-//     replies between two polls must not become twenty messages. The dedup id
-//     is keyed by that newest comment, so the next poll's newest comment is a
-//     new notification and nothing is permanently suppressed.
+//   - A comment notifies once per (thread, recipient) per batch, for the
+//     newest comment in that thread they did not write. Comments are unbounded
+//     per object while assignment is one message ever, so a thread that gets
+//     twenty replies between two polls must not become twenty messages. The
+//     dedup id is keyed by that newest comment, so the next poll's newest
+//     comment is a new notification and nothing is permanently suppressed.
 //
-// A recipient the newest comment already mentioned gets nothing further: they
-// were told, and reaching further back for a comment event would be noise.
-// Comments a recipient wrote themselves never notify them, which
-// [Event.SelfCaused] would also catch — but only after that comment had
+// The coalescing key is the thread, not the object: two remarks on two lines
+// of a diff are two pieces of news, and collapsing them to the newest loses a
+// review comment outright — which is what happened when a reviewer left two
+// twenty seconds apart, inside one poll window. Replies piling up inside one
+// thread still collapse, because that is the case the coalescing exists for.
+// A source with no threads leaves ThreadID empty on every comment, which
+// groups them all and keeps the one-per-object behavior.
+//
+// A recipient the thread's newest comment already mentioned gets nothing
+// further for it: they were told, and reaching further back in that thread
+// would be noise. Comments a recipient wrote themselves never notify them,
+// which [Event.SelfCaused] would also catch — but only after that comment had
 // already been picked as the newest, silencing the real one behind it.
 func (r CommentRule) Project(subject CommentSubject, watchers []Actor, comments []Comment) []Event {
 	fresh := make([]Comment, 0, len(comments))
@@ -100,6 +112,17 @@ func (r CommentRule) Project(subject CommentSubject, watchers []Actor, comments 
 		mentioned[c.ID] = named
 	}
 
+	// Grouped by thread, in order of each thread's first fresh comment, so the
+	// projection is deterministic.
+	var threads []string
+	byThread := make(map[string][]Comment, len(fresh))
+	for _, c := range fresh {
+		if _, ok := byThread[c.ThreadID]; !ok {
+			threads = append(threads, c.ThreadID)
+		}
+		byThread[c.ThreadID] = append(byThread[c.ThreadID], c)
+	}
+
 	seen := make(map[string]struct{}, len(watchers))
 	for _, w := range watchers {
 		if w.Key == "" {
@@ -110,16 +133,18 @@ func (r CommentRule) Project(subject CommentSubject, watchers []Actor, comments 
 		}
 		seen[w.Key] = struct{}{}
 
-		// Newest first: the first comment this watcher did not write is the
-		// one that notifies them.
-		for _, c := range slices.Backward(fresh) {
-			if c.Author.Key == w.Key {
-				continue
+		for _, thread := range threads {
+			// Newest first: the first comment in this thread the watcher did
+			// not write is the one that notifies them.
+			for _, c := range slices.Backward(byThread[thread]) {
+				if c.Author.Key == w.Key {
+					continue
+				}
+				if _, named := mentioned[c.ID][w.Key]; !named {
+					out = append(out, r.event(r.Commented, subject, c, w))
+				}
+				break
 			}
-			if _, named := mentioned[c.ID][w.Key]; !named {
-				out = append(out, r.event(r.Commented, subject, c, w))
-			}
-			break
 		}
 	}
 	return out
