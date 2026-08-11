@@ -222,3 +222,84 @@ func TestSnippet_TruncatesOnRunes(t *testing.T) {
 	require.True(t, strings.HasSuffix(got, "…"))
 	require.Equal(t, MaxSnippetRunes+1, len([]rune(got)))
 }
+
+// inThread returns c reassigned to a discussion thread.
+func inThread(c Comment, thread string) Comment {
+	c.ThreadID = thread
+	return c
+}
+
+// Two review remarks left on two lines of a diff, inside one poll window, are
+// two pieces of news. Coalescing them onto the newest is what silently dropped
+// the middle one of three comments on a real merge request.
+func TestCommentRule_CoalescesPerThread(t *testing.T) {
+	events := testRule().Project(testSubject,
+		[]Actor{watcher("alice")},
+		[]Comment{
+			inThread(newComment("10", "carol", 3*time.Minute, "should it be vmauth instead?"), "d1"),
+			inThread(newComment("11", "carol", 2*time.Minute, "-remoteWrite.maxDiskUsagePerURL=1GB"), "d2"),
+			inThread(newComment("12", "carol", time.Minute, "sizeLimit: 2Gi"), "d3"),
+		},
+	)
+
+	require.Len(t, events, 3)
+	var ids []string
+	for _, e := range events {
+		require.Equal(t, EventMRCommented, e.Type)
+		require.Equal(t, "alice", e.Recipient.Key)
+		ids = append(ids, e.EventID)
+	}
+	require.Equal(t, []string{
+		"mr_commented:group/proj!1:10:alice",
+		"mr_commented:group/proj!1:11:alice",
+		"mr_commented:group/proj!1:12:alice",
+	}, ids)
+}
+
+// Replies piling up inside one thread still collapse to its newest: that is
+// the case the coalescing exists for.
+func TestCommentRule_CollapsesRepliesWithinThread(t *testing.T) {
+	events := testRule().Project(testSubject,
+		[]Actor{watcher("alice")},
+		[]Comment{
+			inThread(newComment("10", "carol", 3*time.Minute, "one"), "d1"),
+			inThread(newComment("11", "dave", 2*time.Minute, "two"), "d1"),
+			inThread(newComment("12", "carol", time.Minute, "three"), "d1"),
+		},
+	)
+
+	require.Len(t, events, 1)
+	require.Equal(t, "mr_commented:group/proj!1:12:alice", events[0].EventID)
+	require.Equal(t, "three", events[0].Description)
+}
+
+// A source with no threads (Jira) leaves ThreadID empty, which must keep the
+// one-message-per-object behavior rather than fanning out per comment.
+func TestCommentRule_ThreadlessSourceStaysCoalesced(t *testing.T) {
+	events := testRule().Project(testSubject,
+		[]Actor{watcher("alice")},
+		[]Comment{
+			newComment("10", "carol", 2*time.Minute, "one"),
+			newComment("11", "carol", time.Minute, "two"),
+		},
+	)
+
+	require.Len(t, events, 1)
+	require.Equal(t, "mr_commented:group/proj!1:11:alice", events[0].EventID)
+}
+
+// A mention in one thread must not silence the comment event for another.
+func TestCommentRule_MentionSuppressesOnlyItsOwnThread(t *testing.T) {
+	events := testRule().Project(testSubject,
+		[]Actor{watcher("alice")},
+		[]Comment{
+			inThread(newComment("10", "carol", 2*time.Minute, "@alice thoughts?", "alice"), "d1"),
+			inThread(newComment("11", "carol", time.Minute, "unrelated remark"), "d2"),
+		},
+	)
+
+	got := byType(events)
+	require.Len(t, events, 2)
+	require.Contains(t, got, "mr_mentioned/alice")
+	require.Equal(t, "mr_commented:group/proj!1:11:alice", got["mr_commented/alice"].EventID)
+}

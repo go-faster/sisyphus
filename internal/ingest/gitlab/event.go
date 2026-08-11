@@ -42,6 +42,11 @@ type MRPayload struct {
 	// diff: the destination decides which of them are news, keyed by comment
 	// id.
 	Comments []Comment `json:"comments,omitempty"`
+	// Resolutions are the merge request's resolved discussion threads. Like
+	// the approvals they are current state, not a diff: a thread stays
+	// resolved in every payload after it is closed, so a destination gates on
+	// the resolution's own timestamp rather than on seeing it appear.
+	Resolutions []Resolution `json:"resolutions,omitempty"`
 	// Author is who opened the merge request. It rides here because the
 	// author is the recipient of its terminal event — nobody else is told the
 	// work is done — and because a destination must be able to tell an
@@ -115,6 +120,7 @@ func EventFromMergeRequest(ref MergeRequestRef) (event.Event, error) {
 		AssignedAt:        ref.MR.AssignedAt,
 		ReviewRequestedAt: ref.MR.ReviewRequestedAt,
 		Comments:          latestComments(ref.MR.Threads, ref.MR.WebURL),
+		Resolutions:       resolutions(ref.MR.Threads, ref.MR.WebURL),
 		Approvals:         approvals(ref.MR.Approvals),
 		Author:            ref.MR.Author,
 		State:             ref.MR.State,

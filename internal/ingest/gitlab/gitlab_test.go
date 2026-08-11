@@ -848,3 +848,78 @@ func TestMRSystemNotesYieldActors(t *testing.T) {
 	require.Len(t, mr.Threads[0].Comments, 1)
 	require.Equal(t, "Real comment", mr.Threads[0].Comments[0].Body)
 }
+
+func TestDiscussionThreads_Resolution(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	note := func(id int, resolved bool, resolvedAt time.Time, resolvedBy *gitlabUser) gitlabNote {
+		n := gitlabNote{
+			ID:         id,
+			Body:       "comment",
+			CreatedAt:  base.Format(time.RFC3339),
+			Author:     &gitlabUser{Username: "alice", Name: "Alice"},
+			Resolvable: true,
+			Resolved:   resolved,
+			ResolvedBy: resolvedBy,
+		}
+		if !resolvedAt.IsZero() {
+			n.ResolvedAt = resolvedAt.Format(time.RFC3339)
+		}
+		return n
+	}
+	bob := &gitlabUser{Username: "bob", Name: "Bob"}
+
+	for _, tt := range []struct {
+		name     string
+		notes    []gitlabNote
+		resolved bool
+		by       string
+		at       time.Time
+	}{
+		{
+			name:     "unresolved",
+			notes:    []gitlabNote{note(1, false, time.Time{}, nil)},
+			resolved: false,
+		},
+		{
+			name:     "resolved",
+			notes:    []gitlabNote{note(1, true, base.Add(time.Hour), bob)},
+			resolved: true,
+			by:       "bob",
+			at:       base.Add(time.Hour),
+		},
+		{
+			// GitLab reports resolution per note; the newest one dates the
+			// thread, so a reopened-and-resolved thread is not dated by the
+			// first resolution.
+			name: "newest resolution wins",
+			notes: []gitlabNote{
+				note(1, true, base.Add(time.Hour), bob),
+				note(2, true, base.Add(2*time.Hour), &gitlabUser{Username: "carol"}),
+			},
+			resolved: true,
+			by:       "carol",
+			at:       base.Add(2 * time.Hour),
+		},
+		{
+			// An unknown resolver renders as "Someone"; discarding the note
+			// would cost the timestamp too, and an unknown time is what the
+			// staleness guard waves through.
+			name:     "null resolver keeps the timestamp",
+			notes:    []gitlabNote{note(1, true, base.Add(time.Hour), nil)},
+			resolved: true,
+			at:       base.Add(time.Hour),
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			threads := discussionThreads([]gitlabDiscussion{{ID: "d1", Notes: tt.notes}})
+			require.Len(t, threads, 1)
+			require.Equal(t, tt.resolved, threads[0].Resolved)
+			require.Equal(t, tt.by, threads[0].ResolvedBy.Username)
+			require.Equal(t, tt.at, threads[0].ResolvedAt)
+		})
+	}
+}

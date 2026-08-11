@@ -20,9 +20,10 @@ import (
 // event.TypeMRUpdated event out into one notify.Event per current assignee
 // (EventMRAssigned) and per current reviewer (EventMRReviewRequested), the
 // conversation events its comments produce (EventMRCommented,
-// EventMRMentioned — see commentRule), and the outcome events addressed to its
-// author and assignees: EventMRApproved per standing approval, EventMRMerged
-// once it lands. The assignment EventID strings match the pre-spine
+// EventMRMentioned — see commentRule), the EventMRThreadResolved events its
+// resolved threads produce (see projectResolutions), and the outcome events
+// addressed to its author and assignees: EventMRApproved per standing
+// approval, EventMRMerged once it lands. The assignment EventID strings match the pre-spine
 // collector's exactly, so existing outbox dedup keys still suppress
 // already-delivered notifications.
 //
@@ -198,6 +199,7 @@ func (pr Projector) Project(e event.Event) ([]notify.Event, error) {
 	}
 	subject := notify.CommentSubject{ObjectID: objectID, Title: e.Subject.Title, URL: e.Subject.URL}
 	out = append(out, pr.commentRule().Project(subject, watchers, comments(p.Comments))...)
+	out = append(out, pr.projectResolutions(e, p)...)
 
 	return out, nil
 }
@@ -229,7 +231,8 @@ func comments(in []ingestgitlab.Comment) []notify.Comment {
 	out := make([]notify.Comment, 0, len(in))
 	for _, c := range in {
 		out = append(out, notify.Comment{
-			ID: c.ID,
+			ID:       c.ID,
+			ThreadID: c.ThreadID,
 			Author: notify.Actor{
 				Source:  notify.SourceGitLab,
 				Key:     c.Author.Username,

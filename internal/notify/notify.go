@@ -98,6 +98,12 @@ const (
 	// — and it is separate from EventMRMerged because approval is what
 	// unblocks them, often well before anyone merges.
 	EventMRApproved EventType = "mr_approved"
+	// EventMRThreadResolved fires when someone resolves a discussion thread
+	// the recipient took part in. It is the other end of EventMRCommented:
+	// that one says a question was asked, this one says it was settled — and
+	// on a review with many threads, which ones are still open is the only
+	// thing anyone actually tracks.
+	EventMRThreadResolved EventType = "mr_thread_resolved"
 	// EventInvestigationCompleted fires when an agent investigation finishes.
 	// It is addressed to a chat, not a user.
 	EventInvestigationCompleted EventType = "investigation_completed"
