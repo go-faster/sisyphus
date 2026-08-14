@@ -156,18 +156,24 @@ type jiraIssue struct {
 }
 
 type jiraFields struct {
-	Summary        string                `json:"summary"`
-	Description    any                   `json:"description"`
-	Status         *jiraNamed            `json:"status"`
-	Resolution     *jiraNamed            `json:"resolution"`
-	Created        string                `json:"created"`
-	Updated        string                `json:"updated"`
-	ResolutionDate *string               `json:"resolutiondate"`
-	Components     []jiraNamed           `json:"components"`
-	Labels         []string              `json:"labels"`
-	Assignee       *jiraUser             `json:"assignee"`
-	Reporter       *jiraUser             `json:"reporter"`
-	Comment        *jiraCommentContainer `json:"comment"`
+	Summary        string      `json:"summary"`
+	Description    any         `json:"description"`
+	Status         *jiraNamed  `json:"status"`
+	Resolution     *jiraNamed  `json:"resolution"`
+	Created        string      `json:"created"`
+	Updated        string      `json:"updated"`
+	ResolutionDate *string     `json:"resolutiondate"`
+	Components     []jiraNamed `json:"components"`
+	Labels         []string    `json:"labels"`
+	Assignee       *jiraUser   `json:"assignee"`
+	Reporter       *jiraUser   `json:"reporter"`
+	// Creator is who filed the issue, which Jira tracks separately from
+	// Reporter: the reporter is an editable field naming who the issue is
+	// *on behalf of*, while the creator is the account that pressed Create
+	// and is immutable. Only the latter can be said to have set a field on
+	// the create screen, which is what [toIssue] uses it for.
+	Creator *jiraUser             `json:"creator"`
+	Comment *jiraCommentContainer `json:"comment"`
 }
 
 type jiraNamed struct {
@@ -323,12 +329,24 @@ func convertIssue(ctx context.Context, jiraIss jiraIssue, baseURL string) (chunk
 
 	// An assignee the changelog never records anyone setting has been there
 	// since the issue was filed, so the issue's own creation time dates the
-	// assignment. Without this the assignment reads as "when unknown", which
-	// staleness passes at any age. Only the assigner stays unknown: nothing
-	// says who filled the field in, and the reporter is who filed the issue,
-	// not necessarily who assigned it.
+	// assignment, and whoever filed the issue is who made it. Without this
+	// the assignment reads as "when unknown" — which staleness passes at any
+	// age — by "Someone".
+	//
+	// The assigner is the creator rather than the reporter: only the creator
+	// is the account that actually submitted the create screen, and the
+	// reporter is an editable field that can name somebody who never touched
+	// the issue. A response carrying no creator at all leaves the assigner
+	// unknown, as before.
 	if iss.AssigneeAccountID != "" && iss.AssignedAt.IsZero() && assignedAtCreation(jiraIss.Changelog) {
 		iss.AssignedAt = iss.Created
+		if jiraIss.Fields.Creator != nil {
+			iss.AssignedBy = chunkjira.User{
+				ID:      jiraIss.Fields.Creator.identity(),
+				Display: jiraIss.Fields.Creator.DisplayName,
+				URL:     jiraIss.Fields.Creator.profileURL(baseURL),
+			}
+		}
 	}
 
 	if jiraIss.Fields.Comment != nil {
