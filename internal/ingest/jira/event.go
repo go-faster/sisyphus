@@ -46,8 +46,10 @@ type IssuePayload struct {
 // The actor is the issue's last changelog author, not its reporter: the
 // reporter filed the issue once and stays fixed for its whole life, so
 // reporting them as the cause of every later update names the wrong person.
-// Both actors are zero on an issue with no usable changelog, which renders as
-// "Someone" rather than as a colleague who did nothing.
+// The actor is zero on an issue with no usable changelog, which renders as
+// "Someone" rather than as a colleague who did nothing. The assigner has one
+// source outside the changelog — an assignment made on the create screen is
+// the creator's, see [toIssue] — and is otherwise zero for the same reason.
 func EventFromIssue(iss chunkjira.Issue) (event.Event, error) {
 	e := event.Event{
 		ID:         fmt.Sprintf("jira_issue_update:%s:%s", iss.Key, iss.Updated.UTC().Format(time.RFC3339)),

@@ -72,10 +72,12 @@ type Issue struct {
 	// holds no parseable entry — a freshly created issue has no history at all.
 	UpdatedBy User
 	// AssignedBy is who set the current assignee: the author of the newest
-	// changelog entry touching the assignee field. It is the actor an
-	// assignment notification names. [Issue.Reporter] is not — filing an issue
-	// and assigning it are different acts, often by different people — and
-	// neither is [Issue.UpdatedBy], who may have only edited a label.
+	// changelog entry touching the assignee field, or — when the assignment
+	// was made on the create screen, which produces no entry — whoever created
+	// the issue. It is the actor an assignment notification names.
+	// [Issue.Reporter] is not: it is editable and names who the issue is on
+	// behalf of, which need not be anyone who touched it. Neither is
+	// [Issue.UpdatedBy], who may have only edited a label.
 	AssignedBy User
 	// AssignedAt is when that assignment happened, from the same changelog
 	// entry. Zero when unknown. A destination needs it to tell a fresh

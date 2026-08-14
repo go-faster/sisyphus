@@ -1098,7 +1098,8 @@ func TestIssueChangelogMapping(t *testing.T) {
 // TestIssueAssignedAtCreation covers the shape that made a sprint rollover
 // announce an assignment made weeks earlier: an issue created already
 // assigned, whose changelog therefore records no assignment at all, touched
-// much later by something unrelated.
+// much later by something unrelated. The same shape leaves the assigner to
+// fields.creator, since no changelog entry names one.
 func TestIssueAssignedAtCreation(t *testing.T) {
 	t.Parallel()
 
@@ -1115,6 +1116,10 @@ func TestIssueAssignedAtCreation(t *testing.T) {
 			"created":  testJiraTime(baseTime),
 			"updated":  testJiraTime(baseTime.Add(11 * 24 * time.Hour)),
 			"assignee": map[string]any{"accountId": "acc-alice", "displayName": "Alice"},
+			"creator":  map[string]any{"accountId": "acc-carol", "displayName": "Carol"},
+			// The reporter differs from the creator so a test that expects
+			// Carol proves the creator was read, not the reporter.
+			"reporter": map[string]any{"accountId": "acc-dave", "displayName": "Dave"},
 		}
 		maps.Copy(f, fields)
 		return map[string]any{"id": "1", "key": key, "fields": f, "changelog": changelog}
@@ -1133,13 +1138,25 @@ func TestIssueAssignedAtCreation(t *testing.T) {
 				"startAt": 0, "maxResults": 1, "total": 1,
 				"histories": []any{sprintEntry},
 			}, nil),
-			wantAt: baseTime,
+			wantAt:   baseTime,
+			wantByID: "acc-carol",
 		},
 		{
 			name: "an issue with no history at all",
 			issue: issueWith("BILL-2", map[string]any{
 				"startAt": 0, "maxResults": 0, "total": 0, "histories": []any{},
 			}, nil),
+			wantAt:   baseTime,
+			wantByID: "acc-carol",
+		},
+		{
+			// Nothing says who filled the field in, so the assigner stays
+			// unknown and the notification renders "Someone".
+			name: "no creator leaves the assigner unknown",
+			issue: issueWith("BILL-6", map[string]any{
+				"startAt": 0, "maxResults": 1, "total": 1,
+				"histories": []any{sprintEntry},
+			}, map[string]any{"creator": nil}),
 			wantAt: baseTime,
 		},
 		{
@@ -1197,8 +1214,11 @@ func TestIssueAssignedAtCreation(t *testing.T) {
 			} else {
 				require.Equal(t, tt.wantAt, iss.AssignedAt.UTC())
 			}
-			// The fallback dates the assignment; it never invents an assigner.
 			require.Equal(t, tt.wantByID, iss.AssignedBy.ID)
+			if tt.wantByID == "acc-carol" {
+				require.Equal(t, "Carol", iss.AssignedBy.Display)
+				require.Equal(t, srv.URL+"/jira/people/acc-carol", iss.AssignedBy.URL)
+			}
 		})
 	}
 }
