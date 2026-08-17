@@ -181,6 +181,31 @@ type MaintenanceConfig struct {
 	ReapStale       MaintenanceReapStaleConfig
 	QueueRetention  MaintenanceQueueRetentionConfig
 	NotifyRetention MaintenanceNotifyRetentionConfig
+	Reconcile       MaintenanceReconcileConfig
+}
+
+// MaintenanceReconcileConfig configures deletion detection: list every object
+// upstream, delete indexed documents that are no longer there.
+//
+// Incremental ingestion is cursor-based, and a deleted object produces no
+// update — it just stops existing — so nothing else in the system can notice.
+//
+// It is **off by default** (Interval 0). It is the only job that deletes
+// indexed content on the evidence of an absence, and upstream has several ways
+// to report an absence that is not a deletion: a revoked token, a project
+// renamed, an account that lost access. Run `ssingest reconcile --dry-run`
+// first and read what it would remove.
+type MaintenanceReconcileConfig struct {
+	// Interval is how often the sweep runs. 0 (the default) disables it.
+	Interval time.Duration
+	// MaxDeleteFraction refuses a scope whose diff would delete more than this
+	// share of its indexed documents. Real deletions are a trickle; a listing
+	// that half-failed is a cliff.
+	MaxDeleteFraction float64
+	// MinIndexed is how many documents a scope needs before MaxDeleteFraction
+	// applies — below it the fraction says nothing, since one of three
+	// documents is already a third.
+	MinIndexed int
 }
 
 // MaintenanceReapStaleConfig configures the sweep that settles queue jobs whose
@@ -427,6 +452,12 @@ const (
 
 	defaultMaintenancePurgeBatch      = 5000
 	defaultMaintenancePurgeMaxBatches = 20
+
+	// defaultMaintenanceReconcileInterval is 0: deletion detection is opt-in.
+	// See MaintenanceReconcileConfig for why.
+	defaultMaintenanceReconcileInterval = time.Duration(0)
+	defaultMaintenanceReconcileFraction = 0.2
+	defaultMaintenanceReconcileMinDocs  = 20
 )
 
 // FetchConfig configures the URL fetcher allowlist.

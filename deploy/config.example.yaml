@@ -290,6 +290,28 @@ maintenance:
     # next sweep; a run that reports capped=true every time wants a bigger batch.
     batch: 5000
     max_batches: 20
+  # reconcile: detect upstream deletions. Incremental ingestion is cursor-based
+  # and a deleted issue produces no update — it just stops existing — so nothing
+  # else in the system can notice it is gone.
+  #
+  # OFF BY DEFAULT, and the only job that deletes indexed content. Upstream has
+  # several ways to report an absence that is not a deletion: a revoked token, a
+  # renamed project, an account that lost access to a project. Run
+  # `ssingest reconcile --dry-run` and read what it would remove before setting
+  # an interval here.
+  #
+  # Scoping is per project: a project removed from gitlab.projects/jira.projects
+  # simply stops being reconciled — its documents are never diffed and never
+  # deleted. Commenting a project out does not erase its history.
+  reconcile:
+    interval: 0
+    # Refuse a project whose diff would delete more than this share of its
+    # indexed documents. Real deletions trickle; a listing that half-failed
+    # arrives as a cliff. A refusal is logged loudly and deletes nothing.
+    max_delete_fraction: 0.2
+    # Documents a project needs before the fraction applies — below it the
+    # fraction says nothing, since one of three documents is already a third.
+    min_indexed: 20
   # notify_retention: the same growth in the notifications table, at a lower
   # rate — one row per delivery rather than per job. Longer window, because the
   # row is the operator-facing record of what was actually sent.

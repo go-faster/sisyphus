@@ -66,7 +66,8 @@ Keep the index below one line per package, and put the depth in the nested file.
 - `internal/pipeline` **†** — `Pipeline.Index`: idempotent doc+chunk upsert, embed, vector upsert/delete. `Skipper` answers the skip question without doing the work.
 - `internal/vectorgc` **†** — `ssingest gc`: drop vector points no chunk references.
 - `internal/vectorrepair` **†** — `ssingest repair`: re-embed chunks whose point is keyed by the wrong ID.
-- `internal/maint` — the `ssingest maint` scheduler: periodic gc/repair, one at a time across processes. Compose's stand-in for a CronJob.
+- `internal/maint` — the `ssingest maint` scheduler: periodic gc/repair/reap/retention/reconcile, one at a time across processes. Compose's stand-in for a CronJob.
+- `internal/reconcile` **†** — `ssingest reconcile`: list upstream, delete documents that are gone. The only deletion driven by an absence; read its guards before touching it.
 
 **Chunking, embedding, search**
 
