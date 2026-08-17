@@ -9,7 +9,7 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/go-faster/errors v0.8.0
-	github.com/go-faster/figureout v0.5.0
+	github.com/go-faster/figureout v0.6.0
 	github.com/go-faster/jx v1.2.0
 	github.com/go-faster/sdk v0.38.0
 	github.com/go-faster/yaml v0.4.6
