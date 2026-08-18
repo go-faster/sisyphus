@@ -21,7 +21,7 @@ require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/ogen-go/ogen v1.24.0
-	github.com/openai/openai-go/v3 v3.50.0
+	github.com/openai/openai-go/v3 v3.51.0
 	github.com/peterbourgon/diskv v2.0.1+incompatible
 	github.com/qdrant/go-client v1.19.0
 	github.com/spf13/cobra v1.10.2
