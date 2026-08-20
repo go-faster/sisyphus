@@ -107,6 +107,20 @@ func TestDefaultRenderer(t *testing.T) {
 			want: "💬 **John Doe** commented on [MR](https://gitlab.example.com/g/p/-/merge_requests/42)",
 		},
 		{
+			// No actor at all: a conflict is caused by whoever moved the
+			// target branch, whom GitLab does not name, so the message leads
+			// with the state instead of inventing a "Someone did this".
+			name: "mr conflict",
+			event: Event{
+				Type:        EventMRConflict,
+				Title:       "MR !42: Fix the thing",
+				URL:         "https://gitlab.example.com/g/p/-/merge_requests/42",
+				Description: "feature can no longer be merged into main: rebase or resolve the conflicts.",
+			},
+			want: "⚠️ _Merge conflict:_ [MR \\!42\\: Fix the thing](https://gitlab.example.com/g/p/-/merge_requests/42)\n\n" +
+				"feature can no longer be merged into main\\: rebase or resolve the conflicts\\.",
+		},
+		{
 			name:  "unknown actor",
 			event: Event{Type: EventIssueAssigned, Title: "ABC-1", URL: "https://jira.example.com/browse/ABC-1"},
 			want:  "📋 **Someone** assigned you [ABC\\-1](https://jira.example.com/browse/ABC-1)",

@@ -60,6 +60,13 @@ func describeGitLab(c *wire, s *figureout.Schema[wire]) {
 			figureout.Value(s, &c.GitLab.PollIntervalSeconds, "interval_seconds").
 				Doc("0 disables polling; webhooks still work")
 		})
+		figureout.Group(s, "conflicts", func(s *figureout.Schema[wire]) {
+			figureout.Value(s, &c.GitLab.ConflictPollIntervalSeconds, "interval_seconds").
+				Doc("sweep open MRs for merge conflicts every N seconds; 0 (the default) disables it")
+			figureout.Value(s, &c.GitLab.ConflictLookbackDays, "lookback_days").
+				ApplyDefault(30).
+				Doc("only sweep MRs updated within N days; 0 sweeps every open MR")
+		})
 	})
 	figureout.Ignore(s, &c.GitLab.Token, figureout.Reason("materialized from gitlab.token"))
 	figureout.Ignore(s, &c.GitLab.WebhookSecret, figureout.Reason("materialized from gitlab.webhook.secret"))

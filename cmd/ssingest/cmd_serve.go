@@ -57,6 +57,12 @@ func runServe(ctx context.Context, deps *ingestDeps) error {
 	trigger.Register("gitlab", ignoreNotConfigured(func(ctx context.Context) error {
 		return r.runGitLabAPI(ctx, time.Time{}, false, 0, false)
 	}))
+	// The conflict sweep is its own trigger key: it reads the same API but
+	// answers a question the cursored run cannot (see runGitLabConflicts), and
+	// it runs on a much slower cadence than ingestion.
+	trigger.Register("gitlab_conflicts", ignoreNotConfigured(func(ctx context.Context) error {
+		return r.runGitLabConflicts(ctx, false)
+	}))
 	trigger.Register("jira", ignoreNotConfigured(func(ctx context.Context) error {
 		return r.runJira(ctx, time.Time{}, false, 0, false)
 	}))
@@ -68,6 +74,7 @@ func runServe(ctx context.Context, deps *ingestDeps) error {
 	poller.Start(ctx, "git", time.Duration(cfg.Ingest.GitPollIntervalSeconds)*time.Second)
 	poller.Start(ctx, "files", time.Duration(cfg.Ingest.FilesPollIntervalSeconds)*time.Second)
 	poller.Start(ctx, "gitlab", time.Duration(cfg.GitLab.PollIntervalSeconds)*time.Second)
+	poller.Start(ctx, "gitlab_conflicts", time.Duration(cfg.GitLab.ConflictPollIntervalSeconds)*time.Second)
 	poller.Start(ctx, "jira", time.Duration(cfg.Jira.PollIntervalSeconds)*time.Second)
 	poller.Start(ctx, "telegram", time.Duration(cfg.Ingest.TelegramPollIntervalSeconds)*time.Second)
 

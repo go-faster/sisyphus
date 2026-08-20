@@ -489,3 +489,95 @@ func TestE2E_GitLabMRMerged_ToTelegramDelivery(t *testing.T) {
 	drainOnce(ctx, t, apiClient, sink)
 	require.Len(t, sink.messages(), 1)
 }
+
+// TestE2E_GitLabMRConflict_ToTelegramDelivery covers the sweep's own path:
+// the conflict event carries no timestamp and reappears on every tick, so the
+// SHA-keyed dedup key is the only thing between one notification and one per
+// tick forever.
+func TestE2E_GitLabMRConflict_ToTelegramDelivery(t *testing.T) {
+	db := openTestDB(t)
+	ctx := t.Context()
+	store := notifystore.New(db, notifystore.Options{})
+
+	const telegramUserID int64 = 900100103
+	const telegramAccessHash int64 = 555444336
+
+	_, err := store.EnrollTelegram(ctx, telegramUserID)
+	require.NoError(t, err)
+	_, err = tgpeer.New(db, tgpeer.Options{}).Upsert(ctx, []tgpeer.Peer{
+		{Type: tgpeer.KindUser, ID: telegramUserID, AccessHash: telegramAccessHash},
+	})
+	require.NoError(t, err)
+	_, err = store.SyncIdentities(ctx, []notifystore.Identity{
+		{TelegramUserID: telegramUserID, GitLabUsername: "e2e-erin"},
+	})
+	require.NoError(t, err)
+	require.NoError(t, store.Subscribe(ctx, telegramUserID, notify.SourceGitLab,
+		[]notify.EventType{notify.EventMRConflict}))
+
+	swept := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	ref := ingestgitlab.ConflictRef{
+		Project: "group/project",
+		MR: ingestgitlab.ConflictMR{
+			IID:          42,
+			Title:        "Fix flaky test",
+			WebURL:       "https://gitlab.example.com/group/project/-/merge_requests/42",
+			SourceBranch: "flaky",
+			TargetBranch: "main",
+			SHA:          "deadbeef",
+			Author:       chunkgitlab.User{Username: "e2e-erin"},
+			// Untouched for months: exactly the MR the incremental run never
+			// re-fetches, which is why the sweep exists.
+			Updated: swept.AddDate(0, -3, 0),
+		},
+	}
+
+	dispatcher := notify.NewDispatcher(store, store, notify.ChannelTelegram, nil)
+	router := event.NewMux()
+	router.Subscribe(event.Subscription{
+		Name:    "notify-gitlab",
+		Sources: []event.Source{event.SourceGitLab},
+		Handler: notify.NewRouterSubscriber(notifygitlab.Projector{
+			Staleness: notify.Staleness{Now: func() time.Time { return swept }},
+		}, dispatcher),
+	})
+	sweep := func(at time.Time) {
+		t.Helper()
+		e, err := ingestgitlab.EventFromConflict(ref, at)
+		require.NoError(t, err)
+		require.NoError(t, router.Route(ctx, e))
+	}
+	sweep(swept)
+
+	handler := api.New(nil, nil, "v1.0.0-e2e", api.WithNotifyStore(store))
+	secHandler := api.NewSecurityHandler("secret-token")
+	server, err := oas.NewServer(handler, secHandler, oas.WithErrorHandler(api.ErrorHandler))
+	require.NoError(t, err)
+	httpServer := httptest.NewServer(server)
+	defer httpServer.Close()
+
+	apiClient, err := apiclient.New(httpServer.URL, "secret-token", apiclient.Options{})
+	require.NoError(t, err)
+
+	sink := &mockTelegramSink{}
+	drainOnce(ctx, t, apiClient, sink)
+
+	delivered := sink.messages()
+	require.Len(t, delivered, 1)
+	require.Equal(t, telegramUserID, delivered[0].TelegramUserID)
+	require.Equal(t,
+		"⚠️ _Merge conflict:_ [MR \\!42\\: Fix flaky test](https://gitlab.example.com/group/project/-/merge_requests/42)\n\n"+
+			"flaky can no longer be merged into main\\: rebase or resolve the conflicts\\.",
+		delivered[0].Text)
+
+	// Next tick, same unresolved conflict: same head, same dedup key.
+	sweep(swept.Add(15 * time.Minute))
+	drainOnce(ctx, t, apiClient, sink)
+	require.Len(t, sink.messages(), 1)
+
+	// A push that does not fix it is news again.
+	ref.MR.SHA = "cafebabe"
+	sweep(swept.Add(time.Hour))
+	drainOnce(ctx, t, apiClient, sink)
+	require.Len(t, sink.messages(), 2)
+}

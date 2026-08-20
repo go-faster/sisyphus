@@ -46,7 +46,13 @@ const (
 type Type string
 
 const (
-	TypeMRUpdated     Type = "mr.updated"
+	TypeMRUpdated Type = "mr.updated"
+	// TypeMRConflict says a merge request cannot be merged into its target
+	// branch right now. It is separate from TypeMRUpdated because it is not
+	// an update at all: it is usually caused by a change to the *target*
+	// branch, which leaves the MR's own updated_at untouched, so it is found
+	// by a sweep rather than by the incremental poll.
+	TypeMRConflict    Type = "mr.conflict"
 	TypeIssueUpdated  Type = "issue.updated"
 	TypeReleased      Type = "released"
 	TypeMessagePosted Type = "message.posted"

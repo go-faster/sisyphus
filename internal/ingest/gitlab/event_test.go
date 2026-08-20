@@ -129,3 +129,40 @@ func TestEventFromMergeRequestIDStability(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEqual(t, first.ID, editedEvent.ID)
 }
+
+func TestEventFromConflict(t *testing.T) {
+	at := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	ref := ConflictRef{
+		Project: "g/p",
+		MR: ConflictMR{
+			IID:          7,
+			Title:        "Fix the thing",
+			WebURL:       "https://gitlab.example.com/g/p/-/merge_requests/7",
+			SourceBranch: "feature",
+			TargetBranch: "main",
+			SHA:          "deadbeef",
+			Author:       chunkgitlab.User{Username: "alice"},
+			Assignees:    []string{"bob"},
+			Status:       "conflict",
+		},
+	}
+
+	e, err := EventFromConflict(ref, at)
+	require.NoError(t, err)
+	require.Equal(t, event.TypeMRConflict, e.Type)
+	require.Equal(t, event.SourceGitLab, e.Source)
+	require.Equal(t, "gitlab_mr_conflict:g/p!7:deadbeef", e.ID)
+	require.Equal(t, "g/p!7", e.Subject.ID)
+	require.Equal(t, "MR !7: Fix the thing", e.Subject.Title)
+	require.Equal(t, at, e.OccurredAt)
+	// Nobody performed the conflict, so naming an actor would name the wrong
+	// person.
+	require.True(t, e.Actor.Zero())
+
+	var p ConflictPayload
+	require.NoError(t, e.DecodePayload(ConflictPayloadVersion, &p))
+	require.Equal(t, "alice", p.Author.Username)
+	require.Equal(t, []string{"bob"}, p.Assignees)
+	require.Equal(t, "deadbeef", p.SHA)
+	require.Equal(t, "main", p.TargetBranch)
+}

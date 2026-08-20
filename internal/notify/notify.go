@@ -98,6 +98,12 @@ const (
 	// — and it is separate from EventMRMerged because approval is what
 	// unblocks them, often well before anyone merges.
 	EventMRApproved EventType = "mr_approved"
+	// EventMRConflict fires when an MR addressed to the recipient can no
+	// longer be merged into its target branch. Unlike every other MR event it
+	// is not caused by a person acting on the MR — usually somebody else
+	// merged into the target — so it names no actor and is found by the
+	// conflict sweep rather than by the incremental poll.
+	EventMRConflict EventType = "mr_conflict"
 	// EventMRThreadResolved fires when someone resolves a discussion thread
 	// the recipient took part in. It is the other end of EventMRCommented:
 	// that one says a question was asked, this one says it was settled — and

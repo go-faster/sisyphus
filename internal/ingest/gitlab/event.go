@@ -132,3 +132,57 @@ func EventFromMergeRequest(ref MergeRequestRef) (event.Event, error) {
 	}
 	return e, nil
 }
+
+// ConflictPayloadVersion is [ConflictPayload]'s schema version; see
+// [MRPayloadVersion] for what a bump means.
+const ConflictPayloadVersion = 1
+
+// ConflictPayload is the source-typed body of an [event.TypeMRConflict]
+// event: who the conflict is addressed to, and what it is about.
+//
+// It carries no timestamp for the conflict itself because GitLab reports none
+// — mergeability is standing state recomputed on demand. SHA stands in: it
+// pins the source-branch head the verdict was made against, so a destination
+// can tell "still the same conflict" from "pushed, still conflicting".
+type ConflictPayload struct {
+	Author       chunkgitlab.User `json:"author,omitzero"`
+	Assignees    []string         `json:"assignees,omitempty"`
+	SHA          string           `json:"sha,omitempty"`
+	SourceBranch string           `json:"source_branch,omitempty"`
+	TargetBranch string           `json:"target_branch,omitempty"`
+	// Status is detailed_merge_status as GitLab reported it, for diagnostics.
+	Status string `json:"status,omitempty"`
+}
+
+// EventFromConflict builds the canonical event for one conflicting merge
+// request, observed at at.
+//
+// The event ID is keyed on the head SHA rather than on the observation time:
+// every sweep re-reports a standing conflict, and keying on time would make
+// each tick a fresh notification. The actor is deliberately zero — a conflict
+// is caused by whoever moved the target branch, whom GitLab does not name
+// here, and naming the wrong colleague is worse than naming none.
+func EventFromConflict(ref ConflictRef, at time.Time) (event.Event, error) {
+	objectID := fmt.Sprintf("%s!%d", ref.Project, ref.MR.IID)
+	e := event.Event{
+		ID:      fmt.Sprintf("gitlab_mr_conflict:%s:%s", objectID, ref.MR.SHA),
+		Source:  event.SourceGitLab,
+		Type:    event.TypeMRConflict,
+		Subject: event.Ref{ID: objectID, URL: ref.MR.WebURL, Title: fmt.Sprintf("MR !%d: %s", ref.MR.IID, ref.MR.Title)},
+		// The sweep's own clock: GitLab dates the MR, not the verdict.
+		OccurredAt: at.UTC(),
+		Attributes: map[string]string{"project": ref.Project},
+	}
+	e, err := e.WithPayload(ConflictPayloadVersion, ConflictPayload{
+		Author:       ref.MR.Author,
+		Assignees:    ref.MR.Assignees,
+		SHA:          ref.MR.SHA,
+		SourceBranch: ref.MR.SourceBranch,
+		TargetBranch: ref.MR.TargetBranch,
+		Status:       ref.MR.Status,
+	})
+	if err != nil {
+		return event.Event{}, errors.Wrap(err, "encode conflict payload")
+	}
+	return e, nil
+}

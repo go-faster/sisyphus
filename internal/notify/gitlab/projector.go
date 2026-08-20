@@ -23,7 +23,8 @@ import (
 // EventMRMentioned — see commentRule), the EventMRThreadResolved events its
 // resolved threads produce (see projectResolutions), and the outcome events
 // addressed to its author and assignees: EventMRApproved per standing
-// approval, EventMRMerged once it lands. The assignment EventID strings match the pre-spine
+// approval, EventMRMerged once it lands. It also handles the separate
+// event.TypeMRConflict events the conflict sweep emits (see projectConflict). The assignment EventID strings match the pre-spine
 // collector's exactly, so existing outbox dedup keys still suppress
 // already-delivered notifications.
 //
@@ -52,6 +53,13 @@ func (pr Projector) commentRule() notify.CommentRule {
 }
 
 func (pr Projector) Project(e event.Event) ([]notify.Event, error) {
+	// A conflict carries a different payload and a different question ("this
+	// stopped being mergeable"), so it branches off before the MR payload is
+	// decoded at all.
+	if e.Type == event.TypeMRConflict {
+		return pr.projectConflict(e)
+	}
+
 	var p ingestgitlab.MRPayload
 	if err := e.DecodePayload(ingestgitlab.MRPayloadVersion, &p); err != nil {
 		return nil, errors.Wrap(err, "decode mr payload")

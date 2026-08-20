@@ -92,7 +92,7 @@ Keep the index below one line per package, and put the depth in the nested file.
 - `internal/sheetsmcp` — the `sheets_*` MCP tools over it; drops the mutating tools when the client is read-only.
 - `internal/content` — `index.ContentResolver`: `DatabaseReader`, `LocalRepoReader` (traversal-guarded), `ChainResolver`.
 - `internal/fetch` — `index.URLFetcher` with a per-site allowlist (globs, methods, credentials, byte cap).
-- `internal/notify` **†** (+ `gitlab`, `jira`, `investigation`, `store`) — notifications: `event.Router` → projector → dispatcher/broadcaster → outbox → sink. Fetches nothing; the GitLab/Jira source adapters emit the events. Its CLAUDE.md also owns the rules that span packages: **link buttons** (five packages), **comments and mentions**, **an MR's outcome**, and the **alert → investigate → announce** loop (four packages). Read it before touching any of those, wherever the code lives.
+- `internal/notify` **†** (+ `gitlab`, `jira`, `investigation`, `store`) — notifications: `event.Router` → projector → dispatcher/broadcaster → outbox → sink. Fetches nothing; the GitLab/Jira source adapters emit the events. Its CLAUDE.md also owns the rules that span packages: **link buttons** (five packages), **comments and mentions**, **an MR's outcome**, **a merge conflict** (found by its own sweep, not by the poll), and the **alert → investigate → announce** loop (four packages). Read it before touching any of those, wherever the code lives.
 
 **Infrastructure**
 

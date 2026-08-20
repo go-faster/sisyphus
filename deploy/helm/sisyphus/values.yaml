@@ -729,12 +729,14 @@ config:
   #   merge_requests: true
   #   releases: true
   #   poll: {interval_seconds: 300}
+  #   conflicts: {interval_seconds: 900, lookback_days: 30}
   # jira:
   #   base_url: https://jira.example.com
   #   username: user
   #   password: {env: SISYPHUS_JIRA_PASSWORD}
   #   projects: [{key: IDP}]
   #   poll: {interval_seconds: 300}
+  #   conflicts: {interval_seconds: 900, lookback_days: 30}
   # telegram is required for ssbot: app_id must be a literal int.
   # telegram:
   #   app_id: 0
