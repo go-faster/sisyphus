@@ -104,8 +104,8 @@ github.com/go-faster/figureout v0.6.2 h1:nR/umITGSTcD+9VO55Xce7QgGp1k7Hfng1BSjcj
 github.com/go-faster/figureout v0.6.2/go.mod h1:xhtyYUARqsG7IAwSRJJraB9t2orPzJHF79VHO6dV1AA=
 github.com/go-faster/jx v1.2.0 h1:T2YHJPrFaYu21fJtUxC9GzmluKu8rVIFDwwGBKTDseI=
 github.com/go-faster/jx v1.2.0/go.mod h1:UWLOVDmMG597a5tBFPLIWJdUxz5/2emOpfsj9Neg0PE=
-github.com/go-faster/sdk v0.39.0 h1:Wr/O32xj+9g7yqxhCyIbeaLuq6NF5pAYdxbslZOgN2I=
-github.com/go-faster/sdk v0.39.0/go.mod h1:Jsj1EmcA3I5GBBGEQaPlukBzy6SIEbyUXTuLgU7fJSQ=
+github.com/go-faster/sdk v0.39.1 h1:ifrx5X0OLOWx1Rj6qktqfOmONbytE6AyjFIQbzLCc2Q=
+github.com/go-faster/sdk v0.39.1/go.mod h1:Jsj1EmcA3I5GBBGEQaPlukBzy6SIEbyUXTuLgU7fJSQ=
 github.com/go-faster/xor v1.0.0 h1:2o8vTOgErSGHP3/7XwA5ib1FTtUsNtwCoLLBjl31X38=
 github.com/go-faster/xor v1.0.0/go.mod h1:x5CaDY9UKErKzqfRfFZdfu+OSTfoZny3w5Ak7UxcipQ=
 github.com/go-faster/yaml v0.4.6 h1:lOK/EhI04gCpPgPhgt0bChS6bvw7G3WwI8xxVe0sw9I=
