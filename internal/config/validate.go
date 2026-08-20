@@ -59,6 +59,11 @@ func postResolve(w wire, report *figureout.Report, baseDir string) (Config, erro
 		}
 	}
 
+	if cfg.GitLab.ConflictPollIntervalSeconds > 0 && !cfg.GitLab.MergeRequests {
+		warnings = append(warnings,
+			"gitlab.conflicts.interval_seconds is set but gitlab.merge_requests is off: the conflict sweep runs against projects whose MRs are not ingested")
+	}
+
 	// A default applies to an absent key, so a config that writes 0 meaning
 	// "whatever the default is" still needs the floor these always had.
 	clampPositive(&cfg.Ingest.Worker.Concurrency, defaultIngestWorkerConcurrency)

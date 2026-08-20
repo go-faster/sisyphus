@@ -71,6 +71,13 @@ gitlab:
   # webhooks (e.g. GitLab instance can't reach us). 0 disables polling.
   poll:
     interval_seconds: 300
+  # conflicts: sweep open MRs for conflicts with their target branch and
+  # notify their author/assignees. A separate cadence from poll, because a
+  # conflict usually appears when somebody merges into the target branch,
+  # which never brings the MR into an updated_after window. 0 disables it.
+  conflicts:
+    interval_seconds: 900
+    lookback_days: 30
 
 # context_files: additional local file sets to index as curated context.
 # Include/exclude are doublestar globs over paths relative to root.

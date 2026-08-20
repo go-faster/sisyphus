@@ -575,7 +575,7 @@ components:
           type: array
           items:
             type: string
-            description: "mr_assigned, mr_review_requested, mr_commented, mr_mentioned, mr_merged (gitlab); issue_assigned, issue_commented, issue_mentioned (jira)."
+            description: "mr_assigned, mr_review_requested, mr_commented, mr_mentioned, mr_merged, mr_approved, mr_thread_resolved, mr_conflict (gitlab); issue_assigned, issue_commented, issue_mentioned (jira)."
     NotifyUnsubscribeRequest:
       type: object
       required: [telegram_user_id, source]

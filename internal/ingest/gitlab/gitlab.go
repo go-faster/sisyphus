@@ -144,6 +144,12 @@ type gitlabMergeRequest struct {
 	MergedAt       string        `json:"merged_at"`
 	MergedBy       *gitlabUser   `json:"merged_by"`
 	MergeCommitSHA string        `json:"merge_commit_sha"`
+	SHA            string        `json:"sha"`
+	// HasConflicts and DetailedMergeStatus are GitLab's mergeability verdict.
+	// List endpoints do not recompute it unless asked (see
+	// [Fetcher.FetchConflicts]), so they are read only there.
+	HasConflicts        bool   `json:"has_conflicts"`
+	DetailedMergeStatus string `json:"detailed_merge_status"`
 }
 
 type gitlabRelease struct {

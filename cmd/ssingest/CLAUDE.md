@@ -120,7 +120,13 @@ firing alert, keyed by the event ID so a repeat_interval resend reuses the exist
 
 `cmd/ssapi` runs no ingestion, so exactly one process races to write a given source's rows.
 
-Trigger keys: `gitlab`, `jira`, `git`, `files`, `telegram` (see `cmd_serve.go`). There is
+Trigger keys: `gitlab`, `jira`, `git`, `files`, `telegram`, `gitlab_conflicts` (see
+`cmd_serve.go`). The last one is not ingestion: it sweeps open MRs for conflicts with their
+target branch and routes one event per conflict, writing no documents and advancing no
+cursor. It has its own key, its own (much slower) cadence
+`gitlab.conflicts.interval_seconds`, and its own advisory lock, because it answers a
+question the cursored run cannot — see `internal/notify/CLAUDE.md` § merge conflict. `0`
+disables it, which is the default. There is
 no `notify` key: notifications are a *destination* of the gitlab/jira runs now, not a
 source of their own — see "One poll, two destinations" below.
 
@@ -130,6 +136,7 @@ source of their own — see "One poll, two destinations" below.
 - `--since <RFC3339>` overrides cursors (Jira `LastUpdated`, GitLab `UpdatedAfter`).
 - `--limit <int>` caps documents per source.
 - `--dry-run` fetches and logs counts without indexing.
+- `ssingest gitlab --conflicts` runs one conflict sweep instead of an ingestion run; with `--dry-run` it fetches and logs without routing anything.
 
 ## Sync state
 

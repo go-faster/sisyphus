@@ -670,3 +670,89 @@ func AuthenticatedHTTPCache(service string, authParts ...string) (*diskcache.Cac
 }
 
 var _ = sql.OrderDesc // keep entsql import available for future filters
+
+// ConflictOptions controls a GitLab conflict sweep.
+type ConflictOptions struct {
+	// Lookback bounds the sweep to merge requests updated within it. Zero
+	// sweeps every open merge request.
+	Lookback time.Duration
+	// Now is the sweep's clock, stamped onto the events it emits. Zero means
+	// time.Now.
+	Now    time.Time
+	DryRun bool
+}
+
+// RunGitLabConflicts sweeps every configured project for open merge requests
+// that conflict with their target branch and routes one event per conflict.
+//
+// It is not ingestion: it writes no documents, advances no cursor and touches
+// no SyncState. It exists because a conflict is invisible to the incremental
+// run — merging into a target branch does not touch the merge requests it
+// breaks, so nothing brings them back into an updated_after window. See
+// internal/ingest/gitlab/conflicts.go for the GitLab-side caveats.
+func (r Runner) RunGitLabConflicts(ctx context.Context, opts ConflictOptions) error {
+	lg := zctx.From(ctx).Named("gitlab").Named("conflicts")
+	cfg := r.Config
+
+	projects := GitLabProjectRefs(cfg.GitLab.Projects)
+	if cfg.GitLab.BaseURL == "" || cfg.GitLab.Token == "" || len(projects) == 0 {
+		lg.Info("gitlab not configured")
+		return ErrNotConfigured
+	}
+
+	// No disk cache here: the sweep asks GitLab to recompute mergeability, so
+	// a cached body is exactly the answer it is trying not to get.
+	httpClient, err := netclient.HTTPClient(ctx, "gitlab", cfg.Proxies.GitLab, netclient.HTTPClientOptions{
+		TracerProvider: r.TP,
+		MeterProvider:  r.MP,
+		UserAgent:      r.UserAgent,
+	})
+	if err != nil {
+		return errors.Wrap(err, "gitlab http client")
+	}
+
+	fetcher, err := gitlabingest.New(gitlabingest.Options{
+		BaseURL:    cfg.GitLab.BaseURL,
+		Token:      cfg.GitLab.Token,
+		Projects:   projects,
+		HTTPClient: httpClient,
+		UserAgent:  r.UserAgent,
+	})
+	if err != nil {
+		return errors.Wrap(err, "gitlab new fetcher")
+	}
+
+	now := opts.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	var since time.Time
+	if opts.Lookback > 0 {
+		since = now.Add(-opts.Lookback)
+	}
+
+	refs, err := fetcher.FetchConflicts(ctx, since)
+	if err != nil {
+		return errors.Wrap(err, "fetch conflicts")
+	}
+
+	events := make([]event.Event, 0, len(refs))
+	for _, ref := range refs {
+		e, err := gitlabingest.EventFromConflict(ref, now)
+		if err != nil {
+			return errors.Wrap(err, "build conflict event")
+		}
+		events = append(events, e)
+		lg.Debug("merge request conflicts with target",
+			zap.String("project", ref.Project),
+			zap.Int("iid", ref.MR.IID),
+			zap.String("status", ref.MR.Status),
+		)
+	}
+
+	lg.Info("conflict sweep done", zap.Int("conflicts", len(events)), zap.Int("projects", len(projects)))
+	if err := r.route(ctx, events, opts.DryRun); err != nil {
+		return errors.Wrap(err, "route conflict events")
+	}
+	return nil
+}

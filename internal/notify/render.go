@@ -39,6 +39,13 @@ const (
 
 {{.Description}}`
 
+	// conflictTemplate leads with the state rather than with an actor: a
+	// conflict is the one MR event nobody performed, so "X did Y" would have
+	// to invent an X.
+	conflictTemplate = `{{.Emoji}} _{{.Verb}}:_ {{.Title}}
+
+{{.Description}}`
+
 	// alertTemplate leads with the transition and the alert name, then the
 	// description, then the identifying labels as a code block.
 	alertTemplate = `{{.Emoji}} _{{.Verb}}:_ **{{.Title}}**
@@ -66,6 +73,7 @@ type style struct {
 var (
 	assign        = template.Must(template.New("assign").Parse(assignTemplate))
 	comment       = template.Must(template.New("comment").Parse(commentTemplate))
+	conflict      = template.Must(template.New("conflict").Parse(conflictTemplate))
 	alert         = template.Must(template.New("alert").Parse(alertTemplate))
 	investigation = template.Must(template.New("investigation").Parse(investigationTemplate))
 
@@ -78,6 +86,7 @@ var (
 		EventMRMerged:               {"🎉", "merged", assign},
 		EventMRApproved:             {"✅", "approved", assign},
 		EventMRThreadResolved:       {"☑️", "resolved a thread on", comment},
+		EventMRConflict:             {"⚠️", "Merge conflict", conflict},
 		EventMRMentioned:            {"📣", "mentioned you on", comment},
 		EventIssueMentioned:         {"📣", "mentioned you on", comment},
 		EventAlertFiring:            {"🔥", "Firing", alert},

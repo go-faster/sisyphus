@@ -511,6 +511,20 @@ func (r *runner) runGitLabAPI(ctx context.Context, since time.Time, reset bool, 
 	})
 }
 
+// runGitLabConflicts sweeps open MRs for conflicts with their target branch.
+// It takes its own lock rather than the GitLab source lock: it advances no
+// cursor and writes no documents, so it need not wait behind an ingestion run
+// — but two processes sweeping at once would double the API load for events
+// the outbox would dedup anyway.
+func (r *runner) runGitLabConflicts(ctx context.Context, dry bool) error {
+	return r.locked(ctx, "gitlab_conflicts", func(ctx context.Context) error {
+		return r.sharedRunner().RunGitLabConflicts(ctx, ingestrun.ConflictOptions{
+			Lookback: time.Duration(r.cfg.GitLab.ConflictLookbackDays) * 24 * time.Hour,
+			DryRun:   dry,
+		})
+	})
+}
+
 func (r *runner) runJira(ctx context.Context, since time.Time, reset bool, limit int, dry bool) error {
 	idx, err := r.newIndexer(indexjob.KindJira)
 	if err != nil {

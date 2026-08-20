@@ -164,6 +164,11 @@ config:
     releases: true
     poll:
       interval_seconds: 300
+    # Sweep open MRs for conflicts with their target branch; see
+    # deploy/config.example.yaml for why it is its own cadence.
+    conflicts:
+      interval_seconds: 900
+      lookback_days: 30
   jira:
     base_url: https://jira.example.com
     username: svc-sisyphus

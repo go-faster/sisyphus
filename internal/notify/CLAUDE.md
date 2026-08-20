@@ -141,6 +141,32 @@ body** — an approval is an event, not something anyone searches an MR's text f
 keeping it out is what let this ship without a `ChunkerVersion` bump. `MRPayload.Approvals`
 is additive, so `MRPayloadVersion` did not move either.
 
+## A merge conflict: the one MR event nobody performed
+
+`mr_conflict` (`internal/notify/gitlab/conflict.go`) is projected from
+`event.TypeMRConflict`, which only the **conflict sweep** emits
+(`ingestrun.RunGitLabConflicts`, `gitlab.conflicts.interval_seconds`) — never the
+incremental poll. That is the whole reason the sweep exists: a merge request starts
+conflicting when somebody merges into its **target** branch, which does not touch the MR's
+own `updated_at`, so nothing ever brings it back into an `updated_after` window. Polling
+ingestion faster does not find it.
+
+It breaks two of this package's habits, both deliberately:
+
+- **No actor.** Nobody performed the conflict, and GitLab does not say who moved the target branch, so the event carries a zero actor and `conflictTemplate` leads with the state instead of rendering "Someone did this".
+- **No `Staleness`.** Every other standing-state event has a timestamp for when it became true (`merged_at`, an approval's `at`, `resolved_at`); mergeability has none — GitLab computes it on demand and dates only the MR. What bounds the backlog instead is `gitlab.conflicts.lookback_days`, applied at fetch time: the sweep only looks at open MRs updated within it, so enabling this does not announce years of stale conflicts.
+
+The dedup id is keyed on the **head SHA** (`gitlab_mr_conflict:<obj>:<sha>:<user>`). The
+sweep re-reports a standing conflict on every tick, so keying on the observation time would
+mean one message per tick forever; keying on the MR alone would mean one message ever, and
+a push that fails to resolve the conflict would go unsaid. Recipients are
+`conflictRecipients` — author, then assignees, as for an MR's outcome and for the same
+reason: only they can rebase it.
+
+GitLab-side caveats (list endpoints do not recompute mergeability, `with_merge_status_recheck`
+is a request and not a guarantee, `checking` is read as "not conflicting") live in
+`internal/ingest/gitlab/conflicts.go`.
+
 ## Alerts: fire → investigate → announce
 
 `POST /webhooks/alertmanager` (on `ssingest serve`) decodes an Alertmanager group into

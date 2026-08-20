@@ -541,6 +541,21 @@ type GitLabConfig struct {
 	// PollIntervalSeconds, if > 0, runs incremental GitLab ingestion on a
 	// timer in addition to (or instead of) webhooks. 0 disables polling.
 	PollIntervalSeconds int
+
+	// ConflictPollIntervalSeconds, if > 0, sweeps open merge requests for
+	// conflicts with their target branch on a timer, notifying their author
+	// and assignees. 0 disables the sweep.
+	//
+	// It is a separate cadence from PollIntervalSeconds because it is a
+	// separate read: a conflict usually appears when somebody merges into the
+	// target branch, which never brings the MR into an updated_after window,
+	// so the incremental run cannot find it however often it polls.
+	ConflictPollIntervalSeconds int
+	// ConflictLookbackDays bounds the sweep to merge requests updated within
+	// that many days. It keeps the sweep's cost proportional to active work,
+	// and it is what stops the first sweep after enabling this from
+	// announcing every stale conflicting MR at once. 0 sweeps every open MR.
+	ConflictLookbackDays int
 }
 
 // GitLabProject describes one GitLab project to ingest by numeric ID or path.

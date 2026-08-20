@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -10,7 +11,10 @@ import (
 )
 
 func newGitLabCmd(deps *ingestDeps) *cobra.Command {
-	var sinceStr string
+	var (
+		sinceStr  string
+		conflicts bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "gitlab",
@@ -32,7 +36,13 @@ func newGitLabCmd(deps *ingestDeps) *cobra.Command {
 			}
 
 			r := deps.runner()
-			if err := r.runGitLabAPI(ctx, since, doReset, limit, dryRun); err != nil {
+			run := func(ctx context.Context) error {
+				return r.runGitLabAPI(ctx, since, doReset, limit, dryRun)
+			}
+			if conflicts {
+				run = func(ctx context.Context) error { return r.runGitLabConflicts(ctx, dryRun) }
+			}
+			if err := run(ctx); err != nil {
 				if errors.Is(err, errNotConfigured) {
 					fmt.Fprintf(os.Stderr, "gitlab not configured\n")
 					os.Exit(1)
@@ -44,5 +54,6 @@ func newGitLabCmd(deps *ingestDeps) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&sinceStr, "since", "", "RFC3339 override for cursor (gitlab)")
+	cmd.Flags().BoolVar(&conflicts, "conflicts", false, "sweep open MRs for merge conflicts instead of ingesting")
 	return cmd
 }
