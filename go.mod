@@ -11,7 +11,7 @@ require (
 	github.com/go-faster/errors v0.8.0
 	github.com/go-faster/figureout v0.6.0
 	github.com/go-faster/jx v1.2.0
-	github.com/go-faster/sdk v0.39.0
+	github.com/go-faster/sdk v0.39.1
 	github.com/go-faster/yaml v0.4.6
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/google/uuid v1.6.0
