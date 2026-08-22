@@ -40,6 +40,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/retrieval"
 	pgsearch "github.com/go-faster/sisyphus/internal/search/postgres"
 	"github.com/go-faster/sisyphus/internal/search/qdrant"
+	"github.com/go-faster/sisyphus/internal/telemetry"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // register pgx driver
 )
@@ -164,7 +165,15 @@ func NewServices(ctx context.Context, cfg config.Config, lg *zap.Logger, tp trac
 	if err != nil {
 		return nil, err
 	}
-	cleanup := func() { _ = db.Close() }
+	unregister, err := telemetry.RegisterDBStats(db)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	cleanup := func() {
+		unregister()
+		_ = db.Close()
+	}
 
 	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))
 

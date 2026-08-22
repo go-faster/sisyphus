@@ -30,6 +30,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/mcpserver"
 	"github.com/go-faster/sisyphus/internal/netclient"
 	"github.com/go-faster/sisyphus/internal/queue"
+	"github.com/go-faster/sisyphus/internal/telemetry"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // register pgx driver
 )
@@ -46,11 +47,19 @@ func openJobDB(dsn string) (*ent.Client, func(), error) {
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "open db")
 	}
+	unregister, err := telemetry.RegisterDBStats(db)
+	if err != nil {
+		_ = db.Close()
+		return nil, nil, err
+	}
 	client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, db)))
-	return client, func() { _ = db.Close() }, nil
+	return client, func() {
+		unregister()
+		_ = db.Close()
+	}, nil
 }
 
-func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry, info cliversion.Info) error {
+func run(ctx context.Context, lg *zap.Logger, t *app.Telemetry, info cliversion.Info) error {
 	ctx = zctx.Base(ctx, lg)
 	cfg, err := config.Load()
 	if err != nil {
@@ -94,16 +103,16 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry, info cli
 	}
 
 	httpClient, err := netclient.HTTPClient(ctx, "openrouter", cfg.Proxies.OpenRouter, netclient.HTTPClientOptions{
-		TracerProvider: telemetry.TracerProvider(),
-		MeterProvider:  telemetry.MeterProvider(),
+		TracerProvider: t.TracerProvider(),
+		MeterProvider:  t.MeterProvider(),
 		UserAgent:      info.UserAgent("ssagent"),
 	})
 	if err != nil {
 		return errors.Wrap(err, "openrouter http client")
 	}
 	mcpHTTPClient, err := netclient.HTTPClient(ctx, "mcp", "", netclient.HTTPClientOptions{
-		TracerProvider: telemetry.TracerProvider(),
-		MeterProvider:  telemetry.MeterProvider(),
+		TracerProvider: t.TracerProvider(),
+		MeterProvider:  t.MeterProvider(),
 		UserAgent:      info.UserAgent("ssagent"),
 	})
 	if err != nil {
@@ -111,14 +120,14 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry, info cli
 	}
 	llm := openrouter.New(cfg.OpenRouter.APIKey, openrouter.Options{
 		HTTPClient:      httpClient,
-		TracerProvider:  telemetry.TracerProvider(),
-		MeterProvider:   telemetry.MeterProvider(),
+		TracerProvider:  t.TracerProvider(),
+		MeterProvider:   t.MeterProvider(),
 		ReasoningEffort: cfg.OpenRouter.ReasoningEffort,
 	})
 
 	mcpOpts := mcpclient.Options{
 		URL:           cfg.Agent.GatewayURL,
-		MeterProvider: telemetry.MeterProvider(),
+		MeterProvider: t.MeterProvider(),
 		HTTPClient:    mcpHTTPClient,
 		Version:       info.Short(),
 	}
@@ -147,8 +156,8 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry, info cli
 	mux := http.NewServeMux()
 	mcpserver.InstallHealth(mux, info.Short(), mClient)
 
-	tracer := telemetry.TracerProvider().Tracer("github.com/go-faster/sisyphus/cmd/ssagent")
-	metrics, err := newAgentMetrics(telemetry.MeterProvider())
+	tracer := t.TracerProvider().Tracer("github.com/go-faster/sisyphus/cmd/ssagent")
+	metrics, err := newAgentMetrics(t.MeterProvider())
 	if err != nil {
 		return errors.Wrap(err, "agent metrics")
 	}
@@ -167,7 +176,7 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry, info cli
 
 	srv := &http.Server{
 		Addr:              cfg.Agent.Addr,
-		Handler:           httpmw.Wrap(lg, telemetry, mux),
+		Handler:           httpmw.Wrap(lg, t, mux),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -195,14 +204,14 @@ func run(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry, info cli
 }
 
 func main() {
-	app.Run(func(ctx context.Context, lg *zap.Logger, telemetry *app.Telemetry) error {
+	app.Run(func(ctx context.Context, lg *zap.Logger, t *app.Telemetry) error {
 		ctx = zctx.Base(ctx, lg)
 		info, _ := cliversion.GetInfo("github.com/go-faster/sisyphus")
 		cmd := &cobra.Command{
 			Use:   "ssagent",
 			Short: "runs the investigation service",
 			RunE: func(cmd *cobra.Command, _ []string) error {
-				return run(cmd.Context(), lg, telemetry, info)
+				return run(cmd.Context(), lg, t, info)
 			},
 			SilenceUsage:  true,
 			SilenceErrors: true,
