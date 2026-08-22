@@ -13,7 +13,12 @@ import (
 	"github.com/go-faster/sdk/zctx"
 	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 
 	"github.com/go-faster/sisyphus/internal/index"
 )
@@ -38,6 +43,26 @@ type Config struct {
 	Dim int
 	// Embedder produces embeddings for queries.
 	Embedder index.Embedder
+	// TracerProvider and MeterProvider instrument the gRPC connection, so
+	// every search and upsert shows up next to the Postgres spans it runs
+	// beside. Both default to the global providers.
+	TracerProvider trace.TracerProvider
+	MeterProvider  metric.MeterProvider
+}
+
+func (cfg *Config) setDefaults() {
+	if cfg.Host == "" {
+		cfg.Host = "localhost"
+	}
+	if cfg.Port == 0 {
+		cfg.Port = 6334
+	}
+	if cfg.TracerProvider == nil {
+		cfg.TracerProvider = otel.GetTracerProvider()
+	}
+	if cfg.MeterProvider == nil {
+		cfg.MeterProvider = otel.GetMeterProvider()
+	}
 }
 
 // Store wraps a Qdrant client for vector search.
@@ -50,16 +75,17 @@ type Store struct {
 
 // New creates a new Qdrant Store.
 func New(cfg Config) (*Store, error) {
-	if cfg.Host == "" {
-		cfg.Host = "localhost"
-	}
-	if cfg.Port == 0 {
-		cfg.Port = 6334
-	}
+	cfg.setDefaults()
 
 	client, err := qdrant.NewClient(&qdrant.Config{
 		Host: cfg.Host,
 		Port: cfg.Port,
+		GrpcOptions: []grpc.DialOption{
+			grpc.WithStatsHandler(otelgrpc.NewClientHandler(
+				otelgrpc.WithTracerProvider(cfg.TracerProvider),
+				otelgrpc.WithMeterProvider(cfg.MeterProvider),
+			)),
+		},
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "create qdrant client")

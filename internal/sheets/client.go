@@ -8,11 +8,15 @@ package sheets
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/go-faster/errors"
 	"go.uber.org/zap"
 	"google.golang.org/api/option"
 	gsheets "google.golang.org/api/sheets/v4"
+	htransport "google.golang.org/api/transport/http"
+
+	"github.com/go-faster/sisyphus/internal/netclient"
 )
 
 // Options configures a [Client].
@@ -92,7 +96,21 @@ func New(ctx context.Context, opts Options) (*Client, error) {
 		clientOpts = append(clientOpts, option.WithAuthCredentialsFile(option.ServiceAccount, opts.CredentialsFile))
 	}
 
-	svc, err := gsheets.NewService(ctx, clientOpts...)
+	// Google's authenticating transport goes in as netclient middleware, so
+	// Sheets calls report like every other outbound client. Handing the
+	// credential options to NewService instead would leave the transport it
+	// builds internally uninstrumented, and WithHTTPClient makes NewService
+	// skip auth entirely.
+	httpClient, err := netclient.HTTPClient(ctx, "sheets", "", netclient.HTTPClientOptions{
+		Wrap: func(base http.RoundTripper) (http.RoundTripper, error) {
+			return htransport.NewTransport(ctx, base, clientOpts...)
+		},
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "sheets http client")
+	}
+
+	svc, err := gsheets.NewService(ctx, option.WithHTTPClient(httpClient))
 	if err != nil {
 		return nil, errors.Wrap(err, "sheets service")
 	}

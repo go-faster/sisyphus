@@ -29,6 +29,16 @@ type HTTPClientOptions struct {
 	Timeout        time.Duration
 	Cache          httpcache.Cache
 	UserAgent      string
+	// Wrap layers a round tripper of the caller's over the base transport,
+	// for behavior this package has no business knowing about — Google's
+	// authenticating transport, for one.
+	//
+	// It sits *below* the instrumentation, so whatever it does on the way
+	// out (a blocking token refresh, say) is inside the span and the
+	// recorded duration. The base transport stays ours either way: proxy,
+	// dialer and connection pool are not the caller's to replace, which is
+	// why this wraps rather than substitutes.
+	Wrap func(http.RoundTripper) (http.RoundTripper, error)
 }
 
 func (opts *HTTPClientOptions) setDefaults() {
@@ -41,6 +51,22 @@ func (opts *HTTPClientOptions) setDefaults() {
 	if opts.Timeout == 0 {
 		opts.Timeout = 5 * time.Minute
 	}
+}
+
+// Default returns an instrumented client for a caller that was not given one.
+//
+// It exists so a missing injection degrades to a named, traced, deadlined
+// client rather than to http.DefaultClient, which reports nothing and has no
+// timeout at all. Prefer passing a client built by [HTTPClient]: this one
+// honors no proxy, cache or user agent.
+func Default(name string) *http.Client {
+	client, err := HTTPClient(context.Background(), name, "", HTTPClientOptions{})
+	if err != nil {
+		// Only the metric instruments can fail here, and an uninstrumented
+		// client beats no client at all.
+		return &http.Client{Timeout: 5 * time.Minute}
+	}
+	return client
 }
 
 // HTTPClient returns an HTTP client using proxyURL when configured.
@@ -66,6 +92,16 @@ func HTTPClient(_ context.Context, name, proxyURL string, opts HTTPClientOptions
 			return nil, err
 		}
 		transport = proxyTransport
+	}
+	if opts.Wrap != nil {
+		wrapped, err := opts.Wrap(transport)
+		if err != nil {
+			return nil, errors.Wrap(err, "wrap transport")
+		}
+		if wrapped == nil {
+			return nil, errors.New("wrap transport returned nil")
+		}
+		transport = wrapped
 	}
 	m, err := newClientMetrics(opts.MeterProvider)
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 	"github.com/go-faster/errors"
 
 	"github.com/go-faster/sisyphus/internal/index"
+	"github.com/go-faster/sisyphus/internal/netclient"
 )
 
 // Embedder is an index.Embedder implementation backed by an Ollama server.
@@ -34,8 +35,9 @@ type embedResponse struct {
 
 // EmbedderOptions configures an Embedder.
 type EmbedderOptions struct {
-	// HTTPClient sets the HTTP client used for requests.
-	// Defaults to http.DefaultClient.
+	// HTTPClient sets the HTTP client used for requests. Defaults to
+	// [netclient.Default], which is instrumented but honors no proxy —
+	// callers with a configured proxy must pass their own.
 	HTTPClient *http.Client
 	// Dim sets the dimension of the embeddings.
 	// Defaults to 1024.
@@ -44,7 +46,7 @@ type EmbedderOptions struct {
 
 func (opts *EmbedderOptions) setDefaults() {
 	if opts.HTTPClient == nil {
-		opts.HTTPClient = http.DefaultClient
+		opts.HTTPClient = netclient.Default("ollama")
 	}
 	if opts.Dim == 0 {
 		opts.Dim = 1024 // default for bge-m3

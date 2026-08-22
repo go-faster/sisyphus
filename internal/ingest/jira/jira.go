@@ -53,7 +53,7 @@ type Options struct {
 
 func (opts *Options) setDefaults() {
 	if opts.HTTPClient == nil {
-		opts.HTTPClient = http.DefaultClient
+		opts.HTTPClient = netclient.Default("jira")
 	}
 	if opts.PageSize <= 0 {
 		opts.PageSize = 100

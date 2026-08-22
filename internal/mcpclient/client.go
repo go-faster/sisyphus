@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/go-faster/sisyphus/internal/cliversion"
+	"github.com/go-faster/sisyphus/internal/netclient"
 )
 
 // Options configures a new MCP Client.
@@ -59,23 +60,20 @@ type Client struct {
 // New creates and connects a new MCP Client to the gateway.
 func New(ctx context.Context, opts Options) (*Client, error) {
 	opts.setDefaults()
-	transport := http.DefaultTransport
-
-	if len(opts.Headers) > 0 {
-		transport = &headerTransport{
-			headers: opts.Headers,
-			base:    http.DefaultTransport,
-		}
-	}
 	httpClient := opts.HTTPClient
 	if httpClient == nil {
-		httpClient = &http.Client{Transport: transport}
-	} else if len(opts.Headers) > 0 {
+		httpClient = netclient.Default("mcp")
+	}
+	if len(opts.Headers) > 0 {
 		base := httpClient.Transport
 		if base == nil {
 			base = http.DefaultTransport
 		}
-		httpClient = &http.Client{Transport: &headerTransport{headers: opts.Headers, base: base}}
+		// Copy rather than mutate: the caller's client may be shared, and
+		// these headers belong to this session only.
+		withHeaders := *httpClient
+		withHeaders.Transport = &headerTransport{headers: opts.Headers, base: base}
+		httpClient = &withHeaders
 	}
 
 	streamableClient := &mcp.StreamableClientTransport{
