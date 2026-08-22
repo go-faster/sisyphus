@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/go-faster/sisyphus/internal/index"
+	"github.com/go-faster/sisyphus/internal/netclient"
 	"github.com/go-faster/sisyphus/internal/oas"
 )
 
@@ -31,7 +32,7 @@ type Options struct {
 
 func (o *Options) setDefaults() {
 	if o.HTTPClient == nil {
-		o.HTTPClient = http.DefaultClient
+		o.HTTPClient = netclient.Default("ssapi")
 	}
 	if o.TracerProvider == nil {
 		o.TracerProvider = otel.GetTracerProvider()

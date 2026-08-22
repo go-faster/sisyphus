@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-faster/sisyphus/internal/agent"
 	"github.com/go-faster/sisyphus/internal/index"
+	"github.com/go-faster/sisyphus/internal/netclient"
 )
 
 // Client wraps HTTP requests to ssagent.
@@ -63,7 +64,9 @@ func New(opts Options) *Client {
 			if opts.HTTPClient != nil {
 				return opts.HTTPClient
 			}
-			return &http.Client{Timeout: 30 * time.Second}
+			c := netclient.Default("ssagent")
+			c.Timeout = 30 * time.Second
+			return c
 		}(),
 		url:          opts.URL,
 		token:        opts.Token,
