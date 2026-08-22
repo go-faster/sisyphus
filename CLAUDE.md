@@ -103,8 +103,8 @@ Keep the index below one line per package, and put the depth in the nested file.
 - `internal/config` **†** — YAML + env config loading.
 - `internal/wire` — shared wiring for ssapi/ssingest (`Services` + `Components`).
 - `internal/httpmw` — small net/http middlewares shared by ssapi/ssmcp.
-- `internal/netclient` — builds outbound HTTP clients (proxy, retry, metrics) from config.
-- `internal/telemetry` — OpenTelemetry helpers.
+- `internal/netclient` — builds outbound HTTP clients (proxy, retry, metrics) from config. **Every outbound HTTP client goes through it**: `HTTPClient` for a configured one, `Default(name)` as a constructor's fallback, `HTTPClientOptions.Wrap` to layer a caller's round tripper over the base (Google's authenticating one, say) — netclient owns the base transport, so proxy, dialer and pool are never the caller's to replace. Never fall back to `http.DefaultClient` — it reports nothing.
+- `internal/telemetry` — OpenTelemetry helpers: the gotd MTProto middleware and `RegisterDBStats` (sql.DB pool gauges; otelsql spans alone cannot show pool saturation).
 - `internal/oas` — ogen generated code. Do not edit.
 - `internal/indextest` — reusable mocks for `index` interfaces.
 - `internal/smoke` — `//go:build integration` cross-source ingest+search smoke test (`make test_integration`).
