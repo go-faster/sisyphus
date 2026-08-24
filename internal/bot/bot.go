@@ -222,10 +222,21 @@ func (b *Bot) Run(ctx context.Context) error {
 		SessionStorage: &telegram.FileSessionStorage{Path: filepath.Join(b.cred.SessionDir, "bot.json")},
 		Middlewares: []telegram.Middleware{
 			telemetry.TDMiddleware(b.tp, b.mp),
-			// Outermost of the two, so a retried call is re-paced rather than
-			// firing the instant Telegram lets go.
-			ratelimit.New(rate.Every(sendRateInterval), sendRateBurst),
+			// chainMiddlewares wraps last-to-first, so this list reads
+			// outermost first and the waiter sits *outside* the limiter. That
+			// way its retries pass the limiter again; inside it, they would
+			// bypass it and fire the instant Telegram let go — which is the
+			// call most likely to be refused a second time.
+			//
+			// SimpleWaiter, never floodwait.Waiter. The latter runs every
+			// invocation through a single worker goroutine, and gotd re-enters
+			// the middleware chain to export authorization behind a DC
+			// migration — so the nested call queues behind the outer one it is
+			// blocking, and the whole client deadlocks with no error and no
+			// timeout (gotd/td#1842). SimpleWaiter sleeps on the caller's own
+			// goroutine and serializes nothing.
 			floodwait.NewSimpleWaiter().WithMaxWait(maxFloodWait),
+			ratelimit.New(rate.Every(sendRateInterval), sendRateBurst),
 		},
 	})
 	raw := tg.NewClient(client)

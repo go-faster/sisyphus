@@ -50,13 +50,18 @@ one-per-second-per-chat send limit. `notify.send_interval_ms` (`notify.DefaultSe
 300ms) is the pause; it is **pacing, not batching**, so every notification still arrives and
 nothing is merged or dropped.
 
-Under it sit two client-wide middlewares in `internal/bot` (`ratelimit`, `floodwait`), which
+Under it sit two client-wide middlewares in `internal/bot` (`floodwait`, `ratelimit`), which
 are constants and not config: they are Telegram's limits rather than a deployment's
 preference, and only a client-wide limiter sees every send — a drained notification, a
 `/context` answer, an `/investigate` report. The waiter is the half that matters for
 correctness: a `FLOOD_WAIT` reaches `SendTo` as a failed send, which the drain loop acks as
 an error and never retries, so without it exceeding the limit *loses* the notification
 rather than delaying it.
+
+Two things about that pair are load-bearing, and both are easy to undo by accident:
+
+- **The waiter is outside the limiter.** `telegram.chainMiddlewares` wraps last-to-first, so the slice reads outermost first. With the limiter outside, a waiter retry would bypass it and fire the instant Telegram let go — on the one call most likely to be refused again.
+- **It is `floodwait.NewSimpleWaiter`, never `floodwait.Waiter`.** The scheduler-based `Waiter` runs every invocation through one worker goroutine, and gotd re-enters the middleware chain to export authorization behind a DC migration; the nested call then queues behind the outer call it is blocking and the whole client deadlocks, with no error and no timeout ([gotd/td#1842](https://github.com/gotd/td/issues/1842)). `SimpleWaiter` sleeps on the caller's own goroutine and serializes nothing. The same trap applies to the ingest user session in `cmd/ssingest`, which downloads media and so actually migrates DCs — it carries no waiter today, and adding `Waiter` there is the version of this that hangs on the first file from another DC.
 
 ## Buttons
 
