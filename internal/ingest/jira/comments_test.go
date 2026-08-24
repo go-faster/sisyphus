@@ -64,7 +64,7 @@ func TestLatestComments(t *testing.T) {
 		{ID: "1", Body: "first [~alice]", Created: base, AuthorUser: chunkjira.User{ID: "carol"}},
 	}
 
-	got := latestComments(comments, "https://jira.example.com/browse/ABC-1")
+	got := latestComments(chunkjira.Issue{WebURL: "https://jira.example.com/browse/ABC-1", Comments: comments})
 	require.Len(t, got, 2)
 	// Sorted oldest first, so the projector can take the newest from the tail.
 	require.Equal(t, "1", got[0].ID)
@@ -86,7 +86,7 @@ func TestLatestComments_CapsCount(t *testing.T) {
 		})
 	}
 
-	got := latestComments(comments, "https://jira.example.com/browse/ABC-1")
+	got := latestComments(chunkjira.Issue{WebURL: "https://jira.example.com/browse/ABC-1", Comments: comments})
 	require.Len(t, got, maxPayloadComments)
 	require.Equal(t, strconv.Itoa(len(comments)-1), got[len(got)-1].ID)
 }
@@ -100,7 +100,7 @@ func TestLatestComments_DoesNotReorderInput(t *testing.T) {
 		{ID: "1", Created: base},
 	}
 
-	latestComments(comments, "https://jira.example.com/browse/ABC-1")
+	latestComments(chunkjira.Issue{WebURL: "https://jira.example.com/browse/ABC-1", Comments: comments})
 	require.Equal(t, "2", comments[0].ID)
 	require.Equal(t, "1", comments[1].ID)
 }
