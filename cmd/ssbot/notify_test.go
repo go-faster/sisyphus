@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -36,6 +37,9 @@ type fakeNotifyStore struct {
 	acked   map[uuid.UUID]error
 	ackedN  int
 	chats   []notifystore.Chat
+	// onAck runs inside Ack, on the draining goroutine, so a test can act on
+	// progress without racing the counter from a second one.
+	onAck func()
 }
 
 func (f *fakeNotifyStore) EnrollTelegram(context.Context, int64) (uuid.UUID, error) {
@@ -60,6 +64,9 @@ func (f *fakeNotifyStore) Pending(_ context.Context, _ notify.Channel, limit int
 func (f *fakeNotifyStore) Ack(_ context.Context, id uuid.UUID, deliverErr error) error {
 	f.ackedN++
 	f.acked[id] = deliverErr
+	if f.onAck != nil {
+		f.onAck()
+	}
 	return nil
 }
 
@@ -92,7 +99,7 @@ func TestDrainPendingNotifications_DeliversAndAcks(t *testing.T) {
 		AllowedUserIDs: []int64{1},
 	})
 
-	drainPendingNotifications(context.Background(), zap.NewNop(), b, apiClient)
+	drainPendingNotifications(context.Background(), zap.NewNop(), b, apiClient, 0)
 
 	require.Equal(t, 1, store.ackedN)
 	require.NoError(t, store.acked[id])
@@ -114,3 +121,79 @@ func (f *fakeNotifyStore) UnregisterChat(_ context.Context, target notify.Target
 }
 
 func (f *fakeNotifyStore) ListChats(context.Context) ([]notifystore.Chat, error) { return f.chats, nil }
+
+func TestNotifySendInterval(t *testing.T) {
+	require.Equal(t, notify.DefaultSendInterval, notifySendInterval(0))
+	require.Equal(t, 50*time.Millisecond, notifySendInterval(50))
+	require.Zero(t, notifySendInterval(-1))
+}
+
+// The pause is between sends, not before the first, so a batch of n takes
+// n-1 intervals. The assertion is a lower bound on elapsed time rather than an
+// exact one: an upper bound would be a slow CI machine away from flaking.
+func TestDrainPendingNotifications_PacesBatch(t *testing.T) {
+	const send = 20 * time.Millisecond
+	store := &fakeNotifyStore{acked: map[uuid.UUID]error{}}
+	for range 3 {
+		store.pending = append(store.pending, notifystore.OutboxItem{
+			ID: uuid.New(), TelegramUserID: 1001, TelegramAccessHash: 555, Text: "hello",
+		})
+	}
+
+	handler := api.New(stubRetriever{}, stubAnswerer{}, "v1.0.0", api.WithNotifyStore(store))
+	secHandler := api.NewSecurityHandler("secret-token")
+	server, err := oas.NewServer(handler, secHandler, oas.WithErrorHandler(api.ErrorHandler))
+	require.NoError(t, err)
+	httpServer := httptest.NewServer(server)
+	defer httpServer.Close()
+
+	apiClient, err := apiclient.New(httpServer.URL, "secret-token", apiclient.Options{})
+	require.NoError(t, err)
+	b := bot.New(context.Background(), stubRetriever{}, stubAnswerer{}, bot.BotCredentials{}, bot.BotOptions{
+		Silent:         true,
+		TracerProvider: otel.GetTracerProvider(),
+		Logger:         zap.NewNop(),
+		AllowedUserIDs: []int64{1},
+	})
+
+	start := time.Now()
+	drainPendingNotifications(context.Background(), zap.NewNop(), b, apiClient, send)
+
+	require.Equal(t, 3, store.ackedN)
+	require.GreaterOrEqual(t, time.Since(start), 2*send)
+}
+
+// A canceled context stops the batch mid-pause rather than sending the rest at
+// shutdown.
+func TestDrainPendingNotifications_PacingStopsOnCancel(t *testing.T) {
+	store := &fakeNotifyStore{acked: map[uuid.UUID]error{}}
+	for range 3 {
+		store.pending = append(store.pending, notifystore.OutboxItem{
+			ID: uuid.New(), TelegramUserID: 1001, TelegramAccessHash: 555, Text: "hello",
+		})
+	}
+
+	handler := api.New(stubRetriever{}, stubAnswerer{}, "v1.0.0", api.WithNotifyStore(store))
+	secHandler := api.NewSecurityHandler("secret-token")
+	server, err := oas.NewServer(handler, secHandler, oas.WithErrorHandler(api.ErrorHandler))
+	require.NoError(t, err)
+	httpServer := httptest.NewServer(server)
+	defer httpServer.Close()
+
+	apiClient, err := apiclient.New(httpServer.URL, "secret-token", apiclient.Options{})
+	require.NoError(t, err)
+	b := bot.New(context.Background(), stubRetriever{}, stubAnswerer{}, bot.BotCredentials{}, bot.BotOptions{
+		Silent:         true,
+		TracerProvider: otel.GetTracerProvider(),
+		Logger:         zap.NewNop(),
+		AllowedUserIDs: []int64{1},
+	})
+
+	// Canceled from inside the first ack rather than from a goroutine racing
+	// the counter: the drain is what advances, so it is what should trip it.
+	ctx, cancel := context.WithCancel(context.Background())
+	store.onAck = cancel
+	drainPendingNotifications(ctx, zap.NewNop(), b, apiClient, time.Hour)
+
+	require.Equal(t, 1, store.ackedN)
+}

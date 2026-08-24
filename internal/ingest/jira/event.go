@@ -64,7 +64,7 @@ func EventFromIssue(iss chunkjira.Issue) (event.Event, error) {
 		AssigneeDisplay:   iss.Assignee,
 		AssignedBy:        iss.AssignedBy,
 		AssignedAt:        iss.AssignedAt,
-		Comments:          latestComments(iss.Comments, iss.WebURL),
+		Comments:          latestComments(iss),
 	})
 	if err != nil {
 		return event.Event{}, errors.Wrap(err, "encode issue payload")

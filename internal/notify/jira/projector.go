@@ -40,6 +40,9 @@ import (
 // announce every comment in the fetched window.
 type Projector struct {
 	Staleness notify.Staleness
+	// Ignored are the accounts whose comments notify nobody; see
+	// [notify.IgnoredAuthors].
+	Ignored notify.IgnoredAuthors
 }
 
 func (pr Projector) Project(e event.Event) ([]notify.Event, error) {
@@ -89,6 +92,7 @@ func (pr Projector) Project(e event.Event) ([]notify.Event, error) {
 		Mentioned:  notify.EventIssueMentioned,
 		ButtonText: "Open comment",
 		Staleness:  pr.Staleness,
+		Ignored:    pr.Ignored,
 	}
 	subject := notify.CommentSubject{ObjectID: e.Subject.ID, Title: e.Subject.Title, URL: e.Subject.URL}
 	out = append(out, rule.Project(subject, watchers, comments(p.Comments))...)

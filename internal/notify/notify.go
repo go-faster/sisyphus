@@ -39,6 +39,17 @@ import (
 	"github.com/go-faster/sisyphus/internal/event"
 )
 
+// DefaultSendInterval is how long the drain loop waits between two sends when
+// the deployment configures none.
+//
+// It is pacing, not batching: every notification still arrives, just spread
+// out far enough that a burst reads as a sequence of messages rather than a
+// wall of them, and far enough under Telegram's roughly one-per-second-per-chat
+// send limit that a batch addressed to one person does not walk into a flood
+// wait. A limit hit anyway is the client middleware's problem, not this
+// constant's.
+const DefaultSendInterval = 300 * time.Millisecond
+
 // Source identifies which upstream system an Event/Notification came from.
 type Source string
 

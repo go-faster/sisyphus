@@ -41,6 +41,23 @@ payloads restate them forever:
 - **`mr_approved`** — the same shape one step earlier: an approval stands in every payload from the moment it is given, so only its own timestamp tells a fresh one from a weeks-old one riding along on an unrelated push.
 - **`mr_thread_resolved`** — likewise standing state: a thread stays resolved in every payload after it closes, so `resolved_at` is what separates one just settled from one settled last month.
 
+## Delivery is paced
+
+A drain batch is delivered in one loop, so without a pause between sends a burst — an
+automation account commenting on several of your issues at once, or a fresh outbox — lands
+as an unreadable wall of messages, and walks the bot into Telegram's roughly
+one-per-second-per-chat send limit. `notify.send_interval_ms` (`notify.DefaultSendInterval`,
+300ms) is the pause; it is **pacing, not batching**, so every notification still arrives and
+nothing is merged or dropped.
+
+Under it sit two client-wide middlewares in `internal/bot` (`ratelimit`, `floodwait`), which
+are constants and not config: they are Telegram's limits rather than a deployment's
+preference, and only a client-wide limiter sees every send — a drained notification, a
+`/context` answer, an `/investigate` report. The waiter is the half that matters for
+correctness: a `FLOOD_WAIT` reaches `SendTo` as a failed send, which the drain loop acks as
+an error and never retries, so without it exceeding the limit *loses* the notification
+rather than delaying it.
+
 ## Buttons
 
 Answers and notifications carry actionable links as Telegram inline URL buttons.
@@ -98,6 +115,8 @@ fan-out rule for both sources, because that rule is where the failure modes are:
 - **`Staleness` is the backfill guard**: the poll is incremental on `updated_after` and the event states current comments, so without a cutoff the first run after this shipped would announce every comment in the fetched window. Comments do **not** inherit the assignment's staleness result, though — a comment on an MR assigned to you months ago is still news.
 - A comment's button opens the comment (`#note_<id>` on GitLab, `?focusedCommentId=` on Jira): a fragment or parameter on the URL the API returned, never a guessed permalink.
 - **On GitLab the MR author is a comment watcher**, alongside assignees and reviewers. An MR opened without assigning anyone has no members at all, so without this a colleague's review comment notified nobody — and opening an MR without self-assigning is the common shape for a small change, not an edge case. It costs nothing elsewhere: `CommentRule` skips a watcher's own comments and dedups by recipient key, so an author who is also the assignee is told once. Jira has no equivalent; its reporter is not projected, since the assignee is who the work is addressed to.
+
+- **An automation account can be silenced, but only for comments.** `notify.ignore_comment_authors` (a `{source, key}` list, matched in the same id space recipients are) drops a comment before the thread grouping — a bot's comment must never become the newest one a thread coalesces onto, which would silence the human reply behind it. It is scoped to comments and not to everything the account does: an automation account that *assigns* work is saying something someone acts on, and there is one of those per object. Filtering in the projector rather than at the dispatcher is what keeps the outbox clean — a suppressed comment writes no row at all.
 
 Out of scope, deliberately: watchers/participants/subscribers (needs fetching that does not
 happen), and GitLab *issues*, which emit no canonical event at all today.

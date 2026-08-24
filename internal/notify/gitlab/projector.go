@@ -35,6 +35,9 @@ import (
 // every comment in the fetched window.
 type Projector struct {
 	Staleness notify.Staleness
+	// Ignored are the accounts whose comments notify nobody; see
+	// [notify.IgnoredAuthors].
+	Ignored notify.IgnoredAuthors
 }
 
 // mergedState is the value GitLab reports in an MR's state field once it has
@@ -49,6 +52,7 @@ func (pr Projector) commentRule() notify.CommentRule {
 		Mentioned:  notify.EventMRMentioned,
 		ButtonText: "Open comment",
 		Staleness:  pr.Staleness,
+		Ignored:    pr.Ignored,
 	}
 }
 

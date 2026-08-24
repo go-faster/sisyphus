@@ -188,6 +188,14 @@ func describeNotify(c *wire, s *figureout.Schema[wire]) {
 		})
 		figureout.Value(s, &c.Notify.MaxAssignmentAgeSeconds, "max_assignment_age_seconds").
 			Doc("0 uses notify.DefaultMaxAssignmentAge (24h); negative disables the check")
+		figureout.Value(s, &c.Notify.SendIntervalMillis, "send_interval_ms").
+			Doc("pause between two sends; 0 uses notify.DefaultSendInterval (300ms), negative disables pacing")
+		figureout.ListOf(s, &c.Notify.IgnoreCommentAuthors, "ignore_comment_authors", func(e *NotifyIgnoredAuthor, s *figureout.Schema[NotifyIgnoredAuthor]) {
+			figureout.Explicit(s, &e.Source, "source").Enum("gitlab", "jira").
+				Doc("which id space key is in")
+			figureout.Explicit(s, &e.Key, "key").NonEmpty().
+				Doc("gitlab username, or jira accountId (username on Server/DC)")
+		}).MergeByKey("key")
 		figureout.ListOf(s, &c.Notify.Identities, "identities", func(e *NotifyIdentity, s *figureout.Schema[NotifyIdentity]) {
 			figureout.Explicit(s, &e.TelegramUserID, "telegram_id").GreaterThan(0).
 				Doc("an identity with no Telegram id addresses nobody")

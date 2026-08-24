@@ -42,10 +42,16 @@ type Comment struct {
 // cutoff anyway).
 const maxPayloadComments = 20
 
-// latestComments keeps the newest [maxPayloadComments] comments, oldest first.
-// objectURL is the issue's browse page, used to focus each comment's own URL.
-func latestComments(comments []chunkjira.Comment, objectURL string) []Comment {
-	flat := slices.Clone(comments)
+// latestComments keeps the newest [maxPayloadComments] comments, oldest first,
+// with each body rendered out of wiki markup (see [plainText]) for the
+// notification that quotes it.
+func latestComments(iss chunkjira.Issue) []Comment {
+	var (
+		objectURL = iss.WebURL
+		names     = mentionNames(iss)
+	)
+
+	flat := slices.Clone(iss.Comments)
 	slices.SortStableFunc(flat, func(a, b chunkjira.Comment) int {
 		return a.Created.Compare(b.Created)
 	})
@@ -58,13 +64,34 @@ func latestComments(comments []chunkjira.Comment, objectURL string) []Comment {
 		out = append(out, Comment{
 			ID:        c.ID,
 			Author:    c.AuthorUser,
-			Body:      c.Body,
+			Body:      plainText(c.Body, names),
 			Mentions:  Mentions(c.Body),
 			URL:       commentURL(objectURL, c.ID),
 			CreatedAt: c.Created,
 		})
 	}
 	return out
+}
+
+// mentionNames maps the ids a mention can name to the display names the issue
+// already knows: its assignee and its commenters. Jira writes a mention as an
+// id, and on Cloud that id is an opaque hash — so without a lookup the only
+// readable rendering is an anonymous one. It resolves whoever is already part
+// of the conversation, which is who a comment names in nearly every case.
+func mentionNames(iss chunkjira.Issue) map[string]string {
+	names := make(map[string]string, len(iss.Comments)+1)
+	add := func(id, display string) {
+		if id != "" && display != "" {
+			names[id] = display
+		}
+	}
+	add(iss.AssigneeAccountID, iss.Assignee)
+	add(iss.UpdatedBy.ID, iss.UpdatedBy.Display)
+	add(iss.AssignedBy.ID, iss.AssignedBy.Display)
+	for _, c := range iss.Comments {
+		add(c.AuthorUser.ID, c.AuthorUser.Display)
+	}
+	return names
 }
 
 // commentURL focuses one comment on the issue's own browse page. Both Cloud

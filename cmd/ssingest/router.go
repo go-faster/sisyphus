@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/go-faster/sisyphus/internal/agentstore"
+	"github.com/go-faster/sisyphus/internal/config"
 	"github.com/go-faster/sisyphus/internal/event"
 	"github.com/go-faster/sisyphus/internal/notify"
 	notifyalert "github.com/go-faster/sisyphus/internal/notify/alert"
@@ -31,6 +32,7 @@ func (d *ingestDeps) eventRouter() event.Router {
 	staleness := notify.Staleness{
 		MaxAge: time.Duration(d.cfg.Notify.MaxAssignmentAgeSeconds) * time.Second,
 	}
+	ignored := ignoredCommentAuthors(d.cfg.Notify.IgnoreCommentAuthors)
 
 	router := event.NewMux()
 	if d.cfg.Alertmanager.Investigate {
@@ -61,12 +63,23 @@ func (d *ingestDeps) eventRouter() event.Router {
 	router.Subscribe(event.Subscription{
 		Name:    "notify-gitlab",
 		Sources: []event.Source{event.SourceGitLab},
-		Handler: notify.NewRouterSubscriber(notifygitlab.Projector{Staleness: staleness}, dispatcher),
+		Handler: notify.NewRouterSubscriber(notifygitlab.Projector{Staleness: staleness, Ignored: ignored}, dispatcher),
 	})
 	router.Subscribe(event.Subscription{
 		Name:    "notify-jira",
 		Sources: []event.Source{event.SourceJira},
-		Handler: notify.NewRouterSubscriber(notifyjira.Projector{Staleness: staleness}, dispatcher),
+		Handler: notify.NewRouterSubscriber(notifyjira.Projector{Staleness: staleness, Ignored: ignored}, dispatcher),
 	})
 	return router
+}
+
+// ignoredCommentAuthors maps the configured accounts onto the projectors'
+// shape. The config validates the source name, so an unknown one cannot reach
+// here and silently ignore nobody.
+func ignoredCommentAuthors(in []config.NotifyIgnoredAuthor) notify.IgnoredAuthors {
+	keys := make([]notify.ActorKey, 0, len(in))
+	for _, a := range in {
+		keys = append(keys, notify.ActorKey{Source: notify.Source(a.Source), Key: a.Key})
+	}
+	return notify.NewIgnoredAuthors(keys)
 }

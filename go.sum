@@ -152,6 +152,8 @@ github.com/googleapis/enterprise-certificate-proxy v0.3.20 h1:t/xL64VUoN69MuMRQu
 github.com/googleapis/enterprise-certificate-proxy v0.3.20/go.mod h1:L3D/IQExI6LqEjBdXcZQ1WluSgigQmSwBboFstVPM4w=
 github.com/googleapis/gax-go/v2 v2.23.0 h1:Tchl7qkvE7Ip3y+ztvNufYFvkfqTe7NfLTYGIdJRLuE=
 github.com/googleapis/gax-go/v2 v2.23.0/go.mod h1:rBQKOVJCdb8IFEzg+FCwlt1LP/xMDGuqUXhUG+XMXEg=
+github.com/gotd/contrib v0.25.0 h1:92JYybbOI7nApz7uaLahEMfUfnZ0/ECdfFscAzg5k7c=
+github.com/gotd/contrib v0.25.0/go.mod h1:OoocKgWvcTIDKstQBkGJ8fZCMvwU9C2IVirPOo1rwvk=
 github.com/gotd/ige v0.3.0 h1:4f6LEHWsVDLBG0bT9wWG2/9TZb5aWm265G8ZlTXmRRU=
 github.com/gotd/ige v0.3.0/go.mod h1:FE9bTaQtvfArizAcZuI4sS6gXaEUBmixdUufVHoCKac=
 github.com/gotd/log v0.1.0 h1:4LJUEvafD1xtBwx2QkrlzFnRgbYXTlWqJPDi8BvrLbU=

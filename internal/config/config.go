@@ -92,12 +92,37 @@ type NotifyConfig struct {
 	// anyway, under-notifying loses it silently.
 	MaxAssignmentAgeSeconds int
 
+	// SendIntervalMillis is how long ssbot waits between two notification
+	// sends. A drain batch is delivered in one loop, so without it a burst of
+	// events — an automation account commenting on several of your issues at
+	// once — arrives as an unreadable wall of messages, and pushes the bot
+	// toward Telegram's per-chat send limit.
+	//
+	// 0 uses notify.DefaultSendInterval; negative sends without pacing. It
+	// only spreads the batch out: nothing is dropped or merged, and a limit
+	// hit anyway is absorbed by the client's flood-wait middleware.
+	SendIntervalMillis int
+
+	// IgnoreCommentAuthors are the GitLab/Jira accounts whose comments never
+	// notify anyone. It exists for automation accounts, which comment on every
+	// object a rule touches and cannot be asked to stop; see
+	// [github.com/go-faster/sisyphus/internal/notify.IgnoredAuthors] for why it
+	// is scoped to comments and not to everything the account does.
+	IgnoreCommentAuthors []NotifyIgnoredAuthor
+
 	// Identities maps Telegram users to the GitLab/Jira identities events are
 	// addressed to. It is the *only* way that mapping is established: a bot
 	// user cannot claim an identity, because nothing they type proves they own
 	// it — anyone could name a colleague's account and receive their
 	// notifications. ssapi reconciles this list into the database on startup.
 	Identities []NotifyIdentity
+}
+
+// NotifyIgnoredAuthor names one account by the same id its source events
+// carry: a GitLab username, a Jira accountId (or Server/DC username).
+type NotifyIgnoredAuthor struct {
+	Source string
+	Key    string
 }
 
 // NotifyIdentity is one configured Telegram to GitLab/Jira mapping.

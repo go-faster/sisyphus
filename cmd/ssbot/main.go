@@ -149,7 +149,10 @@ func run(ctx context.Context, cfg config.Config, telemetry *app.Telemetry) error
 		},
 	)
 
-	go runNotifyDrainLoop(ctx, lg, b, api, time.Duration(cfg.Notify.PollIntervalSeconds)*time.Second)
+	go runNotifyDrainLoop(ctx, lg, b, api,
+		time.Duration(cfg.Notify.PollIntervalSeconds)*time.Second,
+		notifySendInterval(cfg.Notify.SendIntervalMillis),
+	)
 
 	botErr := b.Run(ctx)
 	if err := httpmw.Shutdown(healthSrv); err != nil {
