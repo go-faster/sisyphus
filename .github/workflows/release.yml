@@ -56,7 +56,23 @@ jobs:
         with:
           install-only: true
 
+      # --parallelism serializes the build pipe, instead of goreleaser's
+      # default of NumCPU (4 here). Six build ids across two arches is twelve
+      # jobs, and setup-go's cache means the compiles are mostly warm — what
+      # actually ran concurrently was four *links*, each peaking in the
+      # multi-GB range for a binary this size. That overran ubuntu-latest's
+      # 16 GB from v0.12.0 onward: the runner was killed mid-build three times
+      # ("received a shutdown signal", exit 143), always with the same four
+      # builds in flight.
+      #
+      # One semaphore bounds the whole pipe: build.Pipe.Run creates it with
+      # ctx.Parallelism and runPipeOnBuild adds a job per *target* to it, so
+      # arch is inside the limit, not outside — 1 really is one binary at a
+      # time. GOMEMLIMIT is the wrong knob here regardless: it is per process,
+      # so concurrent links would each get their own budget and the total stays
+      # unbounded, and setting it below what a link needs trades the OOM for a
+      # GC death spiral that runs until the timeout.
       - name: Release
-        run: goreleaser release --clean --timeout 60m
+        run: goreleaser release --clean --timeout 60m --parallelism 1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
