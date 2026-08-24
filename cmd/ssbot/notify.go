@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-faster/sisyphus/internal/apiclient"
 	"github.com/go-faster/sisyphus/internal/bot"
+	"github.com/go-faster/sisyphus/internal/notify"
 )
 
 // notifierAdapter satisfies bot.Notifier over *apiclient.Client. Every
@@ -74,12 +75,27 @@ func (n notifierAdapter) NotifyListChats(ctx context.Context) ([]bot.NotifyChat,
 
 const notifyDrainBatchSize = 20
 
+// notifySendInterval resolves the configured pause between two sends: 0 takes
+// the default, negative means no pacing at all.
+func notifySendInterval(ms int) time.Duration {
+	if ms == 0 {
+		return notify.DefaultSendInterval
+	}
+	if ms < 0 {
+		return 0
+	}
+	return time.Duration(ms) * time.Millisecond
+}
+
 // runNotifyDrainLoop polls ssapi for pending Telegram-channel notifications
 // and delivers them via b.SendTo, acking each attempt's outcome. It waits
 // for b.Ready() so it never calls SendTo before the bot session has
 // authenticated. interval <= 0 disables draining (matches notify.poll.
 // interval_seconds=0 meaning the whole notification system is off).
-func runNotifyDrainLoop(ctx context.Context, lg *zap.Logger, b *bot.Bot, api *apiclient.Client, interval time.Duration) {
+//
+// send is the pause between two deliveries within one batch; see
+// [notify.DefaultSendInterval] for why there is one.
+func runNotifyDrainLoop(ctx context.Context, lg *zap.Logger, b *bot.Bot, api *apiclient.Client, interval, send time.Duration) {
 	if interval <= 0 {
 		return
 	}
@@ -92,7 +108,7 @@ func runNotifyDrainLoop(ctx context.Context, lg *zap.Logger, b *bot.Bot, api *ap
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
-		drainPendingNotifications(ctx, lg, b, api)
+		drainPendingNotifications(ctx, lg, b, api, send)
 		select {
 		case <-ctx.Done():
 			return
@@ -101,14 +117,25 @@ func runNotifyDrainLoop(ctx context.Context, lg *zap.Logger, b *bot.Bot, api *ap
 	}
 }
 
-func drainPendingNotifications(ctx context.Context, lg *zap.Logger, b *bot.Bot, api *apiclient.Client) {
+func drainPendingNotifications(ctx context.Context, lg *zap.Logger, b *bot.Bot, api *apiclient.Client, send time.Duration) {
 	pending, err := api.PendingNotifications(ctx, notifyDrainBatchSize)
 	if err != nil {
 		lg.Warn("list pending notifications failed", zap.Error(err))
 		return
 	}
 
-	for _, n := range pending {
+	for i, n := range pending {
+		// Paced, not batched: the whole point is that a burst of events
+		// addressed to one person reaches them as a readable sequence. The
+		// pause is before each send but the first, so a lone notification is
+		// still delivered immediately.
+		if i > 0 && send > 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(send):
+			}
+		}
 		// The renderer already embeds the URL as a markdown link; appending it
 		// again printed every notification's link twice. The buttons are the
 		// separate, actionable links the projector picked out.

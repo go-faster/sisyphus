@@ -303,3 +303,38 @@ func TestCommentRule_MentionSuppressesOnlyItsOwnThread(t *testing.T) {
 	require.Contains(t, got, "mr_mentioned/alice")
 	require.Equal(t, "mr_commented:group/proj!1:11:alice", got["mr_commented/alice"].EventID)
 }
+
+func TestCommentRule_IgnoredAuthorNotifiesNobody(t *testing.T) {
+	rule := testRule()
+	rule.Ignored = NewIgnoredAuthors([]ActorKey{{Source: SourceGitLab, Key: "automation"}})
+
+	out := rule.Project(testSubject, []Actor{watcher("alice")}, []Comment{
+		newComment("1", "automation", time.Minute, "linked ABC-1", "alice"),
+	})
+	require.Empty(t, out)
+}
+
+// The bot's comment must not be picked as the thread's newest and coalesce the
+// human reply behind it out of existence.
+func TestCommentRule_IgnoredAuthorDoesNotShadowHuman(t *testing.T) {
+	rule := testRule()
+	rule.Ignored = NewIgnoredAuthors([]ActorKey{{Source: SourceGitLab, Key: "automation"}})
+
+	out := rule.Project(testSubject, []Actor{watcher("alice")}, []Comment{
+		newComment("1", "bob", 2*time.Minute, "does this look right?"),
+		newComment("2", "automation", time.Minute, "linked ABC-1"),
+	})
+	require.Len(t, out, 1)
+	require.Equal(t, "bob", out[0].Actor.Key)
+	require.Equal(t, "does this look right?", out[0].Description)
+}
+
+// The set is per source: the same key in the other id space is a different
+// account.
+func TestIgnoredAuthors_ScopedBySource(t *testing.T) {
+	set := NewIgnoredAuthors([]ActorKey{{Source: SourceJira, Key: "automation"}})
+	require.True(t, set.Has(Actor{Source: SourceJira, Key: "automation"}))
+	require.False(t, set.Has(Actor{Source: SourceGitLab, Key: "automation"}))
+	require.False(t, set.Has(Actor{Source: SourceJira}))
+	require.False(t, NewIgnoredAuthors(nil).Has(Actor{Source: SourceJira, Key: "automation"}))
+}

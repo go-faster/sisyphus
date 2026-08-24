@@ -206,6 +206,18 @@ notify:
   poll:
     interval_seconds: 15
   # max_assignment_age_seconds: 86400
+  # send_interval_ms is the pause between two sends, so a burst of events
+  # arrives as a readable sequence instead of a wall of messages. 0 uses the
+  # 300ms default; negative sends without pacing.
+  # send_interval_ms: 300
+  # ignore_comment_authors silences comments from automation accounts, which
+  # comment on every object a rule touches. Their assignments still notify.
+  ignore_comment_authors: []
+  # ignore_comment_authors:
+  #   - source: jira
+  #     key: "557058:1111-1111"
+  #   - source: gitlab
+  #     key: automation
   identities: []
   # identities:
   #   - telegram_id: 123456789

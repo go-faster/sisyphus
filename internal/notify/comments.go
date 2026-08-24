@@ -37,6 +37,51 @@ type CommentSubject struct {
 	URL      string
 }
 
+// IgnoredAuthors are the source accounts whose comments never notify anyone.
+//
+// It exists for automation: a bot that comments on every issue a rule touches
+// produces a burst of notifications per unrelated human action, and unlike a
+// noisy colleague it cannot be asked to stop. It is scoped to *comments* only,
+// so an automation account that also assigns work still says so — that is a
+// message someone acts on, and there is one of it per object.
+//
+// Filtering here rather than at the dispatcher is what keeps the outbox clean:
+// a suppressed comment writes no row, so it costs nothing to store, deliver or
+// retain.
+type IgnoredAuthors map[ActorKey]struct{}
+
+// ActorKey identifies one source account: the same (source, key) pair a
+// recipient is matched on, so a configured id works the same way whether it
+// names a person or a bot.
+type ActorKey struct {
+	Source Source
+	Key    string
+}
+
+// NewIgnoredAuthors builds the set from configured pairs.
+func NewIgnoredAuthors(keys []ActorKey) IgnoredAuthors {
+	if len(keys) == 0 {
+		return nil
+	}
+	out := make(IgnoredAuthors, len(keys))
+	for _, k := range keys {
+		if k.Key == "" {
+			continue
+		}
+		out[k] = struct{}{}
+	}
+	return out
+}
+
+// Has reports whether a is one of the ignored accounts.
+func (s IgnoredAuthors) Has(a Actor) bool {
+	if len(s) == 0 || a.Key == "" {
+		return false
+	}
+	_, ok := s[ActorKey{Source: a.Source, Key: a.Key}]
+	return ok
+}
+
 // CommentRule projects an object's comments into per-recipient Events. GitLab
 // and Jira differ only in their event types, their id space and the word on
 // the button, so the rule itself — which is the part with the interesting
@@ -51,6 +96,8 @@ type CommentRule struct {
 	// comments, not the new ones, so without it the first poll after this
 	// feature ships announces every comment in the fetched window.
 	Staleness Staleness
+	// Ignored are accounts whose comments notify nobody. Empty ignores none.
+	Ignored IgnoredAuthors
 }
 
 // Project fans comments out to watchers (the people the object is already
@@ -76,6 +123,10 @@ type CommentRule struct {
 // A source with no threads leaves ThreadID empty on every comment, which
 // groups them all and keeps the one-per-object behavior.
 //
+// Comments by an account in Ignored are dropped outright — mention included:
+// an automation account naming you is the burst this exists to stop, not a
+// colleague asking you a question.
+//
 // A recipient the thread's newest comment already mentioned gets nothing
 // further for it: they were told, and reaching further back in that thread
 // would be noise. Comments a recipient wrote themselves never notify them,
@@ -85,6 +136,12 @@ func (r CommentRule) Project(subject CommentSubject, watchers []Actor, comments 
 	fresh := make([]Comment, 0, len(comments))
 	for _, c := range comments {
 		if c.ID == "" || !r.Staleness.Fresh(c.CreatedAt) {
+			continue
+		}
+		// Dropped before the thread grouping, not after: a bot's comment must
+		// not become the newest one a thread coalesces onto, which would
+		// silence the human reply behind it.
+		if r.Ignored.Has(c.Author) {
 			continue
 		}
 		fresh = append(fresh, c)

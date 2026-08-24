@@ -13,6 +13,8 @@ import (
 
 	"github.com/go-faster/errors"
 	"github.com/go-faster/sdk/zctx"
+	"github.com/gotd/contrib/middleware/floodwait"
+	"github.com/gotd/contrib/middleware/ratelimit"
 	"github.com/gotd/log/logzap"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/message"
@@ -24,6 +26,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 
 	"github.com/go-faster/sisyphus/internal/agent"
 	"github.com/go-faster/sisyphus/internal/index"
@@ -31,6 +34,24 @@ import (
 )
 
 const defaultAnswerTimeout = time.Minute
+
+// Every MTProto call the bot makes goes through a rate limiter and a flood-wait
+// waiter. They are constants rather than configuration: these are Telegram's
+// limits, not a deployment's preference, and the tuning knob a deployment does
+// have is notify.send_interval_ms.
+//
+// The limiter is the floor under everything the bot sends — a drained
+// notification batch, a /context answer, an /investigate report — since only a
+// client-wide one can see all of them. The waiter is what makes exceeding the
+// limit anyway cost latency instead of a message: a FLOOD_WAIT reaches SendTo
+// as a failed send, which the drain loop acks as an error and never retries.
+const (
+	sendRateInterval = 50 * time.Millisecond
+	sendRateBurst    = 5
+	// maxFloodWait bounds one wait so a punitive limit fails the call instead
+	// of parking the drain loop on it for hours.
+	maxFloodWait = 2 * time.Minute
+)
 
 // Retriever is the minimal retrieval interface Bot needs.
 type Retriever interface {
@@ -201,6 +222,10 @@ func (b *Bot) Run(ctx context.Context) error {
 		SessionStorage: &telegram.FileSessionStorage{Path: filepath.Join(b.cred.SessionDir, "bot.json")},
 		Middlewares: []telegram.Middleware{
 			telemetry.TDMiddleware(b.tp, b.mp),
+			// Outermost of the two, so a retried call is re-paced rather than
+			// firing the instant Telegram lets go.
+			ratelimit.New(rate.Every(sendRateInterval), sendRateBurst),
+			floodwait.NewSimpleWaiter().WithMaxWait(maxFloodWait),
 		},
 	})
 	raw := tg.NewClient(client)
