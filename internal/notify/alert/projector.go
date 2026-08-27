@@ -10,6 +10,7 @@
 package alert
 
 import (
+	"net/url"
 	"sort"
 	"strings"
 
@@ -50,7 +51,7 @@ func (Projector) Project(e event.Event) ([]notify.Event, error) {
 		Title:       e.Subject.Title,
 		Description: strings.TrimSpace(p.Annotations["description"]),
 		Labels:      labels(p),
-		Buttons:     buttons(p),
+		Buttons:     buttons(p, e.Subject.URL, typ == notify.EventAlertFiring),
 		URL:         e.Subject.URL,
 		ObjectID:    e.Subject.ID,
 		EventID:     e.ID,
@@ -70,14 +71,23 @@ func labels(p ingestalert.AlertPayload) []notify.Label {
 	return out
 }
 
-// buttons offers what an on-call reader actually clicks. A runbook is the
-// first of them: it used to be pasted into the body as a bare URL, which is
-// what made a two-line alert wrap into a paragraph of link text.
+// buttons offers what an on-call reader actually clicks.
 //
-// Only annotation values are used, never anything from the alert's labels or
-// description: an annotation is written by whoever authored the alerting
-// rule, which is the same trust level as the rest of the deployment.
-func buttons(p ingestalert.AlertPayload) []notify.Button {
+// The alert's own generator URL is one of them. It used to be the *title's*
+// link instead, which put the rule that fired and the Alertmanager button
+// side by side pointing at two different systems, with no way to tell which
+// was which — one was underlined text, the other a button. Both are buttons
+// now and the title is plain (see notify.templateData.TitleText).
+//
+// Only annotation values are used for the runbook and dashboard, never
+// anything from the alert's labels or description: an annotation is written
+// by whoever authored the alerting rule, which is the same trust level as the
+// rest of the deployment. The generator URL is the third source at that
+// level — Prometheus or vmalert composes it from its own external URL, and
+// the alerting target it scraped never sees it. The last two are built here
+// from Alertmanager's own external URL, so nothing outside the alerting stack
+// decides where they point.
+func buttons(p ingestalert.AlertPayload, generatorURL string, firing bool) []notify.Button {
 	var out []notify.Button
 	for _, k := range annotationKeys(p.Annotations, "runbook") {
 		out = append(out, notify.Button{Text: "Runbook", URL: p.Annotations[k]})
@@ -85,11 +95,67 @@ func buttons(p ingestalert.AlertPayload) []notify.Button {
 	for _, k := range annotationKeys(p.Annotations, "dashboard") {
 		out = append(out, notify.Button{Text: "Dashboard", URL: p.Annotations[k]})
 	}
-	if p.ExternalURL != "" {
-		out = append(out, notify.Button{Text: "Alertmanager", URL: p.ExternalURL})
+	if generatorURL != "" {
+		out = append(out, notify.Button{Text: "Rule", URL: generatorURL})
+	}
+	if base := strings.TrimRight(p.ExternalURL, "/"); base != "" {
+		var filter string
+		// An alert with none of the matcher labels leaves the parameter off
+		// rather than sending "{}", which the UI would read as a filter
+		// matching nothing.
+		if f := matcherFilter(p.Labels); f != "{}" {
+			filter = "?filter=" + url.QueryEscape(f)
+		}
+		out = append(out, notify.Button{Text: "Alertmanager", URL: base + "/#/alerts" + filter})
+		// A resolved alert has nothing left to silence.
+		if firing {
+			out = append(out, notify.Button{Text: "Silence", URL: base + "/#/silences/new" + filter})
+		}
 	}
 	return out
 }
+
+// matcherLabels identify one alert well enough to filter the alert list on it
+// and to seed a silence with, in the order Alertmanager should show them.
+//
+// Deliberately not the full label set: a silence prefilled with every label
+// an exporter attached is one nobody reads before confirming, and any value
+// carrying a quote or a brace has to survive being pasted back through the
+// matcher parser. Deliberately not alertname alone either — that silences
+// every host a rule covers, which on a per-instance alert is never what the
+// reader clicking from one host's notification meant.
+var matcherLabels = []string{"alertname", "service", "instance"}
+
+// matcherFilter renders the Alertmanager UI's filter expression,
+// {alertname="X", service="y"}. The UI parses it for both the alert list and
+// the new-silence form, so one string seeds both.
+func matcherFilter(labels map[string]string) string {
+	var b strings.Builder
+	b.WriteByte('{')
+	for _, k := range matcherLabels {
+		v := labels[k]
+		if v == "" {
+			continue
+		}
+		if b.Len() > 1 {
+			// No space after the comma: the filter rides the URL's
+			// fragment, where a QueryEscaped space is a "+" that the UI
+			// reads back as a literal one.
+			b.WriteByte(',')
+		}
+		b.WriteString(k)
+		b.WriteString(`="`)
+		b.WriteString(matcherEscaper.Replace(v))
+		b.WriteString(`"`)
+	}
+	b.WriteByte('}')
+	return b.String()
+}
+
+// matcherEscaper quotes what would otherwise end the matcher value early.
+// Label values reach here from the alerting target, so a stray quote is a
+// broken link and not a theoretical case.
+var matcherEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`)
 
 // annotationKeys returns the annotations whose name contains substr, sorted
 // so a rule with several (runbook_url, runbook_url_backup) renders the same

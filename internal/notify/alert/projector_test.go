@@ -48,9 +48,11 @@ func TestProjectFiring(t *testing.T) {
 		{Key: "severity", Value: "critical"},
 		{Key: "service", Value: "checkout"},
 	}, n.Labels, "the full label set belongs in Alertmanager, not a chat")
-	// The runbook is a button, not a bare URL pasted into the text.
+	// The runbook is a button, not a bare URL pasted into the text, and the
+	// rule that fired is one too rather than the title's hidden link.
 	require.Equal(t, []notify.Button{
 		{Text: "Runbook", URL: "https://runbooks.example.com/high-error-rate"},
+		{Text: "Rule", URL: "https://prometheus.example.com/graph"},
 	}, n.Buttons)
 }
 
@@ -70,8 +72,59 @@ func TestProjectButtons(t *testing.T) {
 	require.Equal(t, []notify.Button{
 		{Text: "Runbook", URL: "https://runbooks.example.com/high-error-rate"},
 		{Text: "Dashboard", URL: "https://grafana.example.com/d/abc"},
-		{Text: "Alertmanager", URL: "https://alertmanager.example.com"},
+		{Text: "Rule", URL: "https://prometheus.example.com/graph"},
+		{Text: "Alertmanager", URL: "https://alertmanager.example.com/#/alerts"},
+		{Text: "Silence", URL: "https://alertmanager.example.com/#/silences/new"},
 	}, out[0].Buttons)
+}
+
+// The Alertmanager buttons point at *this* alert: its own row in the alert
+// list, and a silence form already carrying its matchers. Pointing them at
+// the bare external URL is what made the message offer two links to two
+// systems with nothing saying which was which.
+func TestProjectAlertmanagerButtonsCarryMatchers(t *testing.T) {
+	e := firingEvent(t)
+	e, err := e.WithPayload(ingestalert.AlertPayloadVersion, ingestalert.AlertPayload{
+		Labels: map[string]string{
+			"alertname": "VpnTunnelFlapping",
+			"service":   "vpn-vm",
+			"instance":  "vpn-vm:9100",
+			"severity":  "ticket",
+		},
+		ExternalURL: "https://alerts.example.com/",
+	})
+	require.NoError(t, err)
+
+	out, err := Projector{}.Project(e)
+	require.NoError(t, err)
+
+	const filter = `?filter=%7Balertname%3D%22VpnTunnelFlapping%22%2Cservice%3D%22vpn-vm%22%2Cinstance%3D%22vpn-vm%3A9100%22%7D`
+	require.Contains(t, out[0].Buttons, notify.Button{
+		Text: "Alertmanager", URL: "https://alerts.example.com/#/alerts" + filter,
+	})
+	require.Contains(t, out[0].Buttons, notify.Button{
+		Text: "Silence", URL: "https://alerts.example.com/#/silences/new" + filter,
+	})
+	// severity is not a matcher: silencing every ticket-severity alert in the
+	// stack is never what one alert's reader meant.
+	require.NotContains(t, out[0].Buttons[len(out[0].Buttons)-1].URL, "severity")
+}
+
+// A silence is offered while an alert is firing and not after it has cleared.
+func TestProjectResolvedOffersNoSilence(t *testing.T) {
+	e := firingEvent(t)
+	e.Type = event.TypeAlertResolved
+	e, err := e.WithPayload(ingestalert.AlertPayloadVersion, ingestalert.AlertPayload{
+		Labels:      map[string]string{"alertname": "HighErrorRate"},
+		ExternalURL: "https://alerts.example.com",
+	})
+	require.NoError(t, err)
+
+	out, err := Projector{}.Project(e)
+	require.NoError(t, err)
+	for _, b := range out[0].Buttons {
+		require.NotEqual(t, "Silence", b.Text)
+	}
 }
 
 // Only annotations become buttons: an alert's labels and description carry
@@ -87,7 +140,11 @@ func TestProjectButtonsIgnoreLabelsAndDescription(t *testing.T) {
 
 	out, err := Projector{}.Project(e)
 	require.NoError(t, err)
-	require.Empty(t, out[0].Buttons)
+	// The generator URL is still offered: the alerting system composes that
+	// one, not the target it scraped.
+	require.Equal(t, []notify.Button{
+		{Text: "Rule", URL: "https://prometheus.example.com/graph"},
+	}, out[0].Buttons)
 }
 
 func TestProjectResolved(t *testing.T) {
@@ -120,7 +177,7 @@ func TestRenderFiringAndResolved(t *testing.T) {
 	// ingested text must not bleed formatting, and the Telegram renderer
 	// resolves them back to the literal characters.
 	require.Equal(t,
-		"🔥 _Firing:_ **[HighErrorRate\\: 5xx above 5\\%](https://prometheus.example.com/graph)**\n\n"+
+		"🔥 _Firing:_ **HighErrorRate\\: 5xx above 5\\%**\n\n"+
 			"error ratio 12\\%\n\n"+
 			"```\nseverity=critical\nservice=checkout\n```",
 		firing)

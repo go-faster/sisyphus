@@ -48,7 +48,13 @@ const (
 
 	// alertTemplate leads with the transition and the alert name, then the
 	// description, then the identifying labels as a code block.
-	alertTemplate = `{{.Emoji}} _{{.Verb}}:_ **{{.Title}}**
+	//
+	// The name is plain text, not a link: an alert's URL is its generator,
+	// and rendering it here put the rule that fired one tap away as
+	// underlined text while Alertmanager sat next to it as a button, with
+	// nothing saying the two went to different systems. Both are buttons now
+	// (internal/notify/alert.buttons).
+	alertTemplate = `{{.Emoji}} _{{.Verb}}:_ **{{.TitleText}}**
 
 {{.Description}}
 
@@ -111,6 +117,9 @@ type templateData struct {
 	Verb  string
 	// Title is the object the event is about, linked when it has a URL.
 	Title string
+	// TitleText is the same title, escaped but never linked, for a template
+	// whose event offers the URL as a button instead.
+	TitleText string
 	// Actor is who caused it, linked when the source carried a profile URL,
 	// bold otherwise. "Someone" when the source named nobody.
 	Actor string
@@ -133,6 +142,7 @@ func (DefaultRenderer) Render(e Event) (string, error) {
 		Emoji:       s.Emoji,
 		Verb:        s.Verb,
 		Title:       link(e.Title, e.URL),
+		TitleText:   escapeMarkdown(strings.TrimSpace(e.Title)),
 		Actor:       actorText(e.Actor),
 		Description: escapeMarkdown(e.Description),
 		Body:        e.Body,

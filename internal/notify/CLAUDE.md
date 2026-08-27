@@ -100,11 +100,30 @@ an intranet URL is a fine citation for a reader on the intranet.
 Notifications ride their own rail: `notify.Button` → outbox payload →
 `PendingNotification.buttons` → `bot.SendTo`, text and keyboard in one `sendMessage` (two
 messages would double the notification, and only the first carries the deduplicating
-`random_id`). The **projector** enforces the guarantee here: `alert` promotes only
-*annotation* values (a rule author wrote those; an alert's labels and description carry
-whatever the alerting target reported), GitLab/Jira promote only the subject's own URL, and
-`investigation` reuses the already-normalized `Report.Links`. ssbot cannot build buttons
+`random_id`). The **projector** enforces the guarantee here: `alert` promotes only *annotation* values
+and the alerting stack's own URLs — the generator URL Prometheus/vmalert composed, and the
+two it builds from Alertmanager's `externalURL` — never anything from the alert's labels or
+description, which carry whatever the alerting target reported. GitLab/Jira promote only the
+subject's own URL, and `investigation` reuses the already-normalized `Report.Links`. ssbot cannot build buttons
 itself — it has no DB and no event, only the rendered row it drained over HTTP.
+
+**An alert's title is not a link.** Its URL is the generator (a vmalert or Prometheus rule
+page) and Alertmanager is somewhere else entirely, so rendering one as underlined title text
+next to the other as a button offered two destinations with nothing saying which was which.
+`alertTemplate` renders the name plain (`templateData.TitleText`) and `alert.buttons` offers
+both by name: **Rule** for the generator, **Alertmanager** for the alert's row in the list,
+**Silence** for a new-silence form. The last two carry the same
+`{alertname=…,service=…,instance=…}` filter, URL-encoded onto the fragment — not the full
+label set, which nobody reads before confirming a silence, and not `alertname` alone, which
+silences every host a rule covers. Silence is offered on a firing alert only.
+
+Alertmanager's own external URL must be publicly resolvable for either to survive
+`Button.Valid` — see `--web.external-url` in the deployment repo.
+
+There is no one-tap silence or ack: `Button` is URL-only, ssbot registers no callback-query
+handler and holds no DB, and an alert is persisted nowhere (it produces no `index.Document`),
+so a callback would have nothing to rebuild the matchers from. Adding it means a table, an
+ssapi endpoint, an Alertmanager v2 client and a callback rail — not a button change.
 
 ## Comments and mentions
 
