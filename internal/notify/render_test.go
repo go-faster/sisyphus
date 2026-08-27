@@ -134,7 +134,9 @@ func TestDefaultRenderer(t *testing.T) {
 				Description: "5xx above threshold",
 				Labels:      []Label{{Key: "severity", Value: "critical"}, {Key: "service", Value: "checkout"}},
 			},
-			want: "🔥 _Firing:_ **[HighErrorRate](https://prometheus.example.com/graph)**\n\n" +
+			// The name is plain even though the event carries a URL: an
+			// alert offers that URL as a button instead.
+			want: "🔥 _Firing:_ **HighErrorRate**\n\n" +
 				"5xx above threshold\n\n" +
 				"```\nseverity=critical\nservice=checkout\n```",
 		},
