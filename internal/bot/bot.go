@@ -256,10 +256,10 @@ func (b *Bot) Run(ctx context.Context) error {
 
 	b.commands = b.buildCommandRegistry(runCtx)
 
-	handleMessage := func(ctx context.Context, e tg.Entities, u message.AnswerableMessageUpdate) error {
+	handleMessage := func(ctx context.Context, e tg.Entities, u message.AnswerableMessageUpdate) {
 		msg, ok := u.GetMessage().(*tg.Message)
 		if !ok || msg.Out {
-			return nil
+			return
 		}
 
 		chatID := peerChatID(msg.PeerID)
@@ -267,7 +267,7 @@ func (b *Bot) Run(ctx context.Context) error {
 		if !b.isAllowed(chatID, senderID) {
 			zctx.From(ctx).Debug("bot: ignoring message from non-allowlisted chat/user",
 				zap.Int64("chat_id", chatID), zap.Int64("sender_id", senderID))
-			return nil
+			return
 		}
 
 		chat := chatPeerFrom(e, msg.PeerID)
@@ -276,7 +276,7 @@ func (b *Bot) Run(ctx context.Context) error {
 
 		cmd, rest, ok := parseCommand(msg.Message)
 		if !ok {
-			return nil
+			return
 		}
 
 		var s messageSender
@@ -291,14 +291,15 @@ func (b *Bot) Run(ctx context.Context) error {
 			Chat:     chat,
 			Rest:     rest,
 		})
-		return nil
 	}
 
 	dispatcher.OnNewMessage(func(ctx context.Context, e tg.Entities, u *tg.UpdateNewMessage) error {
-		return handleMessage(ctx, e, u)
+		handleMessage(ctx, e, u)
+		return nil
 	})
 	dispatcher.OnNewChannelMessage(func(ctx context.Context, e tg.Entities, u *tg.UpdateNewChannelMessage) error {
-		return handleMessage(ctx, e, u)
+		handleMessage(ctx, e, u)
+		return nil
 	})
 
 	dispatcher.OnBotInlineQuery(func(ctx context.Context, _ tg.Entities, u *tg.UpdateBotInlineQuery) error {
