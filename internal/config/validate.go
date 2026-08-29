@@ -37,11 +37,6 @@ func postResolve(w wire, report *figureout.Report, baseDir string) (Config, erro
 	}
 	cfg.Alertmanager.InvestigateMinSeverity = severity
 
-	if cfg.Alertmanager.WebhookEnabled && cfg.Alertmanager.WebhookToken == "" {
-		warnings = append(warnings,
-			"alertmanager.webhook.enabled without alertmanager.webhook.token: the endpoint accepts alerts from anyone who can reach it")
-	}
-
 	// notify.poll.interval_seconds no longer schedules any collection — the
 	// GitLab and Jira ingestion runs emit the events now — but a config that
 	// only set the notify cadence would stop notifying silently, so it seeds

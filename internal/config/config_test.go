@@ -643,9 +643,10 @@ func TestLoadAlertmanagerInvestigateSeverity(t *testing.T) {
 	require.ErrorContains(t, err, "min_severity")
 }
 
-// An enabled webhook with no token is servable but open; the operator has to
-// hear about it.
-func TestLoadAlertmanagerWebhookWithoutTokenWarns(t *testing.T) {
+// An enabled webhook with no token loads clean: only ssingest serves the
+// endpoint, so only ssingest warns about it (cmd/ssingest/cmd_serve.go). Every
+// other binary shares this config and would warn about a port it never opens.
+func TestLoadAlertmanagerWebhookWithoutTokenDoesNotWarn(t *testing.T) {
 	clearEnv(t)
 	path := filepath.Join(t.TempDir(), "config.yml")
 	require.NoError(t, os.WriteFile(path, []byte(minimalConfig+"alertmanager:\n  webhook:\n    enabled: true\n"), 0o600))
@@ -654,7 +655,7 @@ func TestLoadAlertmanagerWebhookWithoutTokenWarns(t *testing.T) {
 	cfg, err := Load()
 	require.NoError(t, err)
 	require.True(t, cfg.Alertmanager.WebhookEnabled)
-	require.Contains(t, strings.Join(cfg.Warnings, "\n"), "alertmanager.webhook.token")
+	require.NotContains(t, strings.Join(cfg.Warnings, "\n"), "alertmanager.webhook.token")
 }
 
 // An unset max_assignment_age_seconds must mean "the default", not

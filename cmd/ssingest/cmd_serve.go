@@ -102,6 +102,9 @@ func runServe(ctx context.Context, deps *ingestDeps) error {
 		lg.Info("alertmanager webhook enabled",
 			zap.String("path", "/webhooks/alertmanager"),
 			zap.Bool("investigate", cfg.Alertmanager.Investigate))
+		if cfg.Alertmanager.WebhookToken == "" {
+			lg.Warn("alertmanager.webhook.enabled without alertmanager.webhook.token: the endpoint accepts alerts from anyone who can reach it")
+		}
 	}
 
 	httpSrv := &http.Server{
