@@ -22,12 +22,12 @@ type messageSender interface {
 type gotdSender struct {
 	sender   *message.Sender
 	entities tg.Entities
-	msg      *tg.UpdateNewMessage
+	msg      message.AnswerableMessageUpdate
 
 	inline *inline.ResultBuilder
 }
 
-func newReplySender(s *message.Sender, e tg.Entities, m *tg.UpdateNewMessage) *gotdSender {
+func newReplySender(s *message.Sender, e tg.Entities, m message.AnswerableMessageUpdate) *gotdSender {
 	return &gotdSender{sender: s, entities: e, msg: m}
 }
 

@@ -256,8 +256,8 @@ func (b *Bot) Run(ctx context.Context) error {
 
 	b.commands = b.buildCommandRegistry(runCtx)
 
-	dispatcher.OnNewMessage(func(ctx context.Context, e tg.Entities, u *tg.UpdateNewMessage) error {
-		msg, ok := u.Message.(*tg.Message)
+	handleMessage := func(ctx context.Context, e tg.Entities, u message.AnswerableMessageUpdate) error {
+		msg, ok := u.GetMessage().(*tg.Message)
 		if !ok || msg.Out {
 			return nil
 		}
@@ -292,6 +292,13 @@ func (b *Bot) Run(ctx context.Context) error {
 			Rest:     rest,
 		})
 		return nil
+	}
+
+	dispatcher.OnNewMessage(func(ctx context.Context, e tg.Entities, u *tg.UpdateNewMessage) error {
+		return handleMessage(ctx, e, u)
+	})
+	dispatcher.OnNewChannelMessage(func(ctx context.Context, e tg.Entities, u *tg.UpdateNewChannelMessage) error {
+		return handleMessage(ctx, e, u)
 	})
 
 	dispatcher.OnBotInlineQuery(func(ctx context.Context, _ tg.Entities, u *tg.UpdateBotInlineQuery) error {
