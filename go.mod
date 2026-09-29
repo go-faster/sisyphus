@@ -19,7 +19,7 @@ require (
 	github.com/gotd/log/logzap v0.1.1
 	github.com/gotd/td v0.161.0
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79
-	github.com/jackc/pgx/v5 v5.10.0
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/ogen-go/ogen v1.24.0
 	github.com/openai/openai-go/v3 v3.54.0
