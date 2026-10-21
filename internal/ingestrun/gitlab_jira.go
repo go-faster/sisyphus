@@ -34,7 +34,6 @@ import (
 	"github.com/go-faster/sisyphus/internal/indexjob"
 	gitlabingest "github.com/go-faster/sisyphus/internal/ingest/gitlab"
 	jiraingest "github.com/go-faster/sisyphus/internal/ingest/jira"
-	"github.com/go-faster/sisyphus/internal/netclient"
 	"github.com/go-faster/sisyphus/internal/pipeline"
 )
 
@@ -120,40 +119,9 @@ func (r Runner) RunGitLab(ctx context.Context, opts GitLabOptions) error {
 	lg := zctx.From(ctx).Named("gitlab")
 	cfg := r.Config
 
-	projects := GitLabProjectRefs(cfg.GitLab.Projects)
-	if cfg.GitLab.BaseURL == "" || cfg.GitLab.Token == "" || len(projects) == 0 {
-		lg.Info("gitlab not configured")
-		return ErrNotConfigured
-	}
-
-	cache, err := AuthenticatedHTTPCache("gitlab", cfg.GitLab.BaseURL, cfg.GitLab.Token)
+	fetcher, _, err := r.NewGitLabFetcher(ctx)
 	if err != nil {
-		return errors.Wrap(err, "gitlab http cache")
-	}
-
-	httpClient, err := netclient.HTTPClient(ctx, "gitlab", cfg.Proxies.GitLab, netclient.HTTPClientOptions{
-		TracerProvider: r.TP,
-		MeterProvider:  r.MP,
-		Cache:          cache,
-		UserAgent:      r.UserAgent,
-	})
-	if err != nil {
-		return errors.Wrap(err, "gitlab http client")
-	}
-
-	fetcher, err := gitlabingest.New(gitlabingest.Options{
-		BaseURL:    cfg.GitLab.BaseURL,
-		Token:      cfg.GitLab.Token,
-		Projects:   projects,
-		HTTPClient: httpClient,
-		UserAgent:  r.UserAgent,
-	})
-	if err != nil {
-		return errors.Wrap(err, "gitlab new fetcher")
-	}
-
-	if err := fetcher.CheckAuth(ctx); err != nil {
-		return errors.Wrap(err, "gitlab auth check")
+		return err
 	}
 
 	pipe := opts.Indexer
@@ -323,45 +291,10 @@ func (r Runner) RunGitLab(ctx context.Context, opts GitLabOptions) error {
 // RunJira runs incremental Jira ingestion.
 func (r Runner) RunJira(ctx context.Context, opts JiraOptions) error {
 	lg := zctx.From(ctx).Named("jira")
-	cfg := r.Config
-	jc := cfg.Jira
-	if jc.BaseURL == "" || (jc.PAT == "" && (jc.Username == "" || jc.Password == "") && (jc.Email == "" || jc.APIToken == "")) {
-		lg.Info("jira not configured")
-		return ErrNotConfigured
-	}
-
-	cache, err := AuthenticatedHTTPCache("jira", jc.BaseURL, jc.Email, jc.Username, jc.APIToken, jc.Password, jc.PAT)
-	if err != nil {
-		return errors.Wrap(err, "jira http cache")
-	}
-
 	src := index.SourceJira
-	httpClient, err := netclient.HTTPClient(ctx, "jira", cfg.Proxies.Jira, netclient.HTTPClientOptions{
-		TracerProvider: r.TP,
-		MeterProvider:  r.MP,
-		Cache:          cache,
-		UserAgent:      r.UserAgent,
-	})
+	fetcher, projects, authStatus, err := r.NewJiraFetcher(ctx)
 	if err != nil {
-		return errors.Wrap(err, "jira http client")
-	}
-	fetcher, err := jiraingest.New(jiraingest.Options{
-		BaseURL:    jc.BaseURL,
-		Email:      jc.Email,
-		Username:   jc.Username,
-		APIToken:   jc.APIToken,
-		Password:   jc.Password,
-		PAT:        jc.PAT,
-		HTTPClient: httpClient,
-		UserAgent:  r.UserAgent,
-	})
-	if err != nil {
-		return errors.Wrap(err, "jira new fetcher")
-	}
-	projects := JiraProjectKeys(jc.Projects)
-	authStatus, err := fetcher.CheckAuth(ctx, projects)
-	if err != nil {
-		return errors.Wrap(err, "jira preflight")
+		return err
 	}
 	lg.Info("jira auth ok",
 		zap.String("account_id", authStatus.AccountID),

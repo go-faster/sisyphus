@@ -146,6 +146,18 @@ func describeMaintenance(c *wire, s *figureout.Schema[wire]) {
 				ApplyDefault(defaultMaintenancePurgeMaxBatches)
 		})
 
+		figureout.Group(s, "reconcile", func(s *figureout.Schema[wire]) {
+			figureout.Value(s, &c.Maintenance.Reconcile.Interval, "interval").
+				ApplyDefault(defaultMaintenanceReconcileInterval).
+				Doc("off by default; the only job that deletes indexed content, so opt in after a --dry-run")
+			figureout.Value(s, &c.Maintenance.Reconcile.MaxDeleteFraction, "max_delete_fraction").
+				ApplyDefault(defaultMaintenanceReconcileFraction).
+				Doc("refuse a scope whose diff would delete more than this share of its documents")
+			figureout.Value(s, &c.Maintenance.Reconcile.MinIndexed, "min_indexed").
+				ApplyDefault(defaultMaintenanceReconcileMinDocs).
+				Doc("documents a scope needs before max_delete_fraction applies")
+		})
+
 		figureout.Group(s, "notify_retention", func(s *figureout.Schema[wire]) {
 			figureout.Value(s, &c.Maintenance.NotifyRetention.Interval, "interval").
 				ApplyDefault(defaultMaintenanceNotifyRetentionInterval).

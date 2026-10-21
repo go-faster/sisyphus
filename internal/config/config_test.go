@@ -295,6 +295,12 @@ func TestLoadMaintenanceDefaults(t *testing.T) {
 	require.Equal(t, 72*time.Hour, cfg.Maintenance.QueueRetention.DoneAfter)
 	require.Equal(t, 30*24*time.Hour, cfg.Maintenance.QueueRetention.ErrorAfter)
 	require.Equal(t, 90*24*time.Hour, cfg.Maintenance.NotifyRetention.After)
+
+	// Reconcile is the one job that is off unless asked for: it is the only
+	// one that deletes indexed content on the evidence of an absence.
+	require.Zero(t, cfg.Maintenance.Reconcile.Interval)
+	require.InDelta(t, 0.2, cfg.Maintenance.Reconcile.MaxDeleteFraction, 0.0001)
+	require.Equal(t, 20, cfg.Maintenance.Reconcile.MinIndexed)
 }
 
 // TestLoadMaintenanceDisablesJob pins that 0 turns a job off rather than
