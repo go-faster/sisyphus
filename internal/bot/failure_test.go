@@ -44,7 +44,9 @@ func TestDispatchTurnsAHandlerErrorIntoAGenericReply(t *testing.T) {
 	})
 
 	require.Contains(t, *sent, "/subscribe failed")
-	require.NotContains(t, *sent, "503")
+	// Not a bare "503": the reply carries a random hex trace id, which
+	// contains those three digits about once in a hundred runs.
+	require.NotContains(t, *sent, "code 503")
 	require.NotContains(t, *sent, "not configured")
 }
 
