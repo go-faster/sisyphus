@@ -79,10 +79,11 @@ func TestLinksMarkup(t *testing.T) {
 	require.True(t, ok)
 	require.Len(t, markup.Rows, 1)
 	require.Len(t, markup.Rows[0].Buttons, 2)
-	btn, ok := markup.Rows[0].Buttons[0].(*tg.KeyboardButtonURL)
-	require.True(t, ok)
+	btn := markup.Rows[0].Buttons[0]
 	require.Equal(t, "Dashboard", btn.Text)
-	require.Equal(t, "https://grafana.example.com/d/1", btn.URL)
+	typ, ok := btn.Type.(*tg.InlineButtonTypeURL)
+	require.True(t, ok)
+	require.Equal(t, "https://grafana.example.com/d/1", typ.URL)
 
 	// An odd trailing link gets a row to itself rather than being dropped.
 	kb = linksMarkup([]index.Link{
@@ -111,9 +112,9 @@ func TestLinksMarkupDropsUnreachableHosts(t *testing.T) {
 	require.True(t, ok)
 	require.Len(t, markup.Rows, 1)
 	require.Len(t, markup.Rows[0].Buttons, 1)
-	btn, ok := markup.Rows[0].Buttons[0].(*tg.KeyboardButtonURL)
+	typ, ok := markup.Rows[0].Buttons[0].Type.(*tg.InlineButtonTypeURL)
 	require.True(t, ok)
-	require.Equal(t, "https://grafana.example.com/d/1", btn.URL)
+	require.Equal(t, "https://grafana.example.com/d/1", typ.URL)
 }
 
 // When nothing survives there is no keyboard at all, so the message still

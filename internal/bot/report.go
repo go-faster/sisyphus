@@ -139,13 +139,13 @@ func linksMarkup(links []index.Link) tg.ReplyMarkupClass {
 	if len(reachable) == 0 {
 		return nil
 	}
-	var rows []tg.KeyboardButtonRow
+	var rows []tg.KeyboardInlineButtonRow
 	for chunk := range slices.Chunk(reachable, buttonsPerRow) {
-		buttons := make([]tg.KeyboardButtonClass, 0, len(chunk))
+		buttons := make([]tg.KeyboardInlineButton, 0, len(chunk))
 		for _, l := range chunk {
 			buttons = append(buttons, markup.URL(l.Text, l.URL))
 		}
-		rows = append(rows, markup.Row(buttons...))
+		rows = append(rows, markup.InlineButtonRow(buttons...))
 	}
 	return markup.InlineKeyboard(rows...)
 }
