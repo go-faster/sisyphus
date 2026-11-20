@@ -19,6 +19,7 @@ import (
 	"github.com/go-faster/sisyphus/internal/notify"
 	notifystore "github.com/go-faster/sisyphus/internal/notify/store"
 	"github.com/go-faster/sisyphus/internal/queue"
+	"github.com/go-faster/sisyphus/internal/reconcile"
 	"github.com/go-faster/sisyphus/internal/search/qdrant"
 	"github.com/go-faster/sisyphus/internal/vectorgc"
 	"github.com/go-faster/sisyphus/internal/vectorrepair"
@@ -112,6 +113,14 @@ func (d *ingestDeps) maintJobs() []maint.Job {
 					MaxBatches: cfg.QueueRetention.MaxBatches,
 				})
 			},
+		},
+		{
+			Name:     maint.JobReconcile,
+			Interval: cfg.Reconcile.Interval,
+			Run: d.reconcileJob(reconcile.Options{
+				MaxDeleteFraction:     cfg.Reconcile.MaxDeleteFraction,
+				MinIndexedForFraction: cfg.Reconcile.MinIndexed,
+			}),
 		},
 		{
 			Name:     maint.JobNotifyRetention,

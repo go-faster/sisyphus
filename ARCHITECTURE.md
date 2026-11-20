@@ -195,7 +195,9 @@ Idempotency makes this incremental and safe to do in slices:
 
 - **Telegram is single-active** — both `getUpdates` (bot) and the user session
   (backfill). Isolate them so they never constrain the rest.
-- **Cursor incremental never sees deletes** — the full-reconcile CronJob is not
+- **Cursor incremental never sees deletes** _(today: `ssingest reconcile`, off by
+  default — a full listing per configured project, refusing any diff too large
+  to be a deletion)_ — the full-reconcile CronJob is not
   optional if deletions must propagate.
 - **Per-source cursor writes should be serialized** — but only to avoid wasted
   API load, not for correctness; CronJob `Forbid` handles it without leader

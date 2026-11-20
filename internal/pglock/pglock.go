@@ -40,8 +40,24 @@ func lockID(key string) int32 {
 //
 // The lock is session-scoped and held on a dedicated connection, so it spans the
 // whole run rather than a transaction — a run can be minutes of HTTP fetching or
-// embedding, and must not sit inside an open transaction for its duration. A
-// process that dies drops its connection, and Postgres releases the lock with it.
+// embedding, and must not sit inside an open transaction for its duration.
+//
+// There is deliberately no heartbeat or lease timeout: Postgres already is the
+// lease. A process that dies drops its connection, the backend is terminated,
+// and the lock is released with it — including on SIGKILL, an OOM kill or a
+// container stop, where no deferred unlock ever runs. Two consequences:
+//
+//   - A *hung* holder is worse than a dead one. If the socket stays open — a
+//     frozen node, a network partition — Postgres cannot tell and will not
+//     release until TCP keepalives expire, which is hours under common
+//     defaults. That stalls the work rather than corrupting it: a contended run
+//     is skipped and retried on its next tick. Tune the DSN's keepalive
+//     settings if a deployment needs a tighter bound.
+//   - **A transaction-pooling connection pooler breaks this entirely.**
+//     pgbouncer in `transaction` mode hands the underlying connection to
+//     someone else between statements, so a session-scoped lock is released
+//     early or held by an unrelated client. Session-scoped locks require a
+//     direct connection or `session` pooling.
 func With(ctx context.Context, db *sql.DB, key string, fn func(context.Context) error) error {
 	if db == nil {
 		// No pooled handle available (some one-shot paths build only an ent
