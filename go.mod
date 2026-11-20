@@ -20,7 +20,7 @@ require (
 	github.com/gotd/td v0.166.1
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79
 	github.com/jackc/pgx/v5 v5.13.0
-	github.com/modelcontextprotocol/go-sdk v1.7.0
+	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/ogen-go/ogen v1.25.0
 	github.com/openai/openai-go/v3 v3.100.0
 	github.com/peterbourgon/diskv v2.0.1+incompatible
