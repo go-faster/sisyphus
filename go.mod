@@ -24,7 +24,7 @@ require (
 	github.com/ogen-go/ogen v1.25.0
 	github.com/openai/openai-go/v3 v3.100.0
 	github.com/peterbourgon/diskv v2.0.1+incompatible
-	github.com/qdrant/go-client v1.19.0
+	github.com/qdrant/go-client v1.20.2
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
 	github.com/testcontainers/testcontainers-go v0.45.0
