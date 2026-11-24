@@ -1,9 +1,9 @@
 module github.com/go-faster/sisyphus
 
-go 1.26.4
+go 1.26.10
 
 require (
-	ariga.io/atlas v1.3.0
+	ariga.io/atlas v1.4.0
 	entgo.io/ent v0.14.6
 	github.com/XSAM/otelsql v0.44.0
 	github.com/bmatcuk/doublestar/v4 v4.10.4
