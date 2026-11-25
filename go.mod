@@ -15,7 +15,7 @@ require (
 	github.com/go-faster/yaml v0.4.6
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/google/uuid v1.6.0
-	github.com/gotd/contrib v0.25.0
+	github.com/gotd/contrib v0.26.0
 	github.com/gotd/log/logzap v0.1.1
 	github.com/gotd/td v0.166.1
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79
