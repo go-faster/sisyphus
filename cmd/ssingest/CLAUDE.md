@@ -14,6 +14,7 @@ Ingestion CLI and daemon. Wires its dependencies inline — it does **not** reus
 | `index` | index documents directly |
 | `gc` | sweep vector points no chunk references (`internal/vectorgc`) |
 | `repair` | rebind chunks whose point is keyed by the wrong ID (`internal/vectorrepair`) |
+| `reconcile` | delete documents whose upstream object is gone (`internal/reconcile`) |
 
 `gc`, `repair` and `maint` are not ingestion; they just live here because this is the
 binary that already holds the Qdrant and Postgres clients.
@@ -52,6 +53,23 @@ notify delivery went unreaped. Add a new queue there in the same change that cre
 `serve` still reaps `ingest.index` once at boot, and `ssagent` still reaps
 `agent.investigate` once at its own. Both are kept deliberately: they are idempotent and
 cheap, and an install that does not deploy `ssmaint` would otherwise lose reaping entirely.
+
+## reconcile deletes on the evidence of an absence
+
+Everything else here deletes what it can prove is garbage — a point no chunk references, a
+job that settled days ago. `reconcile` deletes what it *cannot find*, which is far weaker
+evidence: a revoked token, a renamed project and an account that lost access all look
+exactly like "every issue was deleted".
+
+It is therefore **off by default** (`maintenance.reconcile.interval: 0`), with
+`ssingest reconcile --dry-run` as the way in. The guards that make it safe to turn on —
+and the per-project scoping that keeps a config edit from erasing a corpus — live in
+`internal/reconcile/CLAUDE.md`. Read it before changing anything there.
+
+Ingestion and reconciliation build their fetchers through the same
+`ingestrun.NewGitLabFetcher`/`NewJiraFetcher`, so both see upstream through identical
+proxy, cache, auth and user-agent wiring. A reconcile that talked to the API differently
+from the run that indexed it would diff two different worlds.
 
 ## A broken dependency fails the run, never the process
 
